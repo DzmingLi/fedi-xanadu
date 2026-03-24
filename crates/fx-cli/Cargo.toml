@@ -1,0 +1,20 @@
+[package]
+name = "fx-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "fx"
+path = "src/main.rs"
+
+[dependencies]
+fx-core = { workspace = true }
+reqwest = { workspace = true, features = ["json", "multipart"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+dirs-next = { workspace = true }

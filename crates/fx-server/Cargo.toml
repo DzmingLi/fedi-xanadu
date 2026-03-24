@@ -1,0 +1,31 @@
+[package]
+name = "fx-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fedi-xanadu"
+path = "src/main.rs"
+
+[dependencies]
+fx-core.workspace = true
+fx-render.workspace = true
+fx-search.workspace = true
+fx-atproto.workspace = true
+fx-pijul.workspace = true
+
+axum.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+figment.workspace = true
+reqwest.workspace = true
+blake3.workspace = true
+rand.workspace = true

@@ -1,0 +1,116 @@
+[workspace]
+members = [
+    "crates/fx-server",
+    "crates/fx-core",
+    "crates/fx-pijul",
+    "crates/fx-atproto",
+    "crates/fx-search",
+    "crates/fx-render",
+    "crates/fx-cli",
+    "vendor/pijul-core",
+    "vendor/pijul-repository",
+    "vendor/pijul-config",
+    "vendor/pijul-macros",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/DzmingLi/fedi-xanadu"
+
+[workspace.dependencies]
+fx-core = { path = "crates/fx-core" }
+fx-pijul = { path = "crates/fx-pijul" }
+fx-atproto = { path = "crates/fx-atproto" }
+fx-search = { path = "crates/fx-search" }
+fx-render = { path = "crates/fx-render" }
+
+# Web
+axum = { version = "0.8", features = ["macros", "multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_derive = "1"
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+log = "0.4"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Crypto / random
+blake3 = "1"
+rand = "0.10"
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Config
+toml = { version = "0.8", features = ["preserve_order"] }
+figment = { version = "0.10", features = ["toml", "env"] }
+
+# Pijul vendored dependencies
+pijul-core = { path = "vendor/pijul-core", version = "1.0.0-beta.10" }
+pijul-repository = { path = "vendor/pijul-repository", version = "1.0.0-beta.10" }
+pijul-config = { path = "vendor/pijul-config", version = "1.0.0-beta.10" }
+pijul-macros = { path = "vendor/pijul-macros", version = "1.0.0-beta.10" }
+
+# Pijul transitive dependencies
+adler32 = "1.2"
+aes = { version = "0.7", features = ["ctr"] }
+bincode = "1.3"
+bitflags = { version = "2.9", features = ["serde"] }
+bs58 = "0.4"
+byteorder = "1.5"
+canonical-path = "2.0"
+chardetng = "0.1"
+crossbeam-deque = "0.8"
+curve25519-dalek = { version = "4.1", features = ["serde"] }
+data-encoding = "2.9"
+dialoguer = { version = "0.10", default-features = false }
+diffs = "0.5"
+dirs-next = "2.0"
+ed25519-dalek = { version = "1.0", features = ["serde"] }
+encoding_rs = "0.8"
+generic-array = "0.14"
+getrandom = "0.2"
+hmac = "0.11"
+ignore = "0.4"
+imara-diff = "0.1.8"
+jiff = { version = "0.2", features = ["serde", "alloc"] }
+lru-cache = "0.1"
+nom = "7.1"
+parking_lot = "0.12"
+path-slash = "0.2"
+pbkdf2 = { version = "0.9", default-features = false }
+proc-macro2 = "1.0"
+quote = "1.0"
+regex = "1.11"
+rlimit = "0.10"
+sanakirja = { version = "2.0.0-beta", default-features = false, features = ["crc32"] }
+sha2 = "0.9"
+syn = "2.0"
+tar = "0.4"
+tempfile = "3.20"
+twox-hash = "1.6"
+whoami = { version = "1.6", default-features = false }
+zstd-seekable = "0.1"
+flate2 = "1.1"
+env_logger = "0.11"
+quickcheck = "1.0"
+rand_chacha = "0.10"
