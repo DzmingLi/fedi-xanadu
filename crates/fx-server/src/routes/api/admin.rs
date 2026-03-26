@@ -3,10 +3,13 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
 };
-use fx_core::services::platform_user_service;
+use fx_core::models::{Article, CreateArticle};
+use fx_core::services::{article_service, platform_user_service};
+use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
+use super::{content_hash, tid, uri_to_node_id};
 
 fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
     let secret = state.admin_secret.as_deref()
@@ -54,4 +57,70 @@ pub async fn list_platform_users(
     require_admin(&state, &headers)?;
     let users = platform_user_service::list_platform_users(&state.pool).await?;
     Ok(Json(users))
+}
+
+// --- Admin article creation (publish as any platform user) ---
+
+#[derive(serde::Deserialize)]
+pub struct AdminCreateArticleInput {
+    /// Platform user handle to publish as
+    pub as_handle: String,
+    #[serde(flatten)]
+    pub article: CreateArticle,
+}
+
+pub async fn admin_create_article(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<AdminCreateArticleInput>,
+) -> ApiResult<(StatusCode, Json<Article>)> {
+    require_admin(&state, &headers)?;
+    validate_create_article(&input.article)?;
+
+    // Resolve handle → DID
+    let did = platform_user_service::local_did(&input.as_handle);
+
+    let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
+
+    // Init pijul repo and write source file
+    let node_id = uri_to_node_id(&at_uri);
+    state.pijul.init_repo(&node_id)
+        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+
+    let repo_path = state.pijul.repo_path(&node_id);
+    let src_ext = match input.article.content_format.as_str() {
+        "markdown" => "md",
+        "html" => "html",
+        _ => "typ",
+    };
+    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
+
+    // Pre-render HTML cache
+    if input.article.content_format != "html" {
+        let rendered = super::articles::render_content(
+            &input.article.content_format, &input.article.content, &repo_path,
+        )?;
+        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+    }
+
+    if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
+        tracing::warn!("pijul record failed for {node_id}: {e}");
+    }
+
+    let hash = content_hash(&input.article.content);
+
+    let translation_group = if let Some(ref source_uri) = input.article.translation_of {
+        Some(article_service::resolve_translation_group(&state.pool, source_uri).await?)
+    } else {
+        None
+    };
+
+    let article = article_service::create_article(
+        &state.pool, &did, &at_uri, &input.article, &hash, translation_group,
+    ).await?;
+
+    // Auto-bookmark
+    let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
+
+    Ok((StatusCode::CREATED, Json(article)))
 }

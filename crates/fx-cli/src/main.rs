@@ -90,8 +90,55 @@ enum Command {
         #[command(subcommand)]
         action: TreeCommand,
     },
+    /// Admin operations (manage platform users, publish as any user)
+    Admin {
+        #[command(subcommand)]
+        action: AdminCommand,
+    },
     /// Logout (remove saved token)
     Logout,
+}
+
+#[derive(Subcommand)]
+enum AdminCommand {
+    /// Create a platform user
+    #[command(name = "create-user")]
+    CreateUser {
+        /// User handle
+        handle: String,
+        /// Password
+        password: String,
+        /// Display name
+        #[arg(long)]
+        display_name: Option<String>,
+    },
+    /// List all platform users
+    #[command(name = "list-users", alias = "users")]
+    ListUsers,
+    /// Publish an article as a platform user
+    Publish {
+        /// Platform user handle to publish as
+        #[arg(long)]
+        r#as: String,
+        /// Path to .md, .typ, or .html file
+        #[arg(short, long)]
+        file: PathBuf,
+        /// Article title (defaults to filename)
+        #[arg(short, long)]
+        title: Option<String>,
+        /// Short description
+        #[arg(short, long)]
+        desc: Option<String>,
+        /// Language code (default: zh)
+        #[arg(short, long, default_value = "zh")]
+        lang: String,
+        /// Tags (comma-separated tag IDs)
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// License (default: CC-BY-SA-3.0)
+        #[arg(long, default_value = "CC-BY-SA-3.0")]
+        license: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -181,6 +228,7 @@ struct Config {
     token: Option<String>,
     did: Option<String>,
     handle: Option<String>,
+    admin_secret: Option<String>,
 }
 
 impl Config {
@@ -417,6 +465,10 @@ async fn main() -> Result<()> {
 
         Command::Tree { action } => {
             handle_tree(&base, &config, action).await?;
+        }
+
+        Command::Admin { action } => {
+            handle_admin(&base, &mut config, action).await?;
         }
 
         Command::Logout => {
@@ -680,6 +732,97 @@ async fn handle_tree(base: &str, config: &Config, action: TreeCommand) -> Result
                 .error_for_status().context("Adopt failed")?;
 
             println!("Adopted skill tree as active.");
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> Result<()> {
+    let secret = std::env::var("FX_ADMIN_SECRET")
+        .ok()
+        .or_else(|| config.admin_secret.clone())
+        .context("Admin secret not set. Use FX_ADMIN_SECRET env var")?;
+
+    match action {
+        AdminCommand::CreateUser { handle, password, display_name } => {
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/platform-users"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({
+                    "handle": handle,
+                    "password": password,
+                    "display_name": display_name,
+                }))
+                .send().await?
+                .error_for_status().context("Create user failed")?
+                .json().await?;
+
+            let did = resp["did"].as_str().unwrap_or("?");
+            println!("Created: {handle} ({did})");
+        }
+
+        AdminCommand::ListUsers => {
+            let users: Vec<serde_json::Value> = client()
+                .get(format!("{base}/admin/platform-users"))
+                .header("x-admin-secret", &secret)
+                .send().await?
+                .error_for_status().context("List users failed")?
+                .json().await?;
+
+            if users.is_empty() {
+                println!("No platform users.");
+            }
+            for u in &users {
+                let handle = u["handle"].as_str().unwrap_or("?");
+                let did = u["did"].as_str().unwrap_or("?");
+                let name = u["display_name"].as_str().unwrap_or("");
+                println!("{handle}\t{did}\t{name}");
+            }
+        }
+
+        AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license } => {
+            let content = std::fs::read_to_string(&file)
+                .with_context(|| format!("Cannot read {}", file.display()))?;
+
+            let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let content_format = match ext {
+                "md" | "markdown" => "markdown",
+                "typ" | "typst" => "typst",
+                "html" | "htm" => "html",
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
+            };
+
+            let title = title.unwrap_or_else(|| {
+                file.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled")
+                    .to_string()
+            });
+
+            let body = serde_json::json!({
+                "as_handle": as_handle,
+                "title": title,
+                "description": desc.unwrap_or_default(),
+                "content": content,
+                "content_format": content_format,
+                "lang": lang,
+                "license": license,
+                "tags": tags,
+                "prereqs": [],
+            });
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/articles"))
+                .header("x-admin-secret", &secret)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Publish failed")?
+                .json().await?;
+
+            let uri = resp["at_uri"].as_str().unwrap_or("?");
+            println!("Published as {as_handle}: {title}");
+            println!("URI: {uri}");
         }
     }
 

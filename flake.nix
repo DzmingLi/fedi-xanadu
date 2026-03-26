@@ -39,6 +39,11 @@
               default = [];
               description = "Allowed CORS origins. Empty = same-origin only.";
             };
+            adminSecretFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "Path to a file containing the admin API secret. Enables admin endpoints (user management, publish-as).";
+            };
             database = {
               name = lib.mkOption {
                 type = lib.types.str;
@@ -118,6 +123,8 @@
                 ProtectControlGroups = true;
                 RestrictSUIDSGID = true;
                 ReadWritePaths = [ cfg.dataDir ];
+              } // lib.optionalAttrs (cfg.adminSecretFile != null) {
+                EnvironmentFile = cfg.adminSecretFile;
               };
             };
 

@@ -90,7 +90,7 @@ async fn is_cached_fresh(cache: &std::path::Path, source: &std::path::Path) -> b
     c_mod >= s_mod
 }
 
-fn render_content(format: &str, source: &str, repo_path: &std::path::Path) -> Result<String, AppError> {
+pub(super) fn render_content(format: &str, source: &str, repo_path: &std::path::Path) -> Result<String, AppError> {
     match format {
         "markdown" => fx_render::render_markdown_to_html(source)
             .map_err(|e| { tracing::warn!("render error: {e}"); AppError(fx_core::Error::Render(e.to_string())) }),
