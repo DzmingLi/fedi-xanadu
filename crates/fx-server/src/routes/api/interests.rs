@@ -4,18 +4,20 @@ use axum::{
     http::StatusCode,
 };
 
-use crate::error::ApiResult;
+use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::AuthDid;
+use super::Auth;
+
+const MAX_INTERESTS: usize = 100;
 
 pub async fn get_interests(
     State(state): State<AppState>,
-    AuthDid(did): AuthDid,
+    Auth(user): Auth,
 ) -> ApiResult<Json<Vec<String>>> {
     let ids: Vec<String> = sqlx::query_scalar(
-        "SELECT tag_id FROM user_interests WHERE did = ? ORDER BY tag_id",
+        "SELECT tag_id FROM user_interests WHERE did = $1 ORDER BY tag_id",
     )
-    .bind(&did)
+    .bind(&user.did)
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(ids))
@@ -28,21 +30,30 @@ pub(crate) struct SetInterestsInput {
 
 pub async fn set_interests(
     State(state): State<AppState>,
-    AuthDid(did): AuthDid,
+    Auth(user): Auth,
     Json(input): Json<SetInterestsInput>,
 ) -> ApiResult<StatusCode> {
-    sqlx::query("DELETE FROM user_interests WHERE did = ?")
-        .bind(&did)
-        .execute(&state.pool)
+    if input.tag_ids.len() > MAX_INTERESTS {
+        return Err(AppError(fx_core::Error::BadRequest(
+            format!("too many interests (max {MAX_INTERESTS})")
+        )));
+    }
+
+    let mut tx = state.pool.begin().await?;
+
+    sqlx::query("DELETE FROM user_interests WHERE did = $1")
+        .bind(&user.did)
+        .execute(&mut *tx)
         .await?;
 
     for tag_id in &input.tag_ids {
-        let _ = sqlx::query("INSERT OR IGNORE INTO user_interests (did, tag_id) VALUES (?, ?)")
-            .bind(&did)
+        sqlx::query("INSERT INTO user_interests (did, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+            .bind(&user.did)
             .bind(tag_id)
-            .execute(&state.pool)
-            .await;
+            .execute(&mut *tx)
+            .await?;
     }
 
+    tx.commit().await?;
     Ok(StatusCode::OK)
 }

@@ -69,10 +69,20 @@ struct ResolveHandleOutput {
     did: String,
 }
 
+impl Default for AtClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AtClient {
     pub fn new() -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .connect_timeout(std::time::Duration::from_secs(5))
+                .build()
+                .expect("failed to build HTTP client"),
         }
     }
 
@@ -109,10 +119,10 @@ impl AtClient {
         if let Some(services) = doc.get("service").and_then(|s| s.as_array()) {
             for svc in services {
                 let svc_type = svc.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                if svc_type == "AtprotoPersonalDataServer" {
-                    if let Some(endpoint) = svc.get("serviceEndpoint").and_then(|e| e.as_str()) {
-                        return Ok(endpoint.to_string());
-                    }
+                if svc_type == "AtprotoPersonalDataServer"
+                    && let Some(endpoint) = svc.get("serviceEndpoint").and_then(|e| e.as_str())
+                {
+                    return Ok(endpoint.to_string());
                 }
             }
         }

@@ -3,10 +3,11 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
 };
+use fx_core::services::auth_service;
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::gen_session_token;
+use super::{Auth, extract_bearer_token, gen_session_token};
 
 #[derive(serde::Deserialize)]
 pub struct LoginInput {
@@ -31,13 +32,13 @@ pub async fn login(
         .at_client
         .resolve_handle(&input.identifier)
         .await
-        .map_err(|e| ApiError::BadRequest(format!("Cannot resolve handle: {e}")))?;
+        .map_err(|e| AppError(fx_core::Error::BadRequest(format!("Cannot resolve handle: {e}"))))?;
 
     let session = state
         .at_client
         .create_session(&pds_url, &input.identifier, &input.password)
         .await
-        .map_err(|_| ApiError::Unauthorized)?;
+        .map_err(|_| AppError(fx_core::Error::Unauthorized))?;
 
     let profile = state
         .at_client
@@ -56,31 +57,28 @@ pub async fn login(
 
     let token = gen_session_token();
 
-    sqlx::query(
-        "INSERT OR REPLACE INTO sessions (token, did, handle, display_name, avatar_url, pds_url, access_jwt, refresh_jwt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    auth_service::create_session(
+        &state.pool,
+        &auth_service::CreateSessionInput {
+            token: &token,
+            did: &did,
+            handle: &session.handle,
+            display_name: display_name.as_deref(),
+            avatar: avatar.as_deref(),
+            pds_url: &pds_url,
+            access_jwt: &session.access_jwt,
+            refresh_jwt: session.refresh_jwt.as_deref(),
+        },
     )
-    .bind(&token)
-    .bind(&did)
-    .bind(&session.handle)
-    .bind(&display_name)
-    .bind(&avatar)
-    .bind(&pds_url)
-    .bind(&session.access_jwt)
-    .bind(&session.refresh_jwt)
-    .execute(&state.pool)
     .await?;
 
-    let _ = sqlx::query(
-        "INSERT INTO profiles (did, handle, display_name, avatar_url) VALUES (?, ?, ?, ?)
-         ON CONFLICT(did) DO UPDATE SET handle = excluded.handle, display_name = excluded.display_name,
-         avatar_url = excluded.avatar_url, updated_at = datetime('now')",
+    let _ = auth_service::upsert_profile(
+        &state.pool,
+        &did,
+        &session.handle,
+        display_name.as_deref(),
+        avatar.as_deref(),
     )
-    .bind(&did)
-    .bind(&session.handle)
-    .bind(&display_name)
-    .bind(&avatar)
-    .execute(&state.pool)
     .await;
 
     Ok(Json(LoginOutput {
@@ -96,12 +94,8 @@ pub async fn logout(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> ApiResult<StatusCode> {
-    if let Some(auth) = headers.get("authorization").and_then(|v| v.to_str().ok()) {
-        let token = auth.strip_prefix("Bearer ").unwrap_or(auth);
-        let _ = sqlx::query("DELETE FROM sessions WHERE token = ?")
-            .bind(token)
-            .execute(&state.pool)
-            .await;
+    if let Some(token) = extract_bearer_token(&headers) {
+        let _ = auth_service::delete_session(&state.pool, token).await;
     }
     Ok(StatusCode::OK)
 }
@@ -116,34 +110,16 @@ pub(crate) struct AuthMeOutput {
 
 pub async fn auth_me(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    Auth(user): Auth,
 ) -> ApiResult<Json<AuthMeOutput>> {
-    let auth = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(ApiError::Unauthorized)?;
-    let token = auth.strip_prefix("Bearer ").unwrap_or(auth);
-
-    #[derive(sqlx::FromRow)]
-    struct Row {
-        did: String,
-        handle: String,
-        display_name: Option<String>,
-        avatar_url: Option<String>,
-    }
-
-    let row = sqlx::query_as::<_, Row>(
-        "SELECT did, handle, display_name, avatar_url FROM sessions WHERE token = ? AND expires_at > datetime('now')",
-    )
-    .bind(token)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or(ApiError::Unauthorized)?;
+    let session = auth_service::get_session_by_token(&state.pool, &user.token)
+        .await?
+        .ok_or(AppError(fx_core::Error::Unauthorized))?;
 
     Ok(Json(AuthMeOutput {
-        did: row.did,
-        handle: row.handle,
-        display_name: row.display_name,
-        avatar: row.avatar_url,
+        did: session.did,
+        handle: session.handle,
+        display_name: session.display_name,
+        avatar: session.avatar_url,
     }))
 }

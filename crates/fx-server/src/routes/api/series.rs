@@ -3,10 +3,12 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
 };
+use fx_core::services::series_service;
+use fx_core::validation;
 
-use crate::error::{ApiError, ApiResult, require_owner};
+use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use super::{RequireAuth, UriQuery};
+use super::{Auth, UriQuery, tid};
 
 #[derive(serde::Deserialize)]
 pub(crate) struct CreateSeriesInput {
@@ -15,118 +17,62 @@ pub(crate) struct CreateSeriesInput {
     tag_id: String,
 }
 
-#[derive(serde::Serialize, sqlx::FromRow)]
-pub(crate) struct SeriesRow {
-    id: String,
-    title: String,
-    description: Option<String>,
-    tag_id: String,
-    created_by: String,
-    created_at: String,
-}
-
-#[derive(serde::Serialize, sqlx::FromRow)]
-pub(crate) struct SeriesListRow {
-    id: String,
-    title: String,
-    description: Option<String>,
-    tag_id: String,
-    tag_name: String,
-    created_by: String,
-    created_at: String,
-}
-
-#[derive(serde::Serialize, sqlx::FromRow)]
-pub(crate) struct SeriesArticleRow {
-    series_id: String,
-    article_uri: String,
-    title: String,
-    description: String,
-    lang: String,
-}
-
-#[derive(serde::Serialize, sqlx::FromRow)]
-pub(crate) struct SeriesPrereqRow {
-    article_uri: String,
-    prereq_article_uri: String,
-}
-
-pub async fn list_series(State(state): State<AppState>) -> ApiResult<Json<Vec<SeriesListRow>>> {
-    let rows = sqlx::query_as::<_, SeriesListRow>(
-        "SELECT s.id, s.title, s.description, s.tag_id, t.name AS tag_name, s.created_by, s.created_at \
-         FROM series s JOIN tags t ON s.tag_id = t.id ORDER BY s.created_at DESC"
-    )
-    .fetch_all(&state.pool)
-    .await?;
-    Ok(Json(rows))
-}
-
-pub async fn create_series(
-    State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
-    Json(input): Json<CreateSeriesInput>,
-) -> ApiResult<(StatusCode, Json<SeriesRow>)> {
-    let id = format!("s-{:016x}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() & 0xFFFFFFFFFFFFFFFF);
-
-    sqlx::query(
-        "INSERT INTO series (id, title, description, tag_id, created_by) VALUES (?, ?, ?, ?, ?)"
-    )
-    .bind(&id)
-    .bind(&input.title)
-    .bind(&input.description)
-    .bind(&input.tag_id)
-    .bind(&did)
-    .execute(&state.pool)
-    .await?;
-
-    let row = sqlx::query_as::<_, SeriesRow>("SELECT id, title, description, tag_id, created_by, created_at FROM series WHERE id = ?")
-        .bind(&id)
-        .fetch_one(&state.pool)
-        .await?;
-
-    Ok((StatusCode::CREATED, Json(row)))
-}
-
 #[derive(serde::Deserialize)]
 pub(crate) struct SeriesIdQuery {
     id: String,
 }
 
-#[derive(serde::Serialize)]
-pub(crate) struct SeriesDetailResponse {
-    series: SeriesRow,
-    articles: Vec<SeriesArticleRow>,
-    prereqs: Vec<SeriesPrereqRow>,
+#[derive(serde::Deserialize)]
+pub struct ListSeriesQuery {
+    pub limit: Option<i64>,
+}
+
+pub async fn list_series(
+    State(state): State<AppState>,
+    Query(q): Query<ListSeriesQuery>,
+) -> ApiResult<Json<Vec<series_service::SeriesListRow>>> {
+    let limit = q.limit.unwrap_or(100).clamp(1, 500);
+    let rows = series_service::list_series(&state.pool, limit).await?;
+    Ok(Json(rows))
+}
+
+pub async fn create_series(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Json(input): Json<CreateSeriesInput>,
+) -> ApiResult<(StatusCode, Json<series_service::SeriesRow>)> {
+    let mut errors = Vec::new();
+    if let Err(e) = validation::validate_title(&input.title) {
+        errors.push(e);
+    }
+    if let Err(e) = validation::validate_tag_id(&input.tag_id) {
+        errors.push(e);
+    }
+    if !errors.is_empty() {
+        return Err(AppError(fx_core::Error::Validation(errors)));
+    }
+
+    let id = format!("s-{}", tid());
+
+    let row = series_service::create_series(
+        &state.pool,
+        &id,
+        &input.title,
+        input.description.as_deref(),
+        &input.tag_id,
+        &user.did,
+    )
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(row)))
 }
 
 pub async fn get_series_detail(
     State(state): State<AppState>,
     Query(SeriesIdQuery { id }): Query<SeriesIdQuery>,
-) -> ApiResult<Json<SeriesDetailResponse>> {
-    let series = sqlx::query_as::<_, SeriesRow>("SELECT id, title, description, tag_id, created_by, created_at FROM series WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or(ApiError::NotFound("series not found".into()))?;
-
-    let articles = sqlx::query_as::<_, SeriesArticleRow>(
-        "SELECT sa.series_id, sa.article_uri, a.title, COALESCE(a.description, '') AS description, a.lang \
-         FROM series_articles sa JOIN articles a ON sa.article_uri = a.at_uri \
-         WHERE sa.series_id = ?"
-    )
-    .bind(&id)
-    .fetch_all(&state.pool)
-    .await?;
-
-    let prereqs = sqlx::query_as::<_, SeriesPrereqRow>(
-        "SELECT article_uri, prereq_article_uri FROM series_article_prereqs WHERE series_id = ?"
-    )
-    .bind(&id)
-    .fetch_all(&state.pool)
-    .await?;
-
-    Ok(Json(SeriesDetailResponse { series, articles, prereqs }))
+) -> ApiResult<Json<series_service::SeriesDetailResponse>> {
+    let detail = series_service::get_series_detail(&state.pool, &id).await?;
+    Ok(Json(detail))
 }
 
 #[derive(serde::Deserialize)]
@@ -137,24 +83,17 @@ pub(crate) struct AddSeriesArticleInput {
 
 pub async fn add_series_article(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
+    Auth(user): Auth,
     Json(input): Json<AddSeriesArticleInput>,
 ) -> ApiResult<StatusCode> {
-    let creator: Option<String> = sqlx::query_scalar::<_, String>("SELECT created_by FROM series WHERE id = ?")
-        .bind(&input.series_id)
-        .fetch_optional(&state.pool)
-        .await?;
+    if let Err(e) = validation::validate_at_uri(&input.article_uri) {
+        return Err(AppError(fx_core::Error::Validation(vec![e])));
+    }
 
-    require_owner(creator.as_deref(), &did)?;
+    let owner = series_service::get_series_owner(&state.pool, &input.series_id).await?;
+    require_owner(Some(&owner), &user.did)?;
 
-    sqlx::query(
-        "INSERT OR IGNORE INTO series_articles (series_id, article_uri) VALUES (?, ?)"
-    )
-    .bind(&input.series_id)
-    .bind(&input.article_uri)
-    .execute(&state.pool)
-    .await?;
-
+    series_service::add_series_article(&state.pool, &input.series_id, &input.article_uri).await?;
     Ok(StatusCode::OK)
 }
 
@@ -166,30 +105,14 @@ pub struct RemoveSeriesArticleInput {
 
 pub async fn remove_series_article(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
+    Auth(user): Auth,
     Json(input): Json<RemoveSeriesArticleInput>,
 ) -> ApiResult<StatusCode> {
-    let creator: Option<String> = sqlx::query_scalar::<_, String>("SELECT created_by FROM series WHERE id = ?")
-        .bind(&input.series_id)
-        .fetch_optional(&state.pool)
+    let owner = series_service::get_series_owner(&state.pool, &input.series_id).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    series_service::remove_series_article(&state.pool, &input.series_id, &input.article_uri)
         .await?;
-
-    require_owner(creator.as_deref(), &did)?;
-
-    // Also remove prereq edges involving this article
-    sqlx::query("DELETE FROM series_article_prereqs WHERE series_id = ? AND (article_uri = ? OR prereq_article_uri = ?)")
-        .bind(&input.series_id)
-        .bind(&input.article_uri)
-        .bind(&input.article_uri)
-        .execute(&state.pool)
-        .await?;
-
-    sqlx::query("DELETE FROM series_articles WHERE series_id = ? AND article_uri = ?")
-        .bind(&input.series_id)
-        .bind(&input.article_uri)
-        .execute(&state.pool)
-        .await?;
-
     Ok(StatusCode::OK)
 }
 
@@ -202,25 +125,19 @@ pub(crate) struct AddSeriesPrereqInput {
 
 pub async fn add_series_prereq(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
+    Auth(user): Auth,
     Json(input): Json<AddSeriesPrereqInput>,
 ) -> ApiResult<StatusCode> {
-    let creator: Option<String> = sqlx::query_scalar::<_, String>("SELECT created_by FROM series WHERE id = ?")
-        .bind(&input.series_id)
-        .fetch_optional(&state.pool)
-        .await?;
+    let owner = series_service::get_series_owner(&state.pool, &input.series_id).await?;
+    require_owner(Some(&owner), &user.did)?;
 
-    require_owner(creator.as_deref(), &did)?;
-
-    sqlx::query(
-        "INSERT OR IGNORE INTO series_article_prereqs (series_id, article_uri, prereq_article_uri) VALUES (?, ?, ?)"
+    series_service::add_series_prereq(
+        &state.pool,
+        &input.series_id,
+        &input.article_uri,
+        &input.prereq_article_uri,
     )
-    .bind(&input.series_id)
-    .bind(&input.article_uri)
-    .bind(&input.prereq_article_uri)
-    .execute(&state.pool)
     .await?;
-
     Ok(StatusCode::OK)
 }
 
@@ -233,122 +150,44 @@ pub(crate) struct RemoveSeriesPrereqInput {
 
 pub async fn remove_series_prereq(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
+    Auth(user): Auth,
     Json(input): Json<RemoveSeriesPrereqInput>,
 ) -> ApiResult<StatusCode> {
-    let creator: Option<String> = sqlx::query_scalar::<_, String>("SELECT created_by FROM series WHERE id = ?")
-        .bind(&input.series_id)
-        .fetch_optional(&state.pool)
-        .await?;
+    let owner = series_service::get_series_owner(&state.pool, &input.series_id).await?;
+    require_owner(Some(&owner), &user.did)?;
 
-    require_owner(creator.as_deref(), &did)?;
-
-    sqlx::query("DELETE FROM series_article_prereqs WHERE series_id = ? AND article_uri = ? AND prereq_article_uri = ?")
-        .bind(&input.series_id)
-        .bind(&input.article_uri)
-        .bind(&input.prereq_article_uri)
-        .execute(&state.pool)
-        .await?;
-
+    series_service::remove_series_prereq(
+        &state.pool,
+        &input.series_id,
+        &input.article_uri,
+        &input.prereq_article_uri,
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
 // --- All series articles (for homepage dedup) ---
 
-#[derive(serde::Serialize, sqlx::FromRow)]
-pub(crate) struct SeriesArticleMemberRow {
-    series_id: String,
-    article_uri: String,
+#[derive(serde::Deserialize)]
+pub struct BulkLimitQuery {
+    pub limit: Option<i64>,
 }
 
-pub async fn all_series_articles(State(state): State<AppState>) -> ApiResult<Json<Vec<SeriesArticleMemberRow>>> {
-    let rows = sqlx::query_as::<_, SeriesArticleMemberRow>(
-        "SELECT series_id, article_uri FROM series_articles"
-    )
-    .fetch_all(&state.pool)
-    .await?;
+pub async fn all_series_articles(
+    State(state): State<AppState>,
+    Query(q): Query<BulkLimitQuery>,
+) -> ApiResult<Json<Vec<series_service::SeriesArticleMemberRow>>> {
+    let limit = q.limit.unwrap_or(10_000).clamp(1, 50_000);
+    let rows = series_service::all_series_articles(&state.pool, limit).await?;
     Ok(Json(rows))
 }
 
 // --- Series context for article navigation (DAG-based) ---
 
-#[derive(serde::Serialize)]
-pub(crate) struct SeriesContextItem {
-    series_id: String,
-    series_title: String,
-    total: i32,
-    prev: Vec<SeriesNavItem>,
-    next: Vec<SeriesNavItem>,
-}
-
-#[derive(serde::Serialize, Clone)]
-pub(crate) struct SeriesNavItem {
-    article_uri: String,
-    title: String,
-}
-
 pub async fn get_series_context(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
-) -> ApiResult<Json<Vec<SeriesContextItem>>> {
-    // Find which series this article belongs to
-    let series_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT series_id FROM series_articles WHERE article_uri = ?"
-    )
-    .bind(&uri)
-    .fetch_all(&state.pool)
-    .await?;
-
-    let mut result = Vec::new();
-    for sid in series_ids {
-        let series_title = sqlx::query_scalar::<_, String>(
-            "SELECT title FROM series WHERE id = ?"
-        )
-        .bind(&sid)
-        .fetch_optional(&state.pool)
-        .await?
-        .unwrap_or_default();
-
-        let total = sqlx::query_scalar::<_, i32>(
-            "SELECT COUNT(*) FROM series_articles WHERE series_id = ?"
-        )
-        .bind(&sid)
-        .fetch_one(&state.pool)
-        .await?;
-
-        // Prev: articles that are direct prerequisites of this one
-        #[derive(sqlx::FromRow)]
-        struct NavRow { article_uri: String, title: String }
-        let prev_rows = sqlx::query_as::<_, NavRow>(
-            "SELECT sp.prereq_article_uri AS article_uri, a.title \
-             FROM series_article_prereqs sp \
-             JOIN articles a ON a.at_uri = sp.prereq_article_uri \
-             WHERE sp.series_id = ? AND sp.article_uri = ?"
-        )
-        .bind(&sid)
-        .bind(&uri)
-        .fetch_all(&state.pool)
-        .await?;
-
-        // Next: articles that require this one as a prerequisite
-        let next_rows = sqlx::query_as::<_, NavRow>(
-            "SELECT sp.article_uri, a.title \
-             FROM series_article_prereqs sp \
-             JOIN articles a ON a.at_uri = sp.article_uri \
-             WHERE sp.series_id = ? AND sp.prereq_article_uri = ?"
-        )
-        .bind(&sid)
-        .bind(&uri)
-        .fetch_all(&state.pool)
-        .await?;
-
-        result.push(SeriesContextItem {
-            series_id: sid,
-            series_title,
-            total,
-            prev: prev_rows.into_iter().map(|r| SeriesNavItem { article_uri: r.article_uri, title: r.title }).collect(),
-            next: next_rows.into_iter().map(|r| SeriesNavItem { article_uri: r.article_uri, title: r.title }).collect(),
-        });
-    }
-    Ok(Json(result))
+) -> ApiResult<Json<Vec<series_service::SeriesContextItem>>> {
+    let context = series_service::get_series_context(&state.pool, &uri).await?;
+    Ok(Json(context))
 }

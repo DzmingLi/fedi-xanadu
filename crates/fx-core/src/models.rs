@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -6,7 +7,7 @@ pub struct Tag {
     pub name: String,
     pub description: Option<String>,
     pub created_by: String,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,8 +51,8 @@ pub struct Article {
     pub prereq_threshold: f64,
     pub vote_score: i64,
     pub bookmark_count: i64,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,7 +79,7 @@ pub struct UserSkill {
     pub did: String,
     pub tag_id: String,
     pub status: String,
-    pub lit_at: String,
+    pub lit_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -94,8 +95,8 @@ pub struct Draft {
     pub tags: String,
     pub prereqs: String,
     pub at_uri: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,7 +169,7 @@ pub struct UserBookmark {
     pub did: String,
     pub article_uri: String,
     pub folder_path: String,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -180,6 +181,66 @@ pub struct Comment {
     pub parent_id: Option<String>,
     pub body: String,
     pub vote_score: i64,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prereq_type_as_str() {
+        assert_eq!(PrereqType::Required.as_str(), "required");
+        assert_eq!(PrereqType::Recommended.as_str(), "recommended");
+        assert_eq!(PrereqType::Suggested.as_str(), "suggested");
+    }
+
+    #[test]
+    fn prereq_type_serde_roundtrip() {
+        let val = PrereqType::Required;
+        let json = serde_json::to_string(&val).unwrap();
+        assert_eq!(json, "\"required\"");
+        let back: PrereqType = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.as_str(), "required");
+    }
+
+    #[test]
+    fn create_article_serde() {
+        let json = r#"{
+            "title": "Test",
+            "content": "body",
+            "content_format": "typst",
+            "tags": ["rust", "math"],
+            "prereqs": [{"tag_id": "linear-algebra", "prereq_type": "required"}]
+        }"#;
+        let input: CreateArticle = serde_json::from_str(json).unwrap();
+        assert_eq!(input.title, "Test");
+        assert_eq!(input.tags.len(), 2);
+        assert_eq!(input.prereqs[0].prereq_type.as_str(), "required");
+    }
+
+    #[test]
+    fn save_draft_serde() {
+        let json = r#"{
+            "title": "Draft",
+            "content": "wip",
+            "content_format": "markdown",
+            "tags": [],
+            "prereqs": []
+        }"#;
+        let draft: SaveDraft = serde_json::from_str(json).unwrap();
+        assert_eq!(draft.title, "Draft");
+        assert!(draft.lang.is_none());
+    }
+
+    #[test]
+    fn update_draft_all_optional() {
+        let json = r#"{"id": "abc123"}"#;
+        let update: UpdateDraft = serde_json::from_str(json).unwrap();
+        assert_eq!(update.id, "abc123");
+        assert!(update.title.is_none());
+        assert!(update.content.is_none());
+        assert!(update.tags.is_none());
+    }
 }

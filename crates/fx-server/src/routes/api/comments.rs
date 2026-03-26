@@ -4,27 +4,25 @@ use axum::{
     http::StatusCode,
 };
 use fx_core::models::Comment;
+use fx_core::services::comment_service;
+use fx_core::validation::validate_comment_body;
 
-use crate::error::{ApiError, ApiResult, require_owner};
+use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{AuthDid, RequireAuth, UriQuery, tid};
+use super::{Auth, MaybeAuth, UriQuery, tid};
 
-const COMMENT_SELECT: &str = "\
-    SELECT c.id, c.article_uri, c.did, p.handle AS author_handle, c.parent_id, c.body, \
-    COALESCE((SELECT SUM(value) FROM comment_votes WHERE comment_id = c.id), 0) AS vote_score, \
-    c.created_at, c.updated_at \
-    FROM comments c LEFT JOIN profiles p ON c.did = p.did";
+#[derive(serde::Deserialize)]
+pub struct ListCommentsQuery {
+    pub uri: String,
+    pub limit: Option<i64>,
+}
 
 pub async fn list_comments(
     State(state): State<AppState>,
-    Query(UriQuery { uri }): Query<UriQuery>,
+    Query(q): Query<ListCommentsQuery>,
 ) -> ApiResult<Json<Vec<Comment>>> {
-    let comments = sqlx::query_as::<_, Comment>(
-        &format!("{COMMENT_SELECT} WHERE c.article_uri = ? ORDER BY c.created_at ASC"),
-    )
-    .bind(&uri)
-    .fetch_all(&state.pool)
-    .await?;
+    let limit = q.limit.unwrap_or(200).clamp(1, 1000);
+    let comments = comment_service::list_comments(&state.pool, &q.uri, limit).await?;
     Ok(Json(comments))
 }
 
@@ -37,41 +35,25 @@ pub struct CreateComment {
 
 pub async fn create_comment(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
+    Auth(user): Auth,
     Json(input): Json<CreateComment>,
 ) -> ApiResult<(StatusCode, Json<Comment>)> {
-    // If replying, verify parent exists and belongs to the same article
+    validate_comment_body(&input.body)
+        .map_err(|e| AppError(fx_core::Error::Validation(vec![e])))?;
+
     if let Some(ref pid) = input.parent_id {
-        let parent_uri: Option<String> =
-            sqlx::query_scalar("SELECT article_uri FROM comments WHERE id = ?")
-                .bind(pid)
-                .fetch_optional(&state.pool)
-                .await?;
-        match parent_uri {
-            Some(uri) if uri == input.article_uri => {}
-            Some(_) => return Err(ApiError::BadRequest("parent comment belongs to a different article".into())),
-            None => return Err(ApiError::NotFound("parent comment not found".into())),
-        }
+        comment_service::verify_parent_comment(&state.pool, pid, &input.article_uri).await?;
     }
 
     let id = tid();
-
-    sqlx::query(
-        "INSERT INTO comments (id, article_uri, did, body, parent_id) VALUES (?, ?, ?, ?, ?)",
+    let comment = comment_service::create_comment(
+        &state.pool,
+        &id,
+        &input.article_uri,
+        &user.did,
+        &input.body,
+        input.parent_id.as_deref(),
     )
-    .bind(&id)
-    .bind(&input.article_uri)
-    .bind(&did)
-    .bind(&input.body)
-    .bind(&input.parent_id)
-    .execute(&state.pool)
-    .await?;
-
-    let comment = sqlx::query_as::<_, Comment>(
-        &format!("{COMMENT_SELECT} WHERE c.id = ?"),
-    )
-    .bind(&id)
-    .fetch_one(&state.pool)
     .await?;
 
     Ok((StatusCode::CREATED, Json(comment)))
@@ -85,28 +67,19 @@ pub struct UpdateComment {
 
 pub async fn update_comment(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
+    Auth(user): Auth,
     Json(input): Json<UpdateComment>,
 ) -> ApiResult<Json<Comment>> {
-    let owner: Option<String> = sqlx::query_scalar("SELECT did FROM comments WHERE id = ?")
-        .bind(&input.id)
-        .fetch_optional(&state.pool)
-        .await?;
-    require_owner(owner.as_deref(), &did)?;
+    validate_comment_body(&input.body)
+        .map_err(|e| AppError(fx_core::Error::Validation(vec![e])))?;
 
-    sqlx::query("UPDATE comments SET body = ?, updated_at = datetime('now') WHERE id = ?")
-        .bind(&input.body)
-        .bind(&input.id)
-        .execute(&state.pool)
-        .await?;
+    let (comment_did, _article_did) =
+        comment_service::get_comment_owner(&state.pool, &input.id).await?;
+    if comment_did != user.did {
+        return Err(AppError(fx_core::Error::Forbidden { action: "update comment owned by another user" }));
+    }
 
-    let comment = sqlx::query_as::<_, Comment>(
-        &format!("{COMMENT_SELECT} WHERE c.id = ?"),
-    )
-    .bind(&input.id)
-    .fetch_one(&state.pool)
-    .await?;
-
+    let comment = comment_service::update_comment(&state.pool, &input.id, &input.body).await?;
     Ok(Json(comment))
 }
 
@@ -117,41 +90,18 @@ pub struct DeleteComment {
 
 pub async fn delete_comment(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
+    Auth(user): Auth,
     Json(input): Json<DeleteComment>,
 ) -> ApiResult<StatusCode> {
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT c.did, a.did FROM comments c JOIN articles a ON a.at_uri = c.article_uri WHERE c.id = ?",
-    )
-    .bind(&input.id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let (comment_did, article_did) =
+        comment_service::get_comment_owner(&state.pool, &input.id).await?;
 
-    match row {
-        Some((comment_did, article_did)) if comment_did == did || article_did == did => {}
-        Some(_) => return Err(ApiError::Forbidden),
-        None => return Err(ApiError::NotFound("comment not found".into())),
+    // Comment author or article author may delete
+    if comment_did != user.did && article_did != user.did {
+        return Err(AppError(fx_core::Error::Forbidden { action: "delete comment" }));
     }
 
-    // Delete child comments first
-    sqlx::query("DELETE FROM comment_votes WHERE comment_id IN (SELECT id FROM comments WHERE parent_id = ?)")
-        .bind(&input.id)
-        .execute(&state.pool)
-        .await?;
-    sqlx::query("DELETE FROM comments WHERE parent_id = ?")
-        .bind(&input.id)
-        .execute(&state.pool)
-        .await?;
-
-    sqlx::query("DELETE FROM comment_votes WHERE comment_id = ?")
-        .bind(&input.id)
-        .execute(&state.pool)
-        .await?;
-    sqlx::query("DELETE FROM comments WHERE id = ?")
-        .bind(&input.id)
-        .execute(&state.pool)
-        .await?;
-
+    comment_service::delete_comment(&state.pool, &input.id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -172,36 +122,11 @@ pub struct CommentVoteResult {
 
 pub async fn vote_comment(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
+    Auth(user): Auth,
     Json(input): Json<CommentVoteInput>,
 ) -> ApiResult<Json<CommentVoteResult>> {
-    // Clamp to -1..1
     let value = input.value.clamp(-1, 1);
-
-    if value == 0 {
-        sqlx::query("DELETE FROM comment_votes WHERE comment_id = ? AND did = ?")
-            .bind(&input.comment_id)
-            .bind(&did)
-            .execute(&state.pool)
-            .await?;
-    } else {
-        sqlx::query(
-            "INSERT INTO comment_votes (comment_id, did, value) VALUES (?, ?, ?)
-             ON CONFLICT(comment_id, did) DO UPDATE SET value = excluded.value",
-        )
-        .bind(&input.comment_id)
-        .bind(&did)
-        .bind(value)
-        .execute(&state.pool)
-        .await?;
-    }
-
-    let score: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(value), 0) FROM comment_votes WHERE comment_id = ?",
-    )
-    .bind(&input.comment_id)
-    .fetch_one(&state.pool)
-    .await?;
+    let score = comment_service::vote_comment(&state.pool, &input.comment_id, &user.did, value).await?;
 
     Ok(Json(CommentVoteResult {
         comment_id: input.comment_id,
@@ -210,30 +135,12 @@ pub async fn vote_comment(
     }))
 }
 
-#[derive(serde::Deserialize)]
-pub struct CommentIdQuery {
-    pub comment_id: String,
-}
-
 pub async fn get_my_comment_votes(
     State(state): State<AppState>,
-    AuthDid(did): AuthDid,
+    MaybeAuth(user): MaybeAuth,
     Query(UriQuery { uri }): Query<UriQuery>,
-) -> ApiResult<Json<Vec<MyCommentVote>>> {
-    let votes = sqlx::query_as::<_, MyCommentVote>(
-        "SELECT cv.comment_id, cv.value FROM comment_votes cv \
-         JOIN comments c ON c.id = cv.comment_id \
-         WHERE cv.did = ? AND c.article_uri = ?",
-    )
-    .bind(&did)
-    .bind(&uri)
-    .fetch_all(&state.pool)
-    .await?;
+) -> ApiResult<Json<Vec<comment_service::MyCommentVote>>> {
+    let did = user.map(|u| u.did).unwrap_or_default();
+    let votes = comment_service::get_my_comment_votes(&state.pool, &did, &uri).await?;
     Ok(Json(votes))
-}
-
-#[derive(serde::Serialize, sqlx::FromRow)]
-pub struct MyCommentVote {
-    pub comment_id: String,
-    pub value: i32,
 }

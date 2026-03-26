@@ -19,44 +19,166 @@
         in {
           options.services.fedi-xanadu = {
             enable = lib.mkEnableOption "Fedi-Xanadu knowledge sharing platform";
-            domain = lib.mkOption {
-              type = lib.types.str;
-              description = "Domain name for the service";
-            };
             port = lib.mkOption {
               type = lib.types.port;
               default = 3847;
+              description = "Port for the backend server";
             };
             dataDir = lib.mkOption {
               type = lib.types.str;
               default = "/var/lib/fedi-xanadu";
+              description = "State directory for Pijul store and other data";
+            };
+            instanceName = lib.mkOption {
+              type = lib.types.str;
+              default = "Fedi-Xanadu";
+              description = "Display name for this instance";
+            };
+            corsOrigins = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [];
+              description = "Allowed CORS origins. Empty = same-origin only.";
+            };
+            database = {
+              name = lib.mkOption {
+                type = lib.types.str;
+                default = "fedi_xanadu";
+                description = "PostgreSQL database name";
+              };
+              user = lib.mkOption {
+                type = lib.types.str;
+                default = "fedi-xanadu";
+                description = "PostgreSQL user name";
+              };
+            };
+            backup = {
+              enable = lib.mkOption {
+                type = lib.types.bool;
+                default = true;
+                description = "Enable daily database and Pijul store backups";
+              };
+              dir = lib.mkOption {
+                type = lib.types.str;
+                default = "/var/backup/fedi-xanadu";
+                description = "Backup directory";
+              };
+              retention = lib.mkOption {
+                type = lib.types.int;
+                default = 7;
+                description = "Number of daily backups to retain";
+              };
             };
           };
 
           config = lib.mkIf cfg.enable {
+            # PostgreSQL database
+            services.postgresql = {
+              enable = true;
+              ensureDatabases = [ cfg.database.name ];
+              ensureUsers = [{
+                name = cfg.database.user;
+                ensureDBOwnership = true;
+              }];
+            };
+
+            # Systemd service
             systemd.services.fedi-xanadu = {
-              description = "Fedi-Xanadu";
-              after = [ "network.target" ];
+              description = "Fedi-Xanadu knowledge sharing platform";
+              after = [ "network.target" "postgresql.service" ];
+              requires = [ "postgresql.service" ];
               wantedBy = [ "multi-user.target" ];
               environment = {
                 FX_HOST = "127.0.0.1";
                 FX_PORT = toString cfg.port;
-                FX_DATABASE_URL = "sqlite://${cfg.dataDir}/fedi-xanadu.db?mode=rwc";
+                FX_DATABASE_URL = "postgres:///${cfg.database.name}?host=/run/postgresql";
                 FX_PIJUL_STORE_PATH = "${cfg.dataDir}/pijul-store";
+                FX_INSTANCE_NAME = cfg.instanceName;
+                FX_ENV = "production";
+                RUST_LOG = "info";
+              } // lib.optionalAttrs (cfg.corsOrigins != []) {
+                FX_CORS_ORIGINS = lib.concatStringsSep "," cfg.corsOrigins;
               };
               serviceConfig = {
                 ExecStart = "${pkg}/bin/fedi-xanadu";
                 WorkingDirectory = "${pkg}/share/fedi-xanadu";
-                DynamicUser = true;
+                User = cfg.database.user;
+                Group = cfg.database.user;
                 StateDirectory = "fedi-xanadu";
                 Restart = "on-failure";
                 RestartSec = 5;
+
+                # Hardening
+                NoNewPrivileges = true;
+                ProtectSystem = "strict";
+                ProtectHome = true;
+                PrivateTmp = true;
+                PrivateDevices = true;
+                ProtectKernelTunables = true;
+                ProtectKernelModules = true;
+                ProtectControlGroups = true;
+                RestrictSUIDSGID = true;
+                ReadWritePaths = [ cfg.dataDir ];
               };
             };
 
-            services.caddy.virtualHosts."${cfg.domain}".extraConfig = ''
-              reverse_proxy 127.0.0.1:${toString cfg.port}
-            '';
+            # Create system user
+            users.users.${cfg.database.user} = {
+              isSystemUser = true;
+              group = cfg.database.user;
+              home = cfg.dataDir;
+            };
+            users.groups.${cfg.database.user} = {};
+
+            # Ensure data directory
+            systemd.tmpfiles.rules = [
+              "d ${cfg.dataDir} 0750 ${cfg.database.user} ${cfg.database.user} -"
+              "d ${cfg.dataDir}/pijul-store 0750 ${cfg.database.user} ${cfg.database.user} -"
+            ] ++ lib.optionals cfg.backup.enable [
+              "d ${cfg.backup.dir} 0750 ${cfg.database.user} ${cfg.database.user} -"
+            ];
+
+            # Daily backup timer
+            systemd.services.fedi-xanadu-backup = lib.mkIf cfg.backup.enable {
+              description = "Fedi-Xanadu database and Pijul store backup";
+              serviceConfig = {
+                Type = "oneshot";
+                User = cfg.database.user;
+                Group = cfg.database.user;
+              };
+              script = ''
+                set -euo pipefail
+                TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                BACKUP_DIR="${cfg.backup.dir}"
+
+                # PostgreSQL dump
+                ${config.services.postgresql.package}/bin/pg_dump \
+                  ${cfg.database.name} \
+                  | ${pkgs.zstd}/bin/zstd -9 \
+                  > "$BACKUP_DIR/db-$TIMESTAMP.sql.zst"
+
+                # Pijul store snapshot (rsync incremental)
+                ${pkgs.rsync}/bin/rsync -a --delete \
+                  "${cfg.dataDir}/pijul-store/" \
+                  "$BACKUP_DIR/pijul-store/"
+
+                # Prune old DB dumps, keep last N
+                ls -1t "$BACKUP_DIR"/db-*.sql.zst 2>/dev/null \
+                  | tail -n +${toString (cfg.backup.retention + 1)} \
+                  | xargs -r rm -f
+
+                echo "Backup completed: db-$TIMESTAMP.sql.zst"
+              '';
+            };
+
+            systemd.timers.fedi-xanadu-backup = lib.mkIf cfg.backup.enable {
+              description = "Daily Fedi-Xanadu backup";
+              wantedBy = [ "timers.target" ];
+              timerConfig = {
+                OnCalendar = "daily";
+                Persistent = true;
+                RandomizedDelaySec = "1h";
+              };
+            };
           };
         };
     in
@@ -78,14 +200,14 @@
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = with pkgs; [ pkg-config ];
-          buildInputs = with pkgs; [ openssl sqlite ];
+          buildInputs = with pkgs; [ openssl postgresql ];
           doCheck = false;
           env.SQLX_OFFLINE = "true";
 
           postInstall = ''
             mkdir -p $out/share/fedi-xanadu/frontend
             cp -r $src/frontend/dist $out/share/fedi-xanadu/frontend/dist
-            cp -r $src/migrations $out/share/fedi-xanadu/migrations
+            cp -r $src/migrations_pg $out/share/fedi-xanadu/migrations_pg
             if [ -d "$src/static" ]; then
               cp -r $src/static $out/share/fedi-xanadu/static
             fi
@@ -97,13 +219,12 @@
             rustToolchain
             pkg-config
             openssl
-            sqlite
+            postgresql
             sqlx-cli
             nodejs_22
             nodePackages.npm
           ];
           SQLX_OFFLINE = "true";
-          DATABASE_URL = "sqlite://data/fedi-xanadu.db?mode=rwc";
         };
       }
     );

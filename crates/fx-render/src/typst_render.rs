@@ -75,7 +75,7 @@ impl RenderWorld {
         // Main source = preamble + user content
         let full_source = format!("{MATH_PREAMBLE}{text}");
         let main_id = FileId::new(None, VirtualPath::new("main.typ"));
-        let main = Source::new(main_id, full_source.into());
+        let main = Source::new(main_id, full_source);
         sources.insert(main_id, main.clone());
 
         Self {

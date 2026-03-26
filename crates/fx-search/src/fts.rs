@@ -1,19 +1,20 @@
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 pub struct SearchEngine {
-    pool: SqlitePool,
+    pool: PgPool,
 }
 
 impl SearchEngine {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
     pub async fn search(&self, query: &str, limit: i64) -> anyhow::Result<Vec<String>> {
         let results = sqlx::query_scalar::<_, String>(
-            "SELECT at_uri FROM articles WHERE at_uri IN (
-                SELECT rowid FROM articles_fts WHERE articles_fts MATCH ?1
-            ) LIMIT ?2",
+            "SELECT at_uri FROM articles
+             WHERE search_vector @@ plainto_tsquery('simple', $1)
+             ORDER BY ts_rank(search_vector, plainto_tsquery('simple', $1)) DESC
+             LIMIT $2",
         )
         .bind(query)
         .bind(limit)

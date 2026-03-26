@@ -1,0 +1,128 @@
+use serde::Serialize;
+use sqlx::PgPool;
+
+use crate::models::UserSkill;
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct TagTreeEntry {
+    pub parent_tag: String,
+    pub child_tag: String,
+}
+
+pub async fn list_user_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<UserSkill>> {
+    let skills = sqlx::query_as::<_, UserSkill>(
+        "SELECT did, tag_id, status, lit_at FROM user_skills WHERE did = $1 ORDER BY lit_at DESC",
+    )
+    .bind(did)
+    .fetch_all(pool)
+    .await?;
+    Ok(skills)
+}
+
+pub async fn light_skill(
+    pool: &PgPool,
+    did: &str,
+    tag_id: &str,
+    status: &str,
+) -> crate::Result<()> {
+    let status = match status {
+        "learning" => "learning",
+        _ => "mastered",
+    };
+
+    sqlx::query(
+        "INSERT INTO user_skills (did, tag_id, status) VALUES ($1, $2, $3) \
+         ON CONFLICT(did, tag_id) DO UPDATE SET status = EXCLUDED.status, lit_at = NOW()",
+    )
+    .bind(did)
+    .bind(tag_id)
+    .bind(status)
+    .execute(pool)
+    .await?;
+
+    if status == "mastered" {
+        let children = get_all_children(pool, did, tag_id).await;
+        for child_id in children {
+            let _ = sqlx::query(
+                "INSERT INTO user_skills (did, tag_id, status) VALUES ($1, $2, 'mastered') \
+                 ON CONFLICT(did, tag_id) DO UPDATE SET status = 'mastered', lit_at = NOW()",
+            )
+            .bind(did)
+            .bind(&child_id)
+            .execute(pool)
+            .await;
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn delete_skill(pool: &PgPool, did: &str, tag_id: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM user_skills WHERE did = $1 AND tag_id = $2")
+        .bind(did)
+        .bind(tag_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn get_user_tag_tree(pool: &PgPool, did: &str) -> crate::Result<Vec<TagTreeEntry>> {
+    // First try the user's personal tag tree
+    let tree = sqlx::query_as::<_, TagTreeEntry>(
+        "SELECT parent_tag, child_tag FROM user_tag_tree WHERE did = $1",
+    )
+    .bind(did)
+    .fetch_all(pool)
+    .await?;
+
+    if !tree.is_empty() {
+        return Ok(tree);
+    }
+
+    // Fall back to the user's active skill tree edges
+    let tree = sqlx::query_as::<_, TagTreeEntry>(
+        "SELECT e.parent_tag, e.child_tag \
+         FROM skill_tree_edges e \
+         JOIN user_active_tree ua ON ua.tree_uri = e.tree_uri \
+         WHERE ua.did = $1",
+    )
+    .bind(did)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(tree)
+}
+
+pub async fn add_tag_child(
+    pool: &PgPool,
+    did: &str,
+    parent_tag: &str,
+    child_tag: &str,
+) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO user_tag_tree (did, parent_tag, child_tag) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+    )
+    .bind(did)
+    .bind(parent_tag)
+    .bind(child_tag)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn get_all_children(pool: &PgPool, did: &str, parent_tag: &str) -> Vec<String> {
+    sqlx::query_scalar(
+        "WITH RECURSIVE descendants(tag) AS ( \
+           SELECT child_tag FROM user_tag_tree WHERE did = $1 AND parent_tag = $2 \
+           UNION \
+           SELECT ut.child_tag FROM user_tag_tree ut \
+           JOIN descendants d ON ut.parent_tag = d.tag AND ut.did = $1 \
+         ) \
+         SELECT tag FROM descendants",
+    )
+    .bind(did)
+    .bind(parent_tag)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+}

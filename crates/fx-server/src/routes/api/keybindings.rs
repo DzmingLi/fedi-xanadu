@@ -1,12 +1,11 @@
 use axum::{
     Json,
     extract::State,
-    http::HeaderMap,
 };
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{RequireAuth, session_from_headers, chrono_now};
+use super::{Auth, pds_session, now_rfc3339, log_pds_error};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct KeybindingsData {
@@ -15,12 +14,12 @@ pub struct KeybindingsData {
 
 pub async fn get_keybindings(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
+    Auth(user): Auth,
 ) -> ApiResult<Json<KeybindingsData>> {
     let bindings: Option<String> = sqlx::query_scalar(
-        "SELECT bindings FROM user_keybindings WHERE did = ?",
+        "SELECT bindings FROM user_keybindings WHERE did = $1",
     )
-    .bind(&did)
+    .bind(&user.did)
     .fetch_optional(&state.pool)
     .await?;
 
@@ -34,39 +33,39 @@ pub async fn get_keybindings(
 
 pub async fn set_keybindings(
     State(state): State<AppState>,
-    RequireAuth(did): RequireAuth,
-    headers: HeaderMap,
+    Auth(user): Auth,
     Json(input): Json<KeybindingsData>,
 ) -> ApiResult<Json<KeybindingsData>> {
     let json_str = serde_json::to_string(&input.bindings)?;
 
     sqlx::query(
-        "INSERT INTO user_keybindings (did, bindings, updated_at) VALUES (?, ?, datetime('now'))
-         ON CONFLICT(did) DO UPDATE SET bindings = ?, updated_at = datetime('now')",
+        "INSERT INTO user_keybindings (did, bindings, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT(did) DO UPDATE SET bindings = EXCLUDED.bindings, updated_at = NOW()",
     )
-    .bind(&did)
-    .bind(&json_str)
+    .bind(&user.did)
     .bind(&json_str)
     .execute(&state.pool)
     .await?;
 
     // Sync to PDS
-    if let Some((_did, pds_url, access_jwt)) = session_from_headers(&state.pool, &headers).await {
+    if let Some(pds) = pds_session(&state.pool, &user.token).await {
         let record = serde_json::json!({
             "$type": fx_atproto::lexicon::KEYBINDINGS,
             "bindings": input.bindings,
-            "updatedAt": chrono_now(),
+            "updatedAt": now_rfc3339(),
         });
-        let _ = state.at_client.create_record(
-            &pds_url,
-            &access_jwt,
+        if let Err(e) = state.at_client.create_record(
+            &pds.pds_url,
+            &pds.access_jwt,
             &fx_atproto::client::CreateRecordInput {
-                repo: _did,
+                repo: pds.did,
                 collection: fx_atproto::lexicon::KEYBINDINGS.to_string(),
                 record,
                 rkey: Some("self".to_string()),
             },
-        ).await;
+        ).await {
+            log_pds_error("sync keybindings", e);
+        }
     }
 
     Ok(Json(KeybindingsData { bindings: input.bindings }))

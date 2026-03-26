@@ -11,6 +11,8 @@ pub struct Config {
     pub database_url: String,
     pub pijul_store_path: String,
     pub instance_name: String,
+    /// Comma-separated list of allowed CORS origins. Empty = same-origin only.
+    pub cors_origins: Vec<String>,
 }
 
 impl Default for Config {
@@ -18,9 +20,10 @@ impl Default for Config {
         Self {
             host: "127.0.0.1".into(),
             port: 3000,
-            database_url: "sqlite://data/fedi-xanadu.db?mode=rwc".into(),
+            database_url: "postgres://localhost/fedi_xanadu".into(),
             pijul_store_path: "data/pijul-store".into(),
             instance_name: "Fedi-Xanadu".into(),
+            cors_origins: Vec::new(),
         }
     }
 }
