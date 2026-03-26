@@ -19,6 +19,7 @@ pub struct ArticleTagRow {
     pub article_uri: String,
     pub tag_id: String,
     pub tag_name: String,
+    pub tag_names: sqlx::types::Json<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
@@ -27,6 +28,7 @@ pub struct ArticlePrereqBulkRow {
     pub tag_id: String,
     pub prereq_type: String,
     pub tag_name: String,
+    pub tag_names: sqlx::types::Json<std::collections::HashMap<String, String>>,
 }
 
 // ---- Service functions ----
@@ -132,7 +134,7 @@ pub async fn get_article_prereqs(
     uri: &str,
 ) -> crate::Result<Vec<ArticlePrereqRow>> {
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
-        "SELECT ap.tag_id, ap.prereq_type, t.name as tag_name \
+        "SELECT ap.tag_id, ap.prereq_type, t.name as tag_name, t.names as tag_names \
          FROM article_prereqs ap \
          JOIN tags t ON t.id = ap.tag_id \
          WHERE ap.article_uri = $1",
@@ -162,7 +164,7 @@ pub async fn get_article_forks(pool: &PgPool, uri: &str) -> crate::Result<Vec<Fo
 /// Bulk-fetch all article-tag mappings (with safety limit).
 pub async fn get_all_article_tags(pool: &PgPool, limit: i64) -> crate::Result<Vec<ArticleTagRow>> {
     let rows = sqlx::query_as::<_, ArticleTagRow>(
-        "SELECT at2.article_uri, at2.tag_id, t.name as tag_name \
+        "SELECT at2.article_uri, at2.tag_id, t.name as tag_name, t.names as tag_names \
          FROM article_tags at2 \
          JOIN tags t ON t.id = at2.tag_id \
          ORDER BY at2.article_uri LIMIT $1",
@@ -176,7 +178,7 @@ pub async fn get_all_article_tags(pool: &PgPool, limit: i64) -> crate::Result<Ve
 /// Bulk-fetch all article prereqs (with safety limit).
 pub async fn get_all_article_prereqs(pool: &PgPool, limit: i64) -> crate::Result<Vec<ArticlePrereqBulkRow>> {
     let rows = sqlx::query_as::<_, ArticlePrereqBulkRow>(
-        "SELECT ap.article_uri, ap.tag_id, ap.prereq_type, t.name as tag_name \
+        "SELECT ap.article_uri, ap.tag_id, ap.prereq_type, t.name as tag_name, t.names as tag_names \
          FROM article_prereqs ap \
          JOIN tags t ON t.id = ap.tag_id \
          ORDER BY ap.article_uri LIMIT $1",

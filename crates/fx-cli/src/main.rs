@@ -115,6 +115,16 @@ enum AdminCommand {
     /// List all platform users
     #[command(name = "list-users", alias = "users")]
     ListUsers,
+    /// Set a localized name for a tag
+    #[command(name = "set-tag-name")]
+    SetTagName {
+        /// Tag ID
+        id: String,
+        /// Locale code (e.g. zh, en, fr)
+        locale: String,
+        /// Localized name
+        name: String,
+    },
     /// Publish an article as a platform user
     Publish {
         /// Platform user handle to publish as
@@ -779,6 +789,34 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 let name = u["display_name"].as_str().unwrap_or("");
                 println!("{handle}\t{did}\t{name}");
             }
+        }
+
+        AdminCommand::SetTagName { id, locale, name } => {
+            // First get existing names
+            let tag: serde_json::Value = client()
+                .get(format!("{base}/tags/by-id"))
+                .query(&[("id", &id)])
+                .send().await?
+                .error_for_status().context("Tag not found")?
+                .json().await?;
+
+            let mut names: std::collections::HashMap<String, String> = tag["names"]
+                .as_object()
+                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string())).collect())
+                .unwrap_or_default();
+
+            names.insert(locale.clone(), name.clone());
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/tags/names"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "id": id, "names": names }))
+                .send().await?
+                .error_for_status().context("Update tag names failed")?
+                .json().await?;
+
+            let updated_names = &resp["names"];
+            println!("Updated tag '{id}': {updated_names}");
         }
 
         AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license } => {

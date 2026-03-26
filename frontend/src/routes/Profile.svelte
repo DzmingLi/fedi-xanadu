@@ -2,6 +2,7 @@
   import { getProfile, getArticlesByDid, listSeries, getAllArticleTags, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { tagName } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
   import type { ProfileData, Article, Series, ArticleTagRow, ProfileLink } from '../lib/types';
 
@@ -286,7 +287,7 @@
           <div class="card-tags">
             {#if articleTags.has(a.at_uri)}
               {#each articleTags.get(a.at_uri)! as t}
-                <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; } }}>{t.tag_name}</span>
+                <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; } }}>{tagName(t.tag_names, t.tag_name, t.tag_id)}</span>
               {/each}
             {/if}
           </div>

@@ -21,6 +21,7 @@ pub struct SeriesListRow {
     pub description: Option<String>,
     pub tag_id: String,
     pub tag_name: String,
+    pub tag_names: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
 }
@@ -70,7 +71,7 @@ pub struct SeriesNavItem {
 
 pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
-        "SELECT s.id, s.title, s.description, s.tag_id, t.name AS tag_name, s.created_by, s.created_at \
+        "SELECT s.id, s.title, s.description, s.tag_id, t.name AS tag_name, t.names AS tag_names, s.created_by, s.created_at \
          FROM series s JOIN tags t ON s.tag_id = t.id ORDER BY s.created_at DESC LIMIT $1",
     )
     .bind(limit)

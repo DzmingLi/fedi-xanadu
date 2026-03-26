@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createSeries, listTags, listArticles, addSeriesArticle, addSeriesPrereq } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { tagName } from '../lib/display';
   import { t } from '../lib/i18n';
   import type { Tag, Article } from '../lib/types';
 
@@ -42,7 +43,7 @@
 
   function selectTag(tag: Tag) {
     selectedTagId = tag.id;
-    tagSearch = tag.name;
+    tagSearch = tagName(tag.names, tag.name, tag.id);
   }
 
   function addArticle(a: Article) {

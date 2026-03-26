@@ -43,6 +43,7 @@ pub struct SkillTreeDetailResponse {
     pub tree: SkillTreeRow,
     pub edges: Vec<SkillTreeEdgeRow>,
     pub tag_names: HashMap<String, String>,
+    pub tag_names_i18n: HashMap<String, HashMap<String, String>>,
 }
 
 pub struct CreateSkillTree {
@@ -83,8 +84,8 @@ pub async fn get_skill_tree(pool: &PgPool, uri: &str) -> Result<SkillTreeRow> {
 pub async fn get_skill_tree_detail(pool: &PgPool, uri: &str) -> Result<SkillTreeDetailResponse> {
     let tree = get_skill_tree(pool, uri).await?;
     let edges = get_edges(pool, uri).await?;
-    let tag_names = collect_tag_names(pool, &edges).await?;
-    Ok(SkillTreeDetailResponse { tree, edges, tag_names })
+    let (tag_names, tag_names_i18n) = collect_tag_names(pool, &edges).await?;
+    Ok(SkillTreeDetailResponse { tree, edges, tag_names, tag_names_i18n })
 }
 
 pub async fn create_skill_tree(
@@ -238,9 +239,9 @@ pub async fn get_active_tree(pool: &PgPool, did: &str) -> Result<Option<SkillTre
     let Some(tree) = tree else { return Ok(None) };
 
     let edges = get_edges(pool, &uri).await?;
-    let tag_names = collect_tag_names(pool, &edges).await?;
+    let (tag_names, tag_names_i18n) = collect_tag_names(pool, &edges).await?;
 
-    Ok(Some(SkillTreeDetailResponse { tree, edges, tag_names }))
+    Ok(Some(SkillTreeDetailResponse { tree, edges, tag_names, tag_names_i18n }))
 }
 
 // --- Helpers ---
@@ -255,11 +256,11 @@ async fn get_edges(pool: &PgPool, tree_uri: &str) -> Result<Vec<SkillTreeEdgeRow
     Ok(edges)
 }
 
-/// Batch-fetch tag names for all tags referenced in the given edges.
+/// Batch-fetch tag names and i18n names for all tags referenced in the given edges.
 async fn collect_tag_names(
     pool: &PgPool,
     edges: &[SkillTreeEdgeRow],
-) -> Result<HashMap<String, String>> {
+) -> Result<(HashMap<String, String>, HashMap<String, HashMap<String, String>>)> {
     use std::collections::HashSet;
     let mut seen = HashSet::new();
     let mut tag_ids = Vec::new();
@@ -271,7 +272,9 @@ async fn collect_tag_names(
             tag_ids.push(e.child_tag.clone());
         }
     }
-    super::tag_service::get_tag_names(pool, &tag_ids).await
+    let names = super::tag_service::get_tag_names(pool, &tag_ids).await?;
+    let names_i18n = super::tag_service::get_tag_names_i18n(pool, &tag_ids).await?;
+    Ok((names, names_i18n))
 }
 
 async fn verify_owner(pool: &PgPool, tree_uri: &str, did: &str) -> Result<()> {

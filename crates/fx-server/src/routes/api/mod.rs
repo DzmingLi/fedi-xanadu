@@ -50,6 +50,7 @@ pub fn routes() -> Router<AppState> {
         // Tags
         .route("/tags", get(tags::list_tags).post(tags::create_tag))
         .route("/tags/by-id", get(tags::get_tag))
+        .route("/tags/names", post(tags::update_tag_names))
         // Articles
         .route("/articles", get(articles::list_articles).post(articles::create_article))
         .route("/articles/by-uri", get(articles::get_article))

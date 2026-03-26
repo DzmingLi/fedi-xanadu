@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use sqlx::PgPool;
 
@@ -8,6 +8,7 @@ use crate::models::Tag;
 pub struct GraphNode {
     pub id: String,
     pub name: String,
+    pub names: HashMap<String, String>,
     pub lit: bool,
 }
 
@@ -28,7 +29,7 @@ pub struct GraphData {
 /// Build the knowledge graph using a SQL JOIN instead of O(n²) Rust loop.
 pub async fn build_knowledge_graph(pool: &PgPool, did: Option<&str>) -> crate::Result<GraphData> {
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, description, created_by, created_at FROM tags ORDER BY name",
+        "SELECT id, name, names, description, created_by, created_at FROM tags ORDER BY name",
     )
     .fetch_all(pool)
     .await?;
@@ -79,6 +80,7 @@ pub async fn build_knowledge_graph(pool: &PgPool, did: Option<&str>) -> crate::R
         .map(|t| GraphNode {
             id: t.id.clone(),
             name: t.name.clone(),
+            names: t.names.0.clone(),
             lit: skills.contains(&t.id),
         })
         .collect();

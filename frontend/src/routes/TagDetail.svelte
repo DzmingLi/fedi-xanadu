@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes } from '../lib/api';
-  import { authorName } from '../lib/display';
+  import { authorName, tagName } from '../lib/display';
   import { t } from '../lib/i18n';
   import type { Tag, Article, UserSkill, VoteSummary } from '../lib/types';
 
@@ -56,7 +56,7 @@
 {:else if tag}
   <div class="tag-header">
     <div class="tag-title-row">
-      <h1>{tag.name}</h1>
+      <h1>{tagName(tag.names, tag.name, tag.id)}</h1>
       <button class="skill-btn" class:lit={isLit} onclick={toggleSkill}>
         {isLit ? t('tags.mastered') : t('tags.light')}
       </button>

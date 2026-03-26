@@ -1,5 +1,6 @@
 <script lang="ts">
   import { listSkills, listTags, getAllArticlePrereqs, getAllArticleTags } from '../lib/api';
+  import { tagName as resolveTagName } from '../lib/display';
   import { t } from '../lib/i18n';
   import type { UserSkill, Tag, ArticlePrereqBulkRow, ArticleTagRow } from '../lib/types';
 
@@ -14,7 +15,8 @@
     if (loading) return [];
 
     const litTagIds = new Set(skills.map(s => s.tag_id));
-    const tagNameMap = new Map(tags.map(t => [t.id, t.name]));
+    const tagMap = new Map(tags.map(t => [t.id, t]));
+    const tagNameMap = new Map(tags.map(t => [t.id, resolveTagName(t.names, t.name, t.id)]));
 
     // Group prereqs by article
     const articlePrereqMap = new Map<string, ArticlePrereqBulkRow[]>();

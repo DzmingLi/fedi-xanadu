@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -5,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct Tag {
     pub id: String,
     pub name: String,
+    pub names: sqlx::types::Json<HashMap<String, String>>,
     pub description: Option<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
@@ -14,6 +17,7 @@ pub struct Tag {
 pub struct CreateTag {
     pub id: String,
     pub name: String,
+    pub names: Option<HashMap<String, String>>,
     pub description: Option<String>,
 }
 
@@ -152,6 +156,7 @@ pub struct ArticlePrereqRow {
     pub tag_id: String,
     pub prereq_type: String,
     pub tag_name: String,
+    pub tag_names: sqlx::types::Json<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

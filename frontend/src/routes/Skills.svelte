@@ -5,7 +5,7 @@
   import { getGraph, getTagTree, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { t } from '../lib/i18n';
-  import { authorName } from '../lib/display';
+  import { authorName, tagName as resolveTagName } from '../lib/display';
   import type { GraphNode, GraphEdge, TagTreeEntry, Tag, SkillTree, SkillTreeEdge } from '../lib/types';
 
   cytoscape.use(dagre);
@@ -115,7 +115,7 @@
       if (!isVisible(id)) continue;
 
       const gn = nodeMap.get(id);
-      const name = gn?.name || id;
+      const name = gn ? resolveTagName(gn.names, gn.name, id) : id;
       const lit = skillMap.has(id);
       const learning = skillMap.get(id) === 'learning';
       const depth = depthOf.get(id) ?? 99;

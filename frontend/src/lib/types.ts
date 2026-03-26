@@ -1,6 +1,7 @@
 export interface Tag {
   id: string;
   name: string;
+  names: Record<string, string>;
   description: string | null;
   created_by: string;
   created_at: string;
@@ -33,6 +34,7 @@ export interface ArticlePrereqRow {
   tag_id: string;
   prereq_type: string;
   tag_name: string;
+  tag_names: Record<string, string>;
 }
 
 export interface ForkWithTitle {
@@ -54,6 +56,7 @@ export interface UserSkill {
 export interface GraphNode {
   id: string;
   name: string;
+  names: Record<string, string>;
   lit: boolean;
 }
 
@@ -77,6 +80,7 @@ export interface ArticleTagRow {
   article_uri: string;
   tag_id: string;
   tag_name: string;
+  tag_names: Record<string, string>;
 }
 
 export interface ArticlePrereqBulkRow {
@@ -84,6 +88,7 @@ export interface ArticlePrereqBulkRow {
   tag_id: string;
   prereq_type: string;
   tag_name: string;
+  tag_names: Record<string, string>;
 }
 
 export interface BookmarkWithTitle {
@@ -115,6 +120,7 @@ export interface Series {
   description: string | null;
   tag_id: string;
   tag_name?: string;
+  tag_names?: Record<string, string>;
   created_by: string;
   created_at: string;
 }
@@ -161,6 +167,7 @@ export interface SkillTreeDetail {
   tree: SkillTree;
   edges: SkillTreeEdge[];
   tag_names: Record<string, string>;
+  tag_names_i18n: Record<string, Record<string, string>>;
 }
 
 export interface SeriesContextItem {

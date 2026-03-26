@@ -1,7 +1,8 @@
 <script lang="ts">
   import { getSkillTree, forkSkillTree, adoptSkillTree, addSkillTreeEdge, removeSkillTreeEdge, castVote, listTags } from '../lib/api';
   import { getAuth } from '../lib/auth';
-  import { t } from '../lib/i18n';
+  import { tagName as resolveTagName } from '../lib/display';
+  import { t, getLocale } from '../lib/i18n';
   import type { SkillTreeDetail, SkillTreeEdge, Tag } from '../lib/types';
 
   let { uri } = $props<{ uri: string }>();
@@ -97,7 +98,9 @@
   });
 
   function tagName(id: string): string {
-    return detail?.tag_names[id] || id;
+    const i18nNames = detail?.tag_names_i18n?.[id];
+    const fallbackName = detail?.tag_names[id] || id;
+    return resolveTagName(i18nNames, fallbackName, id);
   }
 </script>
 

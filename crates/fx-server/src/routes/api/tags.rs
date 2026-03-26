@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use axum::{
     Json,
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use fx_core::models::*;
 use fx_core::services::tag_service;
@@ -54,4 +56,29 @@ pub async fn create_tag(
 
     let tag = tag_service::create_tag(&state.pool, &input, &user.did).await?;
     Ok((StatusCode::CREATED, Json(tag)))
+}
+
+#[derive(serde::Deserialize)]
+pub struct UpdateTagNamesInput {
+    pub id: String,
+    pub names: HashMap<String, String>,
+}
+
+pub async fn update_tag_names(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<UpdateTagNamesInput>,
+) -> ApiResult<Json<Tag>> {
+    // Admin-only endpoint
+    let secret = state.admin_secret.as_deref()
+        .ok_or(AppError(fx_core::Error::Forbidden { action: "admin not configured" }))?;
+    let provided = headers.get("x-admin-secret")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(AppError(fx_core::Error::Unauthorized))?;
+    if provided != secret {
+        return Err(AppError(fx_core::Error::Unauthorized));
+    }
+
+    let tag = tag_service::update_tag_names(&state.pool, &input.id, &input.names).await?;
+    Ok(Json(tag))
 }

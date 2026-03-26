@@ -18,7 +18,7 @@
 <script lang="ts">
   import { listArticles, getAllArticleTags, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles } from '../lib/api';
   import { getAuth } from '../lib/auth';
-  import { authorName } from '../lib/display';
+  import { authorName, tagName } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
 
   let locale = $state(getLocale());
@@ -359,12 +359,12 @@
             <div class="card-tags">
               {#if articleTags.has(a.at_uri)}
                 {#each articleTags.get(a.at_uri)! as t}
-                  <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; } }}>{t.tag_name}</span>
+                  <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; } }}>{tagName(t.tag_names, t.tag_name, t.tag_id)}</span>
                 {/each}
               {/if}
               {#if articlePrereqs.has(a.at_uri)}
                 {#each articlePrereqs.get(a.at_uri)! as p}
-                  <span class="tag {p.prereq_type}" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(p.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(p.tag_id)}`; } }}>{p.tag_name}</span>
+                  <span class="tag {p.prereq_type}" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(p.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(p.tag_id)}`; } }}>{tagName(p.tag_names, p.tag_name, p.tag_id)}</span>
                 {/each}
               {/if}
             </div>
@@ -394,7 +394,7 @@
             <span class="post-title">{s.title}</span>
             {#if s.tag_name}
               <div class="card-tags">
-                <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(s.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(s.tag_id)}`; } }}>{s.tag_name}</span>
+                <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(s.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(s.tag_id)}`; } }}>{tagName(s.tag_names, s.tag_name || '', s.tag_id)}</span>
               </div>
             {/if}
           </div>

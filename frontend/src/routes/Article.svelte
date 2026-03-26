@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getArticle, getArticleContent, getArticlePrereqs, getArticleForks, listBookmarks, addBookmark, removeBookmark, getArticleVotes, getMyVote, castVote, getSeriesContext, forkArticle, getTranslations, listComments, createComment, updateComment, deleteComment, updateArticle, deleteArticle, voteComment, getMyCommentVotes } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { tagName } from '../lib/display';
   import { t, LANG_NAMES } from '../lib/i18n';
   import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, BookmarkWithTitle, VoteSummary, SeriesContextItem, Comment } from '../lib/types';
 
@@ -449,7 +450,7 @@
         {#if prereqs.length > 0}
           <span class="prereq-sep">|</span>
           {#each prereqs as p}
-            <span class="tag {p.prereq_type}">{p.tag_name}</span>
+            <span class="tag {p.prereq_type}">{tagName(p.tag_names, p.tag_name, p.tag_id)}</span>
           {/each}
         {/if}
       </div>
