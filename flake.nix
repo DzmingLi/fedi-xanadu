@@ -47,7 +47,7 @@
               };
               user = lib.mkOption {
                 type = lib.types.str;
-                default = "fedi-xanadu";
+                default = "fedi_xanadu";
                 description = "PostgreSQL user name";
               };
             };
