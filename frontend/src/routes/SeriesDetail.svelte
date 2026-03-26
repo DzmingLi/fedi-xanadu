@@ -1,18 +1,16 @@
 <script lang="ts">
-  import { getSeries, getArticleVotes, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
+  import { getSeries, getSeriesTree, getArticleVotes, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { t } from '../lib/i18n';
-  import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, VoteSummary, BookmarkWithTitle } from '../lib/types';
+  import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, SeriesTreeNode, VoteSummary, BookmarkWithTitle } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
   let detail = $state<SeriesDetail | null>(null);
+  let tree = $state<SeriesTreeNode | null>(null);
   let loading = $state(true);
   let error = $state('');
-
-  // Votes for the series tag (treated as series vote)
-  let seriesVotes = $state<VoteSummary | null>(null);
-  let mySeriesVote = $state(0);
+  let viewMode = $state<'flat' | 'tree'>('flat');
 
   // Votes per article
   let articleVotes = $state(new Map<string, VoteSummary>());
@@ -21,6 +19,9 @@
   let bookmarkedUris = $state(new Set<string>());
 
   let isLoggedIn = $derived(!!getAuth());
+
+  // Auto-switch to tree view if this series has children
+  let hasChildren = $derived(detail ? detail.children.length > 0 : false);
 
   $effect(() => {
     loadSeries();
@@ -33,21 +34,29 @@
       const d = await getSeries(id);
       detail = d;
 
-      // Fetch votes for all articles in series
+      // If has children, load the full tree
+      if (d.children.length > 0) {
+        viewMode = 'tree';
+        tree = await getSeriesTree(id);
+      }
+
+      // Collect all article URIs (flat + tree) for vote fetching
+      const allArticleUris = new Set<string>();
+      for (const a of d.articles) allArticleUris.add(a.article_uri);
+      if (tree) collectTreeArticleUris(tree, allArticleUris);
+
+      // Fetch votes
       const voteMap = new Map<string, VoteSummary>();
       const results = await Promise.all(
-        d.articles.map(a =>
-          getArticleVotes(a.article_uri).catch(() => ({
-            target_uri: a.article_uri, score: 0, upvotes: 0, downvotes: 0,
+        [...allArticleUris].map(uri =>
+          getArticleVotes(uri).catch(() => ({
+            target_uri: uri, score: 0, upvotes: 0, downvotes: 0,
           }))
         )
       );
-      for (const v of results) {
-        voteMap.set(v.target_uri, v);
-      }
+      for (const v of results) voteMap.set(v.target_uri, v);
       articleVotes = voteMap;
 
-      // Load bookmarks if logged in
       if (getAuth()) {
         try {
           const bks = await listBookmarks();
@@ -58,6 +67,17 @@
       error = e.message || 'Failed to load series';
     }
     loading = false;
+  }
+
+  function collectTreeArticleUris(node: SeriesTreeNode, set: Set<string>) {
+    for (const a of node.articles) set.add(a.article_uri);
+    for (const child of node.children) collectTreeArticleUris(child, set);
+  }
+
+  function countTreeArticles(node: SeriesTreeNode): number {
+    let count = node.articles.length;
+    for (const child of node.children) count += countTreeArticles(child);
+    return count;
   }
 
   async function voteArticle(uri: string, value: number) {
@@ -104,6 +124,63 @@
 
 </script>
 
+{#snippet articleItem(article: SeriesArticle, idx: number)}
+  <div class="series-item">
+    <div class="item-number">{idx + 1}</div>
+    <div class="item-content">
+      {#if prereqMap.has(article.article_uri)}
+        <div class="item-prereqs">
+          {t('series.prereqLabel')}
+          {#each prereqMap.get(article.article_uri)! as pUri}
+            {@const pArticle = articleByUri.get(pUri)}
+            {#if pArticle}
+              <a href="#/article?uri={encodeURIComponent(pUri)}" class="prereq-link">{pArticle.title}</a>
+            {/if}
+          {/each}
+        </div>
+      {/if}
+      <a href="#/article?uri={encodeURIComponent(article.article_uri)}" class="item-title">
+        {article.title}
+      </a>
+      {#if article.description}
+        <p class="item-desc">{article.description}</p>
+      {/if}
+      <div class="item-actions">
+        <span class="vote-score">{(articleVotes.get(article.article_uri)?.score) ?? 0}</span>
+        <button class="action-btn" onclick={() => voteArticle(article.article_uri, 1)} disabled={!isLoggedIn} title={t('common.upvote')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-6 0v4H5a2 2 0 00-2 2v7a2 2 0 002 2h14l-5-16z"/></svg>
+        </button>
+        <button class="action-btn" onclick={() => toggleBookmark(article.article_uri)} disabled={!isLoggedIn} title={t('article.bookmark')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill={bookmarkedUris.has(article.article_uri) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet treeNode(node: SeriesTreeNode, depth: number)}
+  <div class="tree-section" style="margin-left: {depth * 24}px">
+    {#if depth > 0}
+      <h3 class="section-title">
+        <a href="#/series?id={encodeURIComponent(node.series.id)}">{node.series.title}</a>
+      </h3>
+      {#if node.series.description}
+        <p class="section-desc">{node.series.description}</p>
+      {/if}
+    {/if}
+    {#if node.articles.length > 0}
+      <div class="series-articles">
+        {#each node.articles as article, i (article.article_uri)}
+          {@render articleItem(article, i)}
+        {/each}
+      </div>
+    {/if}
+    {#each node.children as child (child.series.id)}
+      {@render treeNode(child, depth + 1)}
+    {/each}
+  </div>
+{/snippet}
+
 {#if loading}
   <p class="meta">Loading...</p>
 {:else if error}
@@ -116,46 +193,45 @@
     {/if}
     <div class="series-meta">
       <a href="#/tag?id={encodeURIComponent(detail.series.tag_id)}" class="tag">{detail.series.tag_id}</a>
-      <span class="meta">{detail.articles.length} {t('series.articles')}</span>
+      {#if hasChildren && tree}
+        {@const totalArticles = countTreeArticles(tree)}
+        <span class="meta">{totalArticles} {t('series.articles')}</span>
+        <span class="meta">{detail.children.length} {t('series.sections')}</span>
+      {:else}
+        <span class="meta">{detail.articles.length} {t('series.articles')}</span>
+      {/if}
       <span class="meta"><a href="#/profile?did={encodeURIComponent(detail.series.created_by)}">{detail.series.created_by}</a></span>
     </div>
+    {#if detail.series.parent_id}
+      <div class="series-parent">
+        <a href="#/series?id={encodeURIComponent(detail.series.parent_id)}">{t('series.backToParent')}</a>
+      </div>
+    {/if}
   </div>
 
-  <div class="series-articles">
-    {#each detail.articles as article, i (article.article_uri)}
-      <div class="series-item">
-        <div class="item-number">{i + 1}</div>
-        <div class="item-content">
-          {#if prereqMap.has(article.article_uri)}
-            <div class="item-prereqs">
-              {t('series.prereqLabel')}
-              {#each prereqMap.get(article.article_uri)! as pUri}
-                {@const pArticle = articleByUri.get(pUri)}
-                {#if pArticle}
-                  <a href="#/article?uri={encodeURIComponent(pUri)}" class="prereq-link">#{pArticle.position} {pArticle.title}</a>
-                {/if}
-              {/each}
-            </div>
-          {/if}
-          <a href="#/article?uri={encodeURIComponent(article.article_uri)}" class="item-title">
-            {article.title}
+  {#if viewMode === 'tree' && tree}
+    {@render treeNode(tree, 0)}
+  {:else}
+    <div class="series-articles">
+      {#each detail.articles as article, i (article.article_uri)}
+        {@render articleItem(article, i)}
+      {/each}
+    </div>
+
+    {#if detail.children.length > 0}
+      <div class="children-list">
+        <h2>{t('series.sections')}</h2>
+        {#each detail.children as child (child.id)}
+          <a href="#/series?id={encodeURIComponent(child.id)}" class="child-link">
+            <span class="child-title">{child.title}</span>
+            {#if child.description}
+              <span class="child-desc">{child.description}</span>
+            {/if}
           </a>
-          {#if article.description}
-            <p class="item-desc">{article.description}</p>
-          {/if}
-          <div class="item-actions">
-            <span class="vote-score">{(articleVotes.get(article.article_uri)?.score) ?? 0}</span>
-            <button class="action-btn" onclick={() => voteArticle(article.article_uri, 1)} disabled={!isLoggedIn} title={t('common.upvote')}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-6 0v4H5a2 2 0 00-2 2v7a2 2 0 002 2h14l-5-16z"/></svg>
-            </button>
-            <button class="action-btn" onclick={() => toggleBookmark(article.article_uri)} disabled={!isLoggedIn} title={t('article.bookmark')}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill={bookmarkedUris.has(article.article_uri) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
-            </button>
-          </div>
-        </div>
+        {/each}
       </div>
-    {/each}
-  </div>
+    {/if}
+  {/if}
 {/if}
 
 <style>
@@ -266,5 +342,78 @@
   .action-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  /* Parent link */
+  .series-parent {
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  .series-parent a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .series-parent a:hover {
+    text-decoration: underline;
+  }
+
+  /* Tree view */
+  .tree-section {
+    margin-bottom: 8px;
+  }
+  .section-title {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    font-size: 1.15rem;
+    margin: 20px 0 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-title a {
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+  .section-title a:hover {
+    color: var(--accent);
+  }
+  .section-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 8px;
+    line-height: 1.4;
+  }
+
+  /* Children list (flat view fallback) */
+  .children-list {
+    margin-top: 24px;
+  }
+  .children-list h2 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    margin: 0 0 12px;
+  }
+  .child-link {
+    display: block;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    margin-bottom: 8px;
+    transition: border-color 0.15s;
+  }
+  .child-link:hover {
+    border-color: var(--accent);
+  }
+  .child-title {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    color: var(--text-primary);
+    display: block;
+  }
+  .child-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: block;
+    margin-top: 4px;
   }
 </style>

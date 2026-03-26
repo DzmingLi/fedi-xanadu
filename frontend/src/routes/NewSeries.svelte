@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { createSeries, listTags, listArticles, addSeriesArticle, addSeriesPrereq } from '../lib/api';
+  import { createSeries, listTags, listArticles, listSeries, addSeriesArticle, addSeriesPrereq } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { tagName } from '../lib/display';
   import { t } from '../lib/i18n';
-  import type { Tag, Article } from '../lib/types';
+  import type { Tag, Article, Series } from '../lib/types';
+
+  let { parentId } = $props<{ parentId?: string }>();
 
   let title = $state('');
   let description = $state('');
@@ -11,6 +13,9 @@
   let selectedTagId = $state('');
   let allTags = $state<Tag[]>([]);
   let allArticles = $state<Article[]>([]);
+  let allSeries = $state<Series[]>([]);
+  let selectedParentId = $state(parentId || '');
+  let parentSearch = $state('');
   let error = $state('');
   let creating = $state(false);
 
@@ -34,10 +39,22 @@
       : []
   );
 
+  let filteredSeries = $derived(
+    parentSearch
+      ? allSeries.filter(s => s.title.toLowerCase().includes(parentSearch.toLowerCase())).slice(0, 10)
+      : []
+  );
+
   $effect(() => {
-    Promise.all([listTags(), listArticles()]).then(([tags, arts]) => {
+    Promise.all([listTags(), listArticles(), listSeries()]).then(([tags, arts, series]) => {
       allTags = tags;
       allArticles = arts;
+      allSeries = series;
+      // If parentId was provided, prefill parent search
+      if (parentId) {
+        const parent = series.find(s => s.id === parentId);
+        if (parent) parentSearch = parent.title;
+      }
     });
   });
 
@@ -91,7 +108,12 @@
     creating = true;
     error = '';
     try {
-      const series = await createSeries({ title, description, tag_id: selectedTagId });
+      const series = await createSeries({
+        title,
+        description,
+        tag_id: selectedTagId,
+        parent_id: selectedParentId || undefined,
+      });
 
       // Add articles in order
       await Promise.all(
@@ -120,6 +142,28 @@
 {/if}
 
 <div class="form">
+  <label>
+    {t('newSeries.parentLabel')}
+    <div class="article-search">
+      <input type="text" bind:value={parentSearch} placeholder={t('newSeries.parentPlaceholder')} />
+      {#if filteredSeries.length > 0 && !selectedParentId}
+        <div class="dropdown">
+          {#each filteredSeries as s}
+            <button class="dropdown-item" onclick={() => { selectedParentId = s.id; parentSearch = s.title; }}>
+              {s.title}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    {#if selectedParentId}
+      <span class="selected-tag">
+        {parentSearch}
+        <button class="clear-btn" onclick={() => { selectedParentId = ''; parentSearch = ''; }}>×</button>
+      </span>
+    {/if}
+  </label>
+
   <label>
     {t('newSeries.titleLabel')}
     <input type="text" bind:value={title} />
@@ -271,6 +315,17 @@
   .selected-tag {
     font-size: 12px;
     color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .clear-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-hint);
+    font-size: 14px;
+    padding: 0 2px;
   }
   .hint {
     font-size: 13px;

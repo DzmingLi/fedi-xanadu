@@ -121,6 +121,8 @@ export interface Series {
   tag_id: string;
   tag_name?: string;
   tag_names?: Record<string, string>;
+  parent_id: string | null;
+  order_index: number;
   created_by: string;
   created_at: string;
 }
@@ -131,6 +133,7 @@ export interface SeriesArticle {
   title: string;
   description: string;
   lang: string;
+  order_index: number;
 }
 
 export interface SeriesArticlePrereq {
@@ -142,6 +145,13 @@ export interface SeriesDetail {
   series: Series;
   articles: SeriesArticle[];
   prereqs: SeriesArticlePrereq[];
+  children: Series[];
+}
+
+export interface SeriesTreeNode {
+  series: Series;
+  articles: SeriesArticle[];
+  children: SeriesTreeNode[];
 }
 
 export interface SkillTree {

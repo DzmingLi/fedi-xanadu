@@ -20,6 +20,8 @@
   import { getAuth } from '../lib/auth';
   import { authorName, tagName } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
+  import { buildSeriesArticleMaps, buildArticleTagMap } from '../lib/series';
+  import PostCard from '../lib/components/PostCard.svelte';
 
   let locale = $state(getLocale());
   $effect(() => onLocaleChange(() => { locale = getLocale(); }));
@@ -216,32 +218,12 @@
       allSeries = seriesList;
 
       // Build series article membership
-      const uriSet = new Set<string>();
-      const saMap = new Map<string, string[]>();
-      for (const sa of seriesArts) {
-        uriSet.add(sa.article_uri);
-        const arr = saMap.get(sa.series_id) || [];
-        arr.push(sa.article_uri);
-        saMap.set(sa.series_id, arr);
-      }
-      seriesArticleUris = uriSet;
-      seriesArticleMap = saMap;
+      const saMaps = buildSeriesArticleMaps(seriesArts);
+      seriesArticleUris = saMaps.seriesArticleUris;
+      seriesArticleMap = saMaps.seriesArticleMap;
 
-      const tagMap = new Map<string, ArticleTagRow[]>();
-      for (const t of tags) {
-        const arr = tagMap.get(t.article_uri) || [];
-        arr.push(t);
-        tagMap.set(t.article_uri, arr);
-      }
-      articleTags = tagMap;
-
-      const prereqMap = new Map<string, ArticlePrereqBulkRow[]>();
-      for (const p of prereqs) {
-        const arr = prereqMap.get(p.article_uri) || [];
-        arr.push(p);
-        prereqMap.set(p.article_uri, arr);
-      }
-      articlePrereqs = prereqMap;
+      articleTags = buildArticleTagMap(tags);
+      articlePrereqs = buildArticleTagMap(prereqs);
 
       // Load interests from server if logged in
       if (getAuth()) {
@@ -352,64 +334,18 @@
   {:else}
     {#each filteredFeed as item}
       {#if item.type === 'article' && item.article}
-        {@const a = item.article}
-        <a href="#/article?uri={encodeURIComponent(a.at_uri)}" class="post-card">
-          <div class="card-top">
-            <span class="post-title">{a.title}</span>
-            <div class="card-tags">
-              {#if articleTags.has(a.at_uri)}
-                {#each articleTags.get(a.at_uri)! as t}
-                  <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; } }}>{tagName(t.tag_names, t.tag_name, t.tag_id)}</span>
-                {/each}
-              {/if}
-              {#if articlePrereqs.has(a.at_uri)}
-                {#each articlePrereqs.get(a.at_uri)! as p}
-                  <span class="tag {p.prereq_type}" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(p.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(p.tag_id)}`; } }}>{tagName(p.tag_names, p.tag_name, p.tag_id)}</span>
-                {/each}
-              {/if}
-            </div>
-          </div>
-
-          {#if a.description}
-            <p class="post-desc">{a.description}</p>
-          {/if}
-
-          <div class="card-bottom">
-            <span class="post-meta">{authorName(a)} &middot; {a.created_at.split(' ')[0]}</span>
-            <span class="card-stats">
-              {#if a.vote_score !== 0}
-                <span class="stat" title={t('home.votes')}>&#9650; {a.vote_score}</span>
-              {/if}
-              {#if a.bookmark_count > 0}
-                <span class="stat" title={t('home.bookmarks')}>&#9733; {a.bookmark_count}</span>
-              {/if}
-            </span>
-          </div>
-        </a>
+        <PostCard
+          article={item.article}
+          articleTags={articleTags.get(item.article.at_uri) || []}
+          articlePrereqs={articlePrereqs.get(item.article.at_uri) || []}
+          variant="home"
+        />
       {:else if item.type === 'series' && item.series}
-        {@const s = item.series}
-        <a href="#/series?id={encodeURIComponent(s.id)}" class="post-card series-card">
-          <div class="series-badge">{t('home.series')}</div>
-          <div class="card-top">
-            <span class="post-title">{s.title}</span>
-            {#if s.tag_name}
-              <div class="card-tags">
-                <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(s.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(s.tag_id)}`; } }}>{tagName(s.tag_names, s.tag_name || '', s.tag_id)}</span>
-              </div>
-            {/if}
-          </div>
-
-          {#if s.description}
-            <p class="post-desc">{s.description}</p>
-          {/if}
-
-          <div class="card-bottom">
-            <span class="post-meta">{s.created_at.split(' ')[0]}</span>
-            <span class="card-stats">
-              <span class="stat">{item.articleCount} {t('home.lectures')}</span>
-            </span>
-          </div>
-        </a>
+        <PostCard
+          series={item.series}
+          articleCount={item.articleCount}
+          variant="home"
+        />
       {/if}
     {/each}
   {/if}
@@ -552,98 +488,5 @@
     font-weight: 500;
   }
 
-  /* Article cards */
-  .post-card {
-    display: block;
-    background: var(--bg-white);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 16px 20px;
-    margin-bottom: 12px;
-    transition: border-color 0.15s, box-shadow 0.15s;
-    text-decoration: none;
-    color: inherit;
-  }
-  .post-card:hover {
-    border-color: var(--border-strong);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-    text-decoration: none;
-  }
-
-  .card-top {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  .post-title {
-    font-family: var(--font-serif);
-    font-size: 1.2rem;
-    color: var(--text-primary);
-    line-height: 1.35;
-    flex: 1;
-    min-width: 0;
-  }
-  .post-card:hover .post-title {
-    color: var(--accent);
-  }
-  .card-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    align-items: center;
-    flex-shrink: 0;
-    padding-top: 3px;
-  }
-
-  .post-desc {
-    margin: 8px 0 0;
-    font-size: 14px;
-    color: var(--text-secondary);
-    line-height: 1.55;
-  }
-
-  .card-bottom {
-    margin-top: 10px;
-    display: flex;
-    align-items: center;
-  }
-  .post-meta {
-    font-size: 13px;
-    color: var(--text-hint);
-  }
-  .author {
-    color: var(--text-hint);
-    text-decoration: none;
-  }
-  .author:hover {
-    color: var(--accent);
-  }
-  .card-stats {
-    display: flex;
-    gap: 10px;
-    margin-left: auto;
-  }
-  .stat {
-    font-size: 12px;
-    color: var(--text-hint);
-  }
-
-  /* Series card */
-  .series-card {
-    border-left: 3px solid var(--accent);
-    position: relative;
-  }
-  .series-badge {
-    position: absolute;
-    top: 8px;
-    right: 12px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--accent);
-    background: rgba(95, 155, 101, 0.1);
-    padding: 2px 8px;
-    border-radius: 3px;
-  }
+  /* Card styles are now in PostCard.svelte */
 </style>

@@ -15,6 +15,7 @@ pub(crate) struct CreateSeriesInput {
     title: String,
     description: Option<String>,
     tag_id: String,
+    parent_id: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -54,12 +55,19 @@ pub async fn create_series(
 
     let id = format!("s-{}", tid());
 
+    // If parent_id given, verify the user owns the parent series
+    if let Some(ref pid) = input.parent_id {
+        let owner = series_service::get_series_owner(&state.pool, pid).await?;
+        require_owner(Some(&owner), &user.did)?;
+    }
+
     let row = series_service::create_series(
         &state.pool,
         &id,
         &input.title,
         input.description.as_deref(),
         &input.tag_id,
+        input.parent_id.as_deref(),
         &user.did,
     )
     .await?;
@@ -190,4 +198,55 @@ pub async fn get_series_context(
 ) -> ApiResult<Json<Vec<series_service::SeriesContextItem>>> {
     let context = series_service::get_series_context(&state.pool, &uri).await?;
     Ok(Json(context))
+}
+
+// --- Series tree (full hierarchy) ---
+
+pub async fn get_series_tree(
+    State(state): State<AppState>,
+    Query(SeriesIdQuery { id }): Query<SeriesIdQuery>,
+) -> ApiResult<Json<series_service::SeriesTreeNode>> {
+    let tree = series_service::get_series_tree(&state.pool, &id).await?;
+    Ok(Json(tree))
+}
+
+// --- Reorder articles within a series ---
+
+#[derive(serde::Deserialize)]
+pub(crate) struct ReorderArticlesInput {
+    series_id: String,
+    article_uris: Vec<String>,
+}
+
+pub async fn reorder_articles(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Json(input): Json<ReorderArticlesInput>,
+) -> ApiResult<StatusCode> {
+    let owner = series_service::get_series_owner(&state.pool, &input.series_id).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    series_service::reorder_series_articles(&state.pool, &input.series_id, &input.article_uris)
+        .await?;
+    Ok(StatusCode::OK)
+}
+
+// --- Reorder child series ---
+
+#[derive(serde::Deserialize)]
+pub(crate) struct ReorderChildrenInput {
+    parent_id: String,
+    child_ids: Vec<String>,
+}
+
+pub async fn reorder_children(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Json(input): Json<ReorderChildrenInput>,
+) -> ApiResult<StatusCode> {
+    let owner = series_service::get_series_owner(&state.pool, &input.parent_id).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    series_service::reorder_children(&state.pool, &input.parent_id, &input.child_ids).await?;
+    Ok(StatusCode::OK)
 }

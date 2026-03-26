@@ -181,12 +181,16 @@ export default {
 
   // Series
   'series.articles': 'articles',
+  'series.sections': 'sections',
   'series.upvote': 'Pour',
   'series.bookmark': 'Favori',
   'series.prereqLabel': 'Prérequis :',
+  'series.backToParent': '← Retour à la série parente',
 
   // NewSeries
   'newSeries.title': 'Créer une série',
+  'newSeries.parentLabel': 'Série parente (optionnel)',
+  'newSeries.parentPlaceholder': 'Rechercher une série parente...',
   'newSeries.titleLabel': 'Titre',
   'newSeries.descPlaceholder': 'Brève description de la série',
   'newSeries.tagLabel': 'Tag associé',

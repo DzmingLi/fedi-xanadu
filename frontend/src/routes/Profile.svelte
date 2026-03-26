@@ -4,6 +4,8 @@
   import { getAuth } from '../lib/auth';
   import { tagName } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
+  import { buildSeriesArticleMaps, buildArticleTagMap } from '../lib/series';
+  import PostCard from '../lib/components/PostCard.svelte';
   import type { ProfileData, Article, Series, ArticleTagRow, ProfileLink } from '../lib/types';
 
   let { did } = $props<{ did: string }>();
@@ -73,24 +75,11 @@
       articles = arts;
       userSeries = allSeries.filter(s => s.created_by === did);
 
-      const uriSet = new Set<string>();
-      const saMap = new Map<string, string[]>();
-      for (const sa of seriesArts) {
-        uriSet.add(sa.article_uri);
-        const arr = saMap.get(sa.series_id) || [];
-        arr.push(sa.article_uri);
-        saMap.set(sa.series_id, arr);
-      }
-      seriesArticleUris = uriSet;
-      seriesArticleMap = saMap;
+      const saMaps = buildSeriesArticleMaps(seriesArts);
+      seriesArticleUris = saMaps.seriesArticleUris;
+      seriesArticleMap = saMaps.seriesArticleMap;
 
-      const tagMap = new Map<string, ArticleTagRow[]>();
-      for (const t of tags) {
-        const arr = tagMap.get(t.article_uri) || [];
-        arr.push(t);
-        tagMap.set(t.article_uri, arr);
-      }
-      articleTags = tagMap;
+      articleTags = buildArticleTagMap(tags);
 
       // Load following/followers
       const [fg, fr] = await Promise.all([getFollowing(did), getFollowers(did)]);
@@ -280,40 +269,17 @@
 
   {#each profileFeed as item}
     {#if item.type === 'article' && item.article}
-      {@const a = item.article}
-      <a href="#/article?uri={encodeURIComponent(a.at_uri)}" class="post-card">
-        <div class="card-top">
-          <span class="post-title">{a.title}</span>
-          <div class="card-tags">
-            {#if articleTags.has(a.at_uri)}
-              {#each articleTags.get(a.at_uri)! as t}
-                <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; } }}>{tagName(t.tag_names, t.tag_name, t.tag_id)}</span>
-              {/each}
-            {/if}
-          </div>
-        </div>
-        {#if a.description}
-          <p class="post-desc">{a.description}</p>
-        {/if}
-        <div class="card-bottom">
-          <span class="post-meta">{a.created_at.split(' ')[0]}</span>
-        </div>
-      </a>
+      <PostCard
+        article={item.article}
+        articleTags={articleTags.get(item.article.at_uri) || []}
+        variant="profile"
+      />
     {:else if item.type === 'series' && item.series}
-      {@const s = item.series}
-      <a href="#/series?id={encodeURIComponent(s.id)}" class="post-card series-card-inline">
-        <div class="card-top">
-          <span class="post-title">{s.title}</span>
-          <span class="series-badge">{t('profile.seriesBadge')}</span>
-        </div>
-        {#if s.description}
-          <p class="post-desc">{s.description}</p>
-        {/if}
-        <div class="card-bottom">
-          <span class="post-meta">{s.created_at.split(' ')[0]}</span>
-          <span class="post-meta">{item.articleCount} {t('profile.lectureCount')}</span>
-        </div>
-      </a>
+      <PostCard
+        series={item.series}
+        articleCount={item.articleCount}
+        variant="profile"
+      />
     {/if}
   {/each}
 
@@ -410,59 +376,7 @@
     color: var(--text-secondary);
   }
 
-  .post-card {
-    display: block;
-    background: var(--bg-white);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 16px 20px;
-    margin-bottom: 12px;
-    transition: border-color 0.15s;
-    text-decoration: none;
-    color: inherit;
-  }
-  .post-card:hover {
-    border-color: var(--border-strong);
-    text-decoration: none;
-  }
-  .card-top {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  .post-title {
-    font-family: var(--font-serif);
-    font-size: 1.1rem;
-    color: var(--text-primary);
-    flex: 1;
-    min-width: 0;
-  }
-  .post-card:hover .post-title { color: var(--accent); }
-  .card-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-  .post-desc {
-    margin: 6px 0 0;
-    font-size: 14px;
-    color: var(--text-secondary);
-  }
-  .card-bottom { margin-top: 8px; }
-  .post-meta { font-size: 13px; color: var(--text-hint); }
-
-  .series-card-inline {
-    border-left: 3px solid var(--accent);
-  }
-  .series-badge {
-    font-size: 11px;
-    background: rgba(95,155,101,0.12);
-    color: var(--accent);
-    padding: 1px 8px;
-    border-radius: 3px;
-    flex-shrink: 0;
-  }
+  /* Card styles are now in PostCard.svelte */
   .empty-text { color: var(--text-hint); font-size: 14px; }
   .create-actions {
     display: flex;

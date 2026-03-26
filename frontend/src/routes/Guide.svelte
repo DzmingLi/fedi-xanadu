@@ -44,12 +44,24 @@
     </ul>
 
     <h3>系列讲义（Series）</h3>
-    <p>多篇文章可以组织为系列讲义。系列讲义：</p>
+    <p>多篇文章可以组织为系列讲义。系列讲义支持<strong>多级嵌套</strong>，适合结构化教材：</p>
     <ul>
       <li>有明确的阅读顺序（章节编号）</li>
       <li>章节间可以建立直接的前置依赖关系</li>
       <li>阅读文章时左右侧有导航箭头跳转前后章节</li>
+      <li><strong>嵌套结构</strong> — 创建子系列作为章节，子系列下再添加文章作为小节</li>
     </ul>
+    <p>例如，上传《Composing Programs》教材的推荐结构：</p>
+    <pre><code>Composing Programs（根系列）
+├── Chapter 1: Building Abstractions with Functions（子系列）
+│   ├── 1.1 Getting Started（文章）
+│   ├── 1.2 Elements of Programming（文章）
+│   └── 1.3 Defining New Functions（文章）
+├── Chapter 2: Building Abstractions with Data（子系列）
+│   ├── 2.1 Introduction（文章）
+│   └── ...
+└── ...</code></pre>
+    <p>每篇文章内部用标题（h2/h3）组织小节内容，例如 1.2 文章内含 1.2.1 ~ 1.2.6 等小节。</p>
 
     <h3>书架（书签系统）</h3>
     <p>收藏你喜欢的文章，组织成个人知识库：</p>
@@ -129,6 +141,60 @@ fn main() &lbrace;
   </section>
 
   <section>
+    <h2>用 HTML 写作</h2>
+    <p>除了 Typst 和 Markdown，你也可以直接上传 HTML 内容。</p>
+
+    <h3>重要：只提交内容片段</h3>
+    <p>HTML 文章必须是<strong>内容片段</strong>（fragment），不是完整的 HTML 页面。</p>
+    <div class="do-dont">
+      <div class="do">
+        <h4>正确</h4>
+        <pre><code>&lt;h2&gt;1.2 Elements of Programming&lt;/h2&gt;
+&lt;p&gt;Every powerful language has three mechanisms...&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;primitive expressions&lt;/li&gt;
+  &lt;li&gt;means of combination&lt;/li&gt;
+&lt;/ul&gt;</code></pre>
+      </div>
+      <div class="dont">
+        <h4>错误</h4>
+        <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;link rel="stylesheet" href="..."&gt;
+  &lt;script src="..."&gt;&lt;/script&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h2&gt;1.2 Elements...&lt;/h2&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+      </div>
+    </div>
+    <p>具体来说，<strong>不允许</strong>以下标签出现在 HTML 文章中：</p>
+    <ul>
+      <li><code>&lt;!DOCTYPE&gt;</code>、<code>&lt;html&gt;</code>、<code>&lt;head&gt;</code>、<code>&lt;body&gt;</code> — 页面结构由平台提供</li>
+      <li><code>&lt;script&gt;</code> — 出于安全考虑，不允许执行脚本</li>
+      <li><code>&lt;link rel="stylesheet"&gt;</code> — 样式由平台统一提供</li>
+    </ul>
+
+    <h3>嵌入视频</h3>
+    <p>直接使用标准 iframe 嵌入，不需要任何 JavaScript：</p>
+    <pre><code>&lt;iframe
+  width="640" height="360"
+  src="https://www.youtube.com/embed/VIDEO_ID?rel=0"
+  frameborder="0"
+  allowfullscreen
+  style="max-width: 100%;"
+&gt;&lt;/iframe&gt;</code></pre>
+    <p>支持 YouTube、Bilibili 等任何提供 embed 链接的视频平台。</p>
+
+    <h3>图片</h3>
+    <p>先通过编辑器上传图片，然后使用返回的路径：</p>
+    <pre><code>&lt;img src="/api/articles/image?uri=YOUR_URI&amp;filename=diagram.png"
+     alt="示意图" style="max-width: 100%;"&gt;</code></pre>
+  </section>
+
+  <section>
     <h2>快速开始</h2>
     <ol>
       <li>使用 Bluesky 账号登录（Handle + App Password）</li>
@@ -194,4 +260,26 @@ fn main() &lbrace;
   .required { color: #c33; }
   .recommended { color: #b8860b; }
   .suggested { color: var(--accent); }
+  .do-dont {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 12px 0;
+  }
+  .do-dont h4 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .do { border-left: 3px solid #2a9d2a; padding-left: 12px; }
+  .do h4 { color: #2a9d2a; }
+  .dont { border-left: 3px solid #c33; padding-left: 12px; }
+  .dont h4 { color: #c33; }
+  .do-dont pre {
+    font-size: 12px;
+    margin: 0;
+  }
+  @media (max-width: 600px) {
+    .do-dont { grid-template-columns: 1fr; }
+  }
 </style>

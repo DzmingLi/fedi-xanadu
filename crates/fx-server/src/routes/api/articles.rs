@@ -65,7 +65,7 @@ pub async fn get_article_content(
         }
     };
 
-    // HTML format: source IS the html, no rendering needed
+    // HTML format: source IS the html fragment, no rendering needed
     let html = if format == "html" {
         source.clone()
     } else if is_cached_fresh(&html_path, &src_path).await {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import './app.css';
+  import Toast from './lib/components/Toast.svelte';
   import NavBar from './components/NavBar.svelte';
   import Sidebar from './components/Sidebar.svelte';
   import RightSidebar from './components/RightSidebar.svelte';
@@ -68,6 +69,7 @@
   let kbShortcuts: KeyboardShortcuts;
 </script>
 
+<Toast />
 <KeyboardShortcuts bind:this={kbShortcuts} />
 
 {#if route.page === 'library'}
@@ -116,7 +118,7 @@
     {:else if route.page === 'series'}
       <SeriesDetail id={route.params.id || ''} />
     {:else if route.page === 'new-series'}
-      <NewSeries />
+      <NewSeries parentId={route.params.parent_id} />
     {:else if route.page === 'profile'}
       <Profile did={route.params.did || ''} />
     {:else if route.page === 'skill-tree'}

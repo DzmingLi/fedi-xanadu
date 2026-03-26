@@ -1,7 +1,7 @@
 import type {
   Tag, Article, ArticleContent, ArticlePrereqRow, ArticleTagRow, ArticlePrereqBulkRow,
   ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
-  AuthUser, VoteSummary, Series, SeriesDetail, ProfileData, SeriesContextItem,
+  AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
 } from './types';
 import { getToken } from './auth';
@@ -94,7 +94,7 @@ export const updateProfileLinks = (links: { label: string; url: string }[]) =>
 // Series
 export const listSeries = () => get<Series[]>('/series');
 export const getSeries = (id: string) => get<SeriesDetail>(`/series/by-id?id=${encodeURIComponent(id)}`);
-export const createSeries = (data: { title: string; description?: string; tag_id: string }) =>
+export const createSeries = (data: { title: string; description?: string; tag_id: string; parent_id?: string }) =>
   post<Series>('/series', data);
 export const addSeriesArticle = (series_id: string, article_uri: string) =>
   post<void>('/series/articles', { series_id, article_uri });
@@ -106,6 +106,11 @@ export const removeSeriesPrereq = (series_id: string, article_uri: string, prere
   post<void>('/series/prereqs/remove', { series_id, article_uri, prereq_article_uri });
 export const getSeriesContext = (uri: string) => get<SeriesContextItem[]>(`/series/context?uri=${encodeURIComponent(uri)}`);
 export const getAllSeriesArticles = () => get<{ series_id: string; article_uri: string }[]>('/series/all-articles');
+export const getSeriesTree = (id: string) => get<SeriesTreeNode>(`/series/tree?id=${encodeURIComponent(id)}`);
+export const reorderSeriesArticles = (series_id: string, article_uris: string[]) =>
+  post<void>('/series/articles/reorder', { series_id, article_uris });
+export const reorderSeriesChildren = (parent_id: string, child_ids: string[]) =>
+  post<void>('/series/children/reorder', { parent_id, child_ids });
 
 // Skill Trees
 export const listSkillTrees = () => get<SkillTree[]>('/skill-trees');

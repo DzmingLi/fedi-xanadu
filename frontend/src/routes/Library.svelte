@@ -2,6 +2,7 @@
   import { listBookmarks, moveBookmark, removeBookmark, getArticlesByDid, listSeries, getAllSeriesArticles } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { t } from '../lib/i18n';
+  import { buildSeriesArticleMaps } from '../lib/series';
   import type { BookmarkWithTitle, Article, Series } from '../lib/types';
 
   let bookmarks = $state<BookmarkWithTitle[]>([]);
@@ -78,14 +79,8 @@
       // Filter to user's series
       const did = auth?.did;
       allSeries = did ? series.filter(s => s.created_by === did) : [];
-      // Build series_id -> article_uri[] map
-      const map = new Map<string, string[]>();
-      for (const row of sa) {
-        const arr = map.get(row.series_id) || [];
-        arr.push(row.article_uri);
-        map.set(row.series_id, arr);
-      }
-      seriesArticleMap = map;
+      const saMaps = buildSeriesArticleMaps(sa);
+      seriesArticleMap = saMaps.seriesArticleMap;
       loading = false;
     });
   });

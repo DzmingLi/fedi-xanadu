@@ -371,6 +371,10 @@ async fn main() -> Result<()> {
                 _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
             };
 
+            if content_format == "html" {
+                validate_html_fragment(&content)?;
+            }
+
             let title = title.unwrap_or_else(|| {
                 file.file_stem()
                     .and_then(|s| s.to_str())
@@ -748,6 +752,30 @@ async fn handle_tree(base: &str, config: &Config, action: TreeCommand) -> Result
     Ok(())
 }
 
+/// Validate that an HTML file is a content fragment, not a full page.
+/// Rejects files containing <html>, <head>, <body>, or <script> tags.
+fn validate_html_fragment(content: &str) -> Result<()> {
+    let lower = content.to_ascii_lowercase();
+    let forbidden = [
+        ("<!doctype", "<!DOCTYPE> declaration"),
+        ("<html", "<html> tag"),
+        ("<head", "<head> tag"),
+        ("<body", "<body> tag"),
+        ("<script", "<script> tag"),
+    ];
+    for (tag, label) in &forbidden {
+        if lower.contains(tag) {
+            bail!(
+                "HTML file contains {label}.\n\
+                 HTML articles should be content fragments (e.g. <h2>, <p>, <div>),\n\
+                 not full HTML pages. Remove the page wrapper and try again.\n\
+                 See: https://fedi-xanadu.dzming.li/#/guide for details."
+            );
+        }
+    }
+    Ok(())
+}
+
 async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> Result<()> {
     let secret = std::env::var("FX_ADMIN_SECRET")
         .ok()
@@ -830,6 +858,10 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "html" | "htm" => "html",
                 _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
             };
+
+            if content_format == "html" {
+                validate_html_fragment(&content)?;
+            }
 
             let title = title.unwrap_or_else(|| {
                 file.file_stem()

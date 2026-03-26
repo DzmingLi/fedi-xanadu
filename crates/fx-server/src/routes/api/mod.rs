@@ -27,9 +27,10 @@ use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
-    // Stricter rate limit for auth endpoints (5 requests per minute)
+    // Stricter rate limit for auth endpoints (5 requests per minute per real client IP)
     let auth_governor_conf = std::sync::Arc::new(
         tower_governor::governor::GovernorConfigBuilder::default()
+            .key_extractor(tower_governor::key_extractor::SmartIpKeyExtractor)
             .per_second(12) // 1 token every 12 seconds
             .burst_size(5)  // max 5 burst
             .finish()
@@ -105,8 +106,11 @@ pub fn routes() -> Router<AppState> {
         // Series
         .route("/series", get(series::list_series).post(series::create_series))
         .route("/series/by-id", get(series::get_series_detail))
+        .route("/series/tree", get(series::get_series_tree))
         .route("/series/articles", post(series::add_series_article))
         .route("/series/articles/remove", post(series::remove_series_article))
+        .route("/series/articles/reorder", post(series::reorder_articles))
+        .route("/series/children/reorder", post(series::reorder_children))
         .route("/series/prereqs", post(series::add_series_prereq))
         .route("/series/prereqs/remove", post(series::remove_series_prereq))
         .route("/series/context", get(series::get_series_context))
