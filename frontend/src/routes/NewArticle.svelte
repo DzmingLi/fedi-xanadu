@@ -32,6 +32,46 @@
   let originalContent = $state(''); // Original content for fork diff
   let loadingFile = $state(false);
 
+  // Multi-language versions
+  interface LangVersion {
+    lang: string;
+    content: string;
+    contentFormat: string;
+  }
+  let extraLangs = $state<LangVersion[]>([]);
+  let showAddLang = $state(false);
+
+  function addLangVersion() {
+    // Pick first unused language
+    const usedLangs = new Set([lang, ...extraLangs.map(l => l.lang)]);
+    const available = ['en', 'zh', 'ja', 'ko', 'fr', 'de'].filter(l => !usedLangs.has(l));
+    if (available.length === 0) return;
+    extraLangs = [...extraLangs, { lang: available[0], content: '', contentFormat }];
+    showAddLang = false;
+  }
+
+  function removeLangVersion(idx: number) {
+    extraLangs = extraLangs.filter((_, i) => i !== idx);
+  }
+
+  async function handleLangFileLoad(idx: number, e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const name = file.name.toLowerCase();
+      let fmt = extraLangs[idx].contentFormat;
+      if (name.endsWith('.md') || name.endsWith('.markdown')) fmt = 'markdown';
+      else if (name.endsWith('.typ') || name.endsWith('.typst')) fmt = 'typst';
+      else if (name.endsWith('.html') || name.endsWith('.htm')) fmt = 'html';
+      extraLangs[idx] = { ...extraLangs[idx], content: text, contentFormat: fmt };
+    } catch (err: any) {
+      error = err.message;
+    }
+    input.value = '';
+  }
+
   // For tag input
   let newTagInput = $state('');
   let showTagSuggestions = $state(false);
@@ -335,6 +375,27 @@
           tags: selectedTags,
           prereqs,
         });
+
+        // Create extra language versions as translations
+        for (const lv of extraLangs) {
+          if (!lv.content.trim()) continue;
+          try {
+            await createArticle({
+              title: title.trim(),
+              description: description.trim() || undefined,
+              content: lv.content.trim(),
+              content_format: lv.contentFormat,
+              lang: lv.lang,
+              license: license || undefined,
+              translation_of: article.at_uri,
+              tags: selectedTags,
+              prereqs,
+            });
+          } catch (e: any) {
+            console.warn(`Failed to create ${lv.lang} translation:`, e);
+          }
+        }
+
         window.location.hash = `#/article?uri=${encodeURIComponent(article.at_uri)}`;
       }
     } catch (e: any) {
@@ -430,6 +491,43 @@
   </div>
   <textarea id="content" bind:value={content} placeholder={contentFormat === 'markdown' ? '# My Article\n\nSome text with $x^2$ math' : contentFormat === 'html' ? '<!DOCTYPE html>\n<html>\n<body>\n  <h1>My Article</h1>\n</body>\n</html>' : '= My Article'}></textarea>
 </div>
+
+{#if !isEditing && !forkSource}
+<div class="form-group">
+  <div class="lang-versions-header">
+    <label>{locale === 'zh' ? '其他语言版本' : 'Other Language Versions'}</label>
+    <button type="button" class="btn-add-lang" onclick={addLangVersion}>
+      + {locale === 'zh' ? '添加语言' : 'Add Language'}
+    </button>
+  </div>
+  {#each extraLangs as lv, idx}
+    <div class="lang-version-block">
+      <div class="lang-version-header">
+        <select bind:value={extraLangs[idx].lang}>
+          {#each [['zh', '中文'], ['en', 'English'], ['ja', '日本語'], ['ko', '한국어'], ['fr', 'Français'], ['de', 'Deutsch']] as [code, name]}
+            <option value={code} disabled={code === lang || extraLangs.some((l, i) => i !== idx && l.lang === code)}>{name}</option>
+          {/each}
+        </select>
+        <select bind:value={extraLangs[idx].contentFormat}>
+          <option value="typst">Typst</option>
+          <option value="markdown">Markdown</option>
+          <option value="html">HTML</option>
+        </select>
+        <label class="upload-btn">
+          <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm" onchange={(e) => handleLangFileLoad(idx, e)} hidden />
+          {locale === 'zh' ? '上传文件' : 'Upload'}
+        </label>
+        <button type="button" class="lang-remove" onclick={() => removeLangVersion(idx)}>&times;</button>
+      </div>
+      <textarea
+        bind:value={extraLangs[idx].content}
+        placeholder={locale === 'zh' ? `${lv.lang} 版本内容...` : `${lv.lang} version content...`}
+        class="lang-textarea"
+      ></textarea>
+    </div>
+  {/each}
+</div>
+{/if}
 
 <div class="form-group">
   <label>{t('newArticle.tagsLabel')}</label>
@@ -729,6 +827,67 @@
   .prereq-add-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  /* Language versions */
+  .lang-versions-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .lang-versions-header label { margin-bottom: 0; }
+  .btn-add-lang {
+    font-size: 12px;
+    color: var(--accent);
+    background: none;
+    border: 1px dashed var(--accent);
+    border-radius: 3px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-add-lang:hover { background: rgba(95,155,101,0.08); }
+  .lang-version-block {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: var(--bg-hover, #fafafa);
+  }
+  .lang-version-header {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .lang-version-header select {
+    padding: 4px 8px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-white);
+  }
+  .lang-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--text-hint);
+    padding: 0 4px;
+    line-height: 1;
+    margin-left: auto;
+  }
+  .lang-remove:hover { color: #dc2626; }
+  .lang-textarea {
+    width: 100%;
+    min-height: 150px;
+    padding: 8px;
+    font-family: var(--font-mono, monospace);
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    resize: vertical;
   }
 
   /* Submit row */
