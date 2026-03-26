@@ -14,7 +14,6 @@
   import SeriesDetail from './routes/SeriesDetail.svelte';
   import NewSeries from './routes/NewSeries.svelte';
   import Profile from './routes/Profile.svelte';
-  import SkillTrees from './routes/SkillTrees.svelte';
   import SkillTreeView from './routes/SkillTreeView.svelte';
   import NewSkillTree from './routes/NewSkillTree.svelte';
   import Guide from './routes/Guide.svelte';
@@ -57,7 +56,7 @@
     if (base === '/series') return { page: 'series', params };
     if (base === '/new-series') return { page: 'new-series', params };
     if (base === '/profile') return { page: 'profile', params };
-    if (base === '/skill-trees') return { page: 'skill-trees', params };
+    if (base === '/skill-trees') return { page: 'skills', params };
     if (base === '/skill-tree/new') return { page: 'skill-tree-new', params };
     if (base === '/skill-tree') return { page: 'skill-tree', params };
     if (base === '/forks') return { page: 'forks', params };
@@ -120,8 +119,6 @@
       <NewSeries />
     {:else if route.page === 'profile'}
       <Profile did={route.params.did || ''} />
-    {:else if route.page === 'skill-trees'}
-      <SkillTrees />
     {:else if route.page === 'skill-tree'}
       <SkillTreeView uri={route.params.uri || ''} />
     {:else if route.page === 'skill-tree-new'}

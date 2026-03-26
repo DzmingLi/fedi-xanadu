@@ -2,11 +2,17 @@
   import cytoscape from 'cytoscape';
   // @ts-ignore
   import dagre from 'cytoscape-dagre';
-  import { getGraph, getTagTree, listSkills, lightSkill, unlightSkill, listTags, createTagInline } from '../lib/api';
-  import type { GraphNode, GraphEdge, TagTreeEntry, Tag } from '../lib/types';
+  import { getGraph, getTagTree, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote } from '../lib/api';
+  import { getAuth } from '../lib/auth';
+  import { authorName } from '../lib/display';
+  import type { GraphNode, GraphEdge, TagTreeEntry, Tag, SkillTree, SkillTreeEdge } from '../lib/types';
 
   cytoscape.use(dagre);
 
+  // --- Tab state ---
+  let activeTab = $state<'my' | 'community'>('my');
+
+  // --- My Skills state ---
   let loading = $state(true);
   let graphNodes = $state<GraphNode[]>([]);
   let graphEdges = $state<GraphEdge[]>([]);
@@ -30,12 +36,10 @@
   });
 
   async function addTagSkill(tagId: string, tagName?: string) {
-    // Create tag if it doesn't exist
     if (!allTags.some(t => t.id === tagId)) {
       const newTag = await createTagInline(tagId, tagName || tagId);
       allTags = [...allTags, newTag];
     }
-    // Light as learning
     if (!skillMap.has(tagId)) {
       await lightSkill(tagId, 'learning');
       skillMap.set(tagId, 'learning');
@@ -43,7 +47,6 @@
     }
     searchQuery = '';
     searchOpen = false;
-    // Rebuild graph to include new standalone node
     buildGraph();
   }
 
@@ -55,7 +58,6 @@
 
     const nodeMap = new Map(graphNodes.map(n => [n.id, n]));
 
-    // Build parent->children map and compute depths
     const childrenOf = new Map<string, string[]>();
     const hasParent = new Set<string>();
     for (const e of tree) {
@@ -72,7 +74,6 @@
 
     const roots = [...new Set(tree.map(e => e.parent_tag))].filter(p => !hasParent.has(p));
 
-    // Compute depth for each node
     const depthOf = new Map<string, number>();
     function setDepth(id: string, d: number) {
       if (depthOf.has(id) && depthOf.get(id)! <= d) return;
@@ -81,13 +82,11 @@
     }
     for (const r of roots) setDepth(r, 0);
 
-    // Direct parent in tree
     const directParent = new Map<string, string>();
     for (const e of tree) {
       directParent.set(e.child_tag, e.parent_tag);
     }
 
-    // Collect all descendant leaf count for compound label
     function leafCount(id: string): number {
       const ch = childrenOf.get(id);
       if (!ch || ch.length === 0) return 1;
@@ -96,20 +95,14 @@
       return sum;
     }
 
-    // Determine visible nodes:
-    // - Roots (depth 0) always shown as compound
-    // - Depth 1 (course-level) shown as nodes (collapsed compound if they have children)
-    // - Depth 2+ hidden unless parent is expanded
     function isVisible(id: string): boolean {
       const d = depthOf.get(id) ?? 99;
       if (d <= 1) return true;
-      // Visible if its direct parent is expanded
       const p = directParent.get(id);
       if (p && expandedSet.has(p)) return true;
       return false;
     }
 
-    // Collect all IDs (include standalone skilled tags not in tree)
     const allIds = new Set<string>();
     for (const n of graphNodes) allIds.add(n.id);
     for (const e of tree) { allIds.add(e.parent_tag); allIds.add(e.child_tag); }
@@ -135,18 +128,9 @@
       const label = collapsed ? `${name} (${lc})` : name;
 
       const data: any = {
-        id,
-        label,
-        lit,
-        learning,
-        compound,
-        isRoot,
-        depth,
-        collapsed,
-        hasChildren,
+        id, label, lit, learning, compound, isRoot, depth, collapsed, hasChildren,
       };
 
-      // Set parent for compound nesting (only if parent is visible and expanded)
       if (parent && isCompound.has(parent) && (depthOf.get(parent) === 0 || expandedSet.has(parent))) {
         data.parent = parent;
       }
@@ -154,7 +138,6 @@
       elements.push({ data });
     }
 
-    // Prereq edges — only between visible nodes
     const visibleIds = new Set(elements.map(e => e.data.id));
     for (const e of graphEdges) {
       if (visibleIds.has(e.from) && visibleIds.has(e.to)) {
@@ -183,7 +166,6 @@
         animate: false,
       } as any,
       style: [
-        // --- Leaf / collapsed nodes ---
         {
           selector: 'node[!compound]',
           style: {
@@ -207,7 +189,6 @@
             'transition-duration': 200,
           } as any,
         },
-        // Collapsed compound (has children but not expanded) — show with special style
         {
           selector: 'node[?collapsed]',
           style: {
@@ -217,7 +198,6 @@
             'font-weight': 'bold' as any,
           } as any,
         },
-        // Learning leaf (amber)
         {
           selector: 'node[!compound][?learning]',
           style: {
@@ -226,7 +206,6 @@
             'color': '#ffffff',
           },
         },
-        // Mastered leaf (green)
         {
           selector: 'node[!compound][?lit][!learning]',
           style: {
@@ -235,7 +214,6 @@
             'color': '#ffffff',
           },
         },
-        // --- Compound parent nodes (expanded containers) ---
         {
           selector: 'node[?compound]',
           style: {
@@ -257,7 +235,6 @@
             'compound-sizing-wrt-labels': 'include',
           } as any,
         },
-        // Root compound
         {
           selector: 'node[?isRoot][?compound]',
           style: {
@@ -268,7 +245,6 @@
             'padding': '34px' as any,
           } as any,
         },
-        // Lit compound
         {
           selector: 'node[?compound][?lit]',
           style: {
@@ -280,7 +256,6 @@
           selector: 'node:active',
           style: { 'overlay-opacity': 0.08 },
         },
-        // --- Edges ---
         {
           selector: 'edge[edgeType="required"]',
           style: {
@@ -324,24 +299,20 @@
       boxSelectionEnabled: false,
     });
 
-    // Single click on leaf: toggle skill
     cy.on('tap', 'node[!compound][!hasChildren]', async (evt) => {
       await toggleSkill(evt.target.id());
     });
 
-    // Single click on collapsed compound: expand it
     cy.on('tap', 'node[?collapsed]', (evt) => {
       expandedSet.add(evt.target.id());
       buildGraph();
     });
 
-    // Single click on expanded compound label area: collapse it
     cy.on('tap', 'node[?compound][depth > 0]', (evt) => {
       expandedSet.delete(evt.target.id());
       buildGraph();
     });
 
-    // Double-click: navigate to tag page
     cy.on('dbltap', 'node', (evt) => {
       const nodeId = evt.target.id();
       window.location.hash = `#/tag?id=${encodeURIComponent(nodeId)}`;
@@ -353,16 +324,13 @@
   async function toggleSkill(tagId: string) {
     const current = skillMap.get(tagId);
     if (!current) {
-      // unlit → learning
       await lightSkill(tagId, 'learning');
       skillMap.set(tagId, 'learning');
     } else if (current === 'learning') {
-      // learning → mastered
       await lightSkill(tagId, 'mastered');
       const s = await listSkills();
       skillMap = new Map(s.map(sk => [sk.tag_id, sk.status]));
     } else {
-      // mastered → unlit
       await unlightSkill(tagId);
       skillMap.delete(tagId);
     }
@@ -386,35 +354,135 @@
   });
 
   $effect(() => {
-    if (!loading && containerEl) {
+    if (!loading && containerEl && activeTab === 'my') {
       buildGraph();
     }
   });
+
+  // --- Community skill trees state ---
+  const FIELD_LABELS: Record<string, string> = {
+    math: '数学', physics: '物理', cs: '计算机', economics: '经济学',
+  };
+
+  let treesLoading = $state(true);
+  let communityTrees = $state<SkillTree[]>([]);
+  let filterField = $state('');
+  let isLoggedIn = $derived(!!getAuth());
+  let filteredTrees = $derived(
+    filterField ? communityTrees.filter(t => t.field === filterField) : communityTrees
+  );
+
+  $effect(() => {
+    if (activeTab === 'community' && treesLoading) {
+      listSkillTrees().then(t => { communityTrees = t; treesLoading = false; });
+    }
+  });
+
+  async function adopt(uri: string) {
+    if (!isLoggedIn) return;
+    await adoptSkillTree(uri);
+    alert('已采用该技能树！');
+  }
+
+  async function vote(uri: string, value: number) {
+    if (!isLoggedIn) return;
+    await castVote(uri, value);
+    communityTrees = await listSkillTrees();
+  }
 </script>
 
 <div class="skills-page">
   <div class="skills-toolbar">
     <div class="toolbar-left">
-      <h1>Skills</h1>
-      <span class="lit-count">已掌握 <strong>{masteredCount}</strong> · 学习中 <strong>{learningCount}</strong></span>
+      <div class="tab-bar">
+        <button class="tab" class:active={activeTab === 'my'} onclick={() => activeTab = 'my'}>
+          我的技能
+        </button>
+        <button class="tab" class:active={activeTab === 'community'} onclick={() => activeTab = 'community'}>
+          社区技能树
+        </button>
+      </div>
+      {#if activeTab === 'my'}
+        <span class="lit-count">已掌握 <strong>{masteredCount}</strong> · 学习中 <strong>{learningCount}</strong></span>
+      {/if}
     </div>
     <div class="toolbar-right">
-      <div class="legend-inline">
-        <span class="legend-dot mastered"></span> 已掌握
-        <span class="legend-dot learning"></span> 学习中
-        <span class="legend-dot unlit"></span> 未学习
-        <span class="legend-box"></span> 可展开
-      </div>
-      <span class="toolbar-hint">单击切换状态 &middot; 双击进入标签</span>
+      {#if activeTab === 'my'}
+        <div class="legend-inline">
+          <span class="legend-dot mastered"></span> 已掌握
+          <span class="legend-dot learning"></span> 学习中
+          <span class="legend-dot unlit"></span> 未学习
+          <span class="legend-box"></span> 可展开
+        </div>
+        <span class="toolbar-hint">单击切换状态 &middot; 双击进入标签</span>
+      {:else if isLoggedIn}
+        <a href="#/skill-tree/new" class="create-btn">创建技能树</a>
+      {/if}
     </div>
   </div>
 
-  {#if loading}
-    <div class="graph-loading">
-      <p class="meta">Loading...</p>
-    </div>
+  {#if activeTab === 'my'}
+    {#if loading}
+      <div class="graph-loading">
+        <p class="meta">Loading...</p>
+      </div>
+    {:else}
+      <div class="graph-container" bind:this={containerEl}></div>
+    {/if}
   {:else}
-    <div class="graph-container" bind:this={containerEl}></div>
+    <div class="community-section">
+      <p class="subtitle">浏览社区分享的技能树，采用你喜欢的，或 fork 后自定义</p>
+
+      <div class="field-filter">
+        <button class="filter-btn" class:active={!filterField} onclick={() => filterField = ''}>全部</button>
+        {#each Object.entries(FIELD_LABELS) as [f, label]}
+          <button class="filter-btn" class:active={filterField === f} onclick={() => filterField = f}>{label}</button>
+        {/each}
+      </div>
+
+      {#if treesLoading}
+        <p class="meta">Loading...</p>
+      {:else if communityTrees.length === 0}
+        <div class="empty">
+          <p>还没有技能树</p>
+          {#if isLoggedIn}
+            <a href="#/skill-tree/new">创建第一棵</a>
+          {/if}
+        </div>
+      {:else}
+        <div class="tree-list">
+          {#each filteredTrees as t (t.at_uri)}
+            <div class="tree-card">
+              <div class="tree-main">
+                <a href="#/skill-tree?uri={encodeURIComponent(t.at_uri)}" class="tree-title">{t.title}</a>
+                {#if t.field}
+                  <span class="field-badge">{FIELD_LABELS[t.field] || t.field}</span>
+                {/if}
+                {#if t.forked_from}
+                  <span class="forked-badge">Fork</span>
+                {/if}
+                {#if t.description}
+                  <p class="tree-desc">{t.description}</p>
+                {/if}
+                <div class="tree-meta">
+                  <span>{t.author_handle ? `@${t.author_handle}` : t.did.slice(0, 20)}</span>
+                  <span>{t.edge_count} 条关系</span>
+                  <span>{t.adopt_count} 人采用</span>
+                </div>
+              </div>
+              <div class="tree-actions">
+                <div class="vote-col">
+                  <button class="vote-btn" onclick={() => vote(t.at_uri, 1)} disabled={!isLoggedIn}>▲</button>
+                  <span class="score">{t.score ?? 0}</span>
+                  <button class="vote-btn" onclick={() => vote(t.at_uri, -1)} disabled={!isLoggedIn}>▼</button>
+                </div>
+                <button class="adopt-btn" onclick={() => adopt(t.at_uri)} disabled={!isLoggedIn}>采用</button>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -436,12 +504,8 @@
   }
   .toolbar-left {
     display: flex;
-    align-items: baseline;
-    gap: 12px;
-  }
-  .toolbar-left h1 {
-    font-size: 1.2rem;
-    margin: 0;
+    align-items: center;
+    gap: 16px;
   }
   .lit-count {
     font-size: 13px;
@@ -455,6 +519,37 @@
   .toolbar-hint {
     font-size: 12px;
     color: var(--text-hint);
+  }
+
+  /* Tabs */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+  }
+  .tab {
+    padding: 6px 16px;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab:first-child {
+    border-radius: 4px 0 0 4px;
+  }
+  .tab:last-child {
+    border-radius: 0 4px 4px 0;
+    border-left: none;
+  }
+  .tab.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .tab:hover:not(.active) {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .legend-inline {
@@ -493,4 +588,137 @@
     flex: 1;
     background: var(--bg-page);
   }
+
+  /* Community section */
+  .community-section {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 16px;
+  }
+  .create-btn {
+    padding: 6px 16px;
+    font-size: 13px;
+    background: var(--accent);
+    color: white;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: opacity 0.15s;
+  }
+  .create-btn:hover { opacity: 0.85; text-decoration: none; }
+  .field-filter {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .filter-btn {
+    padding: 4px 12px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--bg-white);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .tree-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .tree-card {
+    display: flex;
+    gap: 16px;
+    padding: 16px 20px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-white);
+    transition: border-color 0.15s;
+  }
+  .tree-card:hover { border-color: var(--border-strong); }
+  .tree-main { flex: 1; min-width: 0; }
+  .tree-title {
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+  .tree-title:hover { color: var(--accent); }
+  .forked-badge {
+    font-size: 11px;
+    background: var(--bg-gray, #f0f0f0);
+    color: var(--text-hint);
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+  }
+  .field-badge {
+    font-size: 11px;
+    background: rgba(95,155,101,0.12);
+    color: var(--accent);
+    padding: 1px 8px;
+    border-radius: 3px;
+    margin-left: 6px;
+  }
+  .tree-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 4px 0 0;
+    line-height: 1.5;
+  }
+  .tree-meta {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--text-hint);
+  }
+  .tree-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .vote-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .vote-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-hint);
+    font-size: 12px;
+    padding: 2px 4px;
+    transition: color 0.15s;
+  }
+  .vote-btn:hover:not(:disabled) { color: var(--accent); }
+  .vote-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .score {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .adopt-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    border: 1px solid var(--accent);
+    background: none;
+    color: var(--accent);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .adopt-btn:hover:not(:disabled) { background: var(--accent); color: white; }
+  .adopt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .empty { color: var(--text-hint); }
 </style>
