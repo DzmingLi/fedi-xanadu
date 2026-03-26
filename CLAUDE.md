@@ -1,23 +1,24 @@
-# Fedi-Xanadu Development Guidelines
+# Fedi-Xanadu
 
-## Critical: No Parallel Agents for Cross-Codebase Atomic Migrations
-
-When performing atomic changes that span many files (e.g. database engine migration from SQLite to PostgreSQL), **never use parallel agents**. Each agent independently runs `cargo check`, sees compilation errors from files not yet updated by other agents, and "fixes" them by reverting changes — choosing the path of least resistance rather than the migration direction.
-
-**Instead:** Process files serially, or batch all changes without intermediate compilation, then verify once at the end.
-
-## Build Commands
-- `nix develop --command cargo check` — type check
-- `nix develop --command cargo test` — run tests
-- `nix develop --command cargo clippy -- -D warnings` — lint
-- `nix develop --command bash -c "cd frontend && npm run build"` — frontend
-
-## Database
-- **PostgreSQL** (migrated from SQLite)
-- Migrations in `migrations_pg/` using `sqlx::migrate!`
-- Use `$1, $2, ...` placeholders (not `?`)
-- Use `NOW()` (not `datetime('now')`)
-- Use `ON CONFLICT ... DO NOTHING` (not `INSERT OR IGNORE`)
-- Use `ON CONFLICT ... DO UPDATE SET ...` (not `INSERT OR REPLACE`)
-- Timestamps use `chrono::DateTime<Utc>` in Rust structs
+## Build
+- `nix develop --command cargo check`
+- `nix develop --command cargo test`
+- `nix develop --command bash -c "cd frontend && npm run build"`
 - `SQLX_OFFLINE=true` for compile-time (no live DB needed)
+
+## Database (PostgreSQL)
+- Placeholders: `$1, $2, ...` — Timestamps: `NOW()` — Upsert: `ON CONFLICT ... DO UPDATE SET`
+
+## No Parallel Agents for Cross-Codebase Migrations
+Process files serially or batch all changes, then verify once at the end.
+
+## Admin CLI (`fx admin`)
+```bash
+fx admin create-user <handle> <password> --display-name "Name"
+fx admin publish --as <handle> -f file.md -t "Title" --tags cs --lang zh
+```
+
+## Deploy
+- Server: `ssh root@dzming.li`
+- NixOS config: `/home/lee/nixos-config/hosts/hetzner-server/xanadu.nix`
+- Admin secret: agenix, `EnvironmentFile` format (`FX_ADMIN_SECRET=xxx`)

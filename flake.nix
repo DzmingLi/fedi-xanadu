@@ -217,10 +217,22 @@
                 Both handle and passwordFile must be set for auto-login.
               '';
             };
+            adminSecretFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "Path to a file containing the admin secret for fx admin commands.";
+            };
           };
 
           config = lib.mkIf cfg.enable {
-            home.packages = [ pkg ];
+            home.packages = [
+              (if cfg.adminSecretFile != null then
+                pkgs.writeShellScriptBin "fx" ''
+                  export FX_ADMIN_SECRET="$(cat ${cfg.adminSecretFile})"
+                  exec ${pkg}/bin/fx "$@"
+                ''
+              else pkg)
+            ];
 
             # Auto-login on activation if handle + passwordFile are set
             home.activation.fx-login = lib.mkIf (cfg.handle != null && cfg.passwordFile != null) (
