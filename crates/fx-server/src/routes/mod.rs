@@ -59,7 +59,8 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
         .allow_methods(methods)
         .allow_headers(headers);
 
-    if config.cors_origins.is_empty() {
+    let origin_list = config.cors_origin_list();
+    if origin_list.is_empty() {
         // No origins configured: only same-origin requests allowed
         layer.allow_origin(AllowOrigin::exact(
             format!("http://{}:{}", config.host, config.port)
@@ -67,8 +68,7 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
                 .expect("invalid origin from config"),
         ))
     } else {
-        let origins: Vec<_> = config
-            .cors_origins
+        let origins: Vec<_> = origin_list
             .iter()
             .filter_map(|o| o.parse().ok())
             .collect();

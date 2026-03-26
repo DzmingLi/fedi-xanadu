@@ -11,8 +11,9 @@ pub struct Config {
     pub database_url: String,
     pub pijul_store_path: String,
     pub instance_name: String,
-    /// Comma-separated list of allowed CORS origins. Empty = same-origin only.
-    pub cors_origins: Vec<String>,
+    /// Comma-separated string of allowed CORS origins. Empty = same-origin only.
+    #[serde(default)]
+    pub cors_origins: String,
 }
 
 impl Default for Config {
@@ -23,7 +24,7 @@ impl Default for Config {
             database_url: "postgres://localhost/fedi_xanadu".into(),
             pijul_store_path: "data/pijul-store".into(),
             instance_name: "Fedi-Xanadu".into(),
-            cors_origins: Vec::new(),
+            cors_origins: String::new(),
         }
     }
 }
@@ -35,5 +36,18 @@ impl Config {
             .merge(Env::prefixed("FX_"))
             .extract()?;
         Ok(config)
+    }
+
+    /// Parse cors_origins into a Vec of origin strings.
+    pub fn cors_origin_list(&self) -> Vec<String> {
+        if self.cors_origins.is_empty() {
+            Vec::new()
+        } else {
+            self.cors_origins
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        }
     }
 }
