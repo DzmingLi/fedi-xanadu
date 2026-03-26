@@ -195,15 +195,19 @@
               default = "https://fedi-xanadu.dzming.li";
               description = "Fedi-Xanadu server URL";
             };
-            credentialFile = lib.mkOption {
+            handle = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = "user.bsky.social";
+              description = "AT Protocol handle for auto-login";
+            };
+            passwordFile = lib.mkOption {
               type = lib.types.nullOr lib.types.path;
               default = null;
               description = ''
-                Path to a file containing login credentials, one per line:
-                  handle=user.bsky.social
-                  password=xxxx-xxxx-xxxx-xxxx
-                The file should be readable only by the user (mode 0400).
-                If set, fx login runs automatically on activation.
+                Path to a file containing only the app password.
+                Should be readable only by the user (mode 0400).
+                Both handle and passwordFile must be set for auto-login.
               '';
             };
           };
@@ -211,16 +215,11 @@
           config = lib.mkIf cfg.enable {
             home.packages = [ pkg ];
 
-            # Auto-login on activation if credential file is provided
-            home.activation.fx-login = lib.mkIf (cfg.credentialFile != null) (
+            # Auto-login on activation if handle + passwordFile are set
+            home.activation.fx-login = lib.mkIf (cfg.handle != null && cfg.passwordFile != null) (
               lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-                _cred_file="${cfg.credentialFile}"
-                if [ -f "$_cred_file" ]; then
-                  _handle=$(grep '^handle=' "$_cred_file" | cut -d= -f2-)
-                  _password=$(grep '^password=' "$_cred_file" | cut -d= -f2-)
-                  if [ -n "$_handle" ] && [ -n "$_password" ]; then
-                    ${pkg}/bin/fx --server "${cfg.server}" login "$_handle" "$_password" 2>/dev/null || true
-                  fi
+                if [ -f "${cfg.passwordFile}" ]; then
+                  ${pkg}/bin/fx --server "${cfg.server}" login "${cfg.handle}" "$(cat "${cfg.passwordFile}")" 2>/dev/null || true
                 fi
               ''
             );
