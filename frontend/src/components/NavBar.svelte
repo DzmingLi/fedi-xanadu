@@ -1,15 +1,18 @@
 <script lang="ts">
   import { listArticles, logout as apiLogout } from '../lib/api';
   import { getAuth, setAuth, onAuthChange } from '../lib/auth';
-  import { t, getLocale, setLocale, onLocaleChange } from '../lib/i18n';
+  import { t, getLocale, setLocale, onLocaleChange, LOCALES } from '../lib/i18n';
+  import type { Locale } from '../lib/i18n';
   import type { Article, AuthUser } from '../lib/types';
   import LoginModal from './LoginModal.svelte';
 
   let locale = $state(getLocale());
   $effect(() => onLocaleChange(() => { locale = getLocale(); }));
 
-  function toggleLocale() {
-    setLocale(locale === 'zh' ? 'en' : 'zh');
+  function cycleLocale() {
+    const codes = LOCALES.map(l => l.code);
+    const idx = codes.indexOf(locale);
+    setLocale(codes[(idx + 1) % codes.length]);
   }
 
   let searchOpen = $state(false);
@@ -79,8 +82,8 @@
   </div>
 
   <div class="nav-right">
-    <button type="button" class="locale-toggle" onclick={toggleLocale} title="切换语言 / Switch language">
-      {locale === 'zh' ? 'EN' : '中'}
+    <button type="button" class="locale-toggle" onclick={cycleLocale} title="Switch language">
+      {(() => { const codes = LOCALES.map(l => l.code); return LOCALES[(codes.indexOf(locale) + 1) % codes.length].label; })()}
     </button>
 
     <button type="button" class="search-btn" onclick={openSearch} aria-label="Search">
@@ -105,7 +108,7 @@
     {/if}
 
     {#if user}
-      <a href="#/drafts" class="btn-drafts">{locale === 'zh' ? '草稿' : 'Drafts'}</a>
+      <a href="#/drafts" class="btn-drafts">{t('nav.drafts')}</a>
     {/if}
     <a href="#/new" class="btn-new">{t('nav.newArticle')}</a>
     <a href="#/new-series" class="btn-new">{t('nav.newSeries')}</a>

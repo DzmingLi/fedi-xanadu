@@ -31,6 +31,7 @@ pub struct CreateComment {
     pub article_uri: String,
     pub body: String,
     pub parent_id: Option<String>,
+    pub quote_text: Option<String>,
 }
 
 pub async fn create_comment(
@@ -53,6 +54,7 @@ pub async fn create_comment(
         &user.did,
         &input.body,
         input.parent_id.as_deref(),
+        input.quote_text.as_deref(),
     )
     .await?;
 

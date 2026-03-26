@@ -1,12 +1,8 @@
 <script lang="ts">
   import { getArticle, getArticleContent, getArticlePrereqs, getArticleForks, listBookmarks, addBookmark, removeBookmark, getArticleVotes, getMyVote, castVote, getSeriesContext, forkArticle, getTranslations, listComments, createComment, updateComment, deleteComment, updateArticle, deleteArticle, voteComment, getMyCommentVotes } from '../lib/api';
   import { getAuth } from '../lib/auth';
-  import { t, getLocale } from '../lib/i18n';
+  import { t, LANG_NAMES } from '../lib/i18n';
   import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, BookmarkWithTitle, VoteSummary, SeriesContextItem, Comment } from '../lib/types';
-
-  const LANG_NAMES: Record<string, string> = {
-    zh: '中文', en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', de: 'Deutsch',
-  };
 
   let { uri }: { uri: string } = $props();
 
@@ -29,6 +25,8 @@
   let editingCommentBody = $state('');
   let replyingToId = $state<string | null>(null);
   let replyBody = $state('');
+  let quoteText = $state<string | null>(null);
+  let quotePopup = $state<{ x: number; y: number; text: string } | null>(null);
   let myCommentVotes = $state<Record<string, number>>({});
   let rootComments = $derived(comments.filter(c => !c.parent_id));
   function getReplies(parentId: string) { return comments.filter(c => c.parent_id === parentId); }
@@ -167,15 +165,16 @@
     submittingComment = true;
     commentError = '';
     try {
-      const c = await createComment(uri, commentBody.trim());
+      const c = await createComment(uri, commentBody.trim(), undefined, quoteText ?? undefined);
       comments = [...comments, c];
       commentBody = '';
+      quoteText = null;
     } catch (e: any) {
       const msg = e.message || '';
       if (msg.includes('401') || msg.includes('Unauthorized')) {
-        commentError = getLocale() === 'zh' ? '登录已过期，请重新登录' : 'Session expired, please log in again';
+        commentError = t('article.sessionExpired');
       } else {
-        commentError = msg || (getLocale() === 'zh' ? '发布失败' : 'Failed to post comment');
+        commentError = msg || t('article.postFailed');
       }
     } finally {
       submittingComment = false;
@@ -229,6 +228,57 @@
     if (!article || !confirm(t('article.deleteConfirm'))) return;
     await deleteArticle(uri);
     window.location.hash = '#/';
+  }
+
+  function onContentMouseUp(e: MouseEvent) {
+    const sel = window.getSelection();
+    const text = sel?.toString().trim();
+    if (!text || !isLoggedIn) { quotePopup = null; return; }
+    const range = sel!.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    quotePopup = { x: rect.left + rect.width / 2, y: rect.top - 8, text };
+  }
+
+  function startQuoteComment() {
+    if (!quotePopup) return;
+    quoteText = quotePopup.text;
+    quotePopup = null;
+    window.getSelection()?.removeAllRanges();
+    // Scroll to comment form
+    document.querySelector('.comment-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function scrollToQuote(text: string) {
+    if (!contentEl) return;
+    // Use TreeWalker to find the text node
+    const walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text;
+      const idx = node.textContent?.indexOf(text) ?? -1;
+      if (idx >= 0) {
+        const range = document.createRange();
+        range.setStart(node, idx);
+        range.setEnd(node, idx + text.length);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        // Scroll the found text into view
+        const rect = range.getBoundingClientRect();
+        window.scrollTo({ top: window.scrollY + rect.top - 120, behavior: 'smooth' });
+        // Highlight briefly
+        const mark = document.createElement('mark');
+        mark.className = 'quote-highlight';
+        range.surroundContents(mark);
+        setTimeout(() => {
+          const parent = mark.parentNode;
+          if (parent) {
+            parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+            parent.normalize();
+          }
+        }, 3000);
+        return;
+      }
+    }
   }
 
   async function renderKatex(el: HTMLDivElement) {
@@ -338,7 +388,7 @@
                 </a>
               {/each}
               {#if forks.length > 3}
-                <a href="#/forks?uri={encodeURIComponent(uri)}" class="sidebar-fork-more">查看全部 {forks.length} 个 fork →</a>
+                <a href="#/forks?uri={encodeURIComponent(uri)}" class="sidebar-fork-more">{t('article.viewAllForks', forks.length)}</a>
               {/if}
             </div>
           {/if}
@@ -349,12 +399,12 @@
     <!-- Series navigation arrows (fixed on sides) -->
     {#each seriesContext as ctx}
       {#if ctx.prev.length > 0}
-        <a href="#/article?uri={encodeURIComponent(ctx.prev[0].article_uri)}" class="series-nav series-prev" title="前驱: {ctx.prev[0].title}">
+        <a href="#/article?uri={encodeURIComponent(ctx.prev[0].article_uri)}" class="series-nav series-prev" title={t('article.seriesPrev', ctx.prev[0].title)}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
         </a>
       {/if}
       {#if ctx.next.length > 0}
-        <a href="#/article?uri={encodeURIComponent(ctx.next[0].article_uri)}" class="series-nav series-next" title="后继: {ctx.next[0].title}">
+        <a href="#/article?uri={encodeURIComponent(ctx.next[0].article_uri)}" class="series-nav series-next" title={t('article.seriesNext', ctx.next[0].title)}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </a>
       {/if}
@@ -367,7 +417,7 @@
         {#each seriesContext as ctx}
           <div class="series-banner">
             <a href="#/series?id={encodeURIComponent(ctx.series_id)}" class="series-link">{ctx.series_title}</a>
-            <span class="series-pos">{ctx.total} 篇</span>
+            <span class="series-pos">{t('article.seriesCount', ctx.total)}</span>
             <div class="series-nav-inline">
               {#each ctx.prev as p}
                 <a href="#/article?uri={encodeURIComponent(p.article_uri)}" class="nav-link prev">← {p.title}</a>
@@ -413,8 +463,19 @@
             title={article.title}
           ></iframe>
         {:else}
-          <div class="content" bind:this={contentEl}>{@html content.html}</div>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="content" bind:this={contentEl} onmouseup={onContentMouseUp}>{@html content.html}</div>
         {/if}
+      {/if}
+
+      {#if quotePopup}
+        <button
+          class="quote-popup"
+          style="left: {quotePopup.x}px; top: {quotePopup.y}px;"
+          onclick={startQuoteComment}
+        >
+          {t('comments.quoteHint')}
+        </button>
       {/if}
 
       <div class="action-bar">
@@ -453,6 +514,12 @@
 
         {#if isLoggedIn}
           <div class="comment-form">
+            {#if quoteText}
+              <div class="quote-preview">
+                <blockquote>{quoteText}</blockquote>
+                <button class="quote-remove" onclick={() => { quoteText = null; }} title={t('common.remove')}>×</button>
+              </div>
+            {/if}
             <textarea
               bind:value={commentBody}
               placeholder={t('article.writeComment')}
@@ -477,10 +544,10 @@
               </a>
               <span class="comment-date">{c.created_at.split('T')[0]}</span>
               {#if getAuth()?.did === c.did}
-                <button class="comment-action" onclick={() => { editingCommentId = c.id; editingCommentBody = c.body; }}>
+                <button class="comment-action" title={t('comments.edit')} onclick={() => { editingCommentId = c.id; editingCommentBody = c.body; }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
-                <button class="comment-action danger" onclick={() => doDeleteComment(c.id)}>
+                <button class="comment-action danger" title={t('comments.delete')} onclick={() => doDeleteComment(c.id)}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               {/if}
@@ -489,38 +556,43 @@
               <div class="comment-edit">
                 <textarea bind:value={editingCommentBody} rows="3"></textarea>
                 <div class="comment-edit-actions">
-                  <button class="comment-submit" onclick={() => doUpdateComment(c.id)}>保存</button>
-                  <button class="comment-cancel" onclick={() => { editingCommentId = null; }}>取消</button>
+                  <button class="comment-submit" onclick={() => doUpdateComment(c.id)}>{t('comments.save')}</button>
+                  <button class="comment-cancel" onclick={() => { editingCommentId = null; }}>{t('comments.cancel')}</button>
                 </div>
               </div>
             {:else}
+              {#if c.quote_text}
+                <blockquote class="comment-quote" role="button" tabindex="0" onclick={() => scrollToQuote(c.quote_text!)} onkeydown={(e) => { if (e.key === 'Enter') scrollToQuote(c.quote_text!); }}>
+                  {c.quote_text}
+                </blockquote>
+              {/if}
               <div class="comment-body">{c.body}</div>
             {/if}
             <div class="comment-footer">
               <div class="comment-vote-btns">
-                <button class="vote-btn" class:active={myCommentVotes[c.id] === 1} onclick={() => doVoteComment(c.id, 1)} title="赞">
+                <button class="vote-btn" class:active={myCommentVotes[c.id] === 1} onclick={() => doVoteComment(c.id, 1)} title={t('common.upvote')}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill={myCommentVotes[c.id] === 1 ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
                 </button>
                 <span class="vote-count" class:positive={c.vote_score > 0} class:negative={c.vote_score < 0}>{c.vote_score}</span>
-                <button class="vote-btn" class:active={myCommentVotes[c.id] === -1} onclick={() => doVoteComment(c.id, -1)} title="踩">
+                <button class="vote-btn" class:active={myCommentVotes[c.id] === -1} onclick={() => doVoteComment(c.id, -1)} title={t('common.downvote')}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill={myCommentVotes[c.id] === -1 ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/><path d="M17 2h3a2 2 0 012 2v7a2 2 0 01-2 2h-3"/></svg>
                 </button>
               </div>
               {#if isLoggedIn && depth < 3}
                 <button class="reply-btn" onclick={() => { replyingToId = replyingToId === c.id ? null : c.id; replyBody = ''; }}>
-                  {getLocale() === 'zh' ? '回复' : 'Reply'}
+                  {t('common.reply')}
                 </button>
               {/if}
             </div>
             {#if replyingToId === c.id}
               <div class="reply-form">
-                <textarea bind:value={replyBody} rows="2" placeholder={getLocale() === 'zh' ? '写回复...' : 'Write a reply...'}></textarea>
+                <textarea bind:value={replyBody} rows="2" placeholder={t('article.writeReply')}></textarea>
                 <div class="reply-actions">
                   <button class="comment-submit" onclick={() => submitReply(c.id)} disabled={!replyBody.trim()}>
-                    {getLocale() === 'zh' ? '发送' : 'Send'}
+                    {t('common.send')}
                   </button>
                   <button class="comment-cancel" onclick={() => { replyingToId = null; }}>
-                    {getLocale() === 'zh' ? '取消' : 'Cancel'}
+                    {t('common.cancel')}
                   </button>
                 </div>
               </div>
@@ -1010,6 +1082,76 @@
   }
   .toc-3 { padding-left: 0.75rem; }
   .toc-4 { padding-left: 1.5rem; }
+
+  /* Quote comment popup */
+  .quote-popup {
+    position: fixed;
+    transform: translate(-50%, -100%);
+    z-index: 50;
+    background: var(--text-primary);
+    color: var(--bg-white);
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transition: opacity 0.15s;
+  }
+  .quote-popup:hover { opacity: 0.85; }
+
+  /* Quote preview in comment form */
+  .quote-preview {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .quote-preview blockquote {
+    flex: 1;
+    margin: 0;
+    padding: 8px 12px;
+    border-left: 3px solid var(--accent);
+    background: rgba(95, 155, 101, 0.06);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    border-radius: 0 4px 4px 0;
+  }
+  .quote-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--text-hint);
+    padding: 4px;
+    line-height: 1;
+  }
+  .quote-remove:hover { color: var(--text-primary); }
+
+  /* Quote in comment display */
+  .comment-quote {
+    margin: 4px 0;
+    padding: 6px 10px;
+    border-left: 3px solid var(--accent);
+    background: rgba(95, 155, 101, 0.06);
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 0 4px 4px 0;
+    transition: background 0.15s;
+  }
+  .comment-quote:hover {
+    background: rgba(95, 155, 101, 0.12);
+  }
+
+  /* Temporary highlight when scrolling to quoted text */
+  :global(.quote-highlight) {
+    background: rgba(95, 155, 101, 0.3);
+    border-radius: 2px;
+    transition: background 1s ease-out;
+  }
 
   /* Sidenotes */
   :global(.sidenote) {

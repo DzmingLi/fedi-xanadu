@@ -180,6 +180,7 @@ pub struct Comment {
     pub author_handle: Option<String>,
     pub parent_id: Option<String>,
     pub body: String,
+    pub quote_text: Option<String>,
     pub vote_score: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

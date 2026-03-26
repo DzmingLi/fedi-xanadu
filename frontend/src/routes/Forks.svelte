@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getArticle, getArticleForks, castVote } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { t } from '../lib/i18n';
   import type { Article, ForkWithTitle } from '../lib/types';
 
   let { uri } = $props<{ uri: string }>();
@@ -32,14 +33,13 @@
 {:else if article}
   <h1>Forks of "{article.title}"</h1>
   <p class="meta">
-    <a href="#/article?uri={encodeURIComponent(uri)}">← 返回原文</a>
-    &middot; {forks.length} 个 fork
+    <a href="#/article?uri={encodeURIComponent(uri)}">{t('forks.backToOriginal')}</a>
+    &middot; {forks.length} forks
   </p>
 
   {#if forks.length === 0}
     <div class="empty">
-      <p>暂无 fork</p>
-      <p class="meta">点击文章页面的「Fork」按钮创建你自己的版本</p>
+      <p>{t('forks.createHint')}</p>
     </div>
   {:else}
     <div class="fork-list">
@@ -55,11 +55,11 @@
             </div>
           </div>
           <div class="fork-votes">
-            <button class="vote-btn" onclick={() => vote(f.forked_uri, 1)} disabled={!isLoggedIn}>
+            <button class="vote-btn" title={t('common.upvote')} onclick={() => vote(f.forked_uri, 1)} disabled={!isLoggedIn}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
             </button>
             <span class="score">{f.vote_score}</span>
-            <button class="vote-btn" onclick={() => vote(f.forked_uri, -1)} disabled={!isLoggedIn}>
+            <button class="vote-btn" title={t('common.downvote')} onclick={() => vote(f.forked_uri, -1)} disabled={!isLoggedIn}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
           </div>

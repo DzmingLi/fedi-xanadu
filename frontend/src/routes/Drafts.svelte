@@ -29,7 +29,7 @@
   }
 
   async function doDelete(id: string) {
-    if (!confirm(locale === 'zh' ? '确定删除此草稿？' : 'Delete this draft?')) return;
+    if (!confirm(t('drafts.deleteConfirm'))) return;
     error = '';
     try {
       await deleteDraft(id);
@@ -48,24 +48,24 @@
   }
 </script>
 
-<h1>{locale === 'zh' ? '草稿箱' : 'Drafts'}</h1>
+<h1>{t('drafts.title')}</h1>
 
 {#if error}
   <p class="error-msg">{error}</p>
 {/if}
 
 {#if loading}
-  <p class="meta">{locale === 'zh' ? '加载中...' : 'Loading...'}</p>
+  <p class="meta">{t('drafts.loading')}</p>
 {:else if drafts.length === 0}
-  <p class="meta">{locale === 'zh' ? '暂无草稿' : 'No drafts yet'}</p>
+  <p class="meta">{t('drafts.empty')}</p>
 {:else}
   <div class="draft-list">
     {#each drafts as draft}
       <div class="draft-card">
         <div class="draft-header">
-          <h3 class="draft-title" onclick={() => editDraft(draft.id)}>
-            {draft.title || (locale === 'zh' ? '无标题' : 'Untitled')}
-          </h3>
+          <button class="draft-title" onclick={() => editDraft(draft.id)}>
+            {draft.title || t('drafts.untitled')}
+          </button>
           <span class="draft-format">{draft.content_format === 'markdown' ? 'MD' : draft.content_format === 'html' ? 'HTML' : 'Typst'}</span>
         </div>
         {#if draft.description}
@@ -77,13 +77,13 @@
         </div>
         <div class="draft-actions">
           <button class="btn-edit" onclick={() => editDraft(draft.id)}>
-            {locale === 'zh' ? '编辑' : 'Edit'}
+            {t('drafts.edit')}
           </button>
           <button class="btn-publish" onclick={() => doPublish(draft)}>
-            {locale === 'zh' ? '发布' : 'Publish'}
+            {t('drafts.publish')}
           </button>
           <button class="btn-delete" onclick={() => doDelete(draft.id)}>
-            {locale === 'zh' ? '删除' : 'Delete'}
+            {t('drafts.delete')}
           </button>
         </div>
       </div>

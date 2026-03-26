@@ -1,6 +1,7 @@
 <script lang="ts">
   import { login as apiLogin } from '../lib/api';
   import { setAuth } from '../lib/auth';
+  import { t } from '../lib/i18n';
 
   let { open = $bindable(false) } = $props();
 
@@ -37,15 +38,15 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal" onclick={(e) => e.stopPropagation()}>
-      <h2>Login with AT Protocol</h2>
-      <p class="hint">使用你的 Bluesky handle 和 App Password 登录</p>
+      <h2>{t('nav.login')}</h2>
+      <p class="hint">{t('auth.loginHint')}</p>
 
       {#if error}
         <div class="error">{error}</div>
       {/if}
 
       <label>
-        Handle
+        {t('auth.handle')}
         <input
           type="text"
           bind:value={handle}
@@ -56,7 +57,7 @@
       </label>
 
       <label>
-        App Password
+        {t('auth.password')}
         <input
           type="password"
           bind:value={password}
@@ -67,16 +68,13 @@
       </label>
 
       <p class="hint small">
-        在 <a href="https://bsky.app/settings/app-passwords" target="_blank" rel="noopener">bsky.app/settings/app-passwords</a> 创建 App Password
-      </p>
-      <p class="hint small">
-        还没有帐号？前往 <a href="https://bsky.app" target="_blank" rel="noopener">bsky.app</a> 注册 Bluesky
+        <a href="https://bsky.app/settings/app-passwords" target="_blank" rel="noopener">{t('auth.createAppPw')}</a>
       </p>
 
       <div class="actions">
-        <button class="btn-cancel" onclick={() => { open = false; }} disabled={loading}>取消</button>
+        <button class="btn-cancel" onclick={() => { open = false; }} disabled={loading}>{t('common.cancel')}</button>
         <button class="btn-login" onclick={doLogin} disabled={loading || !handle || !password}>
-          {loading ? '登录中...' : '登录'}
+          {loading ? t('common.loading') : t('auth.submit')}
         </button>
       </div>
     </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getSkillTree, forkSkillTree, adoptSkillTree, addSkillTreeEdge, removeSkillTreeEdge, castVote, listTags } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { t } from '../lib/i18n';
   import type { SkillTreeDetail, SkillTreeEdge, Tag } from '../lib/types';
 
   let { uri } = $props<{ uri: string }>();
@@ -74,7 +75,7 @@
 
   async function doAdopt() {
     await adoptSkillTree(uri);
-    alert('已采用此技能树！');
+    alert(t('skills.adopted'));
   }
 
   // Build tree structure for visualization
@@ -112,7 +113,7 @@
     </div>
     <div class="tree-actions">
       {#if isLoggedIn}
-        <button class="btn" onclick={doAdopt}>采用</button>
+        <button class="btn" onclick={doAdopt}>{t('skillTree.adopt')}</button>
         <button class="btn" onclick={doFork}>Fork</button>
         <button class="btn" onclick={() => castVote(uri, 1)}>👍</button>
       {/if}
@@ -135,10 +136,10 @@
   <!-- Edge list (editable if owner) -->
   {#if isOwner}
     <div class="editor-section">
-      <h3>编辑关系</h3>
+      <h3>{t('skillTree.editRelations')}</h3>
       <div class="edge-form">
         <div class="input-wrap">
-          <input type="text" bind:value={newParent} oninput={onInputParent} placeholder="父节点 tag ID" onfocus={onInputParent} />
+          <input type="text" bind:value={newParent} oninput={onInputParent} placeholder={t('skillTree.parentTag')} onfocus={onInputParent} />
           {#if activeInput === 'parent' && tagSuggestions.length > 0}
             <div class="suggestions">
               {#each tagSuggestions as s}
@@ -149,7 +150,7 @@
         </div>
         <span class="arrow">→</span>
         <div class="input-wrap">
-          <input type="text" bind:value={newChild} oninput={onInputChild} placeholder="子节点 tag ID" onfocus={onInputChild} />
+          <input type="text" bind:value={newChild} oninput={onInputChild} placeholder={t('skillTree.childTag')} onfocus={onInputChild} />
           {#if activeInput === 'child' && tagSuggestions.length > 0}
             <div class="suggestions">
               {#each tagSuggestions as s}
@@ -158,14 +159,14 @@
             </div>
           {/if}
         </div>
-        <button class="add-btn" onclick={addEdge}>添加</button>
+        <button class="add-btn" onclick={addEdge}>{t('common.add')}</button>
       </div>
-      <p class="hint">输入不存在的 tag ID 会自动创建新 tag</p>
+      <p class="hint">{t('skillTree.autoCreateHint')}</p>
     </div>
   {/if}
 
   <div class="edge-list">
-    <h3>所有关系 ({detail.edges.length})</h3>
+    <h3>{t('skillTree.allRelations', detail.edges.length)}</h3>
     {#each detail.edges as e}
       <div class="edge-row">
         <a href="#/tag?id={encodeURIComponent(e.parent_tag)}" class="tag">{tagName(e.parent_tag)}</a>
@@ -182,7 +183,7 @@
 {#snippet treeNode(id: string, depth: number)}
   <div class="tree-item" style="padding-left: {depth * 24}px">
     {#if treeStructure.children.has(id)}
-      <button class="collapse-btn" class:collapsed={collapsed.has(id)} onclick={() => toggleCollapse(id)}>
+      <button class="collapse-btn" title={t('skillTree.collapse')} class:collapsed={collapsed.has(id)} onclick={() => toggleCollapse(id)}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
     {:else}

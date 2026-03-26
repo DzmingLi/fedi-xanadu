@@ -175,13 +175,13 @@
         <p class="handle">@{profile.handle}</p>
       {/if}
       <div class="profile-stats">
-        <span>{profile.article_count} {locale === 'zh' ? '篇文章' : 'articles'}</span>
-        <span>{profile.series_count} {locale === 'zh' ? '个系列' : 'series'}</span>
+        <span>{profile.article_count} {t('profile.articles')}</span>
+        <span>{profile.series_count} {t('profile.seriesCount')}</span>
         <button class="stat-btn" onclick={() => { showFollowTab = showFollowTab === 'following' ? null : 'following'; }}>
-          <strong>{following.length}</strong> {locale === 'zh' ? '关注' : 'following'}
+          <strong>{following.length}</strong> {t('profile.following')}
         </button>
         <button class="stat-btn" onclick={() => { showFollowTab = showFollowTab === 'followers' ? null : 'followers'; }}>
-          <strong>{followers.length}</strong> {locale === 'zh' ? '粉丝' : 'followers'}
+          <strong>{followers.length}</strong> {t('profile.followers')}
         </button>
       </div>
     </div>
@@ -192,7 +192,7 @@
         onclick={toggleFollow}
         disabled={followLoading}
       >
-        {isFollowing ? (locale === 'zh' ? '已关注' : 'Following') : (locale === 'zh' ? '关注' : 'Follow')}
+        {isFollowing ? t('profile.unfollow') : t('profile.follow')}
       </button>
     {/if}
   </div>
@@ -214,7 +214,7 @@
       {/each}
       {#if isOwnProfile}
         <button class="edit-links-btn" onclick={startEditLinks}>
-          {locale === 'zh' ? '编辑链接' : 'Edit links'}
+          {t('profile.editLinks')}
         </button>
       {/if}
     </div>
@@ -228,7 +228,7 @@
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="links-modal" onclick={(e) => e.stopPropagation()}>
-        <h3>{locale === 'zh' ? '编辑个人链接' : 'Edit Profile Links'}</h3>
+        <h3>{t('profile.editLinksTitle')}</h3>
         {#each editLinks as link, i}
           <div class="link-row">
             <span class="link-label">{link.label}</span>
@@ -237,13 +237,13 @@
           </div>
         {/each}
         <div class="link-add-row">
-          <input bind:value={newLinkLabel} placeholder={locale === 'zh' ? '标签 (如: GitHub)' : 'Label (e.g. GitHub)'} />
+          <input bind:value={newLinkLabel} placeholder={t('profile.linkLabel')} />
           <input bind:value={newLinkUrl} placeholder="https://..." />
           <button class="link-add-btn" onclick={addLink} disabled={!newLinkLabel.trim() || !newLinkUrl.trim()}>+</button>
         </div>
         <div class="link-actions">
-          <button class="link-cancel" onclick={() => { editingLinks = false; }}>{locale === 'zh' ? '取消' : 'Cancel'}</button>
-          <button class="link-save" onclick={saveLinks}>{locale === 'zh' ? '保存' : 'Save'}</button>
+          <button class="link-cancel" onclick={() => { editingLinks = false; }}>{t('common.cancel')}</button>
+          <button class="link-save" onclick={saveLinks}>{t('common.save')}</button>
         </div>
       </div>
     </div>
@@ -252,9 +252,9 @@
   {#if showFollowTab}
     {@const list = showFollowTab === 'following' ? following : followers}
     <div class="follow-list">
-      <h3 class="section-title">{showFollowTab === 'following' ? (locale === 'zh' ? '关注' : 'Following') : (locale === 'zh' ? '粉丝' : 'Followers')}</h3>
+      <h3 class="section-title">{showFollowTab === 'following' ? t('profile.following') : t('profile.followers')}</h3>
       {#if list.length === 0}
-        <p class="empty-text">{locale === 'zh' ? '暂无' : 'None'}</p>
+        <p class="empty-text">{t('profile.none')}</p>
       {:else}
         {#each list as u}
           <a href="#/profile?did={encodeURIComponent(u.did)}" class="follow-item">
@@ -275,7 +275,7 @@
     </div>
   {/if}
 
-  <h2 class="section-title">{locale === 'zh' ? '作品' : 'Works'}</h2>
+  <h2 class="section-title">{t('profile.works')}</h2>
 
   {#each profileFeed as item}
     {#if item.type === 'article' && item.article}
@@ -286,7 +286,7 @@
           <div class="card-tags">
             {#if articleTags.has(a.at_uri)}
               {#each articleTags.get(a.at_uri)! as t}
-                <a href="#/tag?id={encodeURIComponent(t.tag_id)}" class="tag" onclick={(e) => e.stopPropagation()}>{t.tag_name}</a>
+                <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; } }}>{t.tag_name}</span>
               {/each}
             {/if}
           </div>
@@ -303,27 +303,27 @@
       <a href="#/series?id={encodeURIComponent(s.id)}" class="post-card series-card-inline">
         <div class="card-top">
           <span class="post-title">{s.title}</span>
-          <span class="series-badge">{locale === 'zh' ? '系列' : 'Series'}</span>
+          <span class="series-badge">{t('profile.seriesBadge')}</span>
         </div>
         {#if s.description}
           <p class="post-desc">{s.description}</p>
         {/if}
         <div class="card-bottom">
           <span class="post-meta">{s.created_at.split(' ')[0]}</span>
-          <span class="post-meta">{item.articleCount} {locale === 'zh' ? '篇' : 'articles'}</span>
+          <span class="post-meta">{item.articleCount} {t('profile.lectureCount')}</span>
         </div>
       </a>
     {/if}
   {/each}
 
   {#if profileFeed.length === 0}
-    <p class="empty-text">{locale === 'zh' ? '暂无作品' : 'No works yet'}</p>
+    <p class="empty-text">{t('profile.noWorks')}</p>
   {/if}
 
   {#if isOwnProfile}
     <div class="create-actions">
-      <a href="#/new" class="create-link">{locale === 'zh' ? '写文章' : 'Write article'}</a>
-      <a href="#/new-series" class="create-link">{locale === 'zh' ? '创建系列' : 'Create series'}</a>
+      <a href="#/new" class="create-link">{t('profile.writeArticle')}</a>
+      <a href="#/new-series" class="create-link">{t('profile.createSeries')}</a>
     </div>
   {/if}
 {/if}

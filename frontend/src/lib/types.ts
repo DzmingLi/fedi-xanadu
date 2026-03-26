@@ -193,6 +193,7 @@ export interface Comment {
   author_handle: string | null;
   parent_id: string | null;
   body: string;
+  quote_text: string | null;
   vote_score: number;
   created_at: string;
   updated_at: string;

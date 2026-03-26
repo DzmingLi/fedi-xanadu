@@ -4,6 +4,7 @@
   import dagre from 'cytoscape-dagre';
   import { getGraph, getTagTree, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { t } from '../lib/i18n';
   import { authorName } from '../lib/display';
   import type { GraphNode, GraphEdge, TagTreeEntry, Tag, SkillTree, SkillTreeEdge } from '../lib/types';
 
@@ -360,9 +361,7 @@
   });
 
   // --- Community skill trees state ---
-  const FIELD_LABELS: Record<string, string> = {
-    math: '数学', physics: '物理', cs: '计算机', economics: '经济学',
-  };
+  const FIELDS = ['math', 'physics', 'cs', 'economics'];
 
   let treesLoading = $state(true);
   let communityTrees = $state<SkillTree[]>([]);
@@ -381,7 +380,7 @@
   async function adopt(uri: string) {
     if (!isLoggedIn) return;
     await adoptSkillTree(uri);
-    alert('已采用该技能树！');
+    alert(t('skills.adopted'));
   }
 
   async function vote(uri: string, value: number) {
@@ -396,27 +395,27 @@
     <div class="toolbar-left">
       <div class="tab-bar">
         <button class="tab" class:active={activeTab === 'my'} onclick={() => activeTab = 'my'}>
-          我的技能
+          {t('skills.mySkills')}
         </button>
         <button class="tab" class:active={activeTab === 'community'} onclick={() => activeTab = 'community'}>
-          社区技能树
+          {t('skills.communityTrees')}
         </button>
       </div>
       {#if activeTab === 'my'}
-        <span class="lit-count">已掌握 <strong>{masteredCount}</strong> · 学习中 <strong>{learningCount}</strong></span>
+        <span class="lit-count">{t('skills.mastered')} <strong>{masteredCount}</strong> · {t('skills.learning')} <strong>{learningCount}</strong></span>
       {/if}
     </div>
     <div class="toolbar-right">
       {#if activeTab === 'my'}
         <div class="legend-inline">
-          <span class="legend-dot mastered"></span> 已掌握
-          <span class="legend-dot learning"></span> 学习中
-          <span class="legend-dot unlit"></span> 未学习
-          <span class="legend-box"></span> 可展开
+          <span class="legend-dot mastered"></span> {t('skills.mastered')}
+          <span class="legend-dot learning"></span> {t('skills.learning')}
+          <span class="legend-dot unlit"></span> {t('skills.unlearned')}
+          <span class="legend-box"></span> {t('skills.expandable')}
         </div>
-        <span class="toolbar-hint">单击切换状态 &middot; 双击进入标签</span>
+        <span class="toolbar-hint">{t('skills.statusHint')}</span>
       {:else if isLoggedIn}
-        <a href="#/skill-tree/new" class="create-btn">创建技能树</a>
+        <a href="#/skill-tree/new" class="create-btn">{t('skills.createTree')}</a>
       {/if}
     </div>
   </div>
@@ -431,12 +430,12 @@
     {/if}
   {:else}
     <div class="community-section">
-      <p class="subtitle">浏览社区分享的技能树，采用你喜欢的，或 fork 后自定义</p>
+      <p class="subtitle">{t('skills.browseHint')}</p>
 
       <div class="field-filter">
-        <button class="filter-btn" class:active={!filterField} onclick={() => filterField = ''}>全部</button>
-        {#each Object.entries(FIELD_LABELS) as [f, label]}
-          <button class="filter-btn" class:active={filterField === f} onclick={() => filterField = f}>{label}</button>
+        <button class="filter-btn" class:active={!filterField} onclick={() => filterField = ''}>{t('home.all')}</button>
+        {#each FIELDS as f}
+          <button class="filter-btn" class:active={filterField === f} onclick={() => filterField = f}>{t(`field.${f}`)}</button>
         {/each}
       </div>
 
@@ -444,39 +443,39 @@
         <p class="meta">Loading...</p>
       {:else if communityTrees.length === 0}
         <div class="empty">
-          <p>还没有技能树</p>
+          <p>{t('skills.noTrees')}</p>
           {#if isLoggedIn}
-            <a href="#/skill-tree/new">创建第一棵</a>
+            <a href="#/skill-tree/new">{t('skills.createFirst')}</a>
           {/if}
         </div>
       {:else}
         <div class="tree-list">
-          {#each filteredTrees as t (t.at_uri)}
+          {#each filteredTrees as tree (tree.at_uri)}
             <div class="tree-card">
               <div class="tree-main">
-                <a href="#/skill-tree?uri={encodeURIComponent(t.at_uri)}" class="tree-title">{t.title}</a>
-                {#if t.field}
-                  <span class="field-badge">{FIELD_LABELS[t.field] || t.field}</span>
+                <a href="#/skill-tree?uri={encodeURIComponent(tree.at_uri)}" class="tree-title">{tree.title}</a>
+                {#if tree.field}
+                  <span class="field-badge">{t(`field.${tree.field}`)}</span>
                 {/if}
-                {#if t.forked_from}
+                {#if tree.forked_from}
                   <span class="forked-badge">Fork</span>
                 {/if}
-                {#if t.description}
-                  <p class="tree-desc">{t.description}</p>
+                {#if tree.description}
+                  <p class="tree-desc">{tree.description}</p>
                 {/if}
                 <div class="tree-meta">
-                  <span>{t.author_handle ? `@${t.author_handle}` : t.did.slice(0, 20)}</span>
-                  <span>{t.edge_count} 条关系</span>
-                  <span>{t.adopt_count} 人采用</span>
+                  <span>{tree.author_handle ? `@${tree.author_handle}` : tree.did.slice(0, 20)}</span>
+                  <span>{tree.edge_count} {t('skills.edgeCount')}</span>
+                  <span>{tree.adopt_count} {t('skills.adoptCount')}</span>
                 </div>
               </div>
               <div class="tree-actions">
                 <div class="vote-col">
-                  <button class="vote-btn" onclick={() => vote(t.at_uri, 1)} disabled={!isLoggedIn}>▲</button>
-                  <span class="score">{t.score ?? 0}</span>
-                  <button class="vote-btn" onclick={() => vote(t.at_uri, -1)} disabled={!isLoggedIn}>▼</button>
+                  <button class="vote-btn" onclick={() => vote(tree.at_uri, 1)} disabled={!isLoggedIn}>▲</button>
+                  <span class="score">{tree.score ?? 0}</span>
+                  <button class="vote-btn" onclick={() => vote(tree.at_uri, -1)} disabled={!isLoggedIn}>▼</button>
                 </div>
-                <button class="adopt-btn" onclick={() => adopt(t.at_uri)} disabled={!isLoggedIn}>采用</button>
+                <button class="adopt-btn" onclick={() => adopt(tree.at_uri)} disabled={!isLoggedIn}>{t('skills.adopt')}</button>
               </div>
             </div>
           {/each}

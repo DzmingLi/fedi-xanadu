@@ -5,7 +5,7 @@ use crate::Result;
 use crate::Error;
 
 const COMMENT_SELECT: &str = "\
-    SELECT c.id, c.article_uri, c.did, p.handle AS author_handle, c.parent_id, c.body, \
+    SELECT c.id, c.article_uri, c.did, p.handle AS author_handle, c.parent_id, c.body, c.quote_text, \
     COALESCE((SELECT SUM(value) FROM comment_votes WHERE comment_id = c.id), 0) AS vote_score, \
     c.created_at, c.updated_at \
     FROM comments c LEFT JOIN profiles p ON c.did = p.did";
@@ -34,15 +34,17 @@ pub async fn create_comment(
     did: &str,
     body: &str,
     parent_id: Option<&str>,
+    quote_text: Option<&str>,
 ) -> Result<Comment> {
     sqlx::query(
-        "INSERT INTO comments (id, article_uri, did, body, parent_id) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO comments (id, article_uri, did, body, parent_id, quote_text) VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(id)
     .bind(article_uri)
     .bind(did)
     .bind(body)
     .bind(parent_id)
+    .bind(quote_text)
     .execute(pool)
     .await?;
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createSeries, listTags, listArticles, addSeriesArticle, addSeriesPrereq } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { t } from '../lib/i18n';
   import type { Tag, Article } from '../lib/types';
 
   let title = $state('');
@@ -81,10 +82,10 @@
   }
 
   async function submit() {
-    if (!getAuth()) { error = '请先登录'; return; }
-    if (!title.trim()) { error = '请输入标题'; return; }
-    if (!selectedTagId) { error = '请选择标签'; return; }
-    if (seriesArticles.length === 0) { error = '至少添加一篇文章'; return; }
+    if (!getAuth()) { error = t('auth.submit'); return; }
+    if (!title.trim()) { error = t('newSeries.errTitle'); return; }
+    if (!selectedTagId) { error = t('newSeries.errTag'); return; }
+    if (seriesArticles.length === 0) { error = t('newSeries.errArticles'); return; }
 
     creating = true;
     error = '';
@@ -105,13 +106,13 @@
 
       window.location.hash = `#/series?id=${encodeURIComponent(series.id)}`;
     } catch (e: any) {
-      error = e.message || '创建失败';
+      error = e.message || t('newSeries.errCreate');
     }
     creating = false;
   }
 </script>
 
-<h1>创建系列讲义</h1>
+<h1>{t('newSeries.title')}</h1>
 
 {#if error}
   <p class="error">{error}</p>
@@ -119,18 +120,18 @@
 
 <div class="form">
   <label>
-    标题
-    <input type="text" bind:value={title} placeholder="例：线性代数入门" />
+    {t('newSeries.titleLabel')}
+    <input type="text" bind:value={title} />
   </label>
 
   <label>
-    描述
-    <textarea bind:value={description} rows="3" placeholder="系列讲义的简要描述"></textarea>
+    {t('newArticle.descLabel')}
+    <textarea bind:value={description} rows="3" placeholder={t('newSeries.descPlaceholder')}></textarea>
   </label>
 
   <label>
-    关联标签
-    <input type="text" bind:value={tagSearch} placeholder="搜索标签..." />
+    {t('newSeries.tagLabel')}
+    <input type="text" bind:value={tagSearch} placeholder={t('newSeries.tagSearch')} />
     {#if filteredTags.length > 0}
       <div class="dropdown">
         {#each filteredTags as t}
@@ -141,15 +142,15 @@
       </div>
     {/if}
     {#if selectedTagId}
-      <span class="selected-tag">已选: {tagSearch}</span>
+      <span class="selected-tag">{t('newSeries.selectedTag', tagSearch)}</span>
     {/if}
   </label>
 
-  <h2>文章列表</h2>
-  <p class="hint">按顺序添加文章，可拖动调整顺序并建立文章间的前置关系</p>
+  <h2>{t('newSeries.articleList')}</h2>
+  <p class="hint">{t('newSeries.articleHint')}</p>
 
   <div class="article-search">
-    <input type="text" bind:value={articleSearch} placeholder="搜索文章添加到系列..." />
+    <input type="text" bind:value={articleSearch} placeholder={t('newSeries.articleSearch')} />
     {#if filteredArticles.length > 0}
       <div class="dropdown">
         {#each filteredArticles as a}
@@ -168,9 +169,9 @@
           <span class="row-num">{i + 1}</span>
           <span class="row-title">{sa.title}</span>
           <div class="row-actions">
-            <button onclick={() => moveArticle(i, -1)} disabled={i === 0} title="上移">↑</button>
-            <button onclick={() => moveArticle(i, 1)} disabled={i === seriesArticles.length - 1} title="下移">↓</button>
-            <button onclick={() => removeArticle(i)} title="移除">×</button>
+            <button onclick={() => moveArticle(i, -1)} disabled={i === 0} title={t('newSeries.moveUp')}>↑</button>
+            <button onclick={() => moveArticle(i, 1)} disabled={i === seriesArticles.length - 1} title={t('newSeries.moveDown')}>↓</button>
+            <button onclick={() => removeArticle(i)} title={t('common.remove')}>×</button>
           </div>
         </div>
       {/each}
@@ -178,15 +179,15 @@
   {/if}
 
   {#if seriesArticles.length > 1}
-    <h3>文章间前置关系</h3>
-    <p class="hint">设置系列内文章之间的直接前置依赖</p>
+    <h3>{t('newSeries.prereqTitle')}</h3>
+    <p class="hint">{t('newSeries.prereqHint')}</p>
     <div class="prereq-builder">
       <select id="prereq-article">
         {#each seriesArticles as sa, i}
           <option value={i}>#{i + 1} {sa.title}</option>
         {/each}
       </select>
-      <span>需要先读</span>
+      <span>{t('newSeries.prereqNeedsReading')}</span>
       <select id="prereq-dep">
         {#each seriesArticles as sa, i}
           <option value={i}>#{i + 1} {sa.title}</option>
@@ -196,13 +197,13 @@
         const aEl = document.getElementById('prereq-article') as HTMLSelectElement;
         const pEl = document.getElementById('prereq-dep') as HTMLSelectElement;
         addPrereq(parseInt(aEl.value), parseInt(pEl.value));
-      }}>添加</button>
+      }}>{t('common.add')}</button>
     </div>
     {#if seriesPrereqs.length > 0}
       <div class="prereq-list">
         {#each seriesPrereqs as [aIdx, pIdx], i}
           <div class="prereq-row">
-            #{aIdx + 1} {seriesArticles[aIdx].title} → 前置: #{pIdx + 1} {seriesArticles[pIdx].title}
+            #{aIdx + 1} {seriesArticles[aIdx].title} → {t('series.prereqLabel')} #{pIdx + 1} {seriesArticles[pIdx].title}
             <button onclick={() => removePrereq(i)}>×</button>
           </div>
         {/each}
@@ -212,7 +213,7 @@
 
   <div class="form-actions">
     <button class="submit-btn" onclick={submit} disabled={creating}>
-      {creating ? '创建中...' : '创建系列'}
+      {creating ? t('newSeries.creating') : t('newSeries.create')}
     </button>
   </div>
 </div>

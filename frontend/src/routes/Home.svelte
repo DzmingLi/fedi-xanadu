@@ -59,9 +59,9 @@
 
   // Top-level field categories — always show these four
   const FIELD_IDS = ['math', 'physics', 'cs', 'economics'];
-  const FIELD_FALLBACK: Record<string, string> = {
-    math: '数学', physics: '物理学', cs: '计算机科学', economics: '经济学',
-  };
+  function fieldFallback(id: string): string {
+    return t(`field.${id}`) !== `field.${id}` ? t(`field.${id}`) : id;
+  }
   let topCategories = $derived.by(() => {
     const tagMap = new Map(allTags.map(t => [t.id, t]));
     // Also discover additional roots from tagTree
@@ -76,7 +76,7 @@
 
     const allRoots = [...FIELD_IDS, ...extraRoots];
     return allRoots
-      .map(id => tagMap.get(id) ?? { id, name: FIELD_FALLBACK[id] ?? id, description: null, created_by: 'system', created_at: '' } as Tag)
+      .map(id => tagMap.get(id) ?? { id, name: fieldFallback(id), description: null, created_by: 'system', created_at: '' } as Tag)
       .filter((t): t is Tag => !!t);
   });
 
@@ -359,12 +359,12 @@
             <div class="card-tags">
               {#if articleTags.has(a.at_uri)}
                 {#each articleTags.get(a.at_uri)! as t}
-                  <a href="#/tag?id={encodeURIComponent(t.tag_id)}" class="tag" onclick={(e) => e.stopPropagation()}>{t.tag_name}</a>
+                  <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(t.tag_id)}`; } }}>{t.tag_name}</span>
                 {/each}
               {/if}
               {#if articlePrereqs.has(a.at_uri)}
                 {#each articlePrereqs.get(a.at_uri)! as p}
-                  <a href="#/tag?id={encodeURIComponent(p.tag_id)}" class="tag {p.prereq_type}" onclick={(e) => e.stopPropagation()}>{p.tag_name}</a>
+                  <span class="tag {p.prereq_type}" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(p.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(p.tag_id)}`; } }}>{p.tag_name}</span>
                 {/each}
               {/if}
             </div>
@@ -394,7 +394,7 @@
             <span class="post-title">{s.title}</span>
             {#if s.tag_name}
               <div class="card-tags">
-                <a href="#/tag?id={encodeURIComponent(s.tag_id)}" class="tag" onclick={(e) => e.stopPropagation()}>{s.tag_name}</a>
+                <span class="tag" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(s.tag_id)}`; }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); window.location.hash = `#/tag?id=${encodeURIComponent(s.tag_id)}`; } }}>{s.tag_name}</span>
               </div>
             {/if}
           </div>

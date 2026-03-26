@@ -1,13 +1,11 @@
 <script lang="ts">
   import { listTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts } from '../lib/api';
-  import { t, getLocale, onLocaleChange } from '../lib/i18n';
+  import { t } from '../lib/i18n';
   import type { Tag, Article } from '../lib/types';
-
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
 
   let { forkOf = '', editUri = '', draftId: initialDraftId = '' } = $props();
   let isEditing = $state(false);
+  // svelte-ignore state_referenced_locally
   let currentDraftId = $state(initialDraftId);
   let savingDraft = $state(false);
   let draftSaved = $state(false);
@@ -170,7 +168,7 @@
     // Need a saved article to upload to. If no savedArticleUri, create article first.
     if (!savedArticleUri) {
       if (!title.trim() || !content.trim()) {
-        error = locale === 'zh' ? '请先填写标题和内容' : 'Please fill in title and content first';
+        error = t('newArticle.fillTitleContent');
         return;
       }
       uploadingImage = true;
@@ -314,7 +312,7 @@
 
   function previewDiff() {
     if (!title.trim() || !content.trim()) {
-      error = locale === 'zh' ? '请填写标题和内容' : 'Please fill in title and content';
+      error = t('newArticle.fillRequired');
       return;
     }
     error = '';
@@ -327,7 +325,7 @@
     error = '';
     try {
       const data = {
-        title: title.trim() || (locale === 'zh' ? '无标题草稿' : 'Untitled Draft'),
+        title: title.trim() || t('newArticle.untitledDraft'),
         description: description.trim() || undefined,
         content: content,
         content_format: contentFormat,
@@ -406,10 +404,10 @@
   }
 </script>
 
-<h1>{isEditing ? (locale === 'zh' ? '编辑文章' : 'Edit Article') : forkSource ? 'Fork 文章' : t('newArticle.title')}</h1>
+<h1>{isEditing ? t('newArticle.editTitle') : forkSource ? t('newArticle.forkTitle') : t('newArticle.title')}</h1>
 
 {#if forkSource}
-  <p class="fork-hint">正在 fork 文章，编辑内容后发布</p>
+  <p class="fork-hint">{t('newArticle.forkHint')}</p>
 {/if}
 
 {#if error}
@@ -481,11 +479,11 @@
     <div class="upload-btns">
       <label class="upload-btn" class:disabled={loadingFile}>
         <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm" onchange={handleFileLoad} hidden />
-        {loadingFile ? (locale === 'zh' ? '读取中...' : 'Loading...') : (locale === 'zh' ? '上传文件' : 'Upload File')}
+        {loadingFile ? t('newArticle.readingFile') : t('newArticle.uploadFile')}
       </label>
       <label class="upload-btn" class:disabled={uploadingImage}>
         <input type="file" accept="image/*" onchange={handleImageUpload} hidden />
-        {uploadingImage ? (locale === 'zh' ? '上传中...' : 'Uploading...') : (locale === 'zh' ? '上传图片' : 'Upload Image')}
+        {uploadingImage ? t('newArticle.uploading') : t('newArticle.uploadImage')}
       </label>
     </div>
   </div>
@@ -495,9 +493,9 @@
 {#if !isEditing && !forkSource}
 <div class="form-group">
   <div class="lang-versions-header">
-    <label>{locale === 'zh' ? '其他语言版本' : 'Other Language Versions'}</label>
+    <span class="form-label">{t('newArticle.langVersions')}</span>
     <button type="button" class="btn-add-lang" onclick={addLangVersion}>
-      + {locale === 'zh' ? '添加语言' : 'Add Language'}
+      + {t('newArticle.addLangVersion')}
     </button>
   </div>
   {#each extraLangs as lv, idx}
@@ -515,13 +513,13 @@
         </select>
         <label class="upload-btn">
           <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm" onchange={(e) => handleLangFileLoad(idx, e)} hidden />
-          {locale === 'zh' ? '上传文件' : 'Upload'}
+          {t('newArticle.uploadFile')}
         </label>
         <button type="button" class="lang-remove" onclick={() => removeLangVersion(idx)}>&times;</button>
       </div>
       <textarea
         bind:value={extraLangs[idx].content}
-        placeholder={locale === 'zh' ? `${lv.lang} 版本内容...` : `${lv.lang} version content...`}
+        placeholder={t('newArticle.versionContent', lv.lang)}
         class="lang-textarea"
       ></textarea>
     </div>
@@ -530,18 +528,19 @@
 {/if}
 
 <div class="form-group">
-  <label>{t('newArticle.tagsLabel')}</label>
+  <label for="tag-input">{t('newArticle.tagsLabel')}</label>
   <div class="tag-input-row">
     <input
+      id="tag-input"
       type="text"
       bind:value={newTagInput}
-      placeholder={locale === 'zh' ? '输入标签名，回车添加' : 'Type tag name, press Enter to add'}
+      placeholder={t('newArticle.tagInput')}
       onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTag(); } }}
       onfocus={() => showTagSuggestions = true}
       onblur={() => setTimeout(() => showTagSuggestions = false, 200)}
       oninput={() => showTagSuggestions = true}
     />
-    <button type="button" class="tag-add-btn" onclick={addNewTag}>{locale === 'zh' ? '添加' : 'Add'}</button>
+    <button type="button" class="tag-add-btn" onclick={addNewTag}>{t('common.add')}</button>
     {#if showTagSuggestions && tagSuggestionList.length > 0}
       <div class="tag-suggestions">
         {#each tagSuggestionList as s}
@@ -571,7 +570,7 @@
 </div>
 
 <div class="form-group">
-  <label>{t('newArticle.prereqsLabel')}</label>
+  <label for="prereq-select">{t('newArticle.prereqsLabel')}</label>
   <p class="form-hint">{t('newArticle.prereqsHint')}</p>
 
   {#if prereqs.length > 0}
@@ -580,14 +579,14 @@
         <div class="prereq-item">
           <span class="tag {p.prereq_type}">{getTagName(p.tag_id)}</span>
           <span class="prereq-type-label">{p.prereq_type}</span>
-          <button class="prereq-remove" onclick={() => removePrereq(p.tag_id)} title="移除">&times;</button>
+          <button class="prereq-remove" onclick={() => removePrereq(p.tag_id)} title={t('common.remove')}>&times;</button>
         </div>
       {/each}
     </div>
   {/if}
 
   <div class="prereq-add">
-    <select bind:value={prereqTagId}>
+    <select id="prereq-select" bind:value={prereqTagId}>
       <option value="">{t('newArticle.selectTag')}</option>
       {#each tags.filter(t => !prereqs.some(p => p.tag_id === t.id)) as t}
         <option value={t.id}>{t.name}</option>
@@ -605,24 +604,24 @@
 {#if showDiff && forkSource}
   <div class="diff-preview">
     <div class="diff-header">
-      <h3>变更预览</h3>
-      <button class="diff-close" onclick={() => showDiff = false}>返回编辑</button>
+      <h3>{t('newArticle.diffPreview')}</h3>
+      <button class="diff-close" onclick={() => showDiff = false}>{t('newArticle.backToEdit')}</button>
     </div>
     {#if !hasChanges}
-      <p class="diff-empty">没有修改内容</p>
+      <p class="diff-empty">{t('newArticle.noChanges')}</p>
     {:else}
       <div class="diff-stats">
         <span class="diff-add">+{diffLines.filter(l => l.type === 'add').length}</span>
         <span class="diff-del">-{diffLines.filter(l => l.type === 'del').length}</span>
       </div>
-      <pre class="diff-content">{#each diffHunks as hunk}{#if hunk.collapsed}<span class="line-collapse">⋯ {hunk.collapsed} 行未修改 ⋯</span>
+      <pre class="diff-content">{#each diffHunks as hunk}{#if hunk.collapsed}<span class="line-collapse">⋯ {t('newArticle.linesUnchanged', hunk.collapsed)} ⋯</span>
 {:else}{#each hunk.lines as line}{#if line.type === 'add'}<span class="line-add">+{line.text}</span>
 {:else if line.type === 'del'}<span class="line-del">-{line.text}</span>
 {:else}<span class="line-same"> {line.text}</span>
 {/if}{/each}{/if}{/each}</pre>
     {/if}
     <button class="btn btn-primary" onclick={submit} disabled={submitting || !hasChanges}>
-      {submitting ? t('newArticle.publishing') : '确认发布 Fork'}
+      {submitting ? t('newArticle.publishing') : t('newArticle.confirmFork')}
     </button>
   </div>
 {:else}
@@ -630,17 +629,17 @@
     {#if !isEditing}
       <button class="btn btn-draft" onclick={handleSaveDraft} disabled={savingDraft}>
         {savingDraft
-          ? (locale === 'zh' ? '保存中...' : 'Saving...')
+          ? t('newArticle.saving')
           : draftSaved
-            ? (locale === 'zh' ? '已保存' : 'Saved!')
+            ? t('newArticle.saved')
             : currentDraftId
-              ? (locale === 'zh' ? '更新草稿' : 'Update Draft')
-              : (locale === 'zh' ? '存为草稿' : 'Save Draft')}
+              ? t('newArticle.updateDraft')
+              : t('newArticle.saveDraft')}
       </button>
     {/if}
     {#if forkSource}
       <button class="btn btn-secondary" onclick={previewDiff}>
-        预览差异
+        {t('newArticle.previewDiff')}
       </button>
     {/if}
     <button class="btn btn-primary" onclick={forkSource ? previewDiff : submit} disabled={submitting}>
@@ -836,7 +835,7 @@
     justify-content: space-between;
     margin-bottom: 8px;
   }
-  .lang-versions-header label { margin-bottom: 0; }
+  .lang-versions-header .form-label { margin-bottom: 0; font-weight: 500; }
   .btn-add-lang {
     font-size: 12px;
     color: var(--accent);

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { listBookmarks, moveBookmark, removeBookmark, getArticlesByDid, listSeries, getAllSeriesArticles } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { t } from '../lib/i18n';
   import type { BookmarkWithTitle, Article, Series } from '../lib/types';
 
   let bookmarks = $state<BookmarkWithTitle[]>([]);
@@ -8,7 +9,7 @@
   let allSeries = $state<Series[]>([]);
   let seriesArticleMap = $state<Map<string, string[]>>(new Map());
   let loading = $state(true);
-  let expandedFolders = $state(new Set<string>(['/', '/系列']));
+  let expandedFolders = $state(new Set<string>(['/', `/${t('library.seriesFolder')}`]));
   let selectedFolder = $state('/');
   let newFolderName = $state('');
   let showNewFolder = $state(false);
@@ -31,7 +32,7 @@
   // Hierarchical folder structure for tree rendering
   type FolderNode = { name: string; path: string; children: FolderNode[]; count: number };
   let folderNodes = $derived.by(() => {
-    const root: FolderNode = { name: '全部收藏', path: '/', children: [], count: 0 };
+    const root: FolderNode = { name: t('nav.library'), path: '/', children: [], count: 0 };
     const nodeMap = new Map<string, FolderNode>();
     nodeMap.set('/', root);
 
@@ -102,7 +103,7 @@
   // "My articles" as virtual bookmark items — series articles go into series folders
   let myArticleItems = $derived.by(() => {
     const items: BookmarkWithTitle[] = [];
-    // Articles that belong to a series → placed in /系列/SeriesTitle folder
+    // Articles that belong to a series → placed in /${t('library.seriesFolder')}/SeriesTitle folder
     for (const s of allSeries) {
       const articleUris = seriesArticleMap.get(s.id) || [];
       for (const uri of articleUris) {
@@ -110,7 +111,7 @@
         if (art) {
           items.push({
             article_uri: art.at_uri,
-            folder_path: `/系列/${s.title}`,
+            folder_path: `/${t('library.seriesFolder')}/${s.title}`,
             created_at: art.created_at,
             title: art.title,
             description: art.description,
@@ -123,7 +124,7 @@
       if (!seriesArticleUris.has(a.at_uri)) {
         items.push({
           article_uri: a.at_uri,
-          folder_path: '/我的作品',
+          folder_path: `/${t('profile.works')}`,
           created_at: a.created_at,
           title: a.title,
           description: a.description,
@@ -188,8 +189,8 @@
 <div class="library-layout">
   <aside class="folder-tree">
     <div class="tree-header">
-      <span class="tree-title">知识库</span>
-      <button class="tree-action" onclick={() => { showNewFolder = !showNewFolder; }} title="新建文件夹">
+      <span class="tree-title">{t('nav.library')}</span>
+      <button class="tree-action" onclick={() => { showNewFolder = !showNewFolder; }} title={t('library.newFolder')}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
     </div>
@@ -199,26 +200,29 @@
         <input
           type="text"
           bind:value={newFolderName}
-          placeholder="文件夹名称"
+          placeholder={t('library.folderName')}
           onkeydown={(e) => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') showNewFolder = false; }}
         />
-        <button onclick={createFolder}>创建</button>
+        <button onclick={createFolder}>{t('common.create')}</button>
       </div>
     {/if}
 
     <nav class="tree-nav">
       {#snippet folderItem(node: FolderNode, depth: number)}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="tree-item"
           class:selected={selectedFolder === node.path}
           style="padding-left: {8 + depth * 16}px"
+          role="treeitem"
+          tabindex="0"
+          aria-selected={selectedFolder === node.path}
           onclick={() => selectFolder(node.path)}
+          onkeydown={(e) => { if (e.key === 'Enter') selectFolder(node.path); }}
           ondragover={(e) => e.preventDefault()}
           ondrop={() => onDrop(node.path)}
         >
           {#if node.children.length > 0}
-            <button class="tree-chevron" class:open={expandedFolders.has(node.path)} onclick={(e) => { e.stopPropagation(); toggleFolder(node.path); }}>
+            <button class="tree-chevron" title={t('article.toggleCollapse')} class:open={expandedFolders.has(node.path)} onclick={(e) => { e.stopPropagation(); toggleFolder(node.path); }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
           {:else}
@@ -248,16 +252,16 @@
 
   <main class="file-list">
     <div class="list-header">
-      <span class="list-path">{selectedFolder === '/' ? '全部收藏' : selectedFolder}</span>
-      <span class="list-count">{visibleArticles.length} 篇</span>
+      <span class="list-path">{selectedFolder === '/' ? t('nav.library') : selectedFolder}</span>
+      <span class="list-count">{visibleArticles.length}</span>
     </div>
 
     {#if loading}
-      <p class="meta">加载中...</p>
+      <p class="meta">{t('common.loading')}</p>
     {:else if visibleArticles.length === 0}
       <div class="empty-library">
-        <p>此文件夹为空</p>
-        <p class="meta">在文章页面点击「收藏」按钮添加文章</p>
+        <p>{t('library.emptyFolder')}</p>
+        <p class="meta">{t('library.emptyHint')}</p>
       </div>
     {:else}
       {#each visibleArticles as b}
@@ -279,7 +283,7 @@
           </div>
           <div class="file-actions">
             <span class="file-folder">{b.folder_path}</span>
-            <button class="file-remove" onclick={(e) => { e.preventDefault(); e.stopPropagation(); doRemoveBookmark(b.article_uri); }} title="取消收藏">
+            <button class="file-remove" onclick={(e) => { e.preventDefault(); e.stopPropagation(); doRemoveBookmark(b.article_uri); }} title={t('library.removeBookmark')}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>

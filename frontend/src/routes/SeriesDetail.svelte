@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getSeries, getArticleVotes, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { t } from '../lib/i18n';
   import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, VoteSummary, BookmarkWithTitle } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
@@ -115,7 +116,7 @@
     {/if}
     <div class="series-meta">
       <a href="#/tag?id={encodeURIComponent(detail.series.tag_id)}" class="tag">{detail.series.tag_id}</a>
-      <span class="meta">{detail.articles.length} 篇文章</span>
+      <span class="meta">{detail.articles.length} {t('series.articles')}</span>
       <span class="meta"><a href="#/profile?did={encodeURIComponent(detail.series.created_by)}">{detail.series.created_by}</a></span>
     </div>
   </div>
@@ -127,7 +128,7 @@
         <div class="item-content">
           {#if prereqMap.has(article.article_uri)}
             <div class="item-prereqs">
-              前置:
+              {t('series.prereqLabel')}
               {#each prereqMap.get(article.article_uri)! as pUri}
                 {@const pArticle = articleByUri.get(pUri)}
                 {#if pArticle}
@@ -144,10 +145,10 @@
           {/if}
           <div class="item-actions">
             <span class="vote-score">{(articleVotes.get(article.article_uri)?.score) ?? 0}</span>
-            <button class="action-btn" onclick={() => voteArticle(article.article_uri, 1)} disabled={!isLoggedIn} title="赞">
+            <button class="action-btn" onclick={() => voteArticle(article.article_uri, 1)} disabled={!isLoggedIn} title={t('common.upvote')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-6 0v4H5a2 2 0 00-2 2v7a2 2 0 002 2h14l-5-16z"/></svg>
             </button>
-            <button class="action-btn" onclick={() => toggleBookmark(article.article_uri)} disabled={!isLoggedIn} title="收藏">
+            <button class="action-btn" onclick={() => toggleBookmark(article.article_uri)} disabled={!isLoggedIn} title={t('article.bookmark')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill={bookmarkedUris.has(article.article_uri) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
             </button>
           </div>

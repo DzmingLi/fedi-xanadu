@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes } from '../lib/api';
   import { authorName } from '../lib/display';
+  import { t } from '../lib/i18n';
   import type { Tag, Article, UserSkill, VoteSummary } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
@@ -57,17 +58,17 @@
     <div class="tag-title-row">
       <h1>{tag.name}</h1>
       <button class="skill-btn" class:lit={isLit} onclick={toggleSkill}>
-        {isLit ? '已掌握' : '点亮'}
+        {isLit ? t('tags.mastered') : t('tags.light')}
       </button>
     </div>
     {#if tag.description}
       <p class="tag-desc">{tag.description}</p>
     {/if}
-    <p class="tag-meta">{articles.length} 篇文章</p>
+    <p class="tag-meta">{articles.length} {t('tags.articles')}</p>
   </div>
 
   {#if articles.length === 0}
-    <p class="meta">该标签下暂无文章</p>
+    <p class="meta">{t('tags.empty')}</p>
   {:else}
     <div class="columns">
       <div class="column">

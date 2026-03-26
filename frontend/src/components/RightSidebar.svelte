@@ -1,5 +1,6 @@
 <script lang="ts">
   import { listSkills, listTags, getAllArticlePrereqs, getAllArticleTags } from '../lib/api';
+  import { t } from '../lib/i18n';
   import type { UserSkill, Tag, ArticlePrereqBulkRow, ArticleTagRow } from '../lib/types';
 
   let skills = $state<UserSkill[]>([]);
@@ -67,19 +68,19 @@
 
 <aside class="right-sidebar">
   <div class="sidebar-section">
-    <div class="sidebar-heading">你的技能</div>
-    <p class="sidebar-text">已点亮 <strong>{litCount}</strong> 个标签</p>
-    <a href="#/skills" class="sidebar-link-small">管理技能树 &rarr;</a>
+    <div class="sidebar-heading">{t('rsidebar.yourSkills')}</div>
+    <p class="sidebar-text">{t('rsidebar.litTags', litCount)}</p>
+    <a href="#/skills" class="sidebar-link-small">{t('rsidebar.manageTree')}</a>
   </div>
 
   <div class="sidebar-divider"></div>
 
   <div class="sidebar-section">
-    <div class="sidebar-heading">可探索领域</div>
+    <div class="sidebar-heading">{t('rsidebar.explore')}</div>
     {#if loading}
-      <p class="sidebar-text">加载中...</p>
+      <p class="sidebar-text">{t('common.loading')}</p>
     {:else if explorableTags.length === 0}
-      <p class="sidebar-text">点亮更多技能以解锁新领域</p>
+      <p class="sidebar-text">{t('rsidebar.lightMoreHint')}</p>
     {:else}
       <div class="explore-tags">
         {#each explorableTags as t}

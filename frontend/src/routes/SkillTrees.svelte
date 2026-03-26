@@ -1,32 +1,28 @@
 <script lang="ts">
   import { listSkillTrees, adoptSkillTree, castVote, getMyVote } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { t } from '../lib/i18n';
   import { authorName } from '../lib/display';
   import type { SkillTree } from '../lib/types';
 
-  const FIELD_LABELS: Record<string, string> = {
-    math: '数学', physics: '物理', cs: '计算机', economics: '经济学',
-  };
+  const FIELDS = ['math', 'physics', 'cs', 'economics'];
 
   let trees = $state<SkillTree[]>([]);
   let loading = $state(true);
   let filterField = $state('');
   let isLoggedIn = $derived(!!getAuth());
   let filteredTrees = $derived(
-    filterField ? trees.filter(t => t.field === filterField) : trees
-  );
-  let availableFields = $derived(
-    [...new Set(trees.map(t => t.field).filter((f): f is string => !!f))].sort()
+    filterField ? trees.filter(tr => tr.field === filterField) : trees
   );
 
   $effect(() => {
-    listSkillTrees().then(t => { trees = t; loading = false; });
+    listSkillTrees().then(list => { trees = list; loading = false; });
   });
 
   async function adopt(uri: string) {
     if (!isLoggedIn) return;
     await adoptSkillTree(uri);
-    alert('已采用该技能树！');
+    alert(t('skills.adopted'));
   }
 
   async function vote(uri: string, value: number) {
@@ -37,57 +33,57 @@
 </script>
 
 <div class="header">
-  <h1>Skill Trees</h1>
+  <h1>{t('skills.communityTrees')}</h1>
   {#if isLoggedIn}
-    <a href="#/skill-tree/new" class="create-btn">创建技能树</a>
+    <a href="#/skill-tree/new" class="create-btn">{t('skills.createTree')}</a>
   {/if}
 </div>
-<p class="subtitle">浏览社区分享的技能树，采用你喜欢的，或 fork 后自定义</p>
+<p class="subtitle">{t('skills.browseHint')}</p>
 
   <div class="field-filter">
-    <button class="filter-btn" class:active={!filterField} onclick={() => filterField = ''}>全部</button>
-    {#each Object.entries(FIELD_LABELS) as [f, label]}
-      <button class="filter-btn" class:active={filterField === f} onclick={() => filterField = f}>{label}</button>
+    <button class="filter-btn" class:active={!filterField} onclick={() => filterField = ''}>{t('home.all')}</button>
+    {#each FIELDS as f}
+      <button class="filter-btn" class:active={filterField === f} onclick={() => filterField = f}>{t(`field.${f}`)}</button>
     {/each}
   </div>
 
 {#if loading}
-  <p class="meta">Loading...</p>
+  <p class="meta">{t('common.loading')}</p>
 {:else if trees.length === 0}
   <div class="empty">
-    <p>还没有技能树</p>
+    <p>{t('skills.noTrees')}</p>
     {#if isLoggedIn}
-      <a href="#/skill-tree/new">创建第一棵</a>
+      <a href="#/skill-tree/new">{t('skills.createFirst')}</a>
     {/if}
   </div>
 {:else}
   <div class="tree-list">
-    {#each filteredTrees as t (t.at_uri)}
+    {#each filteredTrees as tree (tree.at_uri)}
       <div class="tree-card">
         <div class="tree-main">
-          <a href="#/skill-tree?uri={encodeURIComponent(t.at_uri)}" class="tree-title">{t.title}</a>
-          {#if t.field}
-            <span class="field-badge">{FIELD_LABELS[t.field] || t.field}</span>
+          <a href="#/skill-tree?uri={encodeURIComponent(tree.at_uri)}" class="tree-title">{tree.title}</a>
+          {#if tree.field}
+            <span class="field-badge">{t(`field.${tree.field}`)}</span>
           {/if}
-          {#if t.forked_from}
+          {#if tree.forked_from}
             <span class="forked-badge">Fork</span>
           {/if}
-          {#if t.description}
-            <p class="tree-desc">{t.description}</p>
+          {#if tree.description}
+            <p class="tree-desc">{tree.description}</p>
           {/if}
           <div class="tree-meta">
-            <span>{t.author_handle ? `@${t.author_handle}` : t.did.slice(0, 20)}</span>
-            <span>{t.edge_count} 条关系</span>
-            <span>{t.adopt_count} 人采用</span>
+            <span>{tree.author_handle ? `@${tree.author_handle}` : tree.did.slice(0, 20)}</span>
+            <span>{tree.edge_count} {t('skills.edgeCount')}</span>
+            <span>{tree.adopt_count} {t('skills.adoptCount')}</span>
           </div>
         </div>
         <div class="tree-actions">
           <div class="vote-col">
-            <button class="vote-btn" onclick={() => vote(t.at_uri, 1)} disabled={!isLoggedIn}>▲</button>
-            <span class="score">{t.score ?? 0}</span>
-            <button class="vote-btn" onclick={() => vote(t.at_uri, -1)} disabled={!isLoggedIn}>▼</button>
+            <button class="vote-btn" onclick={() => vote(tree.at_uri, 1)} disabled={!isLoggedIn}>▲</button>
+            <span class="score">{tree.score ?? 0}</span>
+            <button class="vote-btn" onclick={() => vote(tree.at_uri, -1)} disabled={!isLoggedIn}>▼</button>
           </div>
-          <button class="adopt-btn" onclick={() => adopt(t.at_uri)} disabled={!isLoggedIn}>采用</button>
+          <button class="adopt-btn" onclick={() => adopt(tree.at_uri)} disabled={!isLoggedIn}>{t('skills.adopt')}</button>
         </div>
       </div>
     {/each}

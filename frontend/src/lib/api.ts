@@ -170,8 +170,8 @@ export async function uploadImage(articleUri: string, file: File): Promise<{ fil
 
 // Comments
 export const listComments = (uri: string) => get<Comment[]>(`/comments?uri=${encodeURIComponent(uri)}`);
-export const createComment = (article_uri: string, body: string, parent_id?: string) =>
-  post<Comment>('/comments', { article_uri, body, parent_id });
+export const createComment = (article_uri: string, body: string, parent_id?: string, quote_text?: string) =>
+  post<Comment>('/comments', { article_uri, body, parent_id, quote_text });
 export const updateComment = (id: string, body: string) =>
   post<Comment>('/comments/update', { id, body });
 export const deleteComment = (id: string) =>
