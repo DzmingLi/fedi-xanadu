@@ -182,8 +182,54 @@
           };
         };
     in
+    let
+      homeManagerModule = { config, lib, pkgs, ... }:
+        let
+          cfg = config.programs.fx;
+          pkg = self.packages.${pkgs.system}.default;
+        in {
+          options.programs.fx = {
+            enable = lib.mkEnableOption "fx CLI for Fedi-Xanadu";
+            server = lib.mkOption {
+              type = lib.types.str;
+              default = "https://fedi-xanadu.dzming.li";
+              description = "Fedi-Xanadu server URL";
+            };
+            credentialFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = ''
+                Path to a file containing login credentials, one per line:
+                  handle=user.bsky.social
+                  password=xxxx-xxxx-xxxx-xxxx
+                The file should be readable only by the user (mode 0400).
+                If set, fx login runs automatically on activation.
+              '';
+            };
+          };
+
+          config = lib.mkIf cfg.enable {
+            home.packages = [ pkg ];
+
+            # Auto-login on activation if credential file is provided
+            home.activation.fx-login = lib.mkIf (cfg.credentialFile != null) (
+              lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+                _cred_file="${cfg.credentialFile}"
+                if [ -f "$_cred_file" ]; then
+                  _handle=$(grep '^handle=' "$_cred_file" | cut -d= -f2-)
+                  _password=$(grep '^password=' "$_cred_file" | cut -d= -f2-)
+                  if [ -n "$_handle" ] && [ -n "$_password" ]; then
+                    ${pkg}/bin/fx --server "${cfg.server}" login "$_handle" "$_password" 2>/dev/null || true
+                  fi
+                fi
+              ''
+            );
+          };
+        };
+    in
     {
       nixosModules.default = nixosModule;
+      homeManagerModules.default = homeManagerModule;
     } //
     flake-utils.lib.eachDefaultSystem (system:
       let
