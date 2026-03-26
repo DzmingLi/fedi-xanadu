@@ -228,7 +228,8 @@
             home.packages = [
               (if cfg.adminSecretFile != null then
                 pkgs.writeShellScriptBin "fx" ''
-                  export FX_ADMIN_SECRET="$(cat ${cfg.adminSecretFile})"
+                  _secret="$(cat ${cfg.adminSecretFile})"
+                  export FX_ADMIN_SECRET="''${_secret#FX_ADMIN_SECRET=}"
                   exec ${pkg}/bin/fx "$@"
                 ''
               else pkg)
