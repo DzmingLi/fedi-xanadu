@@ -11,6 +11,7 @@ pub struct AppState {
     pub pool: PgPool,
     pub pijul: Arc<PijulStore>,
     pub at_client: AtClient,
+    pub admin_secret: Option<String>,
 }
 
 impl AppState {
@@ -25,6 +26,7 @@ impl AppState {
             pool,
             pijul,
             at_client,
+            admin_secret: config.admin_secret.clone(),
         })
     }
 }

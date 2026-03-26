@@ -257,10 +257,12 @@
         contentFormat = 'markdown';
       } else if (name.endsWith('.typ') || name.endsWith('.typst')) {
         contentFormat = 'typst';
+      } else if (name.endsWith('.html') || name.endsWith('.htm')) {
+        contentFormat = 'html';
       }
       // Use filename (without extension) as title if title is empty
       if (!title.trim()) {
-        title = file.name.replace(/\.(md|markdown|typ|typst)$/i, '');
+        title = file.name.replace(/\.(md|markdown|typ|typst|html|htm)$/i, '');
       }
     } catch (err: any) {
       error = err.message;
@@ -407,16 +409,17 @@
     <select id="format" bind:value={contentFormat}>
       <option value="typst">Typst</option>
       <option value="markdown">Markdown + KaTeX</option>
+      <option value="html">HTML</option>
     </select>
   </div>
 </div>
 
 <div class="form-group">
   <div class="content-label-row">
-    <label for="content">{t('newArticle.contentLabel')} ({contentFormat === 'markdown' ? 'Markdown' : 'Typst'})</label>
+    <label for="content">{t('newArticle.contentLabel')} ({contentFormat === 'markdown' ? 'Markdown' : contentFormat === 'html' ? 'HTML' : 'Typst'})</label>
     <div class="upload-btns">
       <label class="upload-btn" class:disabled={loadingFile}>
-        <input type="file" accept=".md,.markdown,.typ,.typst" onchange={handleFileLoad} hidden />
+        <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm" onchange={handleFileLoad} hidden />
         {loadingFile ? (locale === 'zh' ? '读取中...' : 'Loading...') : (locale === 'zh' ? '上传文件' : 'Upload File')}
       </label>
       <label class="upload-btn" class:disabled={uploadingImage}>
@@ -425,7 +428,7 @@
       </label>
     </div>
   </div>
-  <textarea id="content" bind:value={content} placeholder={contentFormat === 'markdown' ? '# My Article\n\nSome text with $x^2$ math' : '= My Article'}></textarea>
+  <textarea id="content" bind:value={content} placeholder={contentFormat === 'markdown' ? '# My Article\n\nSome text with $x^2$ math' : contentFormat === 'html' ? '<!DOCTYPE html>\n<html>\n<body>\n  <h1>My Article</h1>\n</body>\n</html>' : '= My Article'}></textarea>
 </div>
 
 <div class="form-group">

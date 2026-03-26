@@ -1,3 +1,4 @@
+mod admin;
 mod articles;
 mod auth;
 mod bookmarks;
@@ -126,6 +127,8 @@ pub fn routes() -> Router<AppState> {
         .route("/graph", get(graph::get_graph))
         // Search
         .route("/search", get(articles::search_articles))
+        // Admin
+        .route("/admin/platform-users", get(admin::list_platform_users).post(admin::create_platform_user))
 }
 
 // --- Health ---
@@ -210,11 +213,16 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
 }
 
 /// Get PDS session details for AT Protocol side-effects.
+/// Returns `None` for platform-local users (no PDS).
 pub(crate) async fn pds_session(
     pool: &sqlx::PgPool,
     token: &str,
 ) -> Option<auth_service::PdsSession> {
-    auth_service::get_session_for_pds(pool, token).await.ok()?
+    let session = auth_service::get_session_for_pds(pool, token).await.ok()??;
+    if session.pds_url.is_empty() {
+        return None;
+    }
+    Some(session)
 }
 
 // --- Shared helpers ---

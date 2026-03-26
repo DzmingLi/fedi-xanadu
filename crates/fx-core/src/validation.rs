@@ -84,6 +84,18 @@ pub fn validate_tag_id(id: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
+const ALLOWED_FORMATS: &[&str] = &["typst", "markdown", "html"];
+
+pub fn validate_content_format(format: &str) -> Result<(), ValidationError> {
+    if !ALLOWED_FORMATS.contains(&format) {
+        return Err(ValidationError {
+            field: "content_format".into(),
+            message: format!("unsupported content format: {format} (allowed: typst, markdown, html)"),
+        });
+    }
+    Ok(())
+}
+
 pub fn validate_at_uri(uri: &str) -> Result<(), ValidationError> {
     if !uri.starts_with("at://") {
         return Err(ValidationError {
@@ -98,6 +110,7 @@ pub fn validate_at_uri(uri: &str) -> Result<(), ValidationError> {
 pub fn validate_create_article(input: &crate::models::CreateArticle) -> Result<(), Error> {
     let mut errors = Vec::new();
     if let Err(e) = validate_title(&input.title) { errors.push(e); }
+    if let Err(e) = validate_content_format(&input.content_format) { errors.push(e); }
     if let Err(e) = validate_article_content(&input.content) { errors.push(e); }
     for tag in &input.tags {
         if let Err(e) = validate_tag_id(tag) { errors.push(e); }
@@ -111,6 +124,7 @@ pub fn validate_create_article(input: &crate::models::CreateArticle) -> Result<(
 pub fn validate_save_draft(input: &crate::models::SaveDraft) -> Result<(), Error> {
     let mut errors = Vec::new();
     if let Err(e) = validate_title(&input.title) { errors.push(e); }
+    if let Err(e) = validate_content_format(&input.content_format) { errors.push(e); }
     if let Err(e) = validate_article_content(&input.content) { errors.push(e); }
     for tag in &input.tags {
         if let Err(e) = validate_tag_id(tag) { errors.push(e); }

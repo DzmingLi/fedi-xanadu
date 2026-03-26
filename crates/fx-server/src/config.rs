@@ -14,6 +14,9 @@ pub struct Config {
     /// Comma-separated string of allowed CORS origins. Empty = same-origin only.
     #[serde(default)]
     pub cors_origins: String,
+    /// Shared secret for admin API endpoints. Set via FX_ADMIN_SECRET env var.
+    #[serde(default)]
+    pub admin_secret: Option<String>,
 }
 
 impl Default for Config {
@@ -25,6 +28,7 @@ impl Default for Config {
             pijul_store_path: "data/pijul-store".into(),
             instance_name: "Fedi-Xanadu".into(),
             cors_origins: String::new(),
+            admin_secret: None,
         }
     }
 }

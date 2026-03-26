@@ -3,7 +3,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
 };
-use fx_core::services::auth_service;
+use fx_core::services::{auth_service, platform_user_service};
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
@@ -28,6 +28,54 @@ pub async fn login(
     State(state): State<AppState>,
     Json(input): Json<LoginInput>,
 ) -> ApiResult<Json<LoginOutput>> {
+    // Try platform-local user first
+    if let Some(platform_user) = platform_user_service::get_by_handle(&state.pool, &input.identifier).await? {
+        let password = input.password.clone();
+        let hash = platform_user.password_hash.clone();
+        let valid = tokio::task::spawn_blocking(move || {
+            platform_user_service::verify_password(&password, &hash).unwrap_or(false)
+        }).await.unwrap_or(false);
+
+        if !valid {
+            return Err(AppError(fx_core::Error::Unauthorized));
+        }
+
+        let token = gen_session_token();
+
+        // Fetch display info from profiles table
+        let profile: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT display_name, avatar_url FROM profiles WHERE did = $1",
+        )
+        .bind(&platform_user.did)
+        .fetch_optional(&state.pool)
+        .await?;
+
+        let (display_name, avatar) = profile.unwrap_or((None, None));
+
+        auth_service::create_session(
+            &state.pool,
+            &auth_service::CreateSessionInput {
+                token: &token,
+                did: &platform_user.did,
+                handle: &platform_user.handle,
+                display_name: display_name.as_deref(),
+                avatar: avatar.as_deref(),
+                pds_url: "",
+                access_jwt: "",
+                refresh_jwt: None,
+            },
+        ).await?;
+
+        return Ok(Json(LoginOutput {
+            token,
+            did: platform_user.did,
+            handle: platform_user.handle,
+            display_name,
+            avatar,
+        }));
+    }
+
+    // Fall through to AT Protocol login
     let (did, pds_url) = state
         .at_client
         .resolve_handle(&input.identifier)

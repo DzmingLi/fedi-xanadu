@@ -40,7 +40,7 @@ enum Command {
     Tags,
     /// Upload a local file as a new article
     Upload {
-        /// Path to .md or .typ file
+        /// Path to .md, .typ, or .html file
         file: PathBuf,
         /// Article title (defaults to filename)
         #[arg(short, long)]
@@ -62,7 +62,7 @@ enum Command {
     Update {
         /// Article AT URI
         uri: String,
-        /// Path to .md or .typ file (updates content if provided)
+        /// Path to .md, .typ, or .html file (updates content if provided)
         #[arg(short, long)]
         file: Option<PathBuf>,
         /// New title
@@ -309,7 +309,8 @@ async fn main() -> Result<()> {
             let content_format = match ext {
                 "md" | "markdown" => "markdown",
                 "typ" | "typst" => "typst",
-                _ => bail!("Unsupported file extension: .{ext} (use .md or .typ)"),
+                "html" | "htm" => "html",
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
             };
 
             let title = title.unwrap_or_else(|| {

@@ -44,7 +44,11 @@ pub async fn get_article_content(
     let node_id = uri_to_node_id(&uri);
     let repo = state.pijul.repo_path(&node_id);
 
-    let src_ext = if format == "markdown" { "md" } else { "typ" };
+    let src_ext = match format.as_str() {
+        "markdown" => "md",
+        "html" => "html",
+        _ => "typ",
+    };
     let src_path = repo.join(format!("content.{src_ext}"));
     let html_path = repo.join("content.html");
 
@@ -61,7 +65,10 @@ pub async fn get_article_content(
         }
     };
 
-    let html = if is_cached_fresh(&html_path, &src_path).await {
+    // HTML format: source IS the html, no rendering needed
+    let html = if format == "html" {
+        source.clone()
+    } else if is_cached_fresh(&html_path, &src_path).await {
         tokio::fs::read_to_string(&html_path).await?
     } else {
         let rendered = render_content(&format, &source, &repo)?;
@@ -123,11 +130,18 @@ pub async fn create_article(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = if input.content_format == "markdown" { "md" } else { "typ" };
+    let src_ext = match input.content_format.as_str() {
+        "markdown" => "md",
+        "html" => "html",
+        _ => "typ",
+    };
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
 
-    let rendered_html = render_content(&input.content_format, &input.content, &repo_path)?;
-    let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
+    // For HTML format, no separate rendered file needed (source is the HTML)
+    if input.content_format != "html" {
+        let rendered_html = render_content(&input.content_format, &input.content, &repo_path)?;
+        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
+    }
 
     if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
         tracing::warn!("pijul record failed for {node_id}: {e}");
@@ -459,11 +473,17 @@ pub async fn update_article(
 
         let node_id = uri_to_node_id(&input.uri);
         let repo_path = state.pijul.repo_path(&node_id);
-        let src_ext = if format == "markdown" { "md" } else { "typ" };
+        let src_ext = match format.as_str() {
+            "markdown" => "md",
+            "html" => "html",
+            _ => "typ",
+        };
         tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
 
-        let rendered = render_content(&format, content, &repo_path)?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+        if format != "html" {
+            let rendered = render_content(&format, content, &repo_path)?;
+            let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+        }
 
         let hash = content_hash(content);
         article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;

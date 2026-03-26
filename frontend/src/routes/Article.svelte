@@ -405,7 +405,16 @@
       </div>
 
       {#if content}
-        <div class="content" bind:this={contentEl}>{@html content.html}</div>
+        {#if article?.content_format === 'html'}
+          <iframe
+            class="html-sandbox"
+            sandbox="allow-scripts"
+            srcdoc={content.html}
+            title={article.title}
+          ></iframe>
+        {:else}
+          <div class="content" bind:this={contentEl}>{@html content.html}</div>
+        {/if}
       {/if}
 
       <div class="action-bar">
@@ -538,6 +547,14 @@
 {/if}
 
 <style>
+  .html-sandbox {
+    width: 100%;
+    min-height: 600px;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 8px;
+    background: white;
+  }
+
   .article-layout {
     position: relative;
   }

@@ -66,7 +66,7 @@
           <h3 class="draft-title" onclick={() => editDraft(draft.id)}>
             {draft.title || (locale === 'zh' ? '无标题' : 'Untitled')}
           </h3>
-          <span class="draft-format">{draft.content_format === 'markdown' ? 'MD' : 'Typst'}</span>
+          <span class="draft-format">{draft.content_format === 'markdown' ? 'MD' : draft.content_format === 'html' ? 'HTML' : 'Typst'}</span>
         </div>
         {#if draft.description}
           <p class="draft-desc">{draft.description}</p>
