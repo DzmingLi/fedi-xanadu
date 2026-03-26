@@ -456,17 +456,8 @@
       </div>
 
       {#if content}
-        {#if article?.content_format === 'html'}
-          <iframe
-            class="html-sandbox"
-            sandbox="allow-scripts"
-            srcdoc={content.html}
-            title={article.title}
-          ></iframe>
-        {:else}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="content" bind:this={contentEl} onmouseup={onContentMouseUp}>{@html content.html}</div>
-        {/if}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="content" bind:this={contentEl} onmouseup={onContentMouseUp}>{@html content.html}</div>
       {/if}
 
       {#if quotePopup}
@@ -620,13 +611,6 @@
 {/if}
 
 <style>
-  .html-sandbox {
-    width: 100%;
-    min-height: 600px;
-    border: 1px solid var(--border-color, #e0e0e0);
-    border-radius: 8px;
-    background: white;
-  }
 
   .article-layout {
     position: relative;
