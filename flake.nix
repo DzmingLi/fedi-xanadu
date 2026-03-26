@@ -186,7 +186,7 @@
       homeManagerModule = { config, lib, pkgs, ... }:
         let
           cfg = config.programs.fx;
-          pkg = self.packages.${pkgs.system}.default;
+          pkg = self.packages.${pkgs.system}.fx-cli;
         in {
           options.programs.fx = {
             enable = lib.mkEnableOption "fx CLI for Fedi-Xanadu";
@@ -239,6 +239,23 @@
         };
       in
       {
+        packages.fx-cli = pkgs.rustPlatform.buildRustPackage {
+          pname = "fx-cli";
+          version = "0.1.0";
+          src = pkgs.lib.cleanSource ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          nativeBuildInputs = with pkgs; [ pkg-config ];
+          buildInputs = with pkgs; [ openssl postgresql ];
+          doCheck = false;
+          env.SQLX_OFFLINE = "true";
+          cargoBuildFlags = [ "--package" "fx-cli" ];
+
+          postInstall = ''
+            # Only keep the fx binary
+            rm -f $out/bin/fedi-xanadu
+          '';
+        };
+
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "fedi-xanadu";
           version = "0.1.0";
