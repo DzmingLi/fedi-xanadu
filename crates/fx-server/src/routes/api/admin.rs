@@ -4,7 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use fx_core::models::{Article, CreateArticle};
-use fx_core::services::{article_service, moderation_service, notification_service, platform_user_service, series_service, tag_service};
+use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, series_service, tag_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -310,6 +310,7 @@ pub async fn admin_list_banned_users(
 #[derive(serde::Deserialize)]
 pub struct AdminDeleteArticleInput {
     pub uri: String,
+    pub reason: Option<String>,
 }
 
 pub async fn admin_delete_article(
@@ -318,6 +319,105 @@ pub async fn admin_delete_article(
     Json(input): Json<AdminDeleteArticleInput>,
 ) -> ApiResult<StatusCode> {
     require_admin(&state, &headers)?;
-    article_service::delete_article(&state.pool, &input.uri).await?;
+
+    // Fetch article info before soft-deleting so we can notify the author
+    let article = article_service::get_article(&state.pool, &input.uri).await?;
+
+    // Soft-delete: article is hidden but preserved for 30-day appeal window
+    article_service::soft_delete_article(&state.pool, &input.uri, input.reason.as_deref()).await?;
+
+    // Notify author with title + reason
+    let reason_text = match &input.reason {
+        Some(r) => format!("「{}」已被删除: {}。你可以在30天内提交申诉。", article.title, r),
+        None => format!("「{}」已被删除。你可以在30天内提交申诉。", article.title),
+    };
+    let notif_id = super::tid();
+    if let Err(e) = notification_service::create_notification(
+        &state.pool,
+        &notif_id,
+        &article.did,
+        "system",
+        "article_deleted",
+        Some(&input.uri),
+        Some(&reason_text),
+    ).await {
+        tracing::warn!("failed to send article deletion notification: {e}");
+    }
+
     Ok(StatusCode::OK)
+}
+
+// --- Appeals management ---
+
+pub async fn admin_list_appeals(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Json<Vec<appeal_service::Appeal>>> {
+    require_admin(&state, &headers)?;
+    let appeals = appeal_service::list_pending_appeals(&state.pool).await?;
+    Ok(Json(appeals))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ResolveAppealInput {
+    pub id: String,
+    /// "approved" or "rejected"
+    pub status: String,
+    pub response: Option<String>,
+}
+
+pub async fn admin_resolve_appeal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<ResolveAppealInput>,
+) -> ApiResult<Json<appeal_service::Appeal>> {
+    require_admin(&state, &headers)?;
+
+    if input.status != "approved" && input.status != "rejected" {
+        return Err(AppError(fx_core::Error::BadRequest(
+            "status must be 'approved' or 'rejected'".to_string(),
+        )));
+    }
+
+    let appeal = appeal_service::resolve_appeal(
+        &state.pool,
+        &input.id,
+        &input.status,
+        input.response.as_deref(),
+    ).await?;
+
+    // If approved, take action based on appeal kind
+    if input.status == "approved" {
+        match appeal.kind.as_str() {
+            "ban" => {
+                let _ = moderation_service::unban_user(&state.pool, &appeal.did).await;
+            }
+            "article_deleted" => {
+                if let Some(ref uri) = appeal.target_uri {
+                    let _ = article_service::restore_article(&state.pool, uri).await;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Notify the user about the resolution
+    let notif_id = super::tid();
+    let notif_text = match (&input.status.as_str(), &input.response) {
+        (&"approved", Some(r)) => format!("你的申诉已通过: {r}"),
+        (&"approved", None) => "你的申诉已通过".to_string(),
+        (_, Some(r)) => format!("你的申诉已被拒绝: {r}"),
+        (_, None) => "你的申诉已被拒绝".to_string(),
+    };
+    let _ = notification_service::create_notification(
+        &state.pool,
+        &notif_id,
+        &appeal.did,
+        "system",
+        "appeal_resolved",
+        appeal.target_uri.as_deref(),
+        Some(&notif_text),
+    ).await;
+
+    Ok(Json(appeal))
 }

@@ -197,11 +197,29 @@ enum AdminCommand {
     /// List all banned users
     #[command(name = "banned-users")]
     BannedUsers,
-    /// Delete an article (admin override, bypasses ownership)
+    /// Delete an article (admin override, soft-delete with 30-day appeal window)
     #[command(name = "delete-article")]
     DeleteArticle {
         /// Article AT URI
         uri: String,
+        /// Reason for deletion
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// List pending appeals
+    #[command(name = "appeals")]
+    Appeals,
+    /// Resolve an appeal (approve or reject)
+    #[command(name = "resolve-appeal")]
+    ResolveAppeal {
+        /// Appeal ID
+        id: String,
+        /// "approved" or "rejected"
+        #[arg(long)]
+        status: String,
+        /// Admin response message
+        #[arg(long)]
+        response: Option<String>,
     },
     /// Publish an article as a platform user
     Publish {
@@ -1054,15 +1072,60 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             }
         }
 
-        AdminCommand::DeleteArticle { uri } => {
+        AdminCommand::DeleteArticle { uri, reason } => {
             client()
                 .post(format!("{base}/admin/articles/delete"))
                 .header("x-admin-secret", &secret)
-                .json(&serde_json::json!({ "uri": uri }))
+                .json(&serde_json::json!({ "uri": uri, "reason": reason }))
                 .send().await?
                 .error_for_status().context("Delete article failed")?;
 
-            println!("Deleted: {uri}");
+            println!("Soft-deleted (30-day appeal window): {uri}");
+        }
+
+        AdminCommand::Appeals => {
+            let appeals: Vec<serde_json::Value> = client()
+                .get(format!("{base}/admin/appeals"))
+                .header("x-admin-secret", &secret)
+                .send().await?
+                .error_for_status().context("List appeals failed")?
+                .json().await?;
+
+            if appeals.is_empty() {
+                println!("No pending appeals.");
+            }
+            for a in &appeals {
+                let id = a["id"].as_str().unwrap_or("?");
+                let did = a["did"].as_str().unwrap_or("?");
+                let kind = a["kind"].as_str().unwrap_or("?");
+                let reason = a["reason"].as_str().unwrap_or("-");
+                let target = a["target_uri"].as_str().unwrap_or("-");
+                let at = a["created_at"].as_str().unwrap_or("?");
+                println!("[{id}] {kind}\t{did}\t{at}");
+                if target != "-" {
+                    println!("  target: {target}");
+                }
+                println!("  reason: {reason}");
+                println!();
+            }
+        }
+
+        AdminCommand::ResolveAppeal { id, status, response } => {
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/appeals/resolve"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({
+                    "id": id,
+                    "status": status,
+                    "response": response,
+                }))
+                .send().await?
+                .error_for_status().context("Resolve appeal failed")?
+                .json().await?;
+
+            let kind = resp["kind"].as_str().unwrap_or("?");
+            let did = resp["did"].as_str().unwrap_or("?");
+            println!("Appeal {id} ({kind} by {did}): {status}");
         }
 
         AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license } => {

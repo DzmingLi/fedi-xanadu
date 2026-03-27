@@ -1,4 +1,5 @@
 mod admin;
+mod appeals;
 mod articles;
 mod auth;
 mod bookmarks;
@@ -156,6 +157,10 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/ban-user", post(admin::admin_ban_user))
         .route("/admin/unban-user", post(admin::admin_unban_user))
         .route("/admin/banned-users", get(admin::admin_list_banned_users))
+        .route("/admin/appeals", get(admin::admin_list_appeals))
+        .route("/admin/appeals/resolve", post(admin::admin_resolve_appeal))
+        // Appeals (user-facing, Auth not WriteAuth so banned users can appeal)
+        .route("/appeals", get(appeals::list_my_appeals).post(appeals::create_appeal))
 }
 
 // --- Health ---

@@ -36,6 +36,12 @@ async fn main() -> Result<()> {
                 Err(e) => tracing::warn!("session cleanup failed: {e}"),
                 _ => {}
             }
+            // Hard-delete articles soft-deleted over 30 days ago
+            match fx_core::services::article_service::cleanup_expired_deletions(&cleanup_pool).await {
+                Ok(n) if n > 0 => tracing::info!("hard-deleted {n} expired soft-deleted articles"),
+                Err(e) => tracing::warn!("article cleanup failed: {e}"),
+                _ => {}
+            }
         }
     });
 

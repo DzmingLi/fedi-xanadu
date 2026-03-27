@@ -10,7 +10,8 @@ pub const ARTICLE_SELECT: &str = "\
     COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
     COALESCE((SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = a.at_uri), 0) AS bookmark_count, \
     a.created_at, a.updated_at \
-    FROM articles a LEFT JOIN profiles p ON a.did = p.did";
+    FROM articles a LEFT JOIN profiles p ON a.did = p.did \
+    WHERE a.deleted_at IS NULL";
 
 // ---- Row types local to this service ----
 
@@ -47,7 +48,7 @@ pub async fn list_articles(pool: &PgPool, limit: i64, offset: i64) -> crate::Res
 
 /// Get a single article by its AT URI.
 pub async fn get_article(pool: &PgPool, uri: &str) -> crate::Result<Article> {
-    sqlx::query_as::<_, Article>(&format!("{ARTICLE_SELECT} WHERE a.at_uri = $1"))
+    sqlx::query_as::<_, Article>(&format!("{ARTICLE_SELECT} AND a.at_uri = $1"))
         .bind(uri)
         .fetch_optional(pool)
         .await?
@@ -120,7 +121,7 @@ pub async fn create_article(
     tx.commit().await?;
 
     // Return the newly-created article with all computed columns.
-    let article = sqlx::query_as::<_, Article>(&format!("{ARTICLE_SELECT} WHERE a.at_uri = $1"))
+    let article = sqlx::query_as::<_, Article>(&format!("{ARTICLE_SELECT} AND a.at_uri = $1"))
         .bind(at_uri)
         .fetch_one(pool)
         .await?;
@@ -212,7 +213,7 @@ pub async fn get_articles_by_tag(pool: &PgPool, tag_id: &str, limit: i64) -> cra
 
     // Use ANY($1) with PostgreSQL array parameter
     let sql = format!(
-        "{ARTICLE_SELECT} WHERE a.at_uri IN (\
+        "{ARTICLE_SELECT} AND a.at_uri IN (\
             SELECT ct.content_uri FROM content_teaches ct WHERE ct.tag_id = ANY($1)\
          ) \
          ORDER BY a.created_at DESC LIMIT $2"
@@ -229,7 +230,7 @@ pub async fn get_articles_by_tag(pool: &PgPool, tag_id: &str, limit: i64) -> cra
 /// Get all articles authored by a given DID.
 pub async fn get_articles_by_did(pool: &PgPool, did: &str, limit: i64) -> crate::Result<Vec<Article>> {
     let articles = sqlx::query_as::<_, Article>(&format!(
-        "{ARTICLE_SELECT} WHERE a.did = $1 ORDER BY a.created_at DESC LIMIT $2"
+        "{ARTICLE_SELECT} AND a.did = $1 ORDER BY a.created_at DESC LIMIT $2"
     ))
     .bind(did)
     .bind(limit)
@@ -252,7 +253,7 @@ pub async fn get_translations(pool: &PgPool, uri: &str) -> crate::Result<Vec<Art
     };
 
     let articles = sqlx::query_as::<_, Article>(&format!(
-        "{ARTICLE_SELECT} WHERE a.translation_group = $1 AND a.at_uri != $2 ORDER BY a.lang"
+        "{ARTICLE_SELECT} AND a.translation_group = $1 AND a.at_uri != $2 ORDER BY a.lang"
     ))
     .bind(&group)
     .bind(uri)
@@ -343,7 +344,7 @@ pub async fn create_fork_record(
         .execute(pool)
         .await?;
 
-    let article = sqlx::query_as::<_, Article>(&format!("{ARTICLE_SELECT} WHERE a.at_uri = $1"))
+    let article = sqlx::query_as::<_, Article>(&format!("{ARTICLE_SELECT} AND a.at_uri = $1"))
         .bind(forked_uri)
         .fetch_one(pool)
         .await?;
@@ -389,7 +390,45 @@ pub async fn update_article_content_hash(
     Ok(())
 }
 
-/// Delete an article. Most associated data is cleaned up by ON DELETE CASCADE.
+/// Soft-delete an article (admin moderation). Sets deleted_at + reason.
+/// The article data is preserved for 30 days to allow appeals.
+pub async fn soft_delete_article(pool: &PgPool, uri: &str, reason: Option<&str>) -> crate::Result<()> {
+    let result = sqlx::query(
+        "UPDATE articles SET deleted_at = NOW(), delete_reason = $2 WHERE at_uri = $1 AND deleted_at IS NULL",
+    )
+    .bind(uri)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(crate::Error::NotFound {
+            entity: "article",
+            id: uri.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Restore a soft-deleted article (appeal approved).
+pub async fn restore_article(pool: &PgPool, uri: &str) -> crate::Result<()> {
+    let result = sqlx::query(
+        "UPDATE articles SET deleted_at = NULL, delete_reason = NULL WHERE at_uri = $1 AND deleted_at IS NOT NULL",
+    )
+    .bind(uri)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(crate::Error::NotFound {
+            entity: "article",
+            id: uri.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Hard-delete an article. Most associated data is cleaned up by ON DELETE CASCADE.
 /// Only `votes` lacks a FK to articles, so we clean it up manually.
 pub async fn delete_article(pool: &PgPool, uri: &str) -> crate::Result<()> {
     let mut tx = pool.begin().await?;
@@ -411,6 +450,43 @@ pub async fn delete_article(pool: &PgPool, uri: &str) -> crate::Result<()> {
     Ok(())
 }
 
+/// Hard-delete articles that were soft-deleted more than 30 days ago.
+/// Call this periodically (e.g. daily cron).
+pub async fn cleanup_expired_deletions(pool: &PgPool) -> crate::Result<u64> {
+    let uris: Vec<String> = sqlx::query_scalar(
+        "SELECT at_uri FROM articles WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut count = 0u64;
+    for uri in &uris {
+        delete_article(pool, uri).await?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Get article by URI including soft-deleted (for admin/restore).
+pub async fn get_article_including_deleted(pool: &PgPool, uri: &str) -> crate::Result<Article> {
+    let sql = "\
+        SELECT a.at_uri, a.did, p.handle AS author_handle, a.title, a.description, \
+        a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
+        COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
+        COALESCE((SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = a.at_uri), 0) AS bookmark_count, \
+        a.created_at, a.updated_at \
+        FROM articles a LEFT JOIN profiles p ON a.did = p.did \
+        WHERE a.at_uri = $1";
+    sqlx::query_as::<_, Article>(sql)
+        .bind(uri)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| crate::Error::NotFound {
+            entity: "article",
+            id: uri.to_string(),
+        })
+}
+
 /// Return the content_format of an article.
 pub async fn get_content_format(pool: &PgPool, uri: &str) -> crate::Result<String> {
     sqlx::query_scalar::<_, String>("SELECT content_format FROM articles WHERE at_uri = $1")
@@ -429,7 +505,7 @@ pub async fn get_articles_by_uris(pool: &PgPool, uris: &[String]) -> crate::Resu
         return Ok(vec![]);
     }
     let rows = sqlx::query_as::<_, Article>(&format!(
-        "{ARTICLE_SELECT} WHERE a.at_uri = ANY($1)"
+        "{ARTICLE_SELECT} AND a.at_uri = ANY($1)"
     ))
     .bind(uris)
     .fetch_all(pool)
