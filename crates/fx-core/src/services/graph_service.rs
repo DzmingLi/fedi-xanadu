@@ -38,8 +38,8 @@ pub async fn build_knowledge_graph(pool: &PgPool, did: Option<&str>) -> crate::R
     let skills: HashSet<String> = if let Some(did) = did {
         sqlx::query_scalar(
             "SELECT DISTINCT tag_id FROM ( \
-                 SELECT at2.tag_id FROM learned_marks lm \
-                 JOIN article_teaches at2 ON at2.article_uri = lm.article_uri \
+                 SELECT ct.tag_id FROM learned_marks lm \
+                 JOIN content_teaches ct ON ct.content_uri = lm.article_uri \
                  WHERE lm.did = $1 \
                  UNION \
                  SELECT tag_id FROM user_skills WHERE did = $1 \
@@ -64,9 +64,9 @@ pub async fn build_knowledge_graph(pool: &PgPool, did: Option<&str>) -> crate::R
     }
 
     let edge_rows = sqlx::query_as::<_, EdgeRow>(
-        "SELECT DISTINCT ap.tag_id AS from_tag, at2.tag_id AS to_tag, ap.prereq_type \
-         FROM article_prereqs ap \
-         JOIN article_teaches at2 ON at2.article_uri = ap.article_uri AND at2.tag_id != ap.tag_id",
+        "SELECT DISTINCT cp.tag_id AS from_tag, ct.tag_id AS to_tag, cp.prereq_type \
+         FROM content_prereqs cp \
+         JOIN content_teaches ct ON ct.content_uri = cp.content_uri AND ct.tag_id != cp.tag_id",
     )
     .fetch_all(pool)
     .await

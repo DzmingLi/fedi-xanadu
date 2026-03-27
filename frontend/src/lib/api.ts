@@ -1,5 +1,5 @@
 import type {
-  Tag, Article, ArticleContent, ArticlePrereqRow, ArticleTeachRow, ArticlePrereqBulkRow,
+  Tag, Article, ArticleContent, ArticlePrereqRow, ContentTeachRow, ContentPrereqBulkRow,
   ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
@@ -58,8 +58,8 @@ export const getArticleContent = (uri: string) => get<ArticleContent>(`/articles
 export const getArticlePrereqs = (uri: string) => get<ArticlePrereqRow[]>(`/articles/by-uri/prereqs?uri=${encodeURIComponent(uri)}`);
 export const getArticleForks = (uri: string) => get<ForkWithTitle[]>(`/articles/by-uri/forks?uri=${encodeURIComponent(uri)}`);
 export const createArticle = (data: CreateArticle) => post<Article>('/articles', data);
-export const getAllArticleTeaches = () => get<ArticleTeachRow[]>('/articles/all-teaches');
-export const getAllArticlePrereqs = () => get<ArticlePrereqBulkRow[]>('/articles/all-prereqs');
+export const getAllArticleTeaches = () => get<ContentTeachRow[]>('/articles/all-teaches');
+export const getAllArticlePrereqs = () => get<ContentPrereqBulkRow[]>('/articles/all-prereqs');
 export const getArticlesByTag = (tagId: string) => get<Article[]>(`/articles/by-tag?tag_id=${encodeURIComponent(tagId)}`);
 export const getArticlesByDid = (did: string) => get<Article[]>(`/articles/by-did?did=${encodeURIComponent(did)}`);
 export const getTranslations = (uri: string) => get<Article[]>(`/articles/translations?uri=${encodeURIComponent(uri)}`);
@@ -101,7 +101,7 @@ export const updateProfileLinks = (links: { label: string; url: string }[]) =>
 // Series
 export const listSeries = () => get<Series[]>('/series');
 export const getSeries = (id: string) => get<SeriesDetail>(`/series/by-id?id=${encodeURIComponent(id)}`);
-export const createSeries = (data: { title: string; description?: string; tag_id: string; parent_id?: string }) =>
+export const createSeries = (data: { title: string; description?: string; topics?: string[]; parent_id?: string }) =>
   post<Series>('/series', data);
 export const addSeriesArticle = (series_id: string, article_uri: string) =>
   post<void>('/series/articles', { series_id, article_uri });

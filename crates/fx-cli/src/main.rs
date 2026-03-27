@@ -147,9 +147,9 @@ enum AdminCommand {
         /// Short description
         #[arg(short, long)]
         desc: Option<String>,
-        /// Tag ID (e.g. cs, math)
+        /// Topic tags (comma-separated, e.g. cs,math)
         #[arg(long)]
-        tag: String,
+        topics: Option<String>,
         /// Parent series ID (for sub-series)
         #[arg(long)]
         parent: Option<String>,
@@ -912,12 +912,13 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             println!("Merged tag '{from}' into '{into}'");
         }
 
-        AdminCommand::CreateSeries { r#as: as_handle, title, desc, tag, parent } => {
+        AdminCommand::CreateSeries { r#as: as_handle, title, desc, topics, parent } => {
+            let topics_vec: Vec<&str> = topics.as_deref().map(|t| t.split(',').collect()).unwrap_or_default();
             let body = serde_json::json!({
                 "as_handle": as_handle,
                 "title": title,
                 "description": desc,
-                "tag_id": tag,
+                "topics": topics_vec,
                 "parent_id": parent,
             });
 

@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/assets/favicon-16x16.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="og:url" content="https://missing.csail.mit.edu/2020/debugging-profiling/">
+  <meta property="og:site_name" content="Missing Semester">
+
+  
+    
+    <meta name="description" content="Learn how to debug programs using logging, debuggers, and static analysis, and how to profile code for performance.">
+    <meta name="twitter:description" content="Learn how to debug programs using logging, debuggers, and static analysis, and how to profile code for performance.">
+    <meta property="og:description" content="Learn how to debug programs using logging, debuggers, and static analysis, and how to profile code for performance.">
+  
+
+  
+  <meta name="twitter:title" content="Debugging and Profiling">
+  <meta property="og:title" content="Debugging and Profiling">
+
+  
+  <meta name="twitter:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec7.png">
+  <meta property="og:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec7.png">
+
+  <title>
+    
+      
+        Debugging and Profiling &middot; Missing Semester
+      
+    
+  </title>
+
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/syntax.css">
+  <script defer src="/static/js/sidenotes.js"></script>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,300,400,600,700,900,200italic,300italic,400italic,600italic,700italic,900italic&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Code+Pro:200,300,400,500,600,700,900&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-P7WVHD84D1"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-P7WVHD84D1');
+  </script>
+
+</head>
+
+
+  <body>
+
+    <div id="nav-bg">
+  <nav id="top-nav">
+    <a href="/" id="logo">./missing-semester</a>
+    <input type="checkbox" id="menu-icon">
+    <label class="menu-label" for="menu-icon"></label>
+    <div class="trigger">
+      <div class="trigger-child">
+        <span class="nav-link"><a href="/2026/">lectures</a></span>
+        <span class="nav-link"><a href="/past/">past</a></span>
+        <span class="nav-link"><a href="/about/">about</a></span>
+      </div>
+    </div>
+  </nav>
+</div>
+
+
+    <div id="content">
+    <h1 class="title">Debugging and Profiling</h1>
+
+
+
+  <div class="youtube-wrapper" style="padding-bottom: 56.25%;">
+    <iframe src="https://www.youtube.com/embed/l812pUnKxME" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+  </div>
+
+
+<p>A golden rule in programming is that code does not do what you expect it to do, but what you tell it to do.
+Bridging that gap can sometimes be a quite difficult feat.
+In this lecture we are going to cover useful techniques for dealing with buggy and resource hungry code: debugging and profiling.</p>
+
+<h1 id="debugging">Debugging</h1>
+
+<h2 id="printf-debugging-and-logging">Printf debugging and Logging</h2>
+
+<p>“The most effective debugging tool is still careful thought, coupled with judiciously placed print statements” — Brian Kernighan, <em>Unix for Beginners</em>.</p>
+
+<p>A first approach to debug a program is to add print statements around where you have detected the problem, and keep iterating until you have extracted enough information to understand what is responsible for the issue.</p>
+
+<p>A second approach is to use logging in your program, instead of ad hoc print statements. Logging is better than regular print statements for several reasons:</p>
+
+<ul>
+  <li>You can log to files, sockets or even remote servers instead of standard output.</li>
+  <li>Logging supports severity levels (such as INFO, DEBUG, WARN, ERROR, &amp;c), that allow you to filter the output accordingly.</li>
+  <li>For new issues, there’s a fair chance that your logs will contain enough information to detect what is going wrong.</li>
+</ul>
+
+<p><a href="/static/files/logger.py">Here</a> is an example code that logs messages:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>python logger.py
+<span class="c"># Raw output as with just prints</span>
+<span class="nv">$ </span>python logger.py log
+<span class="c"># Log formatted output</span>
+<span class="nv">$ </span>python logger.py log ERROR
+<span class="c"># Print only ERROR levels and above</span>
+<span class="nv">$ </span>python logger.py color
+<span class="c"># Color formatted output</span>
+</code></pre></div></div>
+
+<p>One of my favorite tips for making logs more readable is to color code them.
+By now you probably have realized that your terminal uses colors to make things more readable. But how does it do it?
+Programs like <code class="language-plaintext highlighter-rouge">ls</code> or <code class="language-plaintext highlighter-rouge">grep</code> are using <a href="https://en.wikipedia.org/wiki/ANSI_escape_code">ANSI escape codes</a>, which are special sequences of characters to indicate your shell to change the color of the output. For example, executing <code class="language-plaintext highlighter-rouge">echo -e "\e[38;2;255;0;0mThis is red\e[0m"</code> prints the message <code class="language-plaintext highlighter-rouge">This is red</code> in red on your terminal, as long as it supports <a href="https://github.com/termstandard/colors#truecolor-support-in-output-devices">true color</a>. If your terminal doesn’t support this (e.g. macOS’s Terminal.app), you can use the more universally supported escape codes for 16 color choices, for example <code class="language-plaintext highlighter-rouge">echo -e "\e[31;1mThis is red\e[0m"</code>.</p>
+
+<p>The following script shows how to print many RGB colors into your terminal (again, as long as it supports true color).</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">#!/usr/bin/env bash</span>
+<span class="k">for </span>R <span class="k">in</span> <span class="si">$(</span><span class="nb">seq </span>0 20 255<span class="si">)</span><span class="p">;</span> <span class="k">do
+    for </span>G <span class="k">in</span> <span class="si">$(</span><span class="nb">seq </span>0 20 255<span class="si">)</span><span class="p">;</span> <span class="k">do
+        for </span>B <span class="k">in</span> <span class="si">$(</span><span class="nb">seq </span>0 20 255<span class="si">)</span><span class="p">;</span> <span class="k">do
+            </span><span class="nb">printf</span> <span class="s2">"</span><span class="se">\e</span><span class="s2">[38;2;</span><span class="k">${</span><span class="nv">R</span><span class="k">}</span><span class="s2">;</span><span class="k">${</span><span class="nv">G</span><span class="k">}</span><span class="s2">;</span><span class="k">${</span><span class="nv">B</span><span class="k">}</span><span class="s2">m█</span><span class="se">\e</span><span class="s2">[0m"</span><span class="p">;</span>
+        <span class="k">done
+    done
+done</span>
+</code></pre></div></div>
+
+<h2 id="third-party-logs">Third party logs</h2>
+
+<p>As you start building larger software systems you will most probably run into dependencies that run as separate programs.
+Web servers, databases or message brokers are common examples of this kind of dependencies.
+When interacting with these systems it is often necessary to read their logs, since client side error messages might not suffice.</p>
+
+<p>Luckily, most programs write their own logs somewhere in your system.
+In UNIX systems, it is commonplace for programs to write their logs under <code class="language-plaintext highlighter-rouge">/var/log</code>.
+For instance, the <a href="https://www.nginx.com/">NGINX</a> webserver places its logs under <code class="language-plaintext highlighter-rouge">/var/log/nginx</code>.
+More recently, systems have started using a <strong>system log</strong>, which is increasingly where all of your log messages go.
+Most (but not all) Linux systems use <code class="language-plaintext highlighter-rouge">systemd</code>, a system daemon that controls many things in your system such as which services are enabled and running.
+<code class="language-plaintext highlighter-rouge">systemd</code> places the logs under <code class="language-plaintext highlighter-rouge">/var/log/journal</code> in a specialized format and you can use the <a href="https://www.man7.org/linux/man-pages/man1/journalctl.1.html"><code class="language-plaintext highlighter-rouge">journalctl</code></a> command to display the messages.
+Similarly, on macOS there is still <code class="language-plaintext highlighter-rouge">/var/log/system.log</code> but an increasing number of tools use the system log, that can be displayed with <a href="https://www.manpagez.com/man/1/log/"><code class="language-plaintext highlighter-rouge">log show</code></a>.
+On most UNIX systems you can also use the <a href="https://www.man7.org/linux/man-pages/man1/dmesg.1.html"><code class="language-plaintext highlighter-rouge">dmesg</code></a> command to access the kernel log.</p>
+
+<p>For logging under the system logs you can use the <a href="https://www.man7.org/linux/man-pages/man1/logger.1.html"><code class="language-plaintext highlighter-rouge">logger</code></a> shell program.
+Here’s an example of using <code class="language-plaintext highlighter-rouge">logger</code> and how to check that the entry made it to the system logs.
+Moreover, most programming languages have bindings logging to the system log.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>logger <span class="s2">"Hello Logs"</span>
+<span class="c"># On macOS</span>
+log show <span class="nt">--last</span> 1m | <span class="nb">grep </span>Hello
+<span class="c"># On Linux</span>
+journalctl <span class="nt">--since</span> <span class="s2">"1m ago"</span> | <span class="nb">grep </span>Hello
+</code></pre></div></div>
+
+<p>As we saw in the data wrangling lecture, logs can be quite verbose and they require some level of processing and filtering to get the information you want.
+If you find yourself heavily filtering through <code class="language-plaintext highlighter-rouge">journalctl</code> and <code class="language-plaintext highlighter-rouge">log show</code> you can consider using their flags, which can perform a first pass of filtering of their output.
+There are also some tools like  <a href="https://lnav.org/"><code class="language-plaintext highlighter-rouge">lnav</code></a>, that provide an improved presentation and navigation for log files.</p>
+
+<h2 id="debuggers">Debuggers</h2>
+
+<p>When printf debugging is not enough you should use a debugger.
+Debuggers are programs that let you interact with the execution of a program, allowing the following:</p>
+
+<ul>
+  <li>Halt execution of the program when it reaches a certain line.</li>
+  <li>Step through the program one instruction at a time.</li>
+  <li>Inspect values of variables after the program crashed.</li>
+  <li>Conditionally halt the execution when a given condition is met.</li>
+  <li>And many more advanced features</li>
+</ul>
+
+<p>Many programming languages come with some form of debugger.
+In Python this is the Python Debugger <a href="https://docs.python.org/3/library/pdb.html"><code class="language-plaintext highlighter-rouge">pdb</code></a>.</p>
+
+<p>Here is a brief description of some of the commands <code class="language-plaintext highlighter-rouge">pdb</code> supports:</p>
+
+<ul>
+  <li><strong>l</strong>(ist) - Displays 11 lines around the current line or continue the previous listing.</li>
+  <li><strong>s</strong>(tep) - Execute the current line, stop at the first possible occasion.</li>
+  <li><strong>n</strong>(ext) - Continue execution until the next line in the current function is reached or it returns.</li>
+  <li><strong>b</strong>(reak) - Set a breakpoint (depending on the argument provided).</li>
+  <li><strong>p</strong>(rint) - Evaluate the expression in the current context and print its value. There’s also <strong>pp</strong> to display using <a href="https://docs.python.org/3/library/pprint.html"><code class="language-plaintext highlighter-rouge">pprint</code></a> instead.</li>
+  <li><strong>r</strong>(eturn) - Continue execution until the current function returns.</li>
+  <li><strong>q</strong>(uit) - Quit the debugger.</li>
+</ul>
+
+<p>Let’s go through an example of using <code class="language-plaintext highlighter-rouge">pdb</code> to fix the following buggy python code. (See the lecture video).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">bubble_sort</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">arr</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">arr</span><span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">]:</span>
+                <span class="n">arr</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">arr</span><span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">arr</span>
+
+<span class="k">print</span><span class="p">(</span><span class="n">bubble_sort</span><span class="p">([</span><span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">6</span><span class="p">]))</span>
+</code></pre></div></div>
+
+<p>Note that since Python is an interpreted language we can use the <code class="language-plaintext highlighter-rouge">pdb</code> shell to execute commands and to execute instructions.
+<a href="https://pypi.org/project/ipdb/"><code class="language-plaintext highlighter-rouge">ipdb</code></a> is an improved <code class="language-plaintext highlighter-rouge">pdb</code> that uses the <a href="https://ipython.org"><code class="language-plaintext highlighter-rouge">IPython</code></a> REPL enabling tab completion, syntax highlighting, better tracebacks, and better introspection while retaining the same interface as the <code class="language-plaintext highlighter-rouge">pdb</code> module.</p>
+
+<p>For more low level programming you will probably want to look into <a href="https://www.gnu.org/software/gdb/"><code class="language-plaintext highlighter-rouge">gdb</code></a> (and its quality of life modification <a href="https://github.com/pwndbg/pwndbg"><code class="language-plaintext highlighter-rouge">pwndbg</code></a>) and <a href="https://lldb.llvm.org/"><code class="language-plaintext highlighter-rouge">lldb</code></a>.
+They are optimized for C-like language debugging but will let you probe pretty much any process and get its current machine state: registers, stack, program counter, &amp;c.</p>
+
+<h2 id="specialized-tools">Specialized Tools</h2>
+
+<p>Even if what you are trying to debug is a black box binary there are tools that can help you with that.
+Whenever programs need to perform actions that only the kernel can, they use <a href="https://en.wikipedia.org/wiki/System_call">System Calls</a>.
+There are commands that let you trace the syscalls your program makes. In Linux there’s <a href="https://www.man7.org/linux/man-pages/man1/strace.1.html"><code class="language-plaintext highlighter-rouge">strace</code></a> and macOS and BSD have <a href="https://dtrace.org/about/"><code class="language-plaintext highlighter-rouge">dtrace</code></a>. <code class="language-plaintext highlighter-rouge">dtrace</code> can be tricky to use because it uses its own <code class="language-plaintext highlighter-rouge">D</code> language, but there is a wrapper called <a href="https://www.manpagez.com/man/1/dtruss/"><code class="language-plaintext highlighter-rouge">dtruss</code></a> that provides an interface more similar to <code class="language-plaintext highlighter-rouge">strace</code> (more details <a href="https://8thlight.com/blog/colin-jones/2015/11/06/dtrace-even-better-than-strace-for-osx.html">here</a>).</p>
+
+<p>Below are some examples of using <code class="language-plaintext highlighter-rouge">strace</code> or <code class="language-plaintext highlighter-rouge">dtruss</code> to show <a href="https://www.man7.org/linux/man-pages/man2/stat.2.html"><code class="language-plaintext highlighter-rouge">stat</code></a> syscall traces for an execution of <code class="language-plaintext highlighter-rouge">ls</code>. For a deeper dive into <code class="language-plaintext highlighter-rouge">strace</code>, <a href="https://blogs.oracle.com/linux/strace-the-sysadmins-microscope-v2">this article</a> and <a href="https://jvns.ca/strace-zine-unfolded.pdf">this zine</a> are good reads.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># On Linux</span>
+<span class="nb">sudo </span>strace <span class="nt">-e</span> lstat <span class="nb">ls</span> <span class="nt">-l</span> <span class="o">&gt;</span> /dev/null
+<span class="c"># On macOS</span>
+<span class="nb">sudo </span>dtruss <span class="nt">-t</span> lstat64_extended <span class="nb">ls</span> <span class="nt">-l</span> <span class="o">&gt;</span> /dev/null
+</code></pre></div></div>
+
+<p>Under some circumstances, you may need to look at the network packets to figure out the issue in your program.
+Tools like <a href="https://www.man7.org/linux/man-pages/man1/tcpdump.1.html"><code class="language-plaintext highlighter-rouge">tcpdump</code></a> and <a href="https://www.wireshark.org/">Wireshark</a> are network packet analyzers that let you read the contents of network packets and filter them based on different criteria.</p>
+
+<p>For web development, the Chrome/Firefox developer tools are quite handy. They feature a large number of tools, including:</p>
+<ul>
+  <li>Source code - Inspect the HTML/CSS/JS source code of any website.</li>
+  <li>Live HTML, CSS, JS modification - Change the website content, styles and behavior to test (you can see for yourself that website screenshots are not valid proofs).</li>
+  <li>Javascript shell - Execute commands in the JS REPL.</li>
+  <li>Network - Analyze the requests timeline.</li>
+  <li>Storage - Look into the Cookies and local application storage.</li>
+</ul>
+
+<h2 id="static-analysis">Static Analysis</h2>
+
+<p>For some issues you do not need to run any code.
+For example, just by carefully looking at a piece of code you could realize that your loop variable is shadowing an already existing variable or function name; or that a program reads a variable before defining it.
+Here is where <a href="https://en.wikipedia.org/wiki/Static_program_analysis">static analysis</a> tools come into play.
+Static analysis programs take source code as input and analyze it using coding rules to reason about its correctness.</p>
+
+<p>In the following Python snippet there are several mistakes.
+First, our loop variable <code class="language-plaintext highlighter-rouge">foo</code> shadows the previous definition of the function <code class="language-plaintext highlighter-rouge">foo</code>. We also wrote <code class="language-plaintext highlighter-rouge">baz</code> instead of <code class="language-plaintext highlighter-rouge">bar</code> in the last line, so the program will crash after completing the <code class="language-plaintext highlighter-rouge">sleep</code> call (which will take one minute).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">time</span>
+
+<span class="k">def</span> <span class="nf">foo</span><span class="p">():</span>
+    <span class="k">return</span> <span class="mi">42</span>
+
+<span class="k">for</span> <span class="n">foo</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">foo</span><span class="p">)</span>
+<span class="n">bar</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">bar</span> <span class="o">*=</span> <span class="mf">0.2</span>
+<span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">baz</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Static analysis tools can identify these kinds of issues. When we run <a href="https://pypi.org/project/pyflakes"><code class="language-plaintext highlighter-rouge">pyflakes</code></a> on the code we get the errors related to both bugs. <a href="https://mypy-lang.org/"><code class="language-plaintext highlighter-rouge">mypy</code></a> is another tool that can detect type checking issues. Here, <code class="language-plaintext highlighter-rouge">mypy</code> will warn us that <code class="language-plaintext highlighter-rouge">bar</code> is initially an <code class="language-plaintext highlighter-rouge">int</code> and is then casted to a <code class="language-plaintext highlighter-rouge">float</code>.
+Again, note that all these issues were detected without having to run the code.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>pyflakes foobar.py
+foobar.py:6: redefinition of unused <span class="s1">'foo'</span> from line 3
+foobar.py:11: undefined name <span class="s1">'baz'</span>
+
+<span class="nv">$ </span>mypy foobar.py
+foobar.py:6: error: Incompatible types <span class="k">in </span>assignment <span class="o">(</span>expression has <span class="nb">type</span> <span class="s2">"int"</span>, variable has <span class="nb">type</span> <span class="s2">"Callable[[], Any]"</span><span class="o">)</span>
+foobar.py:9: error: Incompatible types <span class="k">in </span>assignment <span class="o">(</span>expression has <span class="nb">type</span> <span class="s2">"float"</span>, variable has <span class="nb">type</span> <span class="s2">"int"</span><span class="o">)</span>
+foobar.py:11: error: Name <span class="s1">'baz'</span> is not defined
+Found 3 errors <span class="k">in </span>1 file <span class="o">(</span>checked 1 <span class="nb">source </span>file<span class="o">)</span>
+</code></pre></div></div>
+
+<p>In the shell tools lecture we covered <a href="https://www.shellcheck.net/"><code class="language-plaintext highlighter-rouge">shellcheck</code></a>, which is a similar tool for shell scripts.</p>
+
+<p>Most editors and IDEs support displaying the output of these tools within the editor itself, highlighting the locations of warnings and errors.
+This is often called <strong>code linting</strong> and it can also be used to display other types of issues such as stylistic violations or insecure constructs.</p>
+
+<p>In vim, the plugins <a href="https://vimawesome.com/plugin/ale"><code class="language-plaintext highlighter-rouge">ale</code></a> or <a href="https://vimawesome.com/plugin/syntastic"><code class="language-plaintext highlighter-rouge">syntastic</code></a> will let you do that.
+For Python, <a href="https://github.com/PyCQA/pylint"><code class="language-plaintext highlighter-rouge">pylint</code></a> and <a href="https://pypi.org/project/pep8/"><code class="language-plaintext highlighter-rouge">pep8</code></a> are examples of stylistic linters and <a href="https://pypi.org/project/bandit/"><code class="language-plaintext highlighter-rouge">bandit</code></a> is a tool designed to find common security issues.
+For other languages people have compiled comprehensive lists of useful static analysis tools, such as <a href="https://github.com/mre/awesome-static-analysis">Awesome Static Analysis</a> (you may want to take a look at the <em>Writing</em> section) and for linters there is <a href="https://github.com/caramelomartins/awesome-linters">Awesome Linters</a>.</p>
+
+<p>A complementary tool to stylistic linting are code formatters such as <a href="https://github.com/psf/black"><code class="language-plaintext highlighter-rouge">black</code></a> for Python, <code class="language-plaintext highlighter-rouge">gofmt</code> for Go, <code class="language-plaintext highlighter-rouge">rustfmt</code> for Rust or <a href="https://prettier.io/"><code class="language-plaintext highlighter-rouge">prettier</code></a> for JavaScript, HTML and CSS.
+These tools autoformat your code so that it’s consistent with common stylistic patterns for the given programming language.
+Although you might be unwilling to give stylistic control about your code, standardizing code format will help other people read your code and will make you better at reading other people’s (stylistically standardized) code.</p>
+
+<h1 id="profiling">Profiling</h1>
+
+<p>Even if your code functionally behaves as you would expect, that might not be good enough if it takes all your CPU or memory in the process.
+Algorithms classes often teach big <em>O</em> notation but not how to find hot spots in your programs.
+Since <a href="https://wiki.c2.com/?PrematureOptimization">premature optimization is the root of all evil</a>, you should learn about profilers and monitoring tools. They will help you understand which parts of your program are taking most of the time and/or resources so you can focus on optimizing those parts.</p>
+
+<h2 id="timing">Timing</h2>
+
+<p>Similarly to the debugging case, in many scenarios it can be enough to just print the time it took your code between two points.
+Here is an example in Python using the <a href="https://docs.python.org/3/library/time.html"><code class="language-plaintext highlighter-rouge">time</code></a> module.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">time</span><span class="p">,</span> <span class="n">random</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">random</span><span class="p">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span> <span class="o">*</span> <span class="mi">100</span>
+
+<span class="c1"># Get current time
+</span><span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="p">.</span><span class="n">time</span><span class="p">()</span>
+
+<span class="c1"># Do some work
+</span><span class="k">print</span><span class="p">(</span><span class="s">"Sleeping for {} ms"</span><span class="p">.</span><span class="nb">format</span><span class="p">(</span><span class="n">n</span><span class="p">))</span>
+<span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">n</span><span class="o">/</span><span class="mi">1000</span><span class="p">)</span>
+
+<span class="c1"># Compute time between start and now
+</span><span class="k">print</span><span class="p">(</span><span class="n">time</span><span class="p">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span>
+
+<span class="c1"># Output
+# Sleeping for 500 ms
+# 0.5713930130004883
+</span></code></pre></div></div>
+
+<p>However, wall clock time can be misleading since your computer might be running other processes at the same time or waiting for events to happen. It is common for tools to make a distinction between <em>Real</em>, <em>User</em> and <em>Sys</em> time. In general, <em>User</em> + <em>Sys</em> tells you how much time your process actually spent in the CPU (more detailed explanation <a href="https://stackoverflow.com/questions/556405/what-do-real-user-and-sys-mean-in-the-output-of-time1">here</a>).</p>
+
+<ul>
+  <li><em>Real</em> - Wall clock elapsed time from start to finish of the program, including the time taken by other processes and time taken while blocked (e.g. waiting for I/O or network)</li>
+  <li><em>User</em> - Amount of time spent in the CPU running user code</li>
+  <li><em>Sys</em> - Amount of time spent in the CPU running kernel code</li>
+</ul>
+
+<p>For example, try running a command that performs an HTTP request and prefixing it with <a href="https://www.man7.org/linux/man-pages/man1/time.1.html"><code class="language-plaintext highlighter-rouge">time</code></a>. Under a slow connection you might get an output like the one below. Here it took over 2 seconds for the request to complete but the process only took 15ms of CPU user time and 12ms of kernel CPU time.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span><span class="nb">time </span>curl https://missing.csail.mit.edu &amp;&gt; /dev/null
+real    0m2.561s
+user    0m0.015s
+sys     0m0.012s
+</code></pre></div></div>
+
+<h2 id="profilers">Profilers</h2>
+
+<h3 id="cpu">CPU</h3>
+
+<p>Most of the time when people refer to <em>profilers</em> they actually mean <em>CPU profilers</em>,  which are the most common.
+There are two main types of CPU profilers: <em>tracing</em> and <em>sampling</em> profilers.
+Tracing profilers keep a record of every function call your program makes whereas sampling profilers probe your program periodically (commonly every millisecond) and record the program’s stack.
+They use these records to present aggregate statistics of what your program spent the most time doing.
+<a href="https://jvns.ca/blog/2017/12/17/how-do-ruby---python-profilers-work-">Here</a> is a good intro article if you want more detail on this topic.</p>
+
+<p>Most programming languages have some sort of command line profiler that you can use to analyze your code.
+They often integrate with full fledged IDEs but for this lecture we are going to focus on the command line tools themselves.</p>
+
+<p>In Python we can use the <code class="language-plaintext highlighter-rouge">cProfile</code> module to profile time per function call. Here is a simple example that implements a rudimentary grep in Python:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">#!/usr/bin/env python
+</span>
+<span class="kn">import</span> <span class="nn">sys</span><span class="p">,</span> <span class="n">re</span>
+
+<span class="k">def</span> <span class="nf">grep</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="nb">file</span><span class="p">):</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="nb">file</span><span class="p">,</span> <span class="s">'r'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="nb">file</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">f</span><span class="p">.</span><span class="n">readlines</span><span class="p">()):</span>
+            <span class="n">pattern</span> <span class="o">=</span> <span class="n">re</span><span class="p">.</span><span class="nb">compile</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
+            <span class="n">match</span> <span class="o">=</span> <span class="n">pattern</span><span class="p">.</span><span class="n">search</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">match</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">"{}: {}"</span><span class="p">.</span><span class="nb">format</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">line</span><span class="p">),</span> <span class="n">end</span><span class="o">=</span><span class="s">""</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+    <span class="n">times</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">sys</span><span class="p">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">pattern</span> <span class="o">=</span> <span class="n">sys</span><span class="p">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">times</span><span class="p">):</span>
+        <span class="k">for</span> <span class="nb">file</span> <span class="ow">in</span> <span class="n">sys</span><span class="p">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">3</span><span class="p">:]:</span>
+            <span class="n">grep</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="nb">file</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>We can profile this code using the following command. Analyzing the output we can see that IO is taking most of the time and that compiling the regex takes a fair amount of time as well. Since the regex only needs to be compiled once, we can factor it out of the for.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ python -m cProfile -s tottime grep.py 1000 '^(import|\s*def)[^,]*$' *.py
+
+[omitted program output]
+
+ ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     8000    0.266    0.000    0.292    0.000 {built-in method io.open}
+     8000    0.153    0.000    0.894    0.000 grep.py:5(grep)
+    17000    0.101    0.000    0.101    0.000 {built-in method builtins.print}
+     8000    0.100    0.000    0.129    0.000 {method 'readlines' of '_io._IOBase' objects}
+    93000    0.097    0.000    0.111    0.000 re.py:286(_compile)
+    93000    0.069    0.000    0.069    0.000 {method 'search' of '_sre.SRE_Pattern' objects}
+    93000    0.030    0.000    0.141    0.000 re.py:231(compile)
+    17000    0.019    0.000    0.029    0.000 codecs.py:318(decode)
+        1    0.017    0.017    0.911    0.911 grep.py:3(&lt;module&gt;)
+
+[omitted lines]
+</code></pre></div></div>
+
+<p>A caveat of Python’s <code class="language-plaintext highlighter-rouge">cProfile</code> profiler (and many profilers for that matter) is that they display time per function call. That can become unintuitive really fast, especially if you are using third party libraries in your code since internal function calls are also accounted for.
+A more intuitive way of displaying profiling information is to include the time taken per line of code, which is what <em>line profilers</em> do.</p>
+
+<p>For instance, the following piece of Python code performs a request to the class website and parses the response to get all URLs in the page:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">#!/usr/bin/env python
+</span><span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">from</span> <span class="nn">bs4</span> <span class="kn">import</span> <span class="n">BeautifulSoup</span>
+
+<span class="c1"># This is a decorator that tells line_profiler
+# that we want to analyze this function
+</span><span class="o">@</span><span class="n">profile</span>
+<span class="k">def</span> <span class="nf">get_urls</span><span class="p">():</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">'https://missing.csail.mit.edu'</span><span class="p">)</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">BeautifulSoup</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">content</span><span class="p">,</span> <span class="s">'lxml'</span><span class="p">)</span>
+    <span class="n">urls</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">url</span> <span class="ow">in</span> <span class="n">s</span><span class="p">.</span><span class="n">find_all</span><span class="p">(</span><span class="s">'a'</span><span class="p">):</span>
+        <span class="n">urls</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">url</span><span class="p">[</span><span class="s">'href'</span><span class="p">])</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+    <span class="n">get_urls</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>If we used Python’s <code class="language-plaintext highlighter-rouge">cProfile</code> profiler we’d get over 2500 lines of output, and even with sorting it’d be hard to understand where the time is being spent. A quick run with <a href="https://github.com/pyutils/line_profiler"><code class="language-plaintext highlighter-rouge">line_profiler</code></a> shows the time taken per line:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>kernprof <span class="nt">-l</span> <span class="nt">-v</span> a.py
+Wrote profile results to urls.py.lprof
+Timer unit: 1e-06 s
+
+Total <span class="nb">time</span>: 0.636188 s
+File: a.py
+Function: get_urls at line 5
+
+Line <span class="c">#  Hits         Time  Per Hit   % Time  Line Contents</span>
+<span class="o">==============================================================</span>
+ 5                                           @profile
+ 6                                           def get_urls<span class="o">()</span>:
+ 7         1     613909.0 613909.0     96.5      response <span class="o">=</span> requests.get<span class="o">(</span><span class="s1">'https://missing.csail.mit.edu'</span><span class="o">)</span>
+ 8         1      21559.0  21559.0      3.4      s <span class="o">=</span> BeautifulSoup<span class="o">(</span>response.content, <span class="s1">'lxml'</span><span class="o">)</span>
+ 9         1          2.0      2.0      0.0      urls <span class="o">=</span> <span class="o">[]</span>
+10        25        685.0     27.4      0.1      <span class="k">for </span>url <span class="k">in </span>s.find_all<span class="o">(</span><span class="s1">'a'</span><span class="o">)</span>:
+11        24         33.0      1.4      0.0          urls.append<span class="o">(</span>url[<span class="s1">'href'</span><span class="o">])</span>
+</code></pre></div></div>
+
+<h3 id="memory">Memory</h3>
+
+<p>In languages like C or C++ memory leaks can cause your program to never release memory that it doesn’t need anymore.
+To help in the process of memory debugging you can use tools like <a href="https://valgrind.org/">Valgrind</a> that will help you identify memory leaks.</p>
+
+<p>In garbage collected languages like Python it is still useful to use a memory profiler because as long as you have pointers to objects in memory they won’t be garbage collected.
+Here’s an example program and its associated output when running it with <a href="https://pypi.org/project/memory-profiler/">memory-profiler</a> (note the decorator like in <code class="language-plaintext highlighter-rouge">line-profiler</code>).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">@</span><span class="n">profile</span>
+<span class="k">def</span> <span class="nf">my_func</span><span class="p">():</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">10</span> <span class="o">**</span> <span class="mi">6</span><span class="p">)</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="mi">10</span> <span class="o">**</span> <span class="mi">7</span><span class="p">)</span>
+    <span class="k">del</span> <span class="n">b</span>
+    <span class="k">return</span> <span class="n">a</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+    <span class="n">my_func</span><span class="p">()</span>
+</code></pre></div></div>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>python <span class="nt">-m</span> memory_profiler example.py
+Line <span class="c">#    Mem usage  Increment   Line Contents</span>
+<span class="o">==============================================</span>
+     3                           @profile
+     4      5.97 MB    0.00 MB   def my_func<span class="o">()</span>:
+     5     13.61 MB    7.64 MB       a <span class="o">=</span> <span class="o">[</span>1] <span class="k">*</span> <span class="o">(</span>10 <span class="k">**</span> 6<span class="o">)</span>
+     6    166.20 MB  152.59 MB       b <span class="o">=</span> <span class="o">[</span>2] <span class="k">*</span> <span class="o">(</span>2 <span class="k">*</span> 10 <span class="k">**</span> 7<span class="o">)</span>
+     7     13.61 MB <span class="nt">-152</span>.59 MB       del b
+     8     13.61 MB    0.00 MB       <span class="k">return </span>a
+</code></pre></div></div>
+
+<h3 id="event-profiling">Event Profiling</h3>
+
+<p>As it was the case for <code class="language-plaintext highlighter-rouge">strace</code> for debugging, you might want to ignore the specifics of the code that you are running and treat it like a black box when profiling.
+The <a href="https://www.man7.org/linux/man-pages/man1/perf.1.html"><code class="language-plaintext highlighter-rouge">perf</code></a> command abstracts CPU differences away and does not report time or memory, but instead it reports system events related to your programs.
+For example, <code class="language-plaintext highlighter-rouge">perf</code> can easily report poor cache locality, high amounts of page faults or livelocks. Here is an overview of the command:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">perf list</code> - List the events that can be traced with perf</li>
+  <li><code class="language-plaintext highlighter-rouge">perf stat COMMAND ARG1 ARG2</code> - Gets counts of different events related to a process or command</li>
+  <li><code class="language-plaintext highlighter-rouge">perf record COMMAND ARG1 ARG2</code> - Records the run of a command and saves the statistical data into a file called <code class="language-plaintext highlighter-rouge">perf.data</code></li>
+  <li><code class="language-plaintext highlighter-rouge">perf report</code> - Formats and prints the data collected in <code class="language-plaintext highlighter-rouge">perf.data</code></li>
+</ul>
+
+<h3 id="visualization">Visualization</h3>
+
+<p>Profiler output for real world programs will contain large amounts of information because of the inherent complexity of software projects.
+Humans are visual creatures and are quite terrible at reading large amounts of numbers and making sense of them.
+Thus there are many tools for displaying profiler’s output in an easier to parse way.</p>
+
+<p>One common way to display CPU profiling information for sampling profilers is to use a <a href="https://www.brendangregg.com/flamegraphs.html">Flame Graph</a>, which will display a hierarchy of function calls across the Y axis and time taken proportional to the X axis. They are also interactive, letting you zoom into specific parts of the program and get their stack traces (try clicking in the image below).</p>
+
+<p><a href="https://www.brendangregg.com/FlameGraphs/cpu-bash-flamegraph.svg"><img src="https://www.brendangregg.com/FlameGraphs/cpu-bash-flamegraph.svg" alt="FlameGraph" /></a></p>
+
+<p>Call graphs or control flow graphs display the relationships between subroutines within a program by including functions as nodes and functions calls between them as directed edges. When coupled with profiling information such as the number of calls and time taken, call graphs can be quite useful for interpreting the flow of a program.
+In Python you can use the <a href="https://pycallgraph.readthedocs.io/"><code class="language-plaintext highlighter-rouge">pycallgraph</code></a> library to generate them.</p>
+
+<p><img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/A_Call_Graph_generated_by_pycallgraph.png" alt="Call Graph" /></p>
+
+<h2 id="resource-monitoring">Resource Monitoring</h2>
+
+<p>Sometimes, the first step towards analyzing the performance of your program is to understand what its actual resource consumption is.
+Programs often run slowly when they are resource constrained, e.g. without enough memory or on a slow network connection.
+There are a myriad of command line tools for probing and displaying different system resources like CPU usage, memory usage, network, disk usage and so on.</p>
+
+<ul>
+  <li><strong>General Monitoring</strong> - Probably the most popular is <a href="https://htop.dev/"><code class="language-plaintext highlighter-rouge">htop</code></a>, which is an improved version of <a href="https://www.man7.org/linux/man-pages/man1/top.1.html"><code class="language-plaintext highlighter-rouge">top</code></a>.
+<code class="language-plaintext highlighter-rouge">htop</code> presents various statistics for the currently running processes on the system. <code class="language-plaintext highlighter-rouge">htop</code> has a myriad of options and keybinds, some useful ones  are: <code class="language-plaintext highlighter-rouge">&lt;F6&gt;</code> to sort processes, <code class="language-plaintext highlighter-rouge">t</code> to show tree hierarchy and <code class="language-plaintext highlighter-rouge">h</code> to toggle threads.
+See also <a href="https://nicolargo.github.io/glances/"><code class="language-plaintext highlighter-rouge">glances</code></a> for similar implementation with a great UI. For getting aggregate measures across all processes, <a href="https://github.com/scottchiefbaker/dool"><code class="language-plaintext highlighter-rouge">dool</code></a> is another nifty tool that computes real-time resource metrics for lots of different subsystems like I/O, networking, CPU utilization, context switches, &amp;c.</li>
+  <li><strong>I/O operations</strong> - <a href="https://www.man7.org/linux/man-pages/man8/iotop.8.html"><code class="language-plaintext highlighter-rouge">iotop</code></a> displays live I/O usage information and is handy to check if a process is doing heavy I/O disk operations</li>
+  <li><strong>Disk Usage</strong> - <a href="https://www.man7.org/linux/man-pages/man1/df.1.html"><code class="language-plaintext highlighter-rouge">df</code></a> displays metrics per partitions and <a href="https://man7.org/linux/man-pages/man1/du.1.html"><code class="language-plaintext highlighter-rouge">du</code></a> displays <strong>d</strong>isk <strong>u</strong>sage per file for the current directory. In these tools the <code class="language-plaintext highlighter-rouge">-h</code> flag tells the program to print with <strong>h</strong>uman readable format.
+A more interactive version of <code class="language-plaintext highlighter-rouge">du</code> is <a href="https://dev.yorhel.nl/ncdu"><code class="language-plaintext highlighter-rouge">ncdu</code></a> which lets you navigate folders and delete files and folders as you navigate.</li>
+  <li><strong>Memory Usage</strong> - <a href="https://www.man7.org/linux/man-pages/man1/free.1.html"><code class="language-plaintext highlighter-rouge">free</code></a> displays the total amount of free and used memory in the system. Memory is also displayed in tools like <code class="language-plaintext highlighter-rouge">htop</code>.</li>
+  <li><strong>Open Files</strong> - <a href="https://www.man7.org/linux/man-pages/man8/lsof.8.html"><code class="language-plaintext highlighter-rouge">lsof</code></a>  lists file information about files opened by processes. It can be quite useful for checking which process has opened a specific file.</li>
+  <li><strong>Network Connections and Config</strong> - <a href="https://www.man7.org/linux/man-pages/man8/ss.8.html"><code class="language-plaintext highlighter-rouge">ss</code></a> lets you monitor incoming and outgoing network packets statistics as well as interface statistics. A common use case of <code class="language-plaintext highlighter-rouge">ss</code> is figuring out what process is using a given port in a machine. For displaying routing, network devices and interfaces you can use <a href="https://man7.org/linux/man-pages/man8/ip.8.html"><code class="language-plaintext highlighter-rouge">ip</code></a>. Note that <code class="language-plaintext highlighter-rouge">netstat</code> and <code class="language-plaintext highlighter-rouge">ifconfig</code> have been deprecated in favor of the former tools respectively.</li>
+  <li><strong>Network Usage</strong> -  <a href="https://github.com/raboof/nethogs"><code class="language-plaintext highlighter-rouge">nethogs</code></a> and <a href="https://pdw.ex-parrot.com/iftop/"><code class="language-plaintext highlighter-rouge">iftop</code></a> are good interactive CLI tools for monitoring network usage.</li>
+</ul>
+
+<p>If you want to test these tools you can also artificially impose loads on the machine using the <a href="https://linux.die.net/man/1/stress"><code class="language-plaintext highlighter-rouge">stress</code></a> command.</p>
+
+<h3 id="specialized-tools-1">Specialized tools</h3>
+
+<p>Sometimes, black box benchmarking is all you need to determine what software to use.
+Tools like <a href="https://github.com/sharkdp/hyperfine"><code class="language-plaintext highlighter-rouge">hyperfine</code></a> let you quickly benchmark command line programs.
+For instance, in the shell tools and scripting lecture we recommended <code class="language-plaintext highlighter-rouge">fd</code> over <code class="language-plaintext highlighter-rouge">find</code>. We can use <code class="language-plaintext highlighter-rouge">hyperfine</code> to compare them in tasks we run often.
+E.g. in the example below <code class="language-plaintext highlighter-rouge">fd</code> was 20x faster than <code class="language-plaintext highlighter-rouge">find</code> in my machine.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>hyperfine <span class="nt">--warmup</span> 3 <span class="s1">'fd -e jpg'</span> <span class="s1">'find . -iname "*.jpg"'</span>
+Benchmark <span class="c">#1: fd -e jpg</span>
+  Time <span class="o">(</span>mean ± σ<span class="o">)</span>:      51.4 ms ±   2.9 ms    <span class="o">[</span>User: 121.0 ms, System: 160.5 ms]
+  Range <span class="o">(</span>min … max<span class="o">)</span>:    44.2 ms …  60.1 ms    56 runs
+
+Benchmark <span class="c">#2: find . -iname "*.jpg"</span>
+  Time <span class="o">(</span>mean ± σ<span class="o">)</span>:      1.126 s ±  0.101 s    <span class="o">[</span>User: 141.1 ms, System: 956.1 ms]
+  Range <span class="o">(</span>min … max<span class="o">)</span>:    0.975 s …  1.287 s    10 runs
+
+Summary
+  <span class="s1">'fd -e jpg'</span> ran
+   21.89 ± 2.33 <span class="nb">times </span>faster than <span class="s1">'find . -iname "*.jpg"'</span>
+</code></pre></div></div>
+
+<p>As it was the case for debugging, browsers also come with a fantastic set of tools for profiling webpage loading, letting you figure out where time is being spent (loading, rendering, scripting, &amp;c).
+More info for <a href="https://profiler.firefox.com/docs/">Firefox</a> and <a href="https://developers.google.com/web/tools/chrome-devtools/rendering-tools">Chrome</a>.</p>
+
+<h1 id="exercises">Exercises</h1>
+
+<h2 id="debugging-1">Debugging</h2>
+<ol>
+  <li>
+    <p>Use <code class="language-plaintext highlighter-rouge">journalctl</code> on Linux or <code class="language-plaintext highlighter-rouge">log show</code> on macOS to get the super user accesses and commands in the last day.
+If there aren’t any you can execute some harmless commands such as <code class="language-plaintext highlighter-rouge">sudo ls</code> and check again.</p>
+  </li>
+  <li>
+    <p>Do <a href="https://github.com/spiside/pdb-tutorial">this</a> hands on <code class="language-plaintext highlighter-rouge">pdb</code> tutorial to familiarize yourself with the commands. For a more in depth tutorial read <a href="https://realpython.com/python-debugging-pdb">this</a>.</p>
+  </li>
+  <li>
+    <p>Install <a href="https://www.shellcheck.net/"><code class="language-plaintext highlighter-rouge">shellcheck</code></a> and try checking the following script. What is wrong with the code? Fix it. Install a linter plugin in your editor so you can get your warnings automatically.</p>
+
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">#!/bin/sh</span>
+<span class="c">## Example: a typical script with several problems</span>
+<span class="k">for </span>f <span class="k">in</span> <span class="si">$(</span><span class="nb">ls</span> <span class="k">*</span>.m3u<span class="si">)</span>
+<span class="k">do
+  </span><span class="nb">grep</span> <span class="nt">-qi</span> hq.<span class="k">*</span>mp3 <span class="nv">$f</span> <span class="se">\</span>
+    <span class="o">&amp;&amp;</span> <span class="nb">echo</span> <span class="nt">-e</span> <span class="s1">'Playlist $f contains a HQ file in mp3 format'</span>
+<span class="k">done</span>
+</code></pre></div>    </div>
+  </li>
+  <li>(Advanced) Read about <a href="https://undo.io/resources/reverse-debugging-whitepaper/">reversible debugging</a> and get a simple example working using <a href="https://rr-project.org/"><code class="language-plaintext highlighter-rouge">rr</code></a> or <a href="https://morepypy.blogspot.com/2016/07/reverse-debugging-for-python.html"><code class="language-plaintext highlighter-rouge">RevPDB</code></a>.
+    <h2 id="profiling-1">Profiling</h2>
+  </li>
+  <li>
+    <p><a href="/static/files/sorts.py">Here</a> are some sorting algorithm implementations. Use <a href="https://docs.python.org/3/library/profile.html"><code class="language-plaintext highlighter-rouge">cProfile</code></a> and <a href="https://github.com/pyutils/line_profiler"><code class="language-plaintext highlighter-rouge">line_profiler</code></a> to compare the runtime of insertion sort and quicksort. What is the bottleneck of each algorithm? Use then <code class="language-plaintext highlighter-rouge">memory_profiler</code> to check the memory consumption, why is insertion sort better? Check now the inplace version of quicksort. Challenge: Use <code class="language-plaintext highlighter-rouge">perf</code> to look at the cycle counts and cache hits and misses of each algorithm.</p>
+  </li>
+  <li>
+    <p>Here’s some (arguably convoluted) Python code for computing Fibonacci numbers using a function for each number.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">#!/usr/bin/env python
+</span><span class="k">def</span> <span class="nf">fib0</span><span class="p">():</span> <span class="k">return</span> <span class="mi">0</span>
+
+<span class="k">def</span> <span class="nf">fib1</span><span class="p">():</span> <span class="k">return</span> <span class="mi">1</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="s">"""def fib{}(): return fib{}() + fib{}()"""</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+
+    <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">10</span><span class="p">):</span>
+        <span class="k">exec</span><span class="p">(</span><span class="n">s</span><span class="p">.</span><span class="nb">format</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">n</span><span class="o">-</span><span class="mi">2</span><span class="p">))</span>
+    <span class="c1"># from functools import lru_cache
+</span>    <span class="c1"># for n in range(10):
+</span>    <span class="c1">#     exec("fib{} = lru_cache(1)(fib{})".format(n, n))
+</span>    <span class="k">print</span><span class="p">(</span><span class="nb">eval</span><span class="p">(</span><span class="s">"fib9()"</span><span class="p">))</span>
+</code></pre></div>    </div>
+
+    <p>Put the code into a file and make it executable. Install prerequisites: <a href="https://lewiscowles1986.github.io/py-call-graph/"><code class="language-plaintext highlighter-rouge">pycallgraph</code></a> and <a href="https://graphviz.org/"><code class="language-plaintext highlighter-rouge">graphviz</code></a>. (If you can run <code class="language-plaintext highlighter-rouge">dot</code>, you already have GraphViz.) Run the code as is with <code class="language-plaintext highlighter-rouge">pycallgraph graphviz -- ./fib.py</code> and check the <code class="language-plaintext highlighter-rouge">pycallgraph.png</code> file. How many times is <code class="language-plaintext highlighter-rouge">fib0</code> called?. We can do better than that by memoizing the functions. Uncomment the commented lines and regenerate the images. How many times are we calling each <code class="language-plaintext highlighter-rouge">fibN</code> function now?</p>
+  </li>
+  <li>
+    <p>A common issue is that a port you want to listen on is already taken by another process. Let’s learn how to discover that process pid. First execute <code class="language-plaintext highlighter-rouge">python -m http.server 4444</code> to start a minimal web server listening on port <code class="language-plaintext highlighter-rouge">4444</code>. On a separate terminal run <code class="language-plaintext highlighter-rouge">lsof | grep LISTEN</code> to print all listening processes and ports. Find that process pid and terminate it by running <code class="language-plaintext highlighter-rouge">kill &lt;PID&gt;</code>.</p>
+  </li>
+  <li>
+    <p>Limiting a process’s resources can be another handy tool in your toolbox.
+Try running <code class="language-plaintext highlighter-rouge">stress -c 3</code> and visualize the CPU consumption with <code class="language-plaintext highlighter-rouge">htop</code>. Now, execute <code class="language-plaintext highlighter-rouge">taskset --cpu-list 0,2 stress -c 3</code> and visualize it. Is <code class="language-plaintext highlighter-rouge">stress</code> taking three CPUs? Why not? Read <a href="https://www.man7.org/linux/man-pages/man1/taskset.1.html"><code class="language-plaintext highlighter-rouge">man taskset</code></a>.
+Challenge: achieve the same using <a href="https://www.man7.org/linux/man-pages/man7/cgroups.7.html"><code class="language-plaintext highlighter-rouge">cgroups</code></a>. Try limiting the memory consumption of <code class="language-plaintext highlighter-rouge">stress -m</code>.</p>
+  </li>
+  <li>(Advanced) The command <code class="language-plaintext highlighter-rouge">curl ipinfo.io</code> performs a HTTP request and fetches information about your public IP. Open <a href="https://www.wireshark.org/">Wireshark</a> and try to sniff the request and reply packets that <code class="language-plaintext highlighter-rouge">curl</code> sent and received. (Hint: Use the <code class="language-plaintext highlighter-rouge">http</code> filter to just watch HTTP packets).</li>
+</ol>
+
+
+
+<hr>
+
+<div class="small center">
+<p><a href="https://github.com/missing-semester/missing-semester/blob/master/_2020/debugging-profiling.md">Edit this page</a>.</p>
+<p>Licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA</a>.</p>
+</div>
+
+    </div>
+
+  </body>
+
+</html>

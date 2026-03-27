@@ -76,16 +76,16 @@ export interface TagTreeEntry {
   child_tag: string;
 }
 
-export interface ArticleTeachRow {
-  article_uri: string;
+export interface ContentTeachRow {
+  content_uri: string;
   tag_id: string;
   tag_name: string;
   tag_names: Record<string, string>;
 }
 
 
-export interface ArticlePrereqBulkRow {
-  article_uri: string;
+export interface ContentPrereqBulkRow {
+  content_uri: string;
   tag_id: string;
   prereq_type: string;
   tag_name: string;
@@ -119,9 +119,6 @@ export interface Series {
   id: string;
   title: string;
   description: string | null;
-  tag_id: string;
-  tag_name?: string;
-  tag_names?: Record<string, string>;
   parent_id: string | null;
   order_index: number;
   created_by: string;

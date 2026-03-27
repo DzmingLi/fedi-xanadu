@@ -14,7 +14,7 @@ use super::{Auth, UriQuery, tid};
 pub(crate) struct CreateSeriesInput {
     title: String,
     description: Option<String>,
-    tag_id: String,
+    topics: Option<Vec<String>>,
     parent_id: Option<String>,
 }
 
@@ -42,18 +42,12 @@ pub async fn create_series(
     Auth(user): Auth,
     Json(input): Json<CreateSeriesInput>,
 ) -> ApiResult<(StatusCode, Json<series_service::SeriesRow>)> {
-    let mut errors = Vec::new();
     if let Err(e) = validation::validate_title(&input.title) {
-        errors.push(e);
-    }
-    if let Err(e) = validation::validate_tag_id(&input.tag_id) {
-        errors.push(e);
-    }
-    if !errors.is_empty() {
-        return Err(AppError(fx_core::Error::Validation(errors)));
+        return Err(AppError(fx_core::Error::Validation(vec![e])));
     }
 
     let id = format!("s-{}", tid());
+    let topics = input.topics.unwrap_or_default();
 
     // If parent_id given, verify the user owns the parent series
     if let Some(ref pid) = input.parent_id {
@@ -66,7 +60,7 @@ pub async fn create_series(
         &id,
         &input.title,
         input.description.as_deref(),
-        &input.tag_id,
+        &topics,
         input.parent_id.as_deref(),
         &user.did,
     )

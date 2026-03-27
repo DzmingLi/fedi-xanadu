@@ -192,7 +192,6 @@
       <p class="series-desc">{detail.series.description}</p>
     {/if}
     <div class="series-meta">
-      <a href="#/tag?id={encodeURIComponent(detail.series.tag_id)}" class="tag">{detail.series.tag_id}</a>
       {#if hasChildren && tree}
         {@const totalArticles = countTreeArticles(tree)}
         <span class="meta">{totalArticles} {t('series.articles')}</span>

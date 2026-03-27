@@ -1,6 +1,6 @@
 <script lang="ts" module>
   // Module-level cache — survives component destroy/recreate during SPA navigation
-  import type { Article, ArticleTeachRow, ArticlePrereqBulkRow, Tag, TagTreeEntry, Series } from '../lib/types';
+  import type { Article, ContentTeachRow, ContentPrereqBulkRow, Tag, TagTreeEntry, Series } from '../lib/types';
   let _cache: {
     articles: Article[];
     allTags: Tag[];
@@ -8,8 +8,8 @@
     allSeries: Series[];
     seriesArticleUris: Set<string>;
     seriesArticleMap: Map<string, string[]>;
-    articleTeaches: Map<string, ArticleTeachRow[]>;
-    articlePrereqs: Map<string, ArticlePrereqBulkRow[]>;
+    articleTeaches: Map<string, ContentTeachRow[]>;
+    articlePrereqs: Map<string, ContentPrereqBulkRow[]>;
     interests: string[];
     ts: number;
   } | null = null;
@@ -31,8 +31,8 @@
   let tagTree = $state<TagTreeEntry[]>(_cache?.tagTree ?? []);
   let loading = $state(!_cache);
 
-  let articleTeaches = $state(new Map<string, ArticleTeachRow[]>(_cache?.articleTeaches ?? []));
-  let articlePrereqs = $state(new Map<string, ArticlePrereqBulkRow[]>(_cache?.articlePrereqs ?? []));
+  let articleTeaches = $state(new Map<string, ContentTeachRow[]>(_cache?.articleTeaches ?? []));
+  let articlePrereqs = $state(new Map<string, ContentPrereqBulkRow[]>(_cache?.articlePrereqs ?? []));
 
   // Series data
   let allSeries = $state<Series[]>(_cache?.allSeries ?? []);

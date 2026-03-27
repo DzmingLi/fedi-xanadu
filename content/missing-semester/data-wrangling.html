@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/assets/favicon-16x16.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="og:url" content="https://missing.csail.mit.edu/2020/data-wrangling/">
+  <meta property="og:site_name" content="Missing Semester">
+
+  
+    
+    <meta name="description" content="Learn how to manipulate and transform data using command-line tools like sed, awk, and regular expressions.">
+    <meta name="twitter:description" content="Learn how to manipulate and transform data using command-line tools like sed, awk, and regular expressions.">
+    <meta property="og:description" content="Learn how to manipulate and transform data using command-line tools like sed, awk, and regular expressions.">
+  
+
+  
+  <meta name="twitter:title" content="Data Wrangling">
+  <meta property="og:title" content="Data Wrangling">
+
+  
+  <meta name="twitter:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec4.png">
+  <meta property="og:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec4.png">
+
+  <title>
+    
+      
+        Data Wrangling &middot; Missing Semester
+      
+    
+  </title>
+
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/syntax.css">
+  <script defer src="/static/js/sidenotes.js"></script>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,300,400,600,700,900,200italic,300italic,400italic,600italic,700italic,900italic&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Code+Pro:200,300,400,500,600,700,900&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-P7WVHD84D1"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-P7WVHD84D1');
+  </script>
+
+</head>
+
+
+  <body>
+
+    <div id="nav-bg">
+  <nav id="top-nav">
+    <a href="/" id="logo">./missing-semester</a>
+    <input type="checkbox" id="menu-icon">
+    <label class="menu-label" for="menu-icon"></label>
+    <div class="trigger">
+      <div class="trigger-child">
+        <span class="nav-link"><a href="/2026/">lectures</a></span>
+        <span class="nav-link"><a href="/past/">past</a></span>
+        <span class="nav-link"><a href="/about/">about</a></span>
+      </div>
+    </div>
+  </nav>
+</div>
+
+
+    <div id="content">
+    <h1 class="title">Data Wrangling</h1>
+
+
+
+  <div class="youtube-wrapper" style="padding-bottom: 56.25%;">
+    <iframe src="https://www.youtube.com/embed/sz_dsktIjt4" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+  </div>
+
+
+<p>Have you ever wanted to take data in one format and turn it into a
+different format? Of course you have! That, in very general terms, is
+what this lecture is all about. Specifically, massaging data, whether in
+text or binary format, until you end up with exactly what you wanted.</p>
+
+<p>We’ve already seen some basic data wrangling in past lectures. Pretty
+much any time you use the <code class="language-plaintext highlighter-rouge">|</code> operator, you are performing some kind of
+data wrangling. Consider a command like <code class="language-plaintext highlighter-rouge">journalctl | grep -i intel</code>. It
+finds all system log entries that mention Intel (case insensitive). You
+may not think of it as wrangling data, but it is going from one format
+(your entire system log) to a format that is more useful to you (just
+the intel log entries). Most data wrangling is about knowing what tools
+you have at your disposal, and how to combine them.</p>
+
+<p>Let’s start from the beginning. To wrangle data, we need two things:
+data to wrangle, and something to do with it. Logs often make for a good
+use-case, because you often want to investigate things about them, and
+reading the whole thing isn’t feasible. Let’s figure out who’s trying to
+log into my server by looking at my server’s log:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver journalctl
+</code></pre></div></div>
+
+<p>That’s far too much stuff. Let’s limit it to ssh stuff:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver journalctl | <span class="nb">grep </span>sshd
+</code></pre></div></div>
+
+<p>Notice that we’re using a pipe to stream a <em>remote</em> file through <code class="language-plaintext highlighter-rouge">grep</code>
+on our local computer! <code class="language-plaintext highlighter-rouge">ssh</code> is magical, and we will talk more about it
+in the next lecture on the command-line environment. This is still way
+more stuff than we wanted though. And pretty hard to read. Let’s do
+better:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver <span class="s1">'journalctl | grep sshd | grep "Disconnected from"'</span> | less
+</code></pre></div></div>
+
+<p>Why the additional quoting? Well, our logs may be quite large, and it’s
+wasteful to stream it all to our computer and then do the filtering.
+Instead, we can do the filtering on the remote server, and then massage
+the data locally. <code class="language-plaintext highlighter-rouge">less</code> gives us a “pager” that allows us to scroll up
+and down through the long output. To save some additional traffic while
+we debug our command-line, we can even stick the current filtered logs
+into a file so that we don’t have to access the network while
+developing:</p>
+
+<div class="language-console highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="gp">$</span><span class="w"> </span>ssh myserver <span class="s1">'journalctl | grep sshd | grep "Disconnected from"'</span> <span class="o">&gt;</span> ssh.log
+<span class="gp">$</span><span class="w"> </span>less ssh.log
+</code></pre></div></div>
+
+<p>There’s still a lot of noise here. There are <em>a lot</em> of ways to get rid
+of that, but let’s look at one of the most powerful tools in your
+toolkit: <code class="language-plaintext highlighter-rouge">sed</code>.</p>
+
+<p><code class="language-plaintext highlighter-rouge">sed</code> is a “stream editor” that builds on top of the old <code class="language-plaintext highlighter-rouge">ed</code> editor. In
+it, you basically give short commands for how to modify the file, rather
+than manipulate its contents directly (although you can do that too).
+There are tons of commands, but one of the most common ones is <code class="language-plaintext highlighter-rouge">s</code>:
+substitution. For example, we can write:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver journalctl
+ | <span class="nb">grep </span>sshd
+ | <span class="nb">grep</span> <span class="s2">"Disconnected from"</span>
+ | <span class="nb">sed</span> <span class="s1">'s/.*Disconnected from //'</span>
+</code></pre></div></div>
+
+<p>What we just wrote was a simple <em>regular expression</em>; a powerful
+construct that lets you match text against patterns. The <code class="language-plaintext highlighter-rouge">s</code> command is
+written in the form: <code class="language-plaintext highlighter-rouge">s/REGEX/SUBSTITUTION/</code>, where <code class="language-plaintext highlighter-rouge">REGEX</code> is the
+regular expression you want to search for, and <code class="language-plaintext highlighter-rouge">SUBSTITUTION</code> is the
+text you want to substitute matching text with.</p>
+
+<p>(You may recognize this syntax from the “Search and replace” section of our Vim
+<a href="/2020/editors/#advanced-vim">lecture notes</a>! Indeed, Vim uses a syntax for
+searching and replacing that is similar to <code class="language-plaintext highlighter-rouge">sed</code>’s substitution command.
+Learning one tool often helps you become more proficient with others.)</p>
+
+<h2 id="regular-expressions">Regular expressions</h2>
+
+<p>Regular expressions are common and useful enough that it’s worthwhile to
+take some time to understand how they work. Let’s start by looking at
+the one we used above: <code class="language-plaintext highlighter-rouge">/.*Disconnected from /</code>. Regular expressions are
+usually (though not always) surrounded by <code class="language-plaintext highlighter-rouge">/</code>. Most ASCII characters
+just carry their normal meaning, but some characters have “special”
+matching behavior. Exactly which characters do what vary somewhat
+between different implementations of regular expressions, which is a
+source of great frustration. Very common patterns are:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">.</code> means “any single character” except newline</li>
+  <li><code class="language-plaintext highlighter-rouge">*</code> zero or more of the preceding match</li>
+  <li><code class="language-plaintext highlighter-rouge">+</code> one or more of the preceding match</li>
+  <li><code class="language-plaintext highlighter-rouge">[abc]</code> any one character of <code class="language-plaintext highlighter-rouge">a</code>, <code class="language-plaintext highlighter-rouge">b</code>, and <code class="language-plaintext highlighter-rouge">c</code></li>
+  <li><code class="language-plaintext highlighter-rouge">(RX1|RX2)</code> either something that matches <code class="language-plaintext highlighter-rouge">RX1</code> or <code class="language-plaintext highlighter-rouge">RX2</code></li>
+  <li><code class="language-plaintext highlighter-rouge">^</code> the start of the line</li>
+  <li><code class="language-plaintext highlighter-rouge">$</code> the end of the line</li>
+</ul>
+
+<p><code class="language-plaintext highlighter-rouge">sed</code>’s regular expressions are somewhat weird, and will require you to
+put a <code class="language-plaintext highlighter-rouge">\</code> before most of these to give them their special meaning. Or
+you can pass <code class="language-plaintext highlighter-rouge">-E</code>.</p>
+
+<p>So, looking back at <code class="language-plaintext highlighter-rouge">/.*Disconnected from /</code>, we see that it matches
+any text that starts with any number of characters, followed by the
+literal string “Disconnected from ”. Which is what we wanted. But
+beware, regular expressions are tricky. What if someone tried to log in
+with the username “Disconnected from”? We’d have:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Jan 17 03:13:00 thesquareplanet.com sshd[2631]: Disconnected from invalid user Disconnected from 46.97.239.16 port 55920 [preauth]
+</code></pre></div></div>
+
+<p>What would we end up with? Well, <code class="language-plaintext highlighter-rouge">*</code> and <code class="language-plaintext highlighter-rouge">+</code> are, by default, “greedy”.
+They will match as much text as they can. So, in the above, we’d end up
+with just</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>46.97.239.16 port 55920 [preauth]
+</code></pre></div></div>
+
+<p>Which may not be what we wanted. In some regular expression
+implementations, you can just suffix <code class="language-plaintext highlighter-rouge">*</code> or <code class="language-plaintext highlighter-rouge">+</code> with a <code class="language-plaintext highlighter-rouge">?</code> to make them
+non-greedy, but sadly <code class="language-plaintext highlighter-rouge">sed</code> doesn’t support that. We <em>could</em> switch to
+perl’s command-line mode though, which <em>does</em> support that construct:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>perl <span class="nt">-pe</span> <span class="s1">'s/.*?Disconnected from //'</span>
+</code></pre></div></div>
+
+<p>We’ll stick to <code class="language-plaintext highlighter-rouge">sed</code> for the rest of this, because it’s by far the more
+common tool for these kinds of jobs. <code class="language-plaintext highlighter-rouge">sed</code> can also do other handy
+things like print lines following a given match, do multiple
+substitutions per invocation, search for things, etc. But we won’t cover
+that too much here. <code class="language-plaintext highlighter-rouge">sed</code> is basically an entire topic in and of itself,
+but there are often better tools.</p>
+
+<p>Okay, so we also have a suffix we’d like to get rid of. How might we do
+that? It’s a little tricky to match just the text that follows the
+username, especially if the username can have spaces and such! What we
+need to do is match the <em>whole</em> line:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code> | <span class="nb">sed</span> <span class="nt">-E</span> <span class="s1">'s/.*Disconnected from (invalid |authenticating )?user .* [^ ]+ port [0-9]+( \[preauth\])?$//'</span>
+</code></pre></div></div>
+
+<p>Let’s look at what’s going on with a <a href="https://regex101.com/r/qqbZqh/2">regex
+debugger</a>. Okay, so the start is still
+as before. Then, we’re matching any of the “user” variants (there are
+two prefixes in the logs). Then we’re matching on any string of
+characters where the username is. Then we’re matching on any single word
+(<code class="language-plaintext highlighter-rouge">[^ ]+</code>; any non-empty sequence of non-space characters). Then the word
+“port” followed by a sequence of digits. Then possibly the suffix
+<code class="language-plaintext highlighter-rouge">[preauth]</code>, and then the end of the line.</p>
+
+<p>Notice that with this technique, a username of “Disconnected from”
+won’t confuse us any more. Can you see why?</p>
+
+<p>There is one problem with this though, and that is that the entire log
+becomes empty. We want to <em>keep</em> the username after all. For this, we
+can use “capture groups”. Any text matched by a regex surrounded by
+parentheses is stored in a numbered capture group. These are available
+in the substitution (and in some engines, even in the pattern itself!)
+as <code class="language-plaintext highlighter-rouge">\1</code>, <code class="language-plaintext highlighter-rouge">\2</code>, <code class="language-plaintext highlighter-rouge">\3</code>, etc. So:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code> | <span class="nb">sed</span> <span class="nt">-E</span> <span class="s1">'s/.*Disconnected from (invalid |authenticating )?user (.*) [^ ]+ port [0-9]+( \[preauth\])?$/\2/'</span>
+</code></pre></div></div>
+
+<p>As you can probably imagine, you can come up with <em>really</em> complicated
+regular expressions. For example, here’s an article on how you might
+match an <a href="https://www.regular-expressions.info/email.html">e-mail
+address</a>. It’s <a href="https://web.archive.org/web/20221223174323/http://emailregex.com/">not
+easy</a>. And there’s <a href="https://stackoverflow.com/questions/201323/how-to-validate-an-email-address-using-a-regular-expression/1917982">lots of
+discussion</a>.
+And people have <a href="https://fightingforalostcause.net/content/misc/2006/compare-email-regex.php">written
+tests</a>.
+And <a href="https://mathiasbynens.be/demo/url-regex">test matrices</a>. You can
+even write a regex for determining if a given number <a href="https://www.noulakaz.net/2007/03/18/a-regular-expression-to-check-for-prime-numbers/">is a prime
+number</a>.</p>
+
+<p>Regular expressions are notoriously hard to get right, but they are also
+very handy to have in your toolbox!</p>
+
+<h2 id="back-to-data-wrangling">Back to data wrangling</h2>
+
+<p>Okay, so we now have</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver journalctl
+ | <span class="nb">grep </span>sshd
+ | <span class="nb">grep</span> <span class="s2">"Disconnected from"</span>
+ | <span class="nb">sed</span> <span class="nt">-E</span> <span class="s1">'s/.*Disconnected from (invalid |authenticating )?user (.*) [^ ]+ port [0-9]+( \[preauth\])?$/\2/'</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">sed</code> can do all sorts of other interesting things, like injecting text
+(with the <code class="language-plaintext highlighter-rouge">i</code> command), explicitly printing lines (with the <code class="language-plaintext highlighter-rouge">p</code>
+command), selecting lines by index, and lots of other things. Check <code class="language-plaintext highlighter-rouge">man
+sed</code>!</p>
+
+<p>Anyway. What we have now gives us a list of all the usernames that have
+attempted to log in. But this is pretty unhelpful. Let’s look for common
+ones:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver journalctl
+ | <span class="nb">grep </span>sshd
+ | <span class="nb">grep</span> <span class="s2">"Disconnected from"</span>
+ | <span class="nb">sed</span> <span class="nt">-E</span> <span class="s1">'s/.*Disconnected from (invalid |authenticating )?user (.*) [^ ]+ port [0-9]+( \[preauth\])?$/\2/'</span>
+ | <span class="nb">sort</span> | <span class="nb">uniq</span> <span class="nt">-c</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">sort</code> will, well, sort its input. <code class="language-plaintext highlighter-rouge">uniq -c</code> will collapse consecutive
+lines that are the same into a single line, prefixed with a count of the
+number of occurrences. We probably want to sort that too and only keep
+the most common usernames:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver journalctl
+ | <span class="nb">grep </span>sshd
+ | <span class="nb">grep</span> <span class="s2">"Disconnected from"</span>
+ | <span class="nb">sed</span> <span class="nt">-E</span> <span class="s1">'s/.*Disconnected from (invalid |authenticating )?user (.*) [^ ]+ port [0-9]+( \[preauth\])?$/\2/'</span>
+ | <span class="nb">sort</span> | <span class="nb">uniq</span> <span class="nt">-c</span>
+ | <span class="nb">sort</span> <span class="nt">-nk1</span>,1 | <span class="nb">tail</span> <span class="nt">-n10</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">sort -n</code> will sort in numeric (instead of lexicographic) order. <code class="language-plaintext highlighter-rouge">-k1,1</code>
+means “sort by only the first whitespace-separated column”. The <code class="language-plaintext highlighter-rouge">,n</code>
+part says “sort until the <code class="language-plaintext highlighter-rouge">n</code>th field, where the default is the end of
+the line. In this <em>particular</em> example, sorting by the whole line
+wouldn’t matter, but we’re here to learn!</p>
+
+<p>If we wanted the <em>least</em> common ones, we could use <code class="language-plaintext highlighter-rouge">head</code> instead of
+<code class="language-plaintext highlighter-rouge">tail</code>. There’s also <code class="language-plaintext highlighter-rouge">sort -r</code>, which sorts in reverse order.</p>
+
+<p>Okay, so that’s pretty cool, but what if we’d like to extract only the usernames
+as a comma-separated list instead of one per line, perhaps for a config file?</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver journalctl
+ | <span class="nb">grep </span>sshd
+ | <span class="nb">grep</span> <span class="s2">"Disconnected from"</span>
+ | <span class="nb">sed</span> <span class="nt">-E</span> <span class="s1">'s/.*Disconnected from (invalid |authenticating )?user (.*) [^ ]+ port [0-9]+( \[preauth\])?$/\2/'</span>
+ | <span class="nb">sort</span> | <span class="nb">uniq</span> <span class="nt">-c</span>
+ | <span class="nb">sort</span> <span class="nt">-nk1</span>,1 | <span class="nb">tail</span> <span class="nt">-n10</span>
+ | <span class="nb">awk</span> <span class="s1">'{print $2}'</span> | <span class="nb">paste</span> <span class="nt">-sd</span>,
+</code></pre></div></div>
+
+<p>If you’re using macOS: note that the command as shown won’t work with the BSD
+<code class="language-plaintext highlighter-rouge">paste</code> shipped with macOS. See <a href="/2020/shell-tools/#exercises">exercise 4 from the shell tools
+lecture</a> for more on the difference between BSD
+and GNU coreutils and instructions for how to install GNU coreutils on macOS.</p>
+
+<p>Let’s start with <code class="language-plaintext highlighter-rouge">paste</code>: it lets you combine lines (<code class="language-plaintext highlighter-rouge">-s</code>) by a given
+single-character delimiter (<code class="language-plaintext highlighter-rouge">-d</code>; <code class="language-plaintext highlighter-rouge">,</code> in this case). But what’s this <code class="language-plaintext highlighter-rouge">awk</code> business?</p>
+
+<h2 id="awk--another-editor">awk – another editor</h2>
+
+<p><code class="language-plaintext highlighter-rouge">awk</code> is a programming language that just happens to be really good at
+processing text streams. There is <em>a lot</em> to say about <code class="language-plaintext highlighter-rouge">awk</code> if you were
+to learn it properly, but as with many other things here, we’ll just go
+through the basics.</p>
+
+<p>First, what does <code class="language-plaintext highlighter-rouge">{print $2}</code> do? Well, <code class="language-plaintext highlighter-rouge">awk</code> programs take the form of
+an optional pattern plus a block saying what to do if the pattern
+matches a given line. The default pattern (which we used above) matches
+all lines. Inside the block, <code class="language-plaintext highlighter-rouge">$0</code> is set to the entire line’s contents,
+and <code class="language-plaintext highlighter-rouge">$1</code> through <code class="language-plaintext highlighter-rouge">$n</code> are set to the <code class="language-plaintext highlighter-rouge">n</code>th <em>field</em> of that line, when
+separated by the <code class="language-plaintext highlighter-rouge">awk</code> field separator (whitespace by default, change
+with <code class="language-plaintext highlighter-rouge">-F</code>). In this case, we’re saying that, for every line, print the
+contents of the second field, which happens to be the username!</p>
+
+<p>Let’s see if we can do something fancier. Let’s compute the number of
+single-use usernames that start with <code class="language-plaintext highlighter-rouge">c</code> and end with <code class="language-plaintext highlighter-rouge">e</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code> | <span class="nb">awk</span> <span class="s1">'$1 == 1 &amp;&amp; $2 ~ /^c[^ ]*e$/ { print $2 }'</span> | <span class="nb">wc</span> <span class="nt">-l</span>
+</code></pre></div></div>
+
+<p>There’s a lot to unpack here. First, notice that we now have a pattern
+(the stuff that goes before <code class="language-plaintext highlighter-rouge">{...}</code>). The pattern says that the first
+field of the line should be equal to 1 (that’s the count from <code class="language-plaintext highlighter-rouge">uniq
+-c</code>), and that the second field should match the given regular
+expression. And the block just says to print the username. We then count
+the number of lines in the output with <code class="language-plaintext highlighter-rouge">wc -l</code>.</p>
+
+<p>However, <code class="language-plaintext highlighter-rouge">awk</code> is a programming language, remember?</p>
+
+<div class="language-awk highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kr">BEGIN</span> <span class="p">{</span> <span class="nx">rows</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">}</span>
+<span class="nv">$1</span> <span class="o">==</span> <span class="mi">1</span> <span class="o">&amp;&amp;</span> <span class="nv">$2</span> <span class="o">~</span> <span class="sr">/^c</span><span class="se">[^</span><span class="sr"> </span><span class="se">]</span><span class="sr">*e$/</span> <span class="p">{</span> <span class="nx">rows</span> <span class="o">+=</span> <span class="nv">$1</span> <span class="p">}</span>
+<span class="kr">END</span> <span class="p">{</span> <span class="k">print</span> <span class="nx">rows</span> <span class="p">}</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">BEGIN</code> is a pattern that matches the start of the input (and <code class="language-plaintext highlighter-rouge">END</code>
+matches the end). Now, the per-line block just adds the count from the
+first field (although it’ll always be 1 in this case), and then we print
+it out at the end. In fact, we <em>could</em> get rid of <code class="language-plaintext highlighter-rouge">grep</code> and <code class="language-plaintext highlighter-rouge">sed</code>
+entirely, because <code class="language-plaintext highlighter-rouge">awk</code> <a href="https://web.archive.org/web/20251210045942/https://backreference.org/2010/02/10/idiomatic-awk/">can do it
+all</a>, but we’ll
+leave that as an exercise to the reader.</p>
+
+<h2 id="analyzing-data">Analyzing data</h2>
+
+<p>You can do math directly in your shell using <code class="language-plaintext highlighter-rouge">bc</code>, a calculator that can read
+from STDIN! For example, add the numbers on each line together by concatenating
+them together, delimited by <code class="language-plaintext highlighter-rouge">+</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code> | <span class="nb">paste</span> <span class="nt">-sd</span>+ | bc <span class="nt">-l</span>
+</code></pre></div></div>
+
+<p>Or produce more elaborate expressions:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">echo</span> <span class="s2">"2*(</span><span class="si">$(</span>data | <span class="nb">paste</span> <span class="nt">-sd</span>+<span class="si">)</span><span class="s2">)"</span> | bc <span class="nt">-l</span>
+</code></pre></div></div>
+
+<p>You can get stats in a variety of ways.
+<a href="https://github.com/nferraz/st"><code class="language-plaintext highlighter-rouge">st</code></a> is pretty neat, but if you already
+have <a href="https://www.r-project.org/">R</a>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver journalctl
+ | <span class="nb">grep </span>sshd
+ | <span class="nb">grep</span> <span class="s2">"Disconnected from"</span>
+ | <span class="nb">sed</span> <span class="nt">-E</span> <span class="s1">'s/.*Disconnected from (invalid |authenticating )?user (.*) [^ ]+ port [0-9]+( \[preauth\])?$/\2/'</span>
+ | <span class="nb">sort</span> | <span class="nb">uniq</span> <span class="nt">-c</span>
+ | <span class="nb">awk</span> <span class="s1">'{print $1}'</span> | R <span class="nt">--no-echo</span> <span class="nt">-e</span> <span class="s1">'x &lt;- scan(file="stdin", quiet=TRUE); summary(x)'</span>
+</code></pre></div></div>
+
+<p>R is another (weird) programming language that’s great at data analysis
+and <a href="https://ggplot2.tidyverse.org/">plotting</a>. We won’t go into too
+much detail, but suffice to say that <code class="language-plaintext highlighter-rouge">summary</code> prints summary statistics
+for a vector, and we created a vector containing the input stream of
+numbers, so R gives us the statistics we wanted!</p>
+
+<p>If you just want some simple plotting, <code class="language-plaintext highlighter-rouge">gnuplot</code> is your friend:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh myserver journalctl
+ | <span class="nb">grep </span>sshd
+ | <span class="nb">grep</span> <span class="s2">"Disconnected from"</span>
+ | <span class="nb">sed</span> <span class="nt">-E</span> <span class="s1">'s/.*Disconnected from (invalid |authenticating )?user (.*) [^ ]+ port [0-9]+( \[preauth\])?$/\2/'</span>
+ | <span class="nb">sort</span> | <span class="nb">uniq</span> <span class="nt">-c</span>
+ | <span class="nb">sort</span> <span class="nt">-nk1</span>,1 | <span class="nb">tail</span> <span class="nt">-n10</span>
+ | gnuplot <span class="nt">-p</span> <span class="nt">-e</span> <span class="s1">'set boxwidth 0.5; plot "-" using 1:xtic(2) with boxes'</span>
+</code></pre></div></div>
+
+<h2 id="data-wrangling-to-make-arguments">Data wrangling to make arguments</h2>
+
+<p>Sometimes you want to do data wrangling to find things to install or
+remove based on some longer list. The data wrangling we’ve talked about
+so far + <code class="language-plaintext highlighter-rouge">xargs</code> can be a powerful combo.</p>
+
+<p>For example, as seen in lecture, I can use the following command to uninstall
+old nightly builds of Rust from my system by extracting the old build names
+using data wrangling tools and then passing them via <code class="language-plaintext highlighter-rouge">xargs</code> to the
+uninstaller:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rustup toolchain list | <span class="nb">grep </span>nightly | <span class="nb">grep</span> <span class="nt">-vE</span> <span class="s2">"nightly-x86"</span> | <span class="nb">sed</span> <span class="s1">'s/-x86.*//'</span> | xargs rustup toolchain uninstall
+</code></pre></div></div>
+
+<h2 id="wrangling-binary-data">Wrangling binary data</h2>
+
+<p>So far, we have mostly talked about wrangling textual data, but pipes
+are just as useful for binary data. For example, we can use ffmpeg to
+capture an image from our camera, convert it to grayscale, compress it,
+send it to a remote machine over SSH, decompress it there, make a copy,
+and then display it.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ffmpeg <span class="nt">-loglevel</span> panic <span class="nt">-i</span> /dev/video0 <span class="nt">-frames</span> 1 <span class="nt">-f</span> image2 -
+ | convert - <span class="nt">-colorspace</span> gray -
+ | <span class="nb">gzip</span>
+ | ssh mymachine <span class="s1">'gzip -d | tee copy.jpg | env DISPLAY=:0 feh -'</span>
+</code></pre></div></div>
+
+<h1 id="exercises">Exercises</h1>
+
+<ol>
+  <li>Take this <a href="https://regexone.com/">short interactive regex tutorial</a>.</li>
+  <li>Find the number of words (in <code class="language-plaintext highlighter-rouge">/usr/share/dict/words</code>) that contain at
+least three <code class="language-plaintext highlighter-rouge">a</code>s and don’t have a <code class="language-plaintext highlighter-rouge">'s</code> ending. What are the three
+most common last two letters of those words? <code class="language-plaintext highlighter-rouge">sed</code>’s <code class="language-plaintext highlighter-rouge">y</code> command, or
+the <code class="language-plaintext highlighter-rouge">tr</code> program, may help you with case insensitivity. How many
+of those two-letter combinations are there? And for a challenge:
+which combinations do not occur?</li>
+  <li>To do in-place substitution it is quite tempting to do something like
+<code class="language-plaintext highlighter-rouge">sed s/REGEX/SUBSTITUTION/ input.txt &gt; input.txt</code>. However this is a
+bad idea, why? Is this particular to <code class="language-plaintext highlighter-rouge">sed</code>? Use <code class="language-plaintext highlighter-rouge">man sed</code> to find out
+how to accomplish this.</li>
+  <li>Find your average, median, and max system boot time over the last ten
+boots. Use <code class="language-plaintext highlighter-rouge">journalctl</code> on Linux and <code class="language-plaintext highlighter-rouge">log show</code> on macOS, and look
+for log timestamps near the beginning and end of each boot. On Linux,
+they may look something like:
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Logs begin at ...
+</code></pre></div>    </div>
+    <p>and</p>
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>systemd[577]: Startup finished in ...
+</code></pre></div>    </div>
+    <p>On macOS, <a href="https://eclecticlight.co/2018/03/21/macos-unified-log-3-finding-your-way/">look
+for</a>:</p>
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>=== system boot:
+</code></pre></div>    </div>
+    <p>and</p>
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Previous shutdown cause: 5
+</code></pre></div>    </div>
+  </li>
+  <li>Look for boot messages that are <em>not</em> shared between your past three
+reboots (see <code class="language-plaintext highlighter-rouge">journalctl</code>’s <code class="language-plaintext highlighter-rouge">-b</code> flag). Break this task down into
+multiple steps. First, find a way to get just the logs from the past
+three boots. There may be an applicable flag on the tool you use to
+extract the boot logs, or you can use <code class="language-plaintext highlighter-rouge">sed '0,/STRING/d'</code> to remove
+all lines previous to one that matches <code class="language-plaintext highlighter-rouge">STRING</code>. Next, remove any
+parts of the line that <em>always</em> varies (like the timestamp). Then,
+de-duplicate the input lines and keep a count of each one (<code class="language-plaintext highlighter-rouge">uniq</code> is
+your friend). And finally, eliminate any line whose count is 3 (since
+it <em>was</em> shared among all the boots).</li>
+  <li>Find an online data set like <a href="https://commons.wikimedia.org/wiki/Data:Wikipedia_statistics/data.tab">this
+one</a>, <a href="https://ucr.fbi.gov/crime-in-the-u.s/2016/crime-in-the-u.s.-2016/topic-pages/tables/table-1">this
+one</a>,
+or maybe one <a href="https://www.springboard.com/blog/data-science/free-public-data-sets-data-science-project/">from
+here</a>.
+Fetch it using <code class="language-plaintext highlighter-rouge">curl</code> and extract out just two columns of numerical
+data. If you’re fetching HTML data,
+<a href="https://github.com/EricChiang/pup"><code class="language-plaintext highlighter-rouge">pup</code></a> might be helpful. For JSON
+data, try <a href="https://stedolan.github.io/jq/"><code class="language-plaintext highlighter-rouge">jq</code></a>. Find the min and
+max of one column in a single command, and the difference of the sum
+of each column in another.</li>
+</ol>
+
+
+<hr>
+
+<div class="small center">
+<p><a href="https://github.com/missing-semester/missing-semester/blob/master/_2020/data-wrangling.md">Edit this page</a>.</p>
+<p>Licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA</a>.</p>
+</div>
+
+    </div>
+
+  </body>
+
+</html>

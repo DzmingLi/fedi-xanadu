@@ -9,7 +9,6 @@ pub struct SeriesRow {
     pub id: String,
     pub title: String,
     pub description: Option<String>,
-    pub tag_id: String,
     pub parent_id: Option<String>,
     pub order_index: i32,
     pub created_by: String,
@@ -21,9 +20,6 @@ pub struct SeriesListRow {
     pub id: String,
     pub title: String,
     pub description: Option<String>,
-    pub tag_id: String,
-    pub tag_name: String,
-    pub tag_names: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub parent_id: Option<String>,
     pub order_index: i32,
     pub created_by: String,
@@ -86,9 +82,9 @@ pub struct SeriesNavItem {
 
 pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
-        "SELECT s.id, s.title, s.description, s.tag_id, t.name AS tag_name, t.names AS tag_names, \
+        "SELECT s.id, s.title, s.description, \
                 s.parent_id, s.order_index, s.created_by, pu.handle AS author_handle, s.created_at \
-         FROM series s JOIN tags t ON s.tag_id = t.id \
+         FROM series s \
          LEFT JOIN platform_users pu ON s.created_by = pu.did \
          ORDER BY s.created_at DESC LIMIT $1",
     )
@@ -103,7 +99,7 @@ pub async fn create_series(
     id: &str,
     title: &str,
     description: Option<&str>,
-    tag_id: &str,
+    topics: &[String],
     parent_id: Option<&str>,
     created_by: &str,
 ) -> crate::Result<SeriesRow> {
@@ -121,22 +117,35 @@ pub async fn create_series(
         0
     };
 
+    let mut tx = pool.begin().await?;
+
     sqlx::query(
-        "INSERT INTO series (id, title, description, tag_id, parent_id, order_index, created_by) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO series (id, title, description, parent_id, order_index, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(id)
     .bind(title)
     .bind(description)
-    .bind(tag_id)
     .bind(parent_id)
     .bind(order_index)
     .bind(created_by)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    for topic in topics {
+        sqlx::query(
+            "INSERT INTO content_topics (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(id)
+        .bind(topic)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+
     let row = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, tag_id, parent_id, order_index, created_by, created_at \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -148,7 +157,7 @@ pub async fn create_series(
 
 pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesDetailResponse> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, tag_id, parent_id, order_index, created_by, created_at \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -177,7 +186,7 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
     .await?;
 
     let children = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, tag_id, parent_id, order_index, created_by, created_at \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at \
          FROM series WHERE parent_id = $1 ORDER BY order_index",
     )
     .bind(id)
@@ -325,7 +334,7 @@ pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<Seri
     // Fetch all series in the tree in one query using recursive CTE
     let all_series = sqlx::query_as::<_, SeriesRow>(
         "WITH RECURSIVE tree AS ( \
-             SELECT id, title, description, tag_id, parent_id, order_index, created_by, created_at \
+             SELECT id, title, description, parent_id, order_index, created_by, created_at \
              FROM series WHERE id = $1 \
              UNION ALL \
              SELECT s.id, s.title, s.description, s.tag_id, s.parent_id, s.order_index, s.created_by, s.created_at \

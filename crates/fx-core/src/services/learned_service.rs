@@ -58,9 +58,9 @@ pub async fn list_learned(pool: &PgPool, did: &str) -> crate::Result<Vec<Learned
 /// by reading articles that teach those tags.
 pub async fn derived_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<String>> {
     let tags = sqlx::query_scalar::<_, String>(
-        "SELECT DISTINCT at2.tag_id \
+        "SELECT DISTINCT ct.tag_id \
          FROM learned_marks lm \
-         JOIN article_teaches at2 ON at2.article_uri = lm.article_uri \
+         JOIN content_teaches ct ON ct.content_uri = lm.article_uri \
          WHERE lm.did = $1",
     )
     .bind(did)

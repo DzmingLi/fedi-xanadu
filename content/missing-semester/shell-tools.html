@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/assets/favicon-16x16.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="og:url" content="https://missing.csail.mit.edu/2020/shell-tools/">
+  <meta property="og:site_name" content="Missing Semester">
+
+  
+    
+    <meta name="description" content="Learn how to write shell scripts and use powerful command-line tools.">
+    <meta name="twitter:description" content="Learn how to write shell scripts and use powerful command-line tools.">
+    <meta property="og:description" content="Learn how to write shell scripts and use powerful command-line tools.">
+  
+
+  
+  <meta name="twitter:title" content="Shell Tools and Scripting">
+  <meta property="og:title" content="Shell Tools and Scripting">
+
+  
+  <meta name="twitter:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec2.png">
+  <meta property="og:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec2.png">
+
+  <title>
+    
+      
+        Shell Tools and Scripting &middot; Missing Semester
+      
+    
+  </title>
+
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/syntax.css">
+  <script defer src="/static/js/sidenotes.js"></script>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,300,400,600,700,900,200italic,300italic,400italic,600italic,700italic,900italic&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Code+Pro:200,300,400,500,600,700,900&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-P7WVHD84D1"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-P7WVHD84D1');
+  </script>
+
+</head>
+
+
+  <body>
+
+    <div id="nav-bg">
+  <nav id="top-nav">
+    <a href="/" id="logo">./missing-semester</a>
+    <input type="checkbox" id="menu-icon">
+    <label class="menu-label" for="menu-icon"></label>
+    <div class="trigger">
+      <div class="trigger-child">
+        <span class="nav-link"><a href="/2026/">lectures</a></span>
+        <span class="nav-link"><a href="/past/">past</a></span>
+        <span class="nav-link"><a href="/about/">about</a></span>
+      </div>
+    </div>
+  </nav>
+</div>
+
+
+    <div id="content">
+    <h1 class="title">Shell Tools and Scripting</h1>
+
+
+
+  <div class="youtube-wrapper" style="padding-bottom: 56.25%;">
+    <iframe src="https://www.youtube.com/embed/kgII-YWo3Zw" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+  </div>
+
+
+<p>In this lecture, we will present some of the basics of using bash as a scripting language along with a number of shell tools that cover several of the most common tasks that you will be constantly performing in the command line.</p>
+
+<h1 id="shell-scripting">Shell Scripting</h1>
+
+<p>So far we have seen how to execute commands in the shell and pipe them together.
+However, in many scenarios you will want to perform a series of commands and make use of control flow expressions like conditionals or loops.</p>
+
+<p>Shell scripts are the next step in complexity.
+Most shells have their own scripting language with variables, control flow and its own syntax.
+What makes shell scripting different from other scripting programming languages is that it is optimized for performing shell-related tasks.
+Thus, creating command pipelines, saving results into files, and reading from standard input are primitives in shell scripting, which makes it easier to use than general purpose scripting languages.
+For this section we will focus on bash scripting since it is the most common.</p>
+
+<p>To assign variables in bash, use the syntax <code class="language-plaintext highlighter-rouge">foo=bar</code> and access the value of the variable with <code class="language-plaintext highlighter-rouge">$foo</code>.
+Note that <code class="language-plaintext highlighter-rouge">foo = bar</code> will not work since it is interpreted as calling the <code class="language-plaintext highlighter-rouge">foo</code> program with arguments <code class="language-plaintext highlighter-rouge">=</code> and <code class="language-plaintext highlighter-rouge">bar</code>.
+In general, in shell scripts the space character will perform argument splitting. This behavior can be confusing to use at first, so always check for that.</p>
+
+<p>Strings in bash can be defined with <code class="language-plaintext highlighter-rouge">'</code> and <code class="language-plaintext highlighter-rouge">"</code> delimiters, but they are not equivalent.
+Strings delimited with <code class="language-plaintext highlighter-rouge">'</code> are literal strings and will not substitute variable values whereas <code class="language-plaintext highlighter-rouge">"</code> delimited strings will.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">foo</span><span class="o">=</span>bar
+<span class="nb">echo</span> <span class="s2">"</span><span class="nv">$foo</span><span class="s2">"</span>
+<span class="c"># prints bar</span>
+<span class="nb">echo</span> <span class="s1">'$foo'</span>
+<span class="c"># prints $foo</span>
+</code></pre></div></div>
+
+<p>As with most programming languages, bash supports control flow techniques including <code class="language-plaintext highlighter-rouge">if</code>, <code class="language-plaintext highlighter-rouge">case</code>, <code class="language-plaintext highlighter-rouge">while</code> and <code class="language-plaintext highlighter-rouge">for</code>.
+Similarly, <code class="language-plaintext highlighter-rouge">bash</code> has functions that take arguments and can operate with them. Here is an example of a function that creates a directory and <code class="language-plaintext highlighter-rouge">cd</code>s into it.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mcd <span class="o">()</span> <span class="o">{</span>
+    <span class="nb">mkdir</span> <span class="nt">-p</span> <span class="s2">"</span><span class="nv">$1</span><span class="s2">"</span>
+    <span class="nb">cd</span> <span class="s2">"</span><span class="nv">$1</span><span class="s2">"</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Here <code class="language-plaintext highlighter-rouge">$1</code> is the first argument to the script/function.
+Unlike other scripting languages, bash uses a variety of special variables to refer to arguments, error codes, and other relevant variables. Below is a list of some of them. A more comprehensive list can be found <a href="https://tldp.org/LDP/abs/html/special-chars.html">here</a>.</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">$0</code> - Name of the script</li>
+  <li><code class="language-plaintext highlighter-rouge">$1</code> to <code class="language-plaintext highlighter-rouge">$9</code> - Arguments to the script. <code class="language-plaintext highlighter-rouge">$1</code> is the first argument and so on.</li>
+  <li><code class="language-plaintext highlighter-rouge">$@</code> - All the arguments</li>
+  <li><code class="language-plaintext highlighter-rouge">$#</code> - Number of arguments</li>
+  <li><code class="language-plaintext highlighter-rouge">$?</code> - Return code of the previous command</li>
+  <li><code class="language-plaintext highlighter-rouge">$$</code> - Process identification number (PID) for the current script</li>
+  <li><code class="language-plaintext highlighter-rouge">!!</code> - Entire last command, including arguments. A common pattern is to execute a command only for it to fail due to missing permissions; you can quickly re-execute the command with sudo by doing <code class="language-plaintext highlighter-rouge">sudo !!</code></li>
+  <li><code class="language-plaintext highlighter-rouge">$_</code> - Last argument from the last command. If you are in an interactive shell, you can also quickly get this value by typing <code class="language-plaintext highlighter-rouge">Esc</code> followed by <code class="language-plaintext highlighter-rouge">.</code> or <code class="language-plaintext highlighter-rouge">Alt+.</code></li>
+</ul>
+
+<p>Commands will often return output using <code class="language-plaintext highlighter-rouge">STDOUT</code>, errors through <code class="language-plaintext highlighter-rouge">STDERR</code>, and a Return Code to report errors in a more script-friendly manner.
+The return code or exit status is the way scripts/commands have to communicate how execution went.
+A value of 0 usually means everything went OK; anything different from 0 means an error occurred.</p>
+
+<p>Exit codes can be used to conditionally execute commands using <code class="language-plaintext highlighter-rouge">&amp;&amp;</code> (and operator) and <code class="language-plaintext highlighter-rouge">||</code> (or operator), both of which are <a href="https://en.wikipedia.org/wiki/Short-circuit_evaluation">short-circuiting</a> operators. Commands can also be separated within the same line using a semicolon <code class="language-plaintext highlighter-rouge">;</code>.
+The <code class="language-plaintext highlighter-rouge">true</code> program will always have a 0 return code and the <code class="language-plaintext highlighter-rouge">false</code> command will always have a 1 return code.
+Let’s see some examples</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">false</span> <span class="o">||</span> <span class="nb">echo</span> <span class="s2">"Oops, fail"</span>
+<span class="c"># Oops, fail</span>
+
+<span class="nb">true</span> <span class="o">||</span> <span class="nb">echo</span> <span class="s2">"Will not be printed"</span>
+<span class="c">#</span>
+
+<span class="nb">true</span> <span class="o">&amp;&amp;</span> <span class="nb">echo</span> <span class="s2">"Things went well"</span>
+<span class="c"># Things went well</span>
+
+<span class="nb">false</span> <span class="o">&amp;&amp;</span> <span class="nb">echo</span> <span class="s2">"Will not be printed"</span>
+<span class="c">#</span>
+
+<span class="nb">true</span> <span class="p">;</span> <span class="nb">echo</span> <span class="s2">"This will always run"</span>
+<span class="c"># This will always run</span>
+
+<span class="nb">false</span> <span class="p">;</span> <span class="nb">echo</span> <span class="s2">"This will always run"</span>
+<span class="c"># This will always run</span>
+</code></pre></div></div>
+
+<p>Another common pattern is wanting to get the output of a command as a variable. This can be done with <em>command substitution</em>.
+Whenever you place <code class="language-plaintext highlighter-rouge">$( CMD )</code> it will execute <code class="language-plaintext highlighter-rouge">CMD</code>, get the output of the command and substitute it in place.
+For example, if you do <code class="language-plaintext highlighter-rouge">for file in $(ls)</code>, the shell will first call <code class="language-plaintext highlighter-rouge">ls</code> and then iterate over those values.
+A lesser known similar feature is <em>process substitution</em>, <code class="language-plaintext highlighter-rouge">&lt;( CMD )</code> will execute <code class="language-plaintext highlighter-rouge">CMD</code> and place the output in a temporary file and substitute the <code class="language-plaintext highlighter-rouge">&lt;()</code> with that file’s name. This is useful when commands expect values to be passed by file instead of by STDIN. For example, <code class="language-plaintext highlighter-rouge">diff &lt;(ls foo) &lt;(ls bar)</code> will show differences between files in dirs  <code class="language-plaintext highlighter-rouge">foo</code> and <code class="language-plaintext highlighter-rouge">bar</code>.</p>
+
+<p>Since that was a huge information dump, let’s see an example that showcases some of these features. It will iterate through the arguments we provide, <code class="language-plaintext highlighter-rouge">grep</code> for the string <code class="language-plaintext highlighter-rouge">foobar</code>, and append it to the file as a comment if it’s not found.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">#!/bin/bash</span>
+
+<span class="nb">echo</span> <span class="s2">"Starting program at </span><span class="si">$(</span><span class="nb">date</span><span class="si">)</span><span class="s2">"</span> <span class="c"># Date will be substituted</span>
+
+<span class="nb">echo</span> <span class="s2">"Running program </span><span class="nv">$0</span><span class="s2"> with </span><span class="nv">$# </span><span class="s2">arguments with pid </span><span class="nv">$$</span><span class="s2">"</span>
+
+<span class="k">for </span>file <span class="k">in</span> <span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="p">;</span> <span class="k">do
+    </span><span class="nb">grep </span>foobar <span class="s2">"</span><span class="nv">$file</span><span class="s2">"</span> <span class="o">&gt;</span> /dev/null 2&gt; /dev/null
+    <span class="c"># When pattern is not found, grep has exit status 1</span>
+    <span class="c"># We redirect STDOUT and STDERR to a null register since we do not care about them</span>
+    <span class="k">if</span> <span class="o">[[</span> <span class="nv">$?</span> <span class="nt">-ne</span> 0 <span class="o">]]</span><span class="p">;</span> <span class="k">then
+        </span><span class="nb">echo</span> <span class="s2">"File </span><span class="nv">$file</span><span class="s2"> does not have any foobar, adding one"</span>
+        <span class="nb">echo</span> <span class="s2">"# foobar"</span> <span class="o">&gt;&gt;</span> <span class="s2">"</span><span class="nv">$file</span><span class="s2">"</span>
+    <span class="k">fi
+done</span>
+</code></pre></div></div>
+
+<p>In the comparison we tested whether <code class="language-plaintext highlighter-rouge">$?</code> was not equal to 0.
+Bash implements many comparisons of this sort - you can find a detailed list in the manpage for <a href="https://www.man7.org/linux/man-pages/man1/test.1.html"><code class="language-plaintext highlighter-rouge">test</code></a>.
+When performing comparisons in bash, try to use double brackets <code class="language-plaintext highlighter-rouge">[[ ]]</code> in favor of simple brackets <code class="language-plaintext highlighter-rouge">[ ]</code>. Chances of making mistakes are lower although it won’t be portable to <code class="language-plaintext highlighter-rouge">sh</code>. A more detailed explanation can be found <a href="https://mywiki.wooledge.org/BashFAQ/031">here</a>.</p>
+
+<p>When launching scripts, you will often want to provide arguments that are similar. Bash has ways of making this easier, expanding expressions by carrying out filename expansion. These techniques are often referred to as shell <em>globbing</em>.</p>
+<ul>
+  <li>Wildcards - Whenever you want to perform some sort of wildcard matching, you can use <code class="language-plaintext highlighter-rouge">?</code> and <code class="language-plaintext highlighter-rouge">*</code> to match one or any amount of characters respectively. For instance, given files <code class="language-plaintext highlighter-rouge">foo</code>, <code class="language-plaintext highlighter-rouge">foo1</code>, <code class="language-plaintext highlighter-rouge">foo2</code>, <code class="language-plaintext highlighter-rouge">foo10</code> and <code class="language-plaintext highlighter-rouge">bar</code>, the command <code class="language-plaintext highlighter-rouge">rm foo?</code> will delete <code class="language-plaintext highlighter-rouge">foo1</code> and <code class="language-plaintext highlighter-rouge">foo2</code> whereas <code class="language-plaintext highlighter-rouge">rm foo*</code> will delete all but <code class="language-plaintext highlighter-rouge">bar</code>.</li>
+  <li>Curly braces <code class="language-plaintext highlighter-rouge">{}</code> - Whenever you have a common substring in a series of commands, you can use curly braces for bash to expand this automatically. This comes in very handy when moving or converting files.</li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>convert image.<span class="o">{</span>png,jpg<span class="o">}</span>
+<span class="c"># Will expand to</span>
+convert image.png image.jpg
+
+<span class="nb">cp</span> /path/to/project/<span class="o">{</span>foo,bar,baz<span class="o">}</span>.sh /newpath
+<span class="c"># Will expand to</span>
+<span class="nb">cp</span> /path/to/project/foo.sh /path/to/project/bar.sh /path/to/project/baz.sh /newpath
+
+<span class="c"># Globbing techniques can also be combined</span>
+<span class="nb">mv</span> <span class="k">*</span><span class="o">{</span>.py,.sh<span class="o">}</span> folder
+<span class="c"># Will move all *.py and *.sh files</span>
+
+
+<span class="nb">mkdir </span>foo bar
+<span class="c"># This creates files foo/a, foo/b, ... foo/h, bar/a, bar/b, ... bar/h</span>
+<span class="nb">touch</span> <span class="o">{</span>foo,bar<span class="o">}</span>/<span class="o">{</span>a..h<span class="o">}</span>
+<span class="nb">touch </span>foo/x bar/y
+<span class="c"># Show differences between files in foo and bar</span>
+diff &lt;<span class="o">(</span><span class="nb">ls </span>foo<span class="o">)</span> &lt;<span class="o">(</span><span class="nb">ls </span>bar<span class="o">)</span>
+<span class="c"># Outputs</span>
+<span class="c"># &lt; x</span>
+<span class="c"># ---</span>
+<span class="c"># &gt; y</span>
+</code></pre></div></div>
+
+<!-- Lastly, pipes `|` are a core feature of scripting. Pipes connect one program's output to the next program's input. We will cover them more in detail in the data wrangling lecture. -->
+
+<p>Writing <code class="language-plaintext highlighter-rouge">bash</code> scripts can be tricky and unintuitive. There are tools like <a href="https://github.com/koalaman/shellcheck">shellcheck</a> that will help you find errors in your sh/bash scripts.</p>
+
+<p>Note that scripts need not necessarily be written in bash to be called from the terminal. For instance, here’s a simple Python script that outputs its arguments in reversed order:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">#!/usr/local/bin/python
+</span><span class="kn">import</span> <span class="nn">sys</span>
+<span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="n">sys</span><span class="p">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The kernel knows to execute this script with a python interpreter instead of a shell command because we included a <a href="https://en.wikipedia.org/wiki/Shebang_(Unix)">shebang</a> line at the top of the script.
+It is good practice to write shebang lines using the <a href="https://www.man7.org/linux/man-pages/man1/env.1.html"><code class="language-plaintext highlighter-rouge">env</code></a> command that will resolve to wherever the command lives in the system, increasing the portability of your scripts. To resolve the location, <code class="language-plaintext highlighter-rouge">env</code> will make use of the <code class="language-plaintext highlighter-rouge">PATH</code> environment variable we introduced in the first lecture.
+For this example the shebang line would look like <code class="language-plaintext highlighter-rouge">#!/usr/bin/env python</code>.</p>
+
+<p>Some differences between shell functions and scripts that you should keep in mind are:</p>
+<ul>
+  <li>Functions have to be in the same language as the shell, while scripts can be written in any language. This is why including a shebang for scripts is important.</li>
+  <li>Functions are loaded once when their definition is read. Scripts are loaded every time they are executed. This makes functions slightly faster to load, but whenever you change them you will have to reload their definition.</li>
+  <li>Functions are executed in the current shell environment whereas scripts execute in their own process. Thus, functions can modify environment variables, e.g. change your current directory, whereas scripts can’t. Environment variables which have been exported using <a href="https://www.man7.org/linux/man-pages/man1/export.1p.html"><code class="language-plaintext highlighter-rouge">export</code></a> are passed by value to scripts.</li>
+  <li>As with any programming language, functions are a powerful construct to achieve modularity, code reuse, and clarity of shell code. Often shell scripts will include their own function definitions.</li>
+</ul>
+
+<h1 id="shell-tools">Shell Tools</h1>
+
+<h2 id="finding-how-to-use-commands">Finding how to use commands</h2>
+
+<p>At this point, you might be wondering how to find the flags for the commands in the aliasing section such as <code class="language-plaintext highlighter-rouge">ls -l</code>, <code class="language-plaintext highlighter-rouge">mv -i</code> and <code class="language-plaintext highlighter-rouge">mkdir -p</code>.
+More generally, given a command, how do you go about finding out what it does and its different options?
+You could always start googling, but since UNIX predates StackOverflow, there are built-in ways of getting this information.</p>
+
+<p>As we saw in the shell lecture, the first-order approach is to call said command with the <code class="language-plaintext highlighter-rouge">-h</code> or <code class="language-plaintext highlighter-rouge">--help</code> flags. A more detailed approach is to use the <code class="language-plaintext highlighter-rouge">man</code> command.
+Short for manual, <a href="https://www.man7.org/linux/man-pages/man1/man.1.html"><code class="language-plaintext highlighter-rouge">man</code></a> provides a manual page (called manpage) for a command you specify.
+For example, <code class="language-plaintext highlighter-rouge">man rm</code> will output the behavior of the <code class="language-plaintext highlighter-rouge">rm</code> command along with the flags that it takes, including the <code class="language-plaintext highlighter-rouge">-i</code> flag we showed earlier.
+In fact, what I have been linking so far for every command is the online version of the Linux manpages for the commands.
+Even non-native commands that you install will have manpage entries if the developer wrote them and included them as part of the installation process.
+For interactive tools such as the ones based on ncurses, help for the commands can often be accessed within the program using the <code class="language-plaintext highlighter-rouge">:help</code> command or typing <code class="language-plaintext highlighter-rouge">?</code>.</p>
+
+<p>Sometimes manpages can provide overly detailed descriptions of the commands, making it hard to decipher what flags/syntax to use for common use cases.
+<a href="https://tldr.sh/">TLDR pages</a> are a nifty complementary solution that focuses on giving example use cases of a command so you can quickly figure out which options to use.
+For instance, I find myself referring back to the tldr pages for <a href="https://tldr.inbrowser.app/pages/common/tar"><code class="language-plaintext highlighter-rouge">tar</code></a> and <a href="https://tldr.inbrowser.app/pages/common/ffmpeg"><code class="language-plaintext highlighter-rouge">ffmpeg</code></a> way more often than the manpages.</p>
+
+<h2 id="finding-files">Finding files</h2>
+
+<p>One of the most common repetitive tasks that every programmer faces is finding files or directories.
+All UNIX-like systems come packaged with <a href="https://www.man7.org/linux/man-pages/man1/find.1.html"><code class="language-plaintext highlighter-rouge">find</code></a>, a great shell tool to find files. <code class="language-plaintext highlighter-rouge">find</code> will recursively search for files matching some criteria. Some examples:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Find all directories named src</span>
+find <span class="nb">.</span> <span class="nt">-name</span> src <span class="nt">-type</span> d
+<span class="c"># Find all python files that have a folder named test in their path</span>
+find <span class="nb">.</span> <span class="nt">-path</span> <span class="s1">'*/test/*.py'</span> <span class="nt">-type</span> f
+<span class="c"># Find all files modified in the last day</span>
+find <span class="nb">.</span> <span class="nt">-mtime</span> <span class="nt">-1</span>
+<span class="c"># Find all zip files with size in range 500k to 10M</span>
+find <span class="nb">.</span> <span class="nt">-size</span> +500k <span class="nt">-size</span> <span class="nt">-10M</span> <span class="nt">-name</span> <span class="s1">'*.tar.gz'</span>
+</code></pre></div></div>
+<p>Beyond listing files, find can also perform actions over files that match your query.
+This property can be incredibly helpful to simplify what could be fairly monotonous tasks.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Delete all files with .tmp extension</span>
+find <span class="nb">.</span> <span class="nt">-name</span> <span class="s1">'*.tmp'</span> <span class="nt">-exec</span> <span class="nb">rm</span> <span class="o">{}</span> <span class="se">\;</span>
+
+<span class="c"># Find all PNG files and convert them to JPG</span>
+find <span class="nb">.</span> <span class="nt">-name</span> <span class="s1">'*.png'</span> <span class="nt">-exec</span> magick <span class="o">{}</span> <span class="o">{}</span>.jpg <span class="se">\;</span>
+</code></pre></div></div>
+
+<p>Despite <code class="language-plaintext highlighter-rouge">find</code>’s ubiquitousness, its syntax can sometimes be tricky to remember.
+For instance, to simply find files that match some pattern <code class="language-plaintext highlighter-rouge">PATTERN</code> you have to execute <code class="language-plaintext highlighter-rouge">find -name '*PATTERN*'</code> (or <code class="language-plaintext highlighter-rouge">-iname</code> if you want the pattern matching to be case insensitive).
+You could start building aliases for those scenarios, but part of the shell philosophy is that it is good to explore alternatives.
+Remember, one of the best properties of the shell is that you are just calling programs, so you can find (or even write yourself) replacements for some.
+For instance, <a href="https://github.com/sharkdp/fd"><code class="language-plaintext highlighter-rouge">fd</code></a> is a simple, fast, and user-friendly alternative to <code class="language-plaintext highlighter-rouge">find</code>.
+It offers some nice defaults like colorized output, default regex matching, and Unicode support. It also has, in my opinion, a more intuitive syntax.
+For example, the syntax to find a pattern <code class="language-plaintext highlighter-rouge">PATTERN</code> is <code class="language-plaintext highlighter-rouge">fd PATTERN</code>.</p>
+
+<p>Most would agree that <code class="language-plaintext highlighter-rouge">find</code> and <code class="language-plaintext highlighter-rouge">fd</code> are good, but some of you might be wondering about the efficiency of looking for files every time versus compiling some sort of index or database for quickly searching.
+That is what <a href="https://www.man7.org/linux/man-pages/man1/locate.1.html"><code class="language-plaintext highlighter-rouge">locate</code></a> is for.
+<code class="language-plaintext highlighter-rouge">locate</code> uses a database that is updated using <a href="https://www.man7.org/linux/man-pages/man1/updatedb.1.html"><code class="language-plaintext highlighter-rouge">updatedb</code></a>.
+In most systems, <code class="language-plaintext highlighter-rouge">updatedb</code> is updated daily via <a href="https://www.man7.org/linux/man-pages/man8/cron.8.html"><code class="language-plaintext highlighter-rouge">cron</code></a>.
+Therefore one trade-off between the two is speed vs freshness.
+Moreover <code class="language-plaintext highlighter-rouge">find</code> and similar tools can also find files using attributes such as file size, modification time, or file permissions, while <code class="language-plaintext highlighter-rouge">locate</code> just uses the file name.
+A more in-depth comparison can be found <a href="https://unix.stackexchange.com/questions/60205/locate-vs-find-usage-pros-and-cons-of-each-other">here</a>.</p>
+
+<h2 id="finding-code">Finding code</h2>
+
+<p>Finding files by name is useful, but quite often you want to search based on file <em>content</em>.
+A common scenario is wanting to search for all files that contain some pattern, along with where in those files said pattern occurs.
+To achieve this, most UNIX-like systems provide <a href="https://www.man7.org/linux/man-pages/man1/grep.1.html"><code class="language-plaintext highlighter-rouge">grep</code></a>, a generic tool for matching patterns from the input text.
+<code class="language-plaintext highlighter-rouge">grep</code> is an incredibly valuable shell tool that we will cover in greater detail during the data wrangling lecture.</p>
+
+<p>For now, know that <code class="language-plaintext highlighter-rouge">grep</code> has many flags that make it a very versatile tool.
+Some I frequently use are <code class="language-plaintext highlighter-rouge">-C</code> for getting <strong>C</strong>ontext around the matching line and <code class="language-plaintext highlighter-rouge">-v</code> for in<strong>v</strong>erting the match, i.e. print all lines that do <strong>not</strong> match the pattern. For example, <code class="language-plaintext highlighter-rouge">grep -C 5</code> will print 5 lines before and after the match.
+When it comes to quickly searching through many files, you want to use <code class="language-plaintext highlighter-rouge">-R</code> since it will <strong>R</strong>ecursively go into directories and look for files for the matching string.</p>
+
+<p>But <code class="language-plaintext highlighter-rouge">grep -R</code> can be improved in many ways, such as ignoring <code class="language-plaintext highlighter-rouge">.git</code> folders, using multi CPU support, &amp;c.
+Many <code class="language-plaintext highlighter-rouge">grep</code> alternatives have been developed, including <a href="https://github.com/beyondgrep/ack3">ack</a>, <a href="https://github.com/ggreer/the_silver_searcher">ag</a> and <a href="https://github.com/BurntSushi/ripgrep">rg</a>.
+All of them are fantastic and pretty much provide the same functionality.
+For now I am sticking with ripgrep (<code class="language-plaintext highlighter-rouge">rg</code>), given how fast and intuitive it is. Some examples:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Find all python files where I used the requests library</span>
+rg <span class="nt">-t</span> py <span class="s1">'import requests'</span>
+<span class="c"># Find all files (including hidden files) without a shebang line</span>
+rg <span class="nt">-u</span> <span class="nt">--files-without-match</span> <span class="s2">"^#</span><span class="se">\!</span><span class="s2">"</span>
+<span class="c"># Find all matches of foo and print the following 5 lines</span>
+rg foo <span class="nt">-A</span> 5
+<span class="c"># Print statistics of matches (# of matched lines and files )</span>
+rg <span class="nt">--stats</span> PATTERN
+</code></pre></div></div>
+
+<p>Note that as with <code class="language-plaintext highlighter-rouge">find</code>/<code class="language-plaintext highlighter-rouge">fd</code>, it is important that you know that these problems can be quickly solved using one of these tools, while the specific tools you use are not as important.</p>
+
+<h2 id="finding-shell-commands">Finding shell commands</h2>
+
+<p>So far we have seen how to find files and code, but as you start spending more time in the shell, you may want to find specific commands you typed at some point.
+The first thing to know is that typing the up arrow will give you back your last command, and if you keep pressing it you will slowly go through your shell history.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">history</code> command will let you access your shell history programmatically.
+It will print your shell history to the standard output.
+If we want to search there we can pipe that output to <code class="language-plaintext highlighter-rouge">grep</code> and search for patterns.
+<code class="language-plaintext highlighter-rouge">history | grep find</code> will print commands that contain the substring “find”.</p>
+
+<p>In most shells, you can make use of <code class="language-plaintext highlighter-rouge">Ctrl+R</code> to perform backwards search through your history.
+After pressing <code class="language-plaintext highlighter-rouge">Ctrl+R</code>, you can type a substring you want to match for commands in your history.
+As you keep pressing it, you will cycle through the matches in your history.
+This can also be enabled with the UP/DOWN arrows in <a href="https://github.com/zsh-users/zsh-history-substring-search">zsh</a>.
+A nice addition on top of <code class="language-plaintext highlighter-rouge">Ctrl+R</code> comes with using <a href="https://github.com/junegunn/fzf/wiki/Configuring-shell-key-bindings#ctrl-r">fzf</a> bindings.
+<code class="language-plaintext highlighter-rouge">fzf</code> is a general-purpose fuzzy finder that can be used with many commands.
+Here it is used to fuzzily match through your history and present results in a convenient and visually pleasing manner.</p>
+
+<p>Another cool history-related trick I really enjoy is <strong>history-based autosuggestions</strong>.
+First introduced by the <a href="https://fishshell.com/">fish</a> shell, this feature dynamically autocompletes your current shell command with the most recent command that you typed that shares a common prefix with it.
+It can be enabled in <a href="https://github.com/zsh-users/zsh-autosuggestions">zsh</a> and it is a great quality of life trick for your shell.</p>
+
+<p>You can modify your shell’s history behavior, like preventing commands with a leading space from being included. This comes in handy when you are typing commands with passwords or other bits of sensitive information.
+To do this, add <code class="language-plaintext highlighter-rouge">HISTCONTROL=ignorespace</code> to your <code class="language-plaintext highlighter-rouge">.bashrc</code> or <code class="language-plaintext highlighter-rouge">setopt HIST_IGNORE_SPACE</code> to your <code class="language-plaintext highlighter-rouge">.zshrc</code>.
+If you make the mistake of not adding the leading space, you can always manually remove the entry by editing your <code class="language-plaintext highlighter-rouge">.bash_history</code> or <code class="language-plaintext highlighter-rouge">.zsh_history</code>.</p>
+
+<h2 id="directory-navigation">Directory Navigation</h2>
+
+<p>So far, we have assumed that you are already where you need to be to perform these actions. But how do you go about quickly navigating directories?
+There are many simple ways that you could do this, such as writing shell aliases or creating symlinks with <a href="https://www.man7.org/linux/man-pages/man1/ln.1.html">ln -s</a>, but the truth is that developers have figured out quite clever and sophisticated solutions by now.</p>
+
+<p>As with the theme of this course, you often want to optimize for the common case.
+Finding frequent and/or recent files and directories can be done through tools like <a href="https://github.com/clvv/fasd"><code class="language-plaintext highlighter-rouge">fasd</code></a> and <a href="https://github.com/wting/autojump"><code class="language-plaintext highlighter-rouge">autojump</code></a>.
+Fasd ranks files and directories by <a href="https://web.archive.org/web/20210421120120/https://developer.mozilla.org/en-US/docs/Mozilla/Tech/Places/Frecency_algorithm"><em>frecency</em></a>, that is, by both <em>frequency</em> and <em>recency</em>.
+By default, <code class="language-plaintext highlighter-rouge">fasd</code> adds a <code class="language-plaintext highlighter-rouge">z</code> command that you can use to quickly <code class="language-plaintext highlighter-rouge">cd</code> using a substring of a <em>frecent</em> directory. For example, if you often go to <code class="language-plaintext highlighter-rouge">/home/user/files/cool_project</code> you can simply use <code class="language-plaintext highlighter-rouge">z cool</code> to jump there. Using autojump, this same change of directory could be accomplished using <code class="language-plaintext highlighter-rouge">j cool</code>.</p>
+
+<p>More complex tools exist to quickly get an overview of a directory structure: <a href="https://linux.die.net/man/1/tree"><code class="language-plaintext highlighter-rouge">tree</code></a>, <a href="https://github.com/Canop/broot"><code class="language-plaintext highlighter-rouge">broot</code></a> or even full fledged file managers like <a href="https://github.com/jarun/nnn"><code class="language-plaintext highlighter-rouge">nnn</code></a> or <a href="https://github.com/ranger/ranger"><code class="language-plaintext highlighter-rouge">ranger</code></a>.</p>
+
+<h1 id="exercises">Exercises</h1>
+
+<ol>
+  <li>
+    <p>Read <a href="https://www.man7.org/linux/man-pages/man1/ls.1.html"><code class="language-plaintext highlighter-rouge">man ls</code></a> and write an <code class="language-plaintext highlighter-rouge">ls</code> command that lists files in the following manner</p>
+
+    <ul>
+      <li>Includes all files, including hidden files</li>
+      <li>Sizes are listed in human readable format (e.g. 454M instead of 454279954)</li>
+      <li>Files are ordered by recency</li>
+      <li>Output is colorized</li>
+    </ul>
+
+    <p>A sample output would look like this</p>
+
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> -rw-r--r--   1 user group 1.1M Jan 14 09:53 baz
+ drwxr-xr-x   5 user group  160 Jan 14 09:53 .
+ -rw-r--r--   1 user group  514 Jan 14 06:42 bar
+ -rw-r--r--   1 user group 106M Jan 13 12:12 foo
+ drwx------+ 47 user group 1.5K Jan 12 18:08 ..
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Write bash functions  <code class="language-plaintext highlighter-rouge">marco</code> and <code class="language-plaintext highlighter-rouge">polo</code> that do the following.
+Whenever you execute <code class="language-plaintext highlighter-rouge">marco</code> the current working directory should be saved in some manner, then when you execute <code class="language-plaintext highlighter-rouge">polo</code>, no matter what directory you are in, <code class="language-plaintext highlighter-rouge">polo</code> should <code class="language-plaintext highlighter-rouge">cd</code> you back to the directory where you executed <code class="language-plaintext highlighter-rouge">marco</code>.
+For ease of debugging you can write the code in a file <code class="language-plaintext highlighter-rouge">marco.sh</code> and (re)load the definitions to your shell by executing <code class="language-plaintext highlighter-rouge">source marco.sh</code>.</p>
+  </li>
+  <li>
+    <p>Say you have a command that fails rarely. In order to debug it you need to capture its output but it can be time consuming to get a failure run.
+Write a bash script that runs the following script until it fails and captures its standard output and error streams to files and prints everything at the end.
+Bonus points if you can also report how many runs it took for the script to fail.</p>
+
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code> <span class="c">#!/usr/bin/env bash</span>
+
+ <span class="nv">n</span><span class="o">=</span><span class="k">$((</span> RANDOM <span class="o">%</span> <span class="m">100</span> <span class="k">))</span>
+
+ <span class="k">if</span> <span class="o">[[</span> n <span class="nt">-eq</span> 42 <span class="o">]]</span><span class="p">;</span> <span class="k">then
+    </span><span class="nb">echo</span> <span class="s2">"Something went wrong"</span>
+    <span class="o">&gt;</span>&amp;2 <span class="nb">echo</span> <span class="s2">"The error was using magic numbers"</span>
+    <span class="nb">exit </span>1
+ <span class="k">fi
+
+ </span><span class="nb">echo</span> <span class="s2">"Everything went according to plan"</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>As we covered in the lecture <code class="language-plaintext highlighter-rouge">find</code>’s <code class="language-plaintext highlighter-rouge">-exec</code> can be very powerful for performing operations over the files we are searching for.
+However, what if we want to do something with <strong>all</strong> the files, like creating a zip file?
+As you have seen so far commands will take input from both arguments and STDIN.
+When piping commands, we are connecting STDOUT to STDIN, but some commands like <code class="language-plaintext highlighter-rouge">tar</code> take inputs from arguments.
+To bridge this disconnect there’s the <a href="https://www.man7.org/linux/man-pages/man1/xargs.1.html"><code class="language-plaintext highlighter-rouge">xargs</code></a> command which will execute a command using STDIN as arguments.
+For example <code class="language-plaintext highlighter-rouge">ls | xargs rm</code> will delete the files in the current directory.</p>
+
+    <p>Your task is to write a command that recursively finds all HTML files in the folder and makes a zip with them. Note that your command should work even if the files have spaces (hint: check <code class="language-plaintext highlighter-rouge">-d</code> flag for <code class="language-plaintext highlighter-rouge">xargs</code>).</p>
+
+    <p>If you’re on macOS, note that the default BSD <code class="language-plaintext highlighter-rouge">find</code> is different from the one included in <a href="https://en.wikipedia.org/wiki/List_of_GNU_Core_Utilities_commands">GNU coreutils</a>. You can use <code class="language-plaintext highlighter-rouge">-print0</code> on <code class="language-plaintext highlighter-rouge">find</code> and the <code class="language-plaintext highlighter-rouge">-0</code> flag on <code class="language-plaintext highlighter-rouge">xargs</code>. As a macOS user, you should be aware that command-line utilities shipped with macOS may differ from the GNU counterparts; you can install the GNU versions if you like by <a href="https://formulae.brew.sh/formula/coreutils">using brew</a>.</p>
+  </li>
+  <li>
+    <p>(Advanced) Write a command or script to recursively find the most recently modified file in a directory. More generally, can you list all files by recency?</p>
+  </li>
+</ol>
+
+
+<hr>
+
+<div class="small center">
+<p><a href="https://github.com/missing-semester/missing-semester/blob/master/_2020/shell-tools.md">Edit this page</a>.</p>
+<p>Licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA</a>.</p>
+</div>
+
+    </div>
+
+  </body>
+
+</html>

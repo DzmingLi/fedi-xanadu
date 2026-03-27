@@ -6,7 +6,7 @@
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { ProfileData, Article, Series, ArticleTeachRow, ProfileLink } from '../lib/types';
+  import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink } from '../lib/types';
 
   // All series (including sub-series) for building tree
   let allUserSeries = $state<Series[]>([]);
@@ -19,7 +19,7 @@
   let profile = $state<ProfileData | null>(null);
   let articles = $state<Article[]>([]);
 
-  let articleTeaches = $state(new Map<string, ArticleTeachRow[]>());
+  let articleTeaches = $state(new Map<string, ContentTeachRow[]>());
   let seriesArticleUris = $state(new Set<string>());
   let seriesArticleMap = $state(new Map<string, string[]>());
   let loading = $state(true);

@@ -300,7 +300,7 @@ pub struct BulkLimitQuery {
 pub async fn get_all_article_teaches(
     State(state): State<AppState>,
     Query(q): Query<BulkLimitQuery>,
-) -> ApiResult<Json<Vec<article_service::ArticleTeachRow>>> {
+) -> ApiResult<Json<Vec<article_service::ContentTeachRow>>> {
     let limit = q.limit.unwrap_or(10_000).clamp(1, 50_000);
     let rows = article_service::get_all_article_teaches(&state.pool, limit).await?;
     Ok(Json(rows))
@@ -309,7 +309,7 @@ pub async fn get_all_article_teaches(
 pub async fn get_all_article_prereqs(
     State(state): State<AppState>,
     Query(q): Query<BulkLimitQuery>,
-) -> ApiResult<Json<Vec<article_service::ArticlePrereqBulkRow>>> {
+) -> ApiResult<Json<Vec<article_service::ContentPrereqBulkRow>>> {
     let limit = q.limit.unwrap_or(10_000).clamp(1, 50_000);
     let rows = article_service::get_all_article_prereqs(&state.pool, limit).await?;
     Ok(Json(rows))

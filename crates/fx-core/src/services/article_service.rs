@@ -15,16 +15,16 @@ pub const ARTICLE_SELECT: &str = "\
 // ---- Row types local to this service ----
 
 #[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
-pub struct ArticleTeachRow {
-    pub article_uri: String,
+pub struct ContentTeachRow {
+    pub content_uri: String,
     pub tag_id: String,
     pub tag_name: String,
     pub tag_names: sqlx::types::Json<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
-pub struct ArticlePrereqBulkRow {
-    pub article_uri: String,
+pub struct ContentPrereqBulkRow {
+    pub content_uri: String,
     pub tag_id: String,
     pub prereq_type: String,
     pub tag_name: String,
@@ -98,7 +98,7 @@ pub async fn create_article(
         .await?;
 
         sqlx::query(
-            "INSERT INTO article_teaches (article_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
         .bind(at_uri)
         .bind(tag_id)
@@ -108,7 +108,7 @@ pub async fn create_article(
 
     for prereq in &input.prereqs {
         sqlx::query(
-            "INSERT INTO article_prereqs (article_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
         .bind(at_uri)
         .bind(&prereq.tag_id)
@@ -134,10 +134,10 @@ pub async fn get_article_prereqs(
     uri: &str,
 ) -> crate::Result<Vec<ArticlePrereqRow>> {
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
-        "SELECT ap.tag_id, ap.prereq_type, t.name as tag_name, t.names as tag_names \
-         FROM article_prereqs ap \
-         JOIN tags t ON t.id = ap.tag_id \
-         WHERE ap.article_uri = $1",
+        "SELECT cp.tag_id, cp.prereq_type, t.name as tag_name, t.names as tag_names \
+         FROM content_prereqs cp \
+         JOIN tags t ON t.id = cp.tag_id \
+         WHERE cp.content_uri = $1",
     )
     .bind(uri)
     .fetch_all(pool)
@@ -162,12 +162,13 @@ pub async fn get_article_forks(pool: &PgPool, uri: &str) -> crate::Result<Vec<Fo
 }
 
 /// Bulk-fetch all article-tag mappings (with safety limit).
-pub async fn get_all_article_teaches(pool: &PgPool, limit: i64) -> crate::Result<Vec<ArticleTeachRow>> {
-    let rows = sqlx::query_as::<_, ArticleTeachRow>(
-        "SELECT at2.article_uri, at2.tag_id, t.name as tag_name, t.names as tag_names \
-         FROM article_teaches at2 \
-         JOIN tags t ON t.id = at2.tag_id \
-         ORDER BY at2.article_uri LIMIT $1",
+pub async fn get_all_article_teaches(pool: &PgPool, limit: i64) -> crate::Result<Vec<ContentTeachRow>> {
+    let rows = sqlx::query_as::<_, ContentTeachRow>(
+        "SELECT ct.content_uri, ct.tag_id, t.name as tag_name, t.names as tag_names \
+         FROM content_teaches ct \
+         JOIN tags t ON t.id = ct.tag_id \
+         JOIN content c ON c.uri = ct.content_uri AND c.content_type = 'article' \
+         ORDER BY ct.content_uri LIMIT $1",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -176,12 +177,13 @@ pub async fn get_all_article_teaches(pool: &PgPool, limit: i64) -> crate::Result
 }
 
 /// Bulk-fetch all article prereqs (with safety limit).
-pub async fn get_all_article_prereqs(pool: &PgPool, limit: i64) -> crate::Result<Vec<ArticlePrereqBulkRow>> {
-    let rows = sqlx::query_as::<_, ArticlePrereqBulkRow>(
-        "SELECT ap.article_uri, ap.tag_id, ap.prereq_type, t.name as tag_name, t.names as tag_names \
-         FROM article_prereqs ap \
-         JOIN tags t ON t.id = ap.tag_id \
-         ORDER BY ap.article_uri LIMIT $1",
+pub async fn get_all_article_prereqs(pool: &PgPool, limit: i64) -> crate::Result<Vec<ContentPrereqBulkRow>> {
+    let rows = sqlx::query_as::<_, ContentPrereqBulkRow>(
+        "SELECT cp.content_uri, cp.tag_id, cp.prereq_type, t.name as tag_name, t.names as tag_names \
+         FROM content_prereqs cp \
+         JOIN tags t ON t.id = cp.tag_id \
+         JOIN content c ON c.uri = cp.content_uri AND c.content_type = 'article' \
+         ORDER BY cp.content_uri LIMIT $1",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -211,7 +213,7 @@ pub async fn get_articles_by_tag(pool: &PgPool, tag_id: &str, limit: i64) -> cra
     // Use ANY($1) with PostgreSQL array parameter
     let sql = format!(
         "{ARTICLE_SELECT} WHERE a.at_uri IN (\
-            SELECT at2.article_uri FROM article_teaches at2 WHERE at2.tag_id = ANY($1)\
+            SELECT ct.content_uri FROM content_teaches ct WHERE ct.tag_id = ANY($1)\
          ) \
          ORDER BY a.created_at DESC LIMIT $2"
     );
@@ -315,8 +317,8 @@ pub async fn create_fork_record(
     .await?;
 
     sqlx::query(
-        "INSERT INTO article_prereqs (article_uri, tag_id, prereq_type) \
-         SELECT $1, tag_id, prereq_type FROM article_prereqs WHERE article_uri = $2 \
+        "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
+         SELECT $1, tag_id, prereq_type FROM content_prereqs WHERE content_uri = $2 \
          ON CONFLICT DO NOTHING",
     )
     .bind(forked_uri)
@@ -325,8 +327,8 @@ pub async fn create_fork_record(
     .await?;
 
     sqlx::query(
-        "INSERT INTO article_teaches (article_uri, tag_id) \
-         SELECT $1, tag_id FROM article_teaches WHERE article_uri = $2 \
+        "INSERT INTO content_teaches (content_uri, tag_id) \
+         SELECT $1, tag_id FROM content_teaches WHERE content_uri = $2 \
          ON CONFLICT DO NOTHING",
     )
     .bind(forked_uri)
@@ -398,7 +400,7 @@ pub async fn delete_article(pool: &PgPool, uri: &str) -> crate::Result<()> {
         .execute(&mut *tx)
         .await?;
 
-    // CASCADE handles: article_teaches, article_prereqs, forks, user_bookmarks,
+    // CASCADE handles: content_teaches, content_prereqs (via content trigger), forks, user_bookmarks,
     // series_articles, comments (+ comment_votes via comments CASCADE)
     sqlx::query("DELETE FROM articles WHERE at_uri = $1")
         .bind(uri)

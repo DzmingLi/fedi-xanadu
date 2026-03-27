@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/assets/favicon-16x16.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="og:url" content="https://missing.csail.mit.edu/2020/command-line/">
+  <meta property="og:site_name" content="Missing Semester">
+
+  
+    
+    <meta name="description" content="Learn about job control, terminal multiplexers, dotfiles, and remote machines with SSH.">
+    <meta name="twitter:description" content="Learn about job control, terminal multiplexers, dotfiles, and remote machines with SSH.">
+    <meta property="og:description" content="Learn about job control, terminal multiplexers, dotfiles, and remote machines with SSH.">
+  
+
+  
+  <meta name="twitter:title" content="Command-line Environment">
+  <meta property="og:title" content="Command-line Environment">
+
+  
+  <meta name="twitter:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec5.png">
+  <meta property="og:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec5.png">
+
+  <title>
+    
+      
+        Command-line Environment &middot; Missing Semester
+      
+    
+  </title>
+
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/syntax.css">
+  <script defer src="/static/js/sidenotes.js"></script>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,300,400,600,700,900,200italic,300italic,400italic,600italic,700italic,900italic&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Code+Pro:200,300,400,500,600,700,900&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-P7WVHD84D1"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-P7WVHD84D1');
+  </script>
+
+</head>
+
+
+  <body>
+
+    <div id="nav-bg">
+  <nav id="top-nav">
+    <a href="/" id="logo">./missing-semester</a>
+    <input type="checkbox" id="menu-icon">
+    <label class="menu-label" for="menu-icon"></label>
+    <div class="trigger">
+      <div class="trigger-child">
+        <span class="nav-link"><a href="/2026/">lectures</a></span>
+        <span class="nav-link"><a href="/past/">past</a></span>
+        <span class="nav-link"><a href="/about/">about</a></span>
+      </div>
+    </div>
+  </nav>
+</div>
+
+
+    <div id="content">
+    <h1 class="title">Command-line Environment</h1>
+
+
+
+  <div class="youtube-wrapper" style="padding-bottom: 56.25%;">
+    <iframe src="https://www.youtube.com/embed/e8BO_dYxk5c" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+  </div>
+
+
+<p>In this lecture we will go through several ways in which you can improve your workflow when using the shell. We have been working with the shell for a while now, but we have mainly focused on executing different commands. We will now see how to run several processes at the same time while keeping track of them, how to stop or pause a specific process and how to make a process run in the background.</p>
+
+<p>We will also learn about different ways to improve your shell and other tools, by defining aliases and configuring them using dotfiles. Both of these can help you save time, e.g. by using the same configurations in all your machines without having to type long commands. We will look at how to work with remote machines using SSH.</p>
+
+<h1 id="job-control">Job Control</h1>
+
+<p>In some cases you will need to interrupt a job while it is executing, for instance if a command is taking too long to complete (such as a <code class="language-plaintext highlighter-rouge">find</code> with a very large directory structure to search through).
+Most of the time, you can do <code class="language-plaintext highlighter-rouge">Ctrl-C</code> and the command will stop.
+But how does this actually work and why does it sometimes fail to stop the process?</p>
+
+<h2 id="killing-a-process">Killing a process</h2>
+
+<p>Your shell is using a UNIX communication mechanism called a <em>signal</em> to communicate information to the process. When a process receives a signal it stops its execution, deals with the signal and potentially changes the flow of execution based on the information that the signal delivered. For this reason, signals are <em>software interrupts</em>.</p>
+
+<p>In our case, when typing <code class="language-plaintext highlighter-rouge">Ctrl-C</code> this prompts the shell to deliver a <code class="language-plaintext highlighter-rouge">SIGINT</code> signal to the process.</p>
+
+<p>Here’s a minimal example of a Python program that captures <code class="language-plaintext highlighter-rouge">SIGINT</code> and ignores it, no longer stopping. To kill this program we can now use the <code class="language-plaintext highlighter-rouge">SIGQUIT</code> signal instead, by typing <code class="language-plaintext highlighter-rouge">Ctrl-\</code>.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">#!/usr/bin/env python
+</span><span class="kn">import</span> <span class="nn">signal</span><span class="p">,</span> <span class="n">time</span>
+
+<span class="k">def</span> <span class="nf">handler</span><span class="p">(</span><span class="n">signum</span><span class="p">,</span> <span class="n">time</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">I got a SIGINT, but I am not stopping"</span><span class="p">)</span>
+
+<span class="n">signal</span><span class="p">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="p">.</span><span class="n">SIGINT</span><span class="p">,</span> <span class="n">handler</span><span class="p">)</span>
+<span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+    <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(.</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="se">\r</span><span class="s">{}"</span><span class="p">.</span><span class="nb">format</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="n">end</span><span class="o">=</span><span class="s">""</span><span class="p">)</span>
+    <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+</code></pre></div></div>
+
+<p>Here’s what happens if we send <code class="language-plaintext highlighter-rouge">SIGINT</code> twice to this program, followed by <code class="language-plaintext highlighter-rouge">SIGQUIT</code>. Note that <code class="language-plaintext highlighter-rouge">^</code> is how <code class="language-plaintext highlighter-rouge">Ctrl</code> is displayed when typed in the terminal.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ python sigint.py
+24^C
+I got a SIGINT, but I am not stopping
+26^C
+I got a SIGINT, but I am not stopping
+30^\[1]    39913 quit       python sigint.py
+</code></pre></div></div>
+
+<p>While <code class="language-plaintext highlighter-rouge">SIGINT</code> and <code class="language-plaintext highlighter-rouge">SIGQUIT</code> are both usually associated with terminal related requests, a more generic signal for asking a process to exit gracefully is the <code class="language-plaintext highlighter-rouge">SIGTERM</code> signal.
+To send this signal we can use the <a href="https://www.man7.org/linux/man-pages/man1/kill.1.html"><code class="language-plaintext highlighter-rouge">kill</code></a> command, with the syntax <code class="language-plaintext highlighter-rouge">kill -TERM &lt;PID&gt;</code>.</p>
+
+<h2 id="pausing-and-backgrounding-processes">Pausing and backgrounding processes</h2>
+
+<p>Signals can do other things beyond killing a process. For instance, <code class="language-plaintext highlighter-rouge">SIGSTOP</code> pauses a process. In the terminal, typing <code class="language-plaintext highlighter-rouge">Ctrl-Z</code> will prompt the shell to send a <code class="language-plaintext highlighter-rouge">SIGTSTP</code> signal, short for Terminal Stop (i.e. the terminal’s version of <code class="language-plaintext highlighter-rouge">SIGSTOP</code>).</p>
+
+<p>We can then continue the paused job in the foreground or in the background using <a href="https://www.man7.org/linux/man-pages/man1/fg.1p.html"><code class="language-plaintext highlighter-rouge">fg</code></a> or <a href="https://man7.org/linux/man-pages/man1/bg.1p.html"><code class="language-plaintext highlighter-rouge">bg</code></a>, respectively.</p>
+
+<p>The <a href="https://www.man7.org/linux/man-pages/man1/jobs.1p.html"><code class="language-plaintext highlighter-rouge">jobs</code></a> command lists the unfinished jobs associated with the current terminal session.
+You can refer to those jobs using their pid (you can use <a href="https://www.man7.org/linux/man-pages/man1/pgrep.1.html"><code class="language-plaintext highlighter-rouge">pgrep</code></a> to find that out).
+More intuitively, you can also refer to a process using the percent symbol followed by its job number (displayed by <code class="language-plaintext highlighter-rouge">jobs</code>). To refer to the last backgrounded job you can use the <code class="language-plaintext highlighter-rouge">$!</code> special parameter.</p>
+
+<p>One more thing to know is that the <code class="language-plaintext highlighter-rouge">&amp;</code> suffix in a command will run the command in the background, giving you the prompt back, although it will still use the shell’s STDOUT which can be annoying (use shell redirections in that case).</p>
+
+<p>To background an already running program you can do <code class="language-plaintext highlighter-rouge">Ctrl-Z</code> followed by <code class="language-plaintext highlighter-rouge">bg</code>.
+Note that backgrounded processes are still children processes of your terminal and will die if you close the terminal (this will send yet another signal, <code class="language-plaintext highlighter-rouge">SIGHUP</code>).
+To prevent that from happening you can run the program with <a href="https://www.man7.org/linux/man-pages/man1/nohup.1.html"><code class="language-plaintext highlighter-rouge">nohup</code></a> (a wrapper to ignore <code class="language-plaintext highlighter-rouge">SIGHUP</code>), or use <code class="language-plaintext highlighter-rouge">disown</code> if the process has already been started.
+Alternatively, you can use a terminal multiplexer as we will see in the next section.</p>
+
+<p>Below is a sample session to showcase some of these concepts.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ sleep 1000
+^Z
+[1]  + 18653 suspended  sleep 1000
+
+$ nohup sleep 2000 &amp;
+[2] 18745
+appending output to nohup.out
+
+$ jobs
+[1]  + suspended  sleep 1000
+[2]  - running    nohup sleep 2000
+
+$ bg %1
+[1]  - 18653 continued  sleep 1000
+
+$ jobs
+[1]  - running    sleep 1000
+[2]  + running    nohup sleep 2000
+
+$ kill -STOP %1
+[1]  + 18653 suspended (signal)  sleep 1000
+
+$ jobs
+[1]  + suspended (signal)  sleep 1000
+[2]  - running    nohup sleep 2000
+
+$ kill -SIGHUP %1
+[1]  + 18653 hangup     sleep 1000
+
+$ jobs
+[2]  + running    nohup sleep 2000
+
+$ kill -SIGHUP %2
+
+$ jobs
+[2]  + running    nohup sleep 2000
+
+$ kill %2
+[2]  + 18745 terminated  nohup sleep 2000
+
+$ jobs
+
+</code></pre></div></div>
+
+<p>A special signal is <code class="language-plaintext highlighter-rouge">SIGKILL</code> since it cannot be captured by the process and it will always terminate it immediately. However, it can have bad side effects such as leaving orphaned children processes.</p>
+
+<p>You can learn more about these and other signals <a href="https://en.wikipedia.org/wiki/Signal_(IPC)">here</a> or typing <a href="https://www.man7.org/linux/man-pages/man7/signal.7.html"><code class="language-plaintext highlighter-rouge">man signal</code></a> or <code class="language-plaintext highlighter-rouge">kill -l</code>.</p>
+
+<h1 id="terminal-multiplexers">Terminal Multiplexers</h1>
+
+<p>When using the command line interface you will often want to run more than one thing at once.
+For instance, you might want to run your editor and your program side by side.
+Although this can be achieved by opening new terminal windows, using a terminal multiplexer is a more versatile solution.</p>
+
+<p>Terminal multiplexers like <a href="https://www.man7.org/linux/man-pages/man1/tmux.1.html"><code class="language-plaintext highlighter-rouge">tmux</code></a> allow you to multiplex terminal windows using panes and tabs so you can interact with multiple shell sessions.
+Moreover, terminal multiplexers let you detach a current terminal session and reattach at some point later in time.
+This can make your workflow much better when working with remote machines since it avoids the need to use <code class="language-plaintext highlighter-rouge">nohup</code> and similar tricks.</p>
+
+<p>The most popular terminal multiplexer these days is <a href="https://www.man7.org/linux/man-pages/man1/tmux.1.html"><code class="language-plaintext highlighter-rouge">tmux</code></a>. <code class="language-plaintext highlighter-rouge">tmux</code> is highly configurable and by using the associated keybindings you can create multiple tabs and panes and quickly navigate through them.</p>
+
+<p><code class="language-plaintext highlighter-rouge">tmux</code> expects you to know its keybindings, and they all have the form <code class="language-plaintext highlighter-rouge">&lt;C-b&gt; x</code> where that means (1) press <code class="language-plaintext highlighter-rouge">Ctrl+b</code>, (2) release <code class="language-plaintext highlighter-rouge">Ctrl+b</code>, and then (3) press <code class="language-plaintext highlighter-rouge">x</code>. <code class="language-plaintext highlighter-rouge">tmux</code> has the following hierarchy of objects:</p>
+<ul>
+  <li><strong>Sessions</strong> - a session is an independent workspace with one or more windows
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">tmux</code> starts a new session.</li>
+      <li><code class="language-plaintext highlighter-rouge">tmux new -s NAME</code> starts it with that name.</li>
+      <li><code class="language-plaintext highlighter-rouge">tmux ls</code> lists the current sessions</li>
+      <li>Within <code class="language-plaintext highlighter-rouge">tmux</code> typing <code class="language-plaintext highlighter-rouge">&lt;C-b&gt; d</code>  detaches the current session</li>
+      <li><code class="language-plaintext highlighter-rouge">tmux a</code> attaches the last session. You can use <code class="language-plaintext highlighter-rouge">-t</code> flag to specify which</li>
+    </ul>
+  </li>
+  <li><strong>Windows</strong> - Equivalent to tabs in editors or browsers, they are visually separate parts of the same session
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; c</code> Creates a new window. To close it you can just terminate the shells doing <code class="language-plaintext highlighter-rouge">&lt;C-d&gt;</code></li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; N</code> Go to the <em>N</em> th window. Note they are numbered</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; p</code> Goes to the previous window</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; n</code> Goes to the next window</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; ,</code> Rename the current window</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; w</code> List current windows</li>
+    </ul>
+  </li>
+  <li><strong>Panes</strong> - Like vim splits, panes let you have multiple shells in the same visual display.
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; "</code> Split the current pane horizontally</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; %</code> Split the current pane vertically</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; &lt;direction&gt;</code> Move to the pane in the specified <em>direction</em>. Direction here means arrow keys.</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; z</code> Toggle zoom for the current pane</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; [</code> Start scrollback. You can then press <code class="language-plaintext highlighter-rouge">&lt;space&gt;</code> to start a selection and <code class="language-plaintext highlighter-rouge">&lt;enter&gt;</code> to copy that selection.</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;C-b&gt; &lt;space&gt;</code> Cycle through pane arrangements.</li>
+    </ul>
+  </li>
+</ul>
+
+<p>For further reading,
+<a href="https://www.hamvocke.com/blog/a-quick-and-easy-guide-to-tmux/">here</a> is a quick tutorial on <code class="language-plaintext highlighter-rouge">tmux</code> and <a href="https://linuxcommand.org/lc3_adv_termmux.php">this</a> has a more detailed explanation that covers the original <code class="language-plaintext highlighter-rouge">screen</code> command. You might also want to familiarize yourself with <a href="https://www.man7.org/linux/man-pages/man1/screen.1.html"><code class="language-plaintext highlighter-rouge">screen</code></a>, since it comes installed in most UNIX systems.</p>
+
+<h1 id="aliases">Aliases</h1>
+
+<p>It can become tiresome typing long commands that involve many flags or verbose options.
+For this reason, most shells support <em>aliasing</em>.
+A shell alias is a short form for another command that your shell will replace automatically for you.
+For instance, an alias in bash has the following structure:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">alias </span><span class="nv">alias_name</span><span class="o">=</span><span class="s2">"command_to_alias arg1 arg2"</span>
+</code></pre></div></div>
+
+<p>Note that there is no space around the equal sign <code class="language-plaintext highlighter-rouge">=</code>, because <a href="https://www.man7.org/linux/man-pages/man1/alias.1p.html"><code class="language-plaintext highlighter-rouge">alias</code></a> is a shell command that takes a single argument.</p>
+
+<p>Aliases have many convenient features:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Make shorthands for common flags</span>
+<span class="nb">alias </span><span class="nv">ll</span><span class="o">=</span><span class="s2">"ls -lh"</span>
+
+<span class="c"># Save a lot of typing for common commands</span>
+<span class="nb">alias </span><span class="nv">gs</span><span class="o">=</span><span class="s2">"git status"</span>
+<span class="nb">alias </span><span class="nv">gc</span><span class="o">=</span><span class="s2">"git commit"</span>
+<span class="nb">alias </span><span class="nv">v</span><span class="o">=</span><span class="s2">"vim"</span>
+
+<span class="c"># Save you from mistyping</span>
+<span class="nb">alias </span><span class="nv">sl</span><span class="o">=</span><span class="nb">ls</span>
+
+<span class="c"># Overwrite existing commands for better defaults</span>
+<span class="nb">alias mv</span><span class="o">=</span><span class="s2">"mv -i"</span>           <span class="c"># -i prompts before overwrite</span>
+<span class="nb">alias mkdir</span><span class="o">=</span><span class="s2">"mkdir -p"</span>     <span class="c"># -p make parent dirs as needed</span>
+<span class="nb">alias df</span><span class="o">=</span><span class="s2">"df -h"</span>           <span class="c"># -h prints human readable format</span>
+
+<span class="c"># Alias can be composed</span>
+<span class="nb">alias </span><span class="nv">la</span><span class="o">=</span><span class="s2">"ls -A"</span>
+<span class="nb">alias </span><span class="nv">lla</span><span class="o">=</span><span class="s2">"la -l"</span>
+
+<span class="c"># To ignore an alias run it prepended with \</span>
+<span class="se">\l</span>s
+<span class="c"># Or disable an alias altogether with unalias</span>
+<span class="nb">unalias </span>la
+
+<span class="c"># To get an alias definition just call it with alias</span>
+<span class="nb">alias </span>ll
+<span class="c"># Will print ll='ls -lh'</span>
+</code></pre></div></div>
+
+<p>Note that aliases do not persist shell sessions by default.
+To make an alias persistent you need to include it in shell startup files, like <code class="language-plaintext highlighter-rouge">.bashrc</code> or <code class="language-plaintext highlighter-rouge">.zshrc</code>, which we are going to introduce in the next section.</p>
+
+<h1 id="dotfiles">Dotfiles</h1>
+
+<p>Many programs are configured using plain-text files known as <em>dotfiles</em>
+(because the file names begin with a <code class="language-plaintext highlighter-rouge">.</code>, e.g. <code class="language-plaintext highlighter-rouge">~/.vimrc</code>, so that they are
+hidden in the directory listing <code class="language-plaintext highlighter-rouge">ls</code> by default).</p>
+
+<p>Shells are one example of programs configured with such files. On startup, your shell will read many files to load its configuration.
+Depending on the shell, whether you are starting a login and/or interactive the entire process can be quite complex.
+<a href="https://blog.flowblok.id.au/2013-02/shell-startup-scripts.html">Here</a> is an excellent resource on the topic.</p>
+
+<p>For <code class="language-plaintext highlighter-rouge">bash</code>, editing your <code class="language-plaintext highlighter-rouge">.bashrc</code> or <code class="language-plaintext highlighter-rouge">.bash_profile</code> will work in most systems.
+Here you can include commands that you want to run on startup, like the alias we just described or modifications to your <code class="language-plaintext highlighter-rouge">PATH</code> environment variable.
+In fact, many programs will ask you to include a line like <code class="language-plaintext highlighter-rouge">export PATH="$PATH:/path/to/program/bin"</code> in your shell configuration file so their binaries can be found.</p>
+
+<p>Some other examples of tools that can be configured through dotfiles are:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">bash</code> - <code class="language-plaintext highlighter-rouge">~/.bashrc</code>, <code class="language-plaintext highlighter-rouge">~/.bash_profile</code></li>
+  <li><code class="language-plaintext highlighter-rouge">git</code> - <code class="language-plaintext highlighter-rouge">~/.gitconfig</code></li>
+  <li><code class="language-plaintext highlighter-rouge">vim</code> - <code class="language-plaintext highlighter-rouge">~/.vimrc</code> and the <code class="language-plaintext highlighter-rouge">~/.vim</code> folder</li>
+  <li><code class="language-plaintext highlighter-rouge">ssh</code> - <code class="language-plaintext highlighter-rouge">~/.ssh/config</code></li>
+  <li><code class="language-plaintext highlighter-rouge">tmux</code> - <code class="language-plaintext highlighter-rouge">~/.tmux.conf</code></li>
+</ul>
+
+<p>How should you organize your dotfiles? They should be in their own folder,
+under version control, and <strong>symlinked</strong> into place using a script. This has
+the benefits of:</p>
+
+<ul>
+  <li><strong>Easy installation</strong>: if you log in to a new machine, applying your
+customizations will only take a minute.</li>
+  <li><strong>Portability</strong>: your tools will work the same way everywhere.</li>
+  <li><strong>Synchronization</strong>: you can update your dotfiles anywhere and keep them all
+in sync.</li>
+  <li><strong>Change tracking</strong>: you’re probably going to be maintaining your dotfiles
+for your entire programming career, and version history is nice to have for
+long-lived projects.</li>
+</ul>
+
+<p>What should you put in your dotfiles?
+You can learn about your tool’s settings by reading online documentation or
+<a href="https://en.wikipedia.org/wiki/Man_page">man pages</a>. Another great way is to
+search the internet for blog posts about specific programs, where authors will
+tell you about their preferred customizations. Yet another way to learn about
+customizations is to look through other people’s dotfiles: you can find tons of
+<a href="https://github.com/search?o=desc&amp;q=dotfiles&amp;s=stars&amp;type=Repositories">dotfiles
+repositories</a>
+on GitHub — see the most popular one
+<a href="https://github.com/mathiasbynens/dotfiles">here</a> (we advise you not to blindly
+copy configurations though).
+<a href="https://dotfiles.github.io/">Here</a> is another good resource on the topic.</p>
+
+<p>All of the class instructors have their dotfiles publicly accessible on GitHub: <a href="https://github.com/anishathalye/dotfiles">Anish</a>,
+<a href="https://github.com/jonhoo/configs">Jon</a>,
+<a href="https://github.com/jjgo/dotfiles">Jose</a>.</p>
+
+<h2 id="portability">Portability</h2>
+
+<p>A common pain with dotfiles is that the configurations might not work when working with several machines, e.g. if they have different operating systems or shells. Sometimes you also want some configuration to be applied only in a given machine.</p>
+
+<p>There are some tricks for making this easier.
+If the configuration file supports it, use the equivalent of if-statements to
+apply machine specific customizations. For example, your shell could have something
+like:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">if</span> <span class="o">[[</span> <span class="s2">"</span><span class="si">$(</span><span class="nb">uname</span><span class="si">)</span><span class="s2">"</span> <span class="o">==</span> <span class="s2">"Linux"</span> <span class="o">]]</span><span class="p">;</span> <span class="k">then</span> <span class="o">{</span>do_something<span class="o">}</span><span class="p">;</span> <span class="k">fi</span>
+
+<span class="c"># Check before using shell-specific features</span>
+<span class="k">if</span> <span class="o">[[</span> <span class="s2">"</span><span class="nv">$SHELL</span><span class="s2">"</span> <span class="o">==</span> <span class="s2">"zsh"</span> <span class="o">]]</span><span class="p">;</span> <span class="k">then</span> <span class="o">{</span>do_something<span class="o">}</span><span class="p">;</span> <span class="k">fi</span>
+
+<span class="c"># You can also make it machine-specific</span>
+<span class="k">if</span> <span class="o">[[</span> <span class="s2">"</span><span class="si">$(</span><span class="nb">hostname</span><span class="si">)</span><span class="s2">"</span> <span class="o">==</span> <span class="s2">"myServer"</span> <span class="o">]]</span><span class="p">;</span> <span class="k">then</span> <span class="o">{</span>do_something<span class="o">}</span><span class="p">;</span> <span class="k">fi</span>
+</code></pre></div></div>
+
+<p>If the configuration file supports it, make use of includes. For example,
+a <code class="language-plaintext highlighter-rouge">~/.gitconfig</code> can have a setting:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[include]
+    path = ~/.gitconfig_local
+</code></pre></div></div>
+
+<p>And then on each machine, <code class="language-plaintext highlighter-rouge">~/.gitconfig_local</code> can contain machine-specific
+settings. You could even track these in a separate repository for
+machine-specific settings.</p>
+
+<p>This idea is also useful if you want different programs to share some configurations. For instance, if you want both <code class="language-plaintext highlighter-rouge">bash</code> and <code class="language-plaintext highlighter-rouge">zsh</code> to share the same set of aliases you can write them under <code class="language-plaintext highlighter-rouge">.aliases</code> and have the following block in both:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Test if ~/.aliases exists and source it</span>
+<span class="k">if</span> <span class="o">[</span> <span class="nt">-f</span> ~/.aliases <span class="o">]</span><span class="p">;</span> <span class="k">then
+    </span><span class="nb">source</span> ~/.aliases
+<span class="k">fi</span>
+</code></pre></div></div>
+
+<h1 id="remote-machines">Remote Machines</h1>
+
+<p>It has become more and more common for programmers to use remote servers in their everyday work. If you need to use remote servers in order to deploy backend software or you need a server with higher computational capabilities, you will end up using a Secure Shell (SSH). As with most tools covered, SSH is highly configurable so it is worth learning about it.</p>
+
+<p>To <code class="language-plaintext highlighter-rouge">ssh</code> into a server you execute a command as follows</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh foo@bar.mit.edu
+</code></pre></div></div>
+
+<p>Here we are trying to ssh as user <code class="language-plaintext highlighter-rouge">foo</code> in server <code class="language-plaintext highlighter-rouge">bar.mit.edu</code>.
+The server can be specified with a URL (like <code class="language-plaintext highlighter-rouge">bar.mit.edu</code>) or an IP (something like <code class="language-plaintext highlighter-rouge">foobar@192.168.1.42</code>). Later we will see that if we modify ssh config file you can access just using something like <code class="language-plaintext highlighter-rouge">ssh bar</code>.</p>
+
+<h2 id="executing-commands">Executing commands</h2>
+
+<p>An often overlooked feature of <code class="language-plaintext highlighter-rouge">ssh</code> is the ability to run commands directly.
+<code class="language-plaintext highlighter-rouge">ssh foobar@server ls</code> will execute <code class="language-plaintext highlighter-rouge">ls</code> in the home folder of foobar.
+It works with pipes, so <code class="language-plaintext highlighter-rouge">ssh foobar@server ls | grep PATTERN</code> will grep locally the remote output of <code class="language-plaintext highlighter-rouge">ls</code> and <code class="language-plaintext highlighter-rouge">ls | ssh foobar@server grep PATTERN</code> will grep remotely the local output of <code class="language-plaintext highlighter-rouge">ls</code>.</p>
+
+<h2 id="ssh-keys">SSH Keys</h2>
+
+<p>Key-based authentication exploits public-key cryptography to prove to the server that the client owns the secret private key without revealing the key. This way you do not need to reenter your password every time. Nevertheless, the private key (often <code class="language-plaintext highlighter-rouge">~/.ssh/id_rsa</code> and more recently <code class="language-plaintext highlighter-rouge">~/.ssh/id_ed25519</code>) is effectively your password, so treat it like so.</p>
+
+<h3 id="key-generation">Key generation</h3>
+
+<p>To generate a pair you can run <a href="https://www.man7.org/linux/man-pages/man1/ssh-keygen.1.html"><code class="language-plaintext highlighter-rouge">ssh-keygen</code></a>.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh-keygen <span class="nt">-a</span> 100 <span class="nt">-t</span> ed25519 <span class="nt">-f</span> ~/.ssh/id_ed25519
+</code></pre></div></div>
+<p>You should choose a passphrase, to avoid someone who gets hold of your private key to access authorized servers. Use <a href="https://www.man7.org/linux/man-pages/man1/ssh-agent.1.html"><code class="language-plaintext highlighter-rouge">ssh-agent</code></a> or <a href="https://linux.die.net/man/1/gpg-agent"><code class="language-plaintext highlighter-rouge">gpg-agent</code></a> so you do not have to type your passphrase every time.</p>
+
+<p>If you have ever configured pushing to GitHub using SSH keys, then you have probably done the steps outlined <a href="https://help.github.com/articles/connecting-to-github-with-ssh/">here</a> and have a valid key pair already. To check if you have a passphrase and validate it you can run <code class="language-plaintext highlighter-rouge">ssh-keygen -y -f /path/to/key</code>.</p>
+
+<h3 id="key-based-authentication">Key based authentication</h3>
+
+<p><code class="language-plaintext highlighter-rouge">ssh</code> will look into <code class="language-plaintext highlighter-rouge">.ssh/authorized_keys</code> to determine which clients it should let in. To copy a public key over you can use:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cat</span> .ssh/id_ed25519.pub | ssh foobar@remote <span class="s1">'cat &gt;&gt; ~/.ssh/authorized_keys'</span>
+</code></pre></div></div>
+
+<p>A simpler solution can be achieved with <code class="language-plaintext highlighter-rouge">ssh-copy-id</code> where available:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh-copy-id <span class="nt">-i</span> .ssh/id_ed25519 foobar@remote
+</code></pre></div></div>
+
+<h2 id="copying-files-over-ssh">Copying files over SSH</h2>
+
+<p>There are many ways to copy files over ssh:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">ssh+tee</code>, the simplest is to use <code class="language-plaintext highlighter-rouge">ssh</code> command execution and STDIN input by doing <code class="language-plaintext highlighter-rouge">cat localfile | ssh remote_server tee serverfile</code>. Recall that <a href="https://www.man7.org/linux/man-pages/man1/tee.1.html"><code class="language-plaintext highlighter-rouge">tee</code></a> writes the output from STDIN into a file.</li>
+  <li><a href="https://www.man7.org/linux/man-pages/man1/scp.1.html"><code class="language-plaintext highlighter-rouge">scp</code></a> when copying large amounts of files/directories, the secure copy <code class="language-plaintext highlighter-rouge">scp</code> command is more convenient since it can easily recurse over paths. The syntax is <code class="language-plaintext highlighter-rouge">scp path/to/local_file remote_host:path/to/remote_file</code></li>
+  <li><a href="https://www.man7.org/linux/man-pages/man1/rsync.1.html"><code class="language-plaintext highlighter-rouge">rsync</code></a> improves upon <code class="language-plaintext highlighter-rouge">scp</code> by detecting identical files in local and remote, and preventing copying them again. It also provides more fine grained control over symlinks, permissions and has extra features like the <code class="language-plaintext highlighter-rouge">--partial</code> flag that can resume from a previously interrupted copy. <code class="language-plaintext highlighter-rouge">rsync</code> has a similar syntax to <code class="language-plaintext highlighter-rouge">scp</code>.</li>
+</ul>
+
+<h2 id="port-forwarding">Port Forwarding</h2>
+
+<p>In many scenarios you will run into software that listens to specific ports in the machine. When this happens in your local machine you can type <code class="language-plaintext highlighter-rouge">localhost:PORT</code> or <code class="language-plaintext highlighter-rouge">127.0.0.1:PORT</code>, but what do you do with a remote server that does not have its ports directly available through the network/internet?.</p>
+
+<p>This is called <em>port forwarding</em> and it
+comes in two flavors: Local Port Forwarding and Remote Port Forwarding (see the pictures for more details, credit of the pictures from <a href="https://unix.stackexchange.com/questions/115897/whats-ssh-port-forwarding-and-whats-the-difference-between-ssh-local-and-remot">this StackOverflow post</a>).</p>
+
+<p><strong>Local Port Forwarding</strong>
+<img src="/static/media/images/local-port-forwarding.png" alt="Local Port Forwarding" /></p>
+
+<p><strong>Remote Port Forwarding</strong>
+<img src="/static/media/images/remote-port-forwarding.png" alt="Remote Port Forwarding" /></p>
+
+<p>The most common scenario is local port forwarding, where a service in the remote machine listens in a port and you want to link a port in your local machine to forward to the remote port. For example, if we execute  <code class="language-plaintext highlighter-rouge">jupyter notebook</code> in the remote server that listens to the port <code class="language-plaintext highlighter-rouge">8888</code>. Thus, to forward that to the local port <code class="language-plaintext highlighter-rouge">9999</code>, we would do <code class="language-plaintext highlighter-rouge">ssh -L 9999:localhost:8888 foobar@remote_server</code> and then navigate to <code class="language-plaintext highlighter-rouge">localhost:9999</code> in our local machine.</p>
+
+<h2 id="ssh-configuration">SSH Configuration</h2>
+
+<p>We have covered many many arguments that we can pass. A tempting alternative is to create shell aliases that look like</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">alias </span><span class="nv">my_server</span><span class="o">=</span><span class="s2">"ssh -i ~/.id_ed25519 --port 2222 -L 9999:localhost:8888 foobar@remote_server"</span>
+</code></pre></div></div>
+
+<p>However, there is a better alternative using <code class="language-plaintext highlighter-rouge">~/.ssh/config</code>.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Host vm
+    User foobar
+    HostName 172.16.174.141
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519
+    LocalForward 9999 localhost:8888
+
+<span class="c"># Configs can also take wildcards</span>
+Host <span class="k">*</span>.mit.edu
+    User foobaz
+</code></pre></div></div>
+
+<p>An additional advantage of using the <code class="language-plaintext highlighter-rouge">~/.ssh/config</code> file over aliases  is that other programs like <code class="language-plaintext highlighter-rouge">scp</code>, <code class="language-plaintext highlighter-rouge">rsync</code>, <code class="language-plaintext highlighter-rouge">mosh</code>, &amp;c are able to read it as well and convert the settings into the corresponding flags.</p>
+
+<p>Note that the <code class="language-plaintext highlighter-rouge">~/.ssh/config</code> file can be considered a dotfile, and in general it is fine for it to be included with the rest of your dotfiles. However, if you make it public, think about the information that you are potentially providing strangers on the internet: addresses of your servers, users, open ports, &amp;c. This may facilitate some types of attacks so be thoughtful about sharing your SSH configuration.</p>
+
+<p>Server side configuration is usually specified in <code class="language-plaintext highlighter-rouge">/etc/ssh/sshd_config</code>. Here you can make changes like disabling password authentication, changing ssh ports, enabling X11 forwarding, &amp;c. You can specify config settings on a per user basis.</p>
+
+<h2 id="miscellaneous">Miscellaneous</h2>
+
+<p>A common pain when connecting to a remote server are disconnections due to your computer shutting down, going to sleep, or changing networks. Moreover if one has a connection with significant lag using ssh can become quite frustrating. <a href="https://mosh.org/">Mosh</a>, the mobile shell, improves upon ssh, allowing roaming connections, intermittent connectivity and providing intelligent local echo.</p>
+
+<p>Sometimes it is convenient to mount a remote folder. <a href="https://github.com/libfuse/sshfs">sshfs</a> can mount a folder on a remote server
+locally, and then you can use a local editor.</p>
+
+<h1 id="shells--frameworks">Shells &amp; Frameworks</h1>
+
+<p>During shell tool and scripting we covered the <code class="language-plaintext highlighter-rouge">bash</code> shell because it is by far the most ubiquitous shell and most systems have it as the default option. Nevertheless, it is not the only option.</p>
+
+<p>For example, the <code class="language-plaintext highlighter-rouge">zsh</code> shell is a superset of <code class="language-plaintext highlighter-rouge">bash</code> and provides many convenient features out of the box such as:</p>
+
+<ul>
+  <li>Smarter globbing, <code class="language-plaintext highlighter-rouge">**</code></li>
+  <li>Inline globbing/wildcard expansion</li>
+  <li>Spelling correction</li>
+  <li>Better tab completion/selection</li>
+  <li>Path expansion (<code class="language-plaintext highlighter-rouge">cd /u/lo/b</code> will expand as <code class="language-plaintext highlighter-rouge">/usr/local/bin</code>)</li>
+</ul>
+
+<p><strong>Frameworks</strong> can improve your shell as well. Some popular general frameworks are <a href="https://github.com/sorin-ionescu/prezto">prezto</a> or <a href="https://ohmyz.sh/">oh-my-zsh</a>, and smaller ones that focus on specific features such as <a href="https://github.com/zsh-users/zsh-syntax-highlighting">zsh-syntax-highlighting</a> or <a href="https://github.com/zsh-users/zsh-history-substring-search">zsh-history-substring-search</a>. Shells like <a href="https://fishshell.com/">fish</a> include many of these user-friendly features by default. Some of these features include:</p>
+
+<ul>
+  <li>Right prompt</li>
+  <li>Command syntax highlighting</li>
+  <li>History substring search</li>
+  <li>manpage based flag completions</li>
+  <li>Smarter autocompletion</li>
+  <li>Prompt themes</li>
+</ul>
+
+<p>One thing to note when using these frameworks is that they may slow down your shell, especially if the code they run is not properly optimized or it is too much code. You can always profile it and disable the features that you do not use often or value over speed.</p>
+
+<h1 id="terminal-emulators">Terminal Emulators</h1>
+
+<p>Along with customizing your shell, it is worth spending some time figuring out your choice of <strong>terminal emulator</strong> and its settings. There are many many terminal emulators out there (here is a <a href="https://anarc.at/blog/2018-04-12-terminal-emulators-1/">comparison</a>).</p>
+
+<p>Since you might be spending hundreds to thousands of hours in your terminal it pays off to look into its settings. Some of the aspects that you may want to modify in your terminal include:</p>
+
+<ul>
+  <li>Font choice</li>
+  <li>Color Scheme</li>
+  <li>Keyboard shortcuts</li>
+  <li>Tab/Pane support</li>
+  <li>Scrollback configuration</li>
+  <li>Performance (some newer terminals like <a href="https://github.com/jwilm/alacritty">Alacritty</a> or <a href="https://sw.kovidgoyal.net/kitty/">kitty</a> offer GPU acceleration).</li>
+</ul>
+
+<h1 id="exercises">Exercises</h1>
+
+<h2 id="job-control-1">Job control</h2>
+
+<ol>
+  <li>
+    <p>From what we have seen, we can use some <code class="language-plaintext highlighter-rouge">ps aux | grep</code> commands to get our jobs’ pids and then kill them, but there are better ways to do it. Start a <code class="language-plaintext highlighter-rouge">sleep 10000</code> job in a terminal, background it with <code class="language-plaintext highlighter-rouge">Ctrl-Z</code> and continue its execution with <code class="language-plaintext highlighter-rouge">bg</code>. Now use <a href="https://www.man7.org/linux/man-pages/man1/pgrep.1.html"><code class="language-plaintext highlighter-rouge">pgrep</code></a> to find its pid and <a href="https://man7.org/linux/man-pages/man1/pgrep.1.html"><code class="language-plaintext highlighter-rouge">pkill</code></a> to kill it without ever typing the pid itself. (Hint: use the <code class="language-plaintext highlighter-rouge">-af</code> flags).</p>
+  </li>
+  <li>
+    <p>Say you don’t want to start a process until another completes. How would you go about it? In this exercise, our limiting process will always be <code class="language-plaintext highlighter-rouge">sleep 60 &amp;</code>.
+One way to achieve this is to use the <a href="https://www.man7.org/linux/man-pages/man1/wait.1p.html"><code class="language-plaintext highlighter-rouge">wait</code></a> command. Try launching the sleep command and having an <code class="language-plaintext highlighter-rouge">ls</code> wait until the background process finishes.</p>
+
+    <p>However, this strategy will fail if we start in a different bash session, since <code class="language-plaintext highlighter-rouge">wait</code> only works for child processes. One feature we did not discuss in the notes is that the <code class="language-plaintext highlighter-rouge">kill</code> command’s exit status will be zero on success and nonzero otherwise. <code class="language-plaintext highlighter-rouge">kill -0</code> does not send a signal but will give a nonzero exit status if the process does not exist.
+ Write a bash function called <code class="language-plaintext highlighter-rouge">pidwait</code> that takes a pid and waits until the given process completes. You should use <code class="language-plaintext highlighter-rouge">sleep</code> to avoid wasting CPU unnecessarily.</p>
+  </li>
+</ol>
+
+<h2 id="terminal-multiplexer">Terminal multiplexer</h2>
+
+<ol>
+  <li>Follow this <code class="language-plaintext highlighter-rouge">tmux</code> <a href="https://www.hamvocke.com/blog/a-quick-and-easy-guide-to-tmux/">tutorial</a> and then learn how to do some basic customizations following <a href="https://www.hamvocke.com/blog/a-guide-to-customizing-your-tmux-conf/">these steps</a>.</li>
+</ol>
+
+<h2 id="aliases-1">Aliases</h2>
+
+<ol>
+  <li>
+    <p>Create an alias <code class="language-plaintext highlighter-rouge">dc</code> that resolves to <code class="language-plaintext highlighter-rouge">cd</code> for when you type it wrong.</p>
+  </li>
+  <li>
+    <p>Run <code class="language-plaintext highlighter-rouge">history | awk '{$1="";print substr($0,2)}' | sort | uniq -c | sort -n | tail -n 10</code>  to get your top 10 most used commands and consider writing shorter aliases for them. Note: this works for Bash; if you’re using ZSH, use <code class="language-plaintext highlighter-rouge">history 1</code> instead of just <code class="language-plaintext highlighter-rouge">history</code>.</p>
+  </li>
+</ol>
+
+<h2 id="dotfiles-1">Dotfiles</h2>
+
+<p>Let’s get you up to speed with dotfiles.</p>
+<ol>
+  <li>Create a folder for your dotfiles and set up version
+control.</li>
+  <li>Add a configuration for at least one program, e.g. your shell, with some
+customization (to start off, it can be something as simple as customizing your shell prompt by setting <code class="language-plaintext highlighter-rouge">$PS1</code>).</li>
+  <li>Set up a method to install your dotfiles quickly (and without manual effort) on a new machine. This can be as simple as a shell script that calls <code class="language-plaintext highlighter-rouge">ln -s</code> for each file, or you could use a <a href="https://dotfiles.github.io/utilities/">specialized
+utility</a>.</li>
+  <li>Test your installation script on a fresh virtual machine.</li>
+  <li>Migrate all of your current tool configurations to your dotfiles repository.</li>
+  <li>Publish your dotfiles on GitHub.</li>
+</ol>
+
+<h2 id="remote-machines-1">Remote Machines</h2>
+
+<p>Install a Linux virtual machine (or use an already existing one) for this exercise. If you are not familiar with virtual machines check out <a href="https://hibbard.eu/install-ubuntu-virtual-box/">this</a> tutorial for installing one.</p>
+
+<ol>
+  <li>Go to <code class="language-plaintext highlighter-rouge">~/.ssh/</code> and check if you have a pair of SSH keys there. If not, generate them with <code class="language-plaintext highlighter-rouge">ssh-keygen -a 100 -t ed25519</code>. It is recommended that you use a password and use <code class="language-plaintext highlighter-rouge">ssh-agent</code> , more info <a href="https://www.ssh.com/ssh/agent">here</a>.</li>
+  <li>
+    <p>Edit <code class="language-plaintext highlighter-rouge">.ssh/config</code> to have an entry as follows</p>
+
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code> Host vm
+     User username_goes_here
+     HostName ip_goes_here
+     IdentityFile ~/.ssh/id_ed25519
+     LocalForward 9999 localhost:8888
+</code></pre></div>    </div>
+  </li>
+  <li>Use <code class="language-plaintext highlighter-rouge">ssh-copy-id vm</code> to copy your ssh key to the server.</li>
+  <li>Start a webserver in your VM by executing <code class="language-plaintext highlighter-rouge">python -m http.server 8888</code>. Access the VM webserver by navigating to <code class="language-plaintext highlighter-rouge">http://localhost:9999</code> in your machine.</li>
+  <li>Edit your SSH server config by doing  <code class="language-plaintext highlighter-rouge">sudo vim /etc/ssh/sshd_config</code> and disable password authentication by editing the value of <code class="language-plaintext highlighter-rouge">PasswordAuthentication</code>. Disable root login by editing the value of <code class="language-plaintext highlighter-rouge">PermitRootLogin</code>. Restart the <code class="language-plaintext highlighter-rouge">ssh</code> service with <code class="language-plaintext highlighter-rouge">sudo service sshd restart</code>. Try sshing in again.</li>
+  <li>(Challenge) Install <a href="https://mosh.org/"><code class="language-plaintext highlighter-rouge">mosh</code></a> in the VM and establish a connection. Then disconnect the network adapter of the server/VM. Can mosh properly recover from it?</li>
+  <li>(Challenge) Look into what the <code class="language-plaintext highlighter-rouge">-N</code> and <code class="language-plaintext highlighter-rouge">-f</code> flags do in <code class="language-plaintext highlighter-rouge">ssh</code> and figure out a command to achieve background port forwarding.</li>
+</ol>
+
+
+<hr>
+
+<div class="small center">
+<p><a href="https://github.com/missing-semester/missing-semester/blob/master/_2020/command-line.md">Edit this page</a>.</p>
+<p>Licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA</a>.</p>
+</div>
+
+    </div>
+
+  </body>
+
+</html>

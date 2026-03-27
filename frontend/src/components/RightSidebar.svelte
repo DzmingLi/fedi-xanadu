@@ -2,12 +2,12 @@
   import { listSkills, listTags, getAllArticlePrereqs, getAllArticleTeaches } from '../lib/api';
   import { tagName as resolveTagName } from '../lib/display';
   import { t } from '../lib/i18n';
-  import type { UserSkill, Tag, ArticlePrereqBulkRow, ArticleTeachRow } from '../lib/types';
+  import type { UserSkill, Tag, ContentPrereqBulkRow, ContentTeachRow } from '../lib/types';
 
   let skills = $state<UserSkill[]>([]);
   let tags = $state<Tag[]>([]);
-  let allPrereqs = $state<ArticlePrereqBulkRow[]>([]);
-  let allArticleTeaches = $state<ArticleTeachRow[]>([]);
+  let allPrereqs = $state<ContentPrereqBulkRow[]>([]);
+  let allArticleTeaches = $state<ContentTeachRow[]>([]);
   let loading = $state(true);
 
   // Tags the user can explore: tags that appear on articles whose required prereqs are all satisfied
@@ -19,17 +19,17 @@
     const tagNameMap = new Map(tags.map(t => [t.id, resolveTagName(t.names, t.name, t.id)]));
 
     // Group prereqs by article
-    const articlePrereqMap = new Map<string, ArticlePrereqBulkRow[]>();
+    const articlePrereqMap = new Map<string, ContentPrereqBulkRow[]>();
     for (const p of allPrereqs) {
-      const arr = articlePrereqMap.get(p.article_uri) || [];
+      const arr = articlePrereqMap.get(p.content_uri) || [];
       arr.push(p);
-      articlePrereqMap.set(p.article_uri, arr);
+      articlePrereqMap.set(p.content_uri, arr);
     }
 
     // Find articles where all required prereqs are satisfied
     const reachableArticles = new Set<string>();
     // Get all unique article URIs (including those with no prereqs)
-    const allArticleUris = new Set(allArticleTeaches.map(t => t.article_uri));
+    const allArticleUris = new Set(allArticleTeaches.map(t => t.content_uri));
     for (const uri of allArticleUris) {
       const prereqs = articlePrereqMap.get(uri) || [];
       const requiredPrereqs = prereqs.filter(p => p.prereq_type === 'required');
@@ -42,7 +42,7 @@
     // Collect tags from reachable articles, excluding already-lit tags
     const tagCounts = new Map<string, number>();
     for (const t of allArticleTeaches) {
-      if (reachableArticles.has(t.article_uri) && !litTagIds.has(t.tag_id)) {
+      if (reachableArticles.has(t.content_uri) && !litTagIds.has(t.tag_id)) {
         tagCounts.set(t.tag_id, (tagCounts.get(t.tag_id) || 0) + 1);
       }
     }

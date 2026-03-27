@@ -30,12 +30,12 @@ export function buildSeriesArticleMaps(rows: SeriesArticleRow[]): SeriesArticleM
 /**
  * Build a map of article_uri -> rows from a flat list.
  */
-export function buildArticleRowMap<T extends { article_uri: string }>(rows: T[]): Map<string, T[]> {
+export function buildArticleRowMap<T extends { content_uri: string }>(rows: T[]): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const t of rows) {
-    const arr = map.get(t.article_uri) || [];
+    const arr = map.get(t.content_uri) || [];
     arr.push(t);
-    map.set(t.article_uri, arr);
+    map.set(t.content_uri, arr);
   }
   return map;
 }

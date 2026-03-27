@@ -132,7 +132,7 @@ pub struct AdminCreateSeriesInput {
     pub as_handle: String,
     pub title: String,
     pub description: Option<String>,
-    pub tag_id: String,
+    pub topics: Option<Vec<String>>,
     pub parent_id: Option<String>,
 }
 
@@ -146,12 +146,13 @@ pub async fn admin_create_series(
     let did = platform_user_service::local_did(&input.as_handle);
     let id = format!("s-{}", tid());
 
+    let topics = input.topics.unwrap_or_default();
     let row = series_service::create_series(
         &state.pool,
         &id,
         &input.title,
         input.description.as_deref(),
-        &input.tag_id,
+        &topics,
         input.parent_id.as_deref(),
         &did,
     )

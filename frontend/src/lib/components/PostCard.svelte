@@ -2,7 +2,7 @@
   import { tagName } from '../display';
   import { authorName } from '../display';
   import { t } from '../i18n';
-  import type { Article, ArticleTeachRow, ArticlePrereqBulkRow, Series } from '../types';
+  import type { Article, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
 
   type CardVariant = 'home' | 'profile';
 
@@ -17,8 +17,8 @@
     article?: Article;
     series?: Series;
     articleCount?: number;
-    articleTeaches?: ArticleTeachRow[];
-    articlePrereqs?: ArticlePrereqBulkRow[];
+    articleTeaches?: ContentTeachRow[];
+    articlePrereqs?: ContentPrereqBulkRow[];
     variant?: CardVariant;
   } = $props();
 
@@ -78,12 +78,6 @@
       <span class="post-title">{series.title}</span>
       <span class="series-badge">{t('home.series')}</span>
     </div>
-
-    {#if series.tag_name}
-      <div class="card-tags">
-        <span class="tag" role="link" tabindex="0" onclick={(e) => navToTag(e, series.tag_id)} onkeydown={(e) => navToTag(e, series.tag_id)}>{tagName(series.tag_names, series.tag_name || '', series.tag_id)}</span>
-      </div>
-    {/if}
 
     {#if series.description}
       <p class="post-desc">{series.description}</p>

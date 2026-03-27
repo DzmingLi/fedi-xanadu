@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/assets/favicon-16x16.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="og:url" content="https://missing.csail.mit.edu/2020/version-control/">
+  <meta property="og:site_name" content="Missing Semester">
+
+  
+    
+    <meta name="description" content="Learn Git's data model and how to use Git for version control and collaboration.">
+    <meta name="twitter:description" content="Learn Git's data model and how to use Git for version control and collaboration.">
+    <meta property="og:description" content="Learn Git's data model and how to use Git for version control and collaboration.">
+  
+
+  
+  <meta name="twitter:title" content="Version Control (Git)">
+  <meta property="og:title" content="Version Control (Git)">
+
+  
+  <meta name="twitter:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec6.png">
+  <meta property="og:image" content="https://missing.csail.mit.edu/static/assets/thumbnails/2020/lec6.png">
+
+  <title>
+    
+      
+        Version Control (Git) &middot; Missing Semester
+      
+    
+  </title>
+
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/syntax.css">
+  <script defer src="/static/js/sidenotes.js"></script>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:200,300,400,600,700,900,200italic,300italic,400italic,600italic,700italic,900italic&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Code+Pro:200,300,400,500,600,700,900&subset=latin,latin-ext' rel='stylesheet' type='text/css'>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-P7WVHD84D1"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-P7WVHD84D1');
+  </script>
+
+</head>
+
+
+  <body>
+
+    <div id="nav-bg">
+  <nav id="top-nav">
+    <a href="/" id="logo">./missing-semester</a>
+    <input type="checkbox" id="menu-icon">
+    <label class="menu-label" for="menu-icon"></label>
+    <div class="trigger">
+      <div class="trigger-child">
+        <span class="nav-link"><a href="/2026/">lectures</a></span>
+        <span class="nav-link"><a href="/past/">past</a></span>
+        <span class="nav-link"><a href="/about/">about</a></span>
+      </div>
+    </div>
+  </nav>
+</div>
+
+
+    <div id="content">
+    <h1 class="title">Version Control (Git)</h1>
+
+
+
+  <div class="youtube-wrapper" style="padding-bottom: 56.25%;">
+    <iframe src="https://www.youtube.com/embed/2sjqTHE0zok" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+  </div>
+
+
+<p>Version control systems (VCSs) are tools used to track changes to source code
+(or other collections of files and folders). As the name implies, these tools
+help maintain a history of changes; furthermore, they facilitate collaboration.
+VCSs track changes to a folder and its contents in a series of snapshots, where
+each snapshot encapsulates the entire state of files/folders within a top-level
+directory. VCSs also maintain metadata like who created each snapshot, messages
+associated with each snapshot, and so on.</p>
+
+<p>Why is version control useful? Even when you’re working by yourself, it can let
+you look at old snapshots of a project, keep a log of why certain changes were
+made, work on parallel branches of development, and much more. When working
+with others, it’s an invaluable tool for seeing what other people have changed,
+as well as resolving conflicts in concurrent development.</p>
+
+<p>Modern VCSs also let you easily (and often automatically) answer questions
+like:</p>
+
+<ul>
+  <li>Who wrote this module?</li>
+  <li>When was this particular line of this particular file edited? By whom? Why
+was it edited?</li>
+  <li>Over the last 1000 revisions, when/why did a particular unit test stop
+working?</li>
+</ul>
+
+<p>While other VCSs exist, <strong>Git</strong> is the de facto standard for version control.
+This <a href="https://xkcd.com/1597/">XKCD comic</a> captures Git’s reputation:</p>
+
+<p><img src="https://imgs.xkcd.com/comics/git.png" alt="xkcd 1597" /></p>
+
+<p>Because Git’s interface is a leaky abstraction, learning Git top-down (starting
+with its interface / command-line interface) can lead to a lot of confusion.
+It’s possible to memorize a handful of commands and think of them as magic
+incantations, and follow the approach in the comic above whenever anything goes
+wrong.</p>
+
+<p>While Git admittedly has an ugly interface, its underlying design and ideas are
+beautiful. While an ugly interface has to be <em>memorized</em>, a beautiful design
+can be <em>understood</em>. For this reason, we give a bottom-up explanation of Git,
+starting with its data model and later covering the command-line interface.
+Once the data model is understood, the commands can be better understood in
+terms of how they manipulate the underlying data model.</p>
+
+<h1 id="gits-data-model">Git’s data model</h1>
+
+<p>There are many ad-hoc approaches you could take to version control. Git has a
+well-thought-out model that enables all the nice features of version control,
+like maintaining history, supporting branches, and enabling collaboration.</p>
+
+<h2 id="snapshots">Snapshots</h2>
+
+<p>Git models the history of a collection of files and folders within some
+top-level directory as a series of snapshots. In Git terminology, a file is
+called a “blob”, and it’s just a bunch of bytes. A directory is called a
+“tree”, and it maps names to blobs or trees (so directories can contain other
+directories). A snapshot is the top-level tree that is being tracked. For
+example, we might have a tree as follows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;root&gt; (tree)
+|
++- foo (tree)
+|  |
+|  + bar.txt (blob, contents = "hello world")
+|
++- baz.txt (blob, contents = "git is wonderful")
+</code></pre></div></div>
+
+<p>The top-level tree contains two elements, a tree “foo” (that itself contains
+one element, a blob “bar.txt”), and a blob “baz.txt”.</p>
+
+<h2 id="modeling-history-relating-snapshots">Modeling history: relating snapshots</h2>
+
+<p>How should a version control system relate snapshots? One simple model would be
+to have a linear history. A history would be a list of snapshots in time-order.
+For many reasons, Git doesn’t use a simple model like this.</p>
+
+<p>In Git, a history is a directed acyclic graph (DAG) of snapshots. That may
+sound like a fancy math word, but don’t be intimidated. All this means is that
+each snapshot in Git refers to a set of “parents”, the snapshots that preceded
+it. It’s a set of parents rather than a single parent (as would be the case in
+a linear history) because a snapshot might descend from multiple parents, for
+example, due to combining (merging) two parallel branches of development.</p>
+
+<p>Git calls these snapshots “commit”s. Visualizing a commit history might look
+something like this:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>o &lt;-- o &lt;-- o &lt;-- o
+            ^
+             \
+              --- o &lt;-- o
+</code></pre></div></div>
+
+<p>In the ASCII art above, the <code class="language-plaintext highlighter-rouge">o</code>s correspond to individual commits (snapshots).
+The arrows point to the parent of each commit (it’s a “comes before” relation,
+not “comes after”). After the third commit, the history branches into two
+separate branches. This might correspond to, for example, two separate features
+being developed in parallel, independently from each other. In the future,
+these branches may be merged to create a new snapshot that incorporates both of
+the features, producing a new history that looks like this, with the newly
+created merge commit shown in bold:</p>
+
+<pre class="highlight">
+<code>
+o &lt;-- o &lt;-- o &lt;-- o &lt;---- <strong>o</strong>
+            ^            /
+             \          v
+              --- o &lt;-- o
+</code>
+</pre>
+
+<p>Commits in Git are immutable. This doesn’t mean that mistakes can’t be
+corrected, however; it’s just that “edits” to the commit history are actually
+creating entirely new commits, and references (see below) are updated to point
+to the new ones.</p>
+
+<h2 id="data-model-as-pseudocode">Data model, as pseudocode</h2>
+
+<p>It may be instructive to see Git’s data model written down in pseudocode:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// a file is a bunch of bytes
+type blob = array&lt;byte&gt;
+
+// a directory contains named files and directories
+type tree = map&lt;string, tree | blob&gt;
+
+// a commit has parents, metadata, and the top-level tree
+type commit = struct {
+    parents: array&lt;commit&gt;
+    author: string
+    message: string
+    snapshot: tree
+}
+</code></pre></div></div>
+
+<p>It’s a clean, simple model of history.</p>
+
+<h2 id="objects-and-content-addressing">Objects and content-addressing</h2>
+
+<p>An “object” is a blob, tree, or commit:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>type object = blob | tree | commit
+</code></pre></div></div>
+
+<p>In Git data store, all objects are content-addressed by their <a href="https://en.wikipedia.org/wiki/SHA-1">SHA-1
+hash</a>.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>objects = map&lt;string, object&gt;
+
+def store(object):
+    id = sha1(object)
+    objects[id] = object
+
+def load(id):
+    return objects[id]
+</code></pre></div></div>
+
+<p>Blobs, trees, and commits are unified in this way: they are all objects. When
+they reference other objects, they don’t actually <em>contain</em> them in their
+on-disk representation, but have a reference to them by their hash.</p>
+
+<p>For example, the tree for the example directory structure <a href="#snapshots">above</a>
+(visualized using <code class="language-plaintext highlighter-rouge">git cat-file -p 698281bc680d1995c5f4caaf3359721a5a58d48d</code>),
+looks like this:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>100644 blob 4448adbf7ecd394f42ae135bbeed9676e894af85    baz.txt
+040000 tree c68d233a33c5c06e0340e4c224f0afca87c8ce87    foo
+</code></pre></div></div>
+
+<p>The tree itself contains pointers to its contents, <code class="language-plaintext highlighter-rouge">baz.txt</code> (a blob) and <code class="language-plaintext highlighter-rouge">foo</code>
+(a tree). If we look at the contents addressed by the hash corresponding to
+baz.txt with <code class="language-plaintext highlighter-rouge">git cat-file -p 4448adbf7ecd394f42ae135bbeed9676e894af85</code>, we get
+the following:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git is wonderful
+</code></pre></div></div>
+
+<h2 id="references">References</h2>
+
+<p>Now, all snapshots can be identified by their SHA-1 hashes. That’s inconvenient,
+because humans aren’t good at remembering strings of 40 hexadecimal characters.</p>
+
+<p>Git’s solution to this problem is human-readable names for SHA-1 hashes, called
+“references”. References are pointers to commits. Unlike objects, which are
+immutable, references are mutable (can be updated to point to a new commit).
+For example, the <code class="language-plaintext highlighter-rouge">master</code> reference usually points to the latest commit in the
+main branch of development.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>references = map&lt;string, string&gt;
+
+def update_reference(name, id):
+    references[name] = id
+
+def read_reference(name):
+    return references[name]
+
+def load_reference(name_or_id):
+    if name_or_id in references:
+        return load(references[name_or_id])
+    else:
+        return load(name_or_id)
+</code></pre></div></div>
+
+<p>With this, Git can use human-readable names like “master” to refer to a
+particular snapshot in the history, instead of a long hexadecimal string.</p>
+
+<p>One detail is that we often want a notion of “where we currently are” in the
+history, so that when we take a new snapshot, we know what it is relative to
+(how we set the <code class="language-plaintext highlighter-rouge">parents</code> field of the commit). In Git, that “where we
+currently are” is a special reference called “HEAD”.</p>
+
+<h2 id="repositories">Repositories</h2>
+
+<p>Finally, we can define what (roughly) is a Git <em>repository</em>: it is the data
+<code class="language-plaintext highlighter-rouge">objects</code> and <code class="language-plaintext highlighter-rouge">references</code>.</p>
+
+<p>On disk, all Git stores are objects and references: that’s all there is to Git’s
+data model. All <code class="language-plaintext highlighter-rouge">git</code> commands map to some manipulation of the commit DAG by
+adding objects and adding/updating references.</p>
+
+<p>Whenever you’re typing in any command, think about what manipulation the
+command is making to the underlying graph data structure. Conversely, if you’re
+trying to make a particular kind of change to the commit DAG, e.g. “discard
+uncommitted changes and make the ‘master’ ref point to commit <code class="language-plaintext highlighter-rouge">5d83f9e</code>”, there’s
+probably a command to do it (e.g. in this case, <code class="language-plaintext highlighter-rouge">git checkout master; git reset
+--hard 5d83f9e</code>).</p>
+
+<h1 id="staging-area">Staging area</h1>
+
+<p>This is another concept that’s orthogonal to the data model, but it’s a part of
+the interface to create commits.</p>
+
+<p>One way you might imagine implementing snapshotting as described above is to have
+a “create snapshot” command that creates a new snapshot based on the <em>current
+state</em> of the working directory. Some version control tools work like this, but
+not Git. We want clean snapshots, and it might not always be ideal to make a
+snapshot from the current state. For example, imagine a scenario where you’ve
+implemented two separate features, and you want to create two separate commits,
+where the first introduces the first feature, and the next introduces the
+second feature. Or imagine a scenario where you have debugging print statements
+added all over your code, along with a bugfix; you want to commit the bugfix
+while discarding all the print statements.</p>
+
+<p>Git accommodates such scenarios by allowing you to specify which modifications
+should be included in the next snapshot through a mechanism called the “staging
+area”.</p>
+
+<h1 id="git-command-line-interface">Git command-line interface</h1>
+
+<p>To avoid duplicating information, we’re not going to explain the commands below
+in detail. See the highly recommended <a href="https://git-scm.com/book/en/v2">Pro Git</a>
+for more information, or watch the lecture video.</p>
+
+<h2 id="basics">Basics</h2>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">git help &lt;command&gt;</code>: get help for a git command</li>
+  <li><code class="language-plaintext highlighter-rouge">git init</code>: creates a new git repo, with data stored in the <code class="language-plaintext highlighter-rouge">.git</code> directory</li>
+  <li><code class="language-plaintext highlighter-rouge">git status</code>: tells you what’s going on</li>
+  <li><code class="language-plaintext highlighter-rouge">git add &lt;filename&gt;</code>: adds files to staging area</li>
+  <li><code class="language-plaintext highlighter-rouge">git commit</code>: creates a new commit
+    <ul>
+      <li>Write <a href="https://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html">good commit messages</a>!</li>
+      <li>Even more reasons to write <a href="https://chris.beams.io/posts/git-commit/">good commit messages</a>!</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">git log</code>: shows a flattened log of history</li>
+  <li><code class="language-plaintext highlighter-rouge">git log --all --graph --decorate</code>: visualizes history as a DAG</li>
+  <li><code class="language-plaintext highlighter-rouge">git diff &lt;filename&gt;</code>: show changes you made relative to the staging area</li>
+  <li><code class="language-plaintext highlighter-rouge">git diff &lt;revision&gt; &lt;filename&gt;</code>: shows differences in a file between snapshots</li>
+  <li><code class="language-plaintext highlighter-rouge">git checkout &lt;revision&gt;</code>: updates HEAD (and current branch if checking out a branch)</li>
+</ul>
+
+<h2 id="branching-and-merging">Branching and merging</h2>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">git branch</code>: shows branches</li>
+  <li><code class="language-plaintext highlighter-rouge">git branch &lt;name&gt;</code>: creates a branch</li>
+  <li><code class="language-plaintext highlighter-rouge">git checkout -b &lt;name&gt;</code>: creates a branch and switches to it
+    <ul>
+      <li>same as <code class="language-plaintext highlighter-rouge">git branch &lt;name&gt;; git checkout &lt;name&gt;</code></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">git merge &lt;revision&gt;</code>: merges into current branch</li>
+  <li><code class="language-plaintext highlighter-rouge">git mergetool</code>: use a fancy tool to help resolve merge conflicts</li>
+  <li><code class="language-plaintext highlighter-rouge">git rebase</code>: rebase set of patches onto a new base</li>
+</ul>
+
+<h2 id="remotes">Remotes</h2>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">git remote</code>: list remotes</li>
+  <li><code class="language-plaintext highlighter-rouge">git remote add &lt;name&gt; &lt;url&gt;</code>: add a remote</li>
+  <li><code class="language-plaintext highlighter-rouge">git push &lt;remote&gt; &lt;local branch&gt;:&lt;remote branch&gt;</code>: send objects to remote, and update remote reference</li>
+  <li><code class="language-plaintext highlighter-rouge">git branch --set-upstream-to=&lt;remote&gt;/&lt;remote branch&gt;</code>: set up correspondence between local and remote branch</li>
+  <li><code class="language-plaintext highlighter-rouge">git fetch</code>: retrieve objects/references from a remote</li>
+  <li><code class="language-plaintext highlighter-rouge">git pull</code>: same as <code class="language-plaintext highlighter-rouge">git fetch; git merge</code></li>
+  <li><code class="language-plaintext highlighter-rouge">git clone</code>: download repository from remote</li>
+</ul>
+
+<h2 id="undo">Undo</h2>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">git commit --amend</code>: edit a commit’s contents/message</li>
+  <li><code class="language-plaintext highlighter-rouge">git reset HEAD &lt;file&gt;</code>: unstage a file</li>
+  <li><code class="language-plaintext highlighter-rouge">git checkout -- &lt;file&gt;</code>: discard changes</li>
+</ul>
+
+<h1 id="advanced-git">Advanced Git</h1>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">git config</code>: Git is <a href="https://git-scm.com/docs/git-config">highly customizable</a></li>
+  <li><code class="language-plaintext highlighter-rouge">git clone --depth=1</code>: shallow clone, without entire version history</li>
+  <li><code class="language-plaintext highlighter-rouge">git add -p</code>: interactive staging</li>
+  <li><code class="language-plaintext highlighter-rouge">git rebase -i</code>: interactive rebasing</li>
+  <li><code class="language-plaintext highlighter-rouge">git blame</code>: show who last edited which line</li>
+  <li><code class="language-plaintext highlighter-rouge">git stash</code>: temporarily remove modifications to working directory</li>
+  <li><code class="language-plaintext highlighter-rouge">git bisect</code>: binary search history (e.g. for regressions)</li>
+  <li><code class="language-plaintext highlighter-rouge">.gitignore</code>: <a href="https://git-scm.com/docs/gitignore">specify</a> intentionally untracked files to ignore</li>
+</ul>
+
+<h1 id="miscellaneous">Miscellaneous</h1>
+
+<ul>
+  <li><strong>GUIs</strong>: there are many <a href="https://git-scm.com/downloads/guis">GUI clients</a>
+out there for Git. We personally don’t use them and use the command-line
+interface instead.</li>
+  <li><strong>Shell integration</strong>: it’s super handy to have a Git status as part of your
+shell prompt (<a href="https://github.com/olivierverdier/zsh-git-prompt">zsh</a>,
+<a href="https://github.com/magicmonty/bash-git-prompt">bash</a>). Often included in
+frameworks like <a href="https://github.com/ohmyzsh/ohmyzsh">Oh My Zsh</a>.</li>
+  <li><strong>Editor integration</strong>: similarly to the above, handy integrations with many
+features. <a href="https://github.com/tpope/vim-fugitive">fugitive.vim</a> is the standard
+one for Vim.</li>
+  <li><strong>Workflows</strong>: we taught you the data model, plus some basic commands; we
+didn’t tell you what practices to follow when working on big projects (and
+there are <a href="https://nvie.com/posts/a-successful-git-branching-model/">many</a>
+<a href="https://www.endoflineblog.com/gitflow-considered-harmful">different</a>
+<a href="https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow">approaches</a>).</li>
+  <li><strong>GitHub</strong>: Git is not GitHub. GitHub has a specific way of contributing code
+to other projects, called <a href="https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests">pull
+requests</a>.</li>
+  <li><strong>Other Git providers</strong>: GitHub is not special: there are many Git repository
+hosts, like <a href="https://about.gitlab.com/">GitLab</a> and
+<a href="https://bitbucket.org/">BitBucket</a>.</li>
+</ul>
+
+<h1 id="resources">Resources</h1>
+
+<ul>
+  <li><a href="https://git-scm.com/book/en/v2">Pro Git</a> is <strong>highly recommended reading</strong>.
+Going through Chapters 1–5 should teach you most of what you need to use Git
+proficiently, now that you understand the data model. The later chapters have
+some interesting, advanced material.</li>
+  <li><a href="https://ohshitgit.com/">Oh Shit, Git!?!</a> is a short guide on how to recover
+from some common Git mistakes.</li>
+  <li><a href="https://eagain.net/articles/git-for-computer-scientists/">Git for Computer
+Scientists</a> is a
+short explanation of Git’s data model, with less pseudocode and more fancy
+diagrams than these lecture notes.</li>
+  <li><a href="https://jwiegley.github.io/git-from-the-bottom-up/">Git from the Bottom Up</a>
+is a detailed explanation of Git’s implementation details beyond just the data
+model, for the curious.</li>
+  <li><a href="https://smusamashah.github.io/blog/2017/10/14/explain-git-in-simple-words">How to explain git in simple
+words</a></li>
+  <li><a href="https://learngitbranching.js.org/">Learn Git Branching</a> is a browser-based
+game that teaches you Git.</li>
+</ul>
+
+<h1 id="exercises">Exercises</h1>
+
+<ol>
+  <li>If you don’t have any past experience with Git, either try reading the first
+couple chapters of <a href="https://git-scm.com/book/en/v2">Pro Git</a> or go through a
+tutorial like <a href="https://learngitbranching.js.org/">Learn Git Branching</a>. As
+you’re working through it, relate Git commands to the data model.</li>
+  <li>Clone the <a href="https://github.com/missing-semester/missing-semester">repository for the
+class website</a>.
+    <ol>
+      <li>Explore the version history by visualizing it as a graph.</li>
+      <li>Who was the last person to modify <code class="language-plaintext highlighter-rouge">README.md</code>? (Hint: use <code class="language-plaintext highlighter-rouge">git log</code> with
+an argument).</li>
+      <li>What was the commit message associated with the last modification to the
+<code class="language-plaintext highlighter-rouge">collections:</code> line of <code class="language-plaintext highlighter-rouge">_config.yml</code>? (Hint: use <code class="language-plaintext highlighter-rouge">git blame</code> and <code class="language-plaintext highlighter-rouge">git
+show</code>).</li>
+    </ol>
+  </li>
+  <li>One common mistake when learning Git is to commit large files that should
+not be managed by Git or adding sensitive information. Try adding a file to
+a repository, making some commits and then deleting that file from history
+(you may want to look at
+<a href="https://help.github.com/articles/removing-sensitive-data-from-a-repository/">this</a>).</li>
+  <li>Clone some repository from GitHub, and modify one of its existing files.
+What happens when you do <code class="language-plaintext highlighter-rouge">git stash</code>? What do you see when running <code class="language-plaintext highlighter-rouge">git log
+--all --oneline</code>? Run <code class="language-plaintext highlighter-rouge">git stash pop</code> to undo what you did with <code class="language-plaintext highlighter-rouge">git stash</code>.
+In what scenario might this be useful?</li>
+  <li>Like many command line tools, Git provides a configuration file (or dotfile)
+called <code class="language-plaintext highlighter-rouge">~/.gitconfig</code>. Create an alias in <code class="language-plaintext highlighter-rouge">~/.gitconfig</code> so that when you
+run <code class="language-plaintext highlighter-rouge">git graph</code>, you get the output of <code class="language-plaintext highlighter-rouge">git log --all --graph --decorate
+--oneline</code>. You can do this by directly
+<a href="https://git-scm.com/docs/git-config#Documentation/git-config.txt-alias">editing</a>
+the <code class="language-plaintext highlighter-rouge">~/.gitconfig</code> file, or you can use the <code class="language-plaintext highlighter-rouge">git config</code> command to add the
+alias. Information about git aliases can be found
+<a href="https://git-scm.com/book/en/v2/Git-Basics-Git-Aliases">here</a>.</li>
+  <li>You can define global ignore patterns in<code class="language-plaintext highlighter-rouge"> ~/.gitignore_global</code> after running
+<code class="language-plaintext highlighter-rouge">git config --global core.excludesfile ~/.gitignore_global</code>. This sets the
+location of the global ignore file that Git will use, but you still need to
+manually create the file at that path. Set up your global gitignore file to
+ignore OS-specific or editor-specific temporary files, like <code class="language-plaintext highlighter-rouge">.DS_Store</code>.</li>
+  <li>Fork the <a href="https://github.com/missing-semester/missing-semester">repository for the class
+website</a>, find a typo
+or some other improvement you can make, and submit a pull request on GitHub
+(you may want to look at <a href="https://github.com/firstcontributions/first-contributions">this</a>).
+Please only submit PRs that are useful (don’t spam us, please!). If you
+can’t find an improvement to make, you can skip this exercise.</li>
+</ol>
+
+
+<hr>
+
+<div class="small center">
+<p><a href="https://github.com/missing-semester/missing-semester/blob/master/_2020/version-control.md">Edit this page</a>.</p>
+<p>Licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA</a>.</p>
+</div>
+
+    </div>
+
+  </body>
+
+</html>

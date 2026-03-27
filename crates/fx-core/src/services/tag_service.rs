@@ -117,30 +117,44 @@ pub async fn update_tag_names(
 pub async fn merge_tag(pool: &PgPool, from_id: &str, into_id: &str) -> Result<()> {
     let mut tx = pool.begin().await?;
 
-    // article_teaches
+    // content_teaches
     sqlx::query(
-        "UPDATE article_teaches SET tag_id = $2 WHERE tag_id = $1 \
-         AND article_uri NOT IN (SELECT article_uri FROM article_teaches WHERE tag_id = $2)",
+        "UPDATE content_teaches SET tag_id = $2 WHERE tag_id = $1 \
+         AND content_uri NOT IN (SELECT content_uri FROM content_teaches WHERE tag_id = $2)",
     )
     .bind(from_id)
     .bind(into_id)
     .execute(&mut *tx)
     .await?;
-    sqlx::query("DELETE FROM article_teaches WHERE tag_id = $1")
+    sqlx::query("DELETE FROM content_teaches WHERE tag_id = $1")
         .bind(from_id)
         .execute(&mut *tx)
         .await?;
 
-    // article_prereqs
+    // content_prereqs
     sqlx::query(
-        "UPDATE article_prereqs SET tag_id = $2 WHERE tag_id = $1 \
-         AND article_uri NOT IN (SELECT article_uri FROM article_prereqs WHERE tag_id = $2)",
+        "UPDATE content_prereqs SET tag_id = $2 WHERE tag_id = $1 \
+         AND content_uri NOT IN (SELECT content_uri FROM content_prereqs WHERE tag_id = $2)",
     )
     .bind(from_id)
     .bind(into_id)
     .execute(&mut *tx)
     .await?;
-    sqlx::query("DELETE FROM article_prereqs WHERE tag_id = $1")
+    sqlx::query("DELETE FROM content_prereqs WHERE tag_id = $1")
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // content_topics
+    sqlx::query(
+        "UPDATE content_topics SET tag_id = $2 WHERE tag_id = $1 \
+         AND content_uri NOT IN (SELECT content_uri FROM content_topics WHERE tag_id = $2)",
+    )
+    .bind(from_id)
+    .bind(into_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM content_topics WHERE tag_id = $1")
         .bind(from_id)
         .execute(&mut *tx)
         .await?;

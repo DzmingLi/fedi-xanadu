@@ -102,7 +102,6 @@
   async function submit() {
     if (!getAuth()) { error = t('auth.submit'); return; }
     if (!title.trim()) { error = t('newSeries.errTitle'); return; }
-    if (!selectedTagId) { error = t('newSeries.errTag'); return; }
     if (seriesArticles.length === 0) { error = t('newSeries.errArticles'); return; }
 
     creating = true;
@@ -111,7 +110,7 @@
       const series = await createSeries({
         title,
         description,
-        tag_id: selectedTagId,
+        topics: selectedTagId ? [selectedTagId] : undefined,
         parent_id: selectedParentId || undefined,
       });
 

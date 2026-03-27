@@ -198,7 +198,7 @@ pub async fn publish_to_article(
             .bind(&draft.did)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("INSERT INTO article_teaches (article_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        sqlx::query("INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
             .bind(at_uri)
             .bind(tag_id)
             .execute(&mut *tx)
@@ -207,7 +207,7 @@ pub async fn publish_to_article(
 
     for prereq in &prereqs {
         sqlx::query(
-            "INSERT INTO article_prereqs (article_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
         .bind(at_uri)
         .bind(&prereq.tag_id)
