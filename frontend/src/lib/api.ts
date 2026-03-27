@@ -37,6 +37,7 @@ async function post<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 

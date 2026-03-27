@@ -93,6 +93,8 @@ export default {
   // Comments
   'comments.edit': 'Edit',
   'comments.delete': 'Delete',
+  'comments.deleteConfirm': 'Delete this comment?',
+  'comments.deleteFailed': 'Failed to delete comment',
   'comments.save': 'Save',
   'comments.cancel': 'Cancel',
   'comments.quoteHint': 'Quote comment',

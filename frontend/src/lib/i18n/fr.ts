@@ -93,6 +93,8 @@ export default {
   // Comments
   'comments.edit': 'Modifier',
   'comments.delete': 'Supprimer',
+  'comments.deleteConfirm': 'Supprimer ce commentaire ?',
+  'comments.deleteFailed': 'Échec de la suppression du commentaire',
   'comments.save': 'Enregistrer',
   'comments.cancel': 'Annuler',
   'comments.quoteHint': 'Citer dans un commentaire',

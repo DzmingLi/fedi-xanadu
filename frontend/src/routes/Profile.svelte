@@ -8,6 +8,9 @@
   import PostCard from '../lib/components/PostCard.svelte';
   import type { ProfileData, Article, Series, ArticleTeachRow, ProfileLink } from '../lib/types';
 
+  // All series (including sub-series) for building tree
+  let allUserSeries = $state<Series[]>([]);
+
   let { did } = $props<{ did: string }>();
 
   let locale = $state(getLocale());
@@ -15,7 +18,7 @@
 
   let profile = $state<ProfileData | null>(null);
   let articles = $state<Article[]>([]);
-  let userSeries = $state<Series[]>([]);
+
   let articleTeaches = $state(new Map<string, ArticleTeachRow[]>());
   let seriesArticleUris = $state(new Set<string>());
   let seriesArticleMap = $state(new Map<string, string[]>());
@@ -40,6 +43,40 @@
     sortDate: string;
   }
 
+  // Build parent→children map and recursive article count
+  let childSeriesMap = $derived.by(() => {
+    const map = new Map<string, Series[]>();
+    for (const s of allUserSeries) {
+      if (s.parent_id) {
+        const arr = map.get(s.parent_id) || [];
+        arr.push(s);
+        map.set(s.parent_id, arr);
+      }
+    }
+    // Sort children by order_index
+    for (const [, children] of map) {
+      children.sort((a, b) => a.order_index - b.order_index);
+    }
+    return map;
+  });
+
+  function countDescendantArticles(seriesId: string): number {
+    const direct = (seriesArticleMap.get(seriesId) || []).length;
+    const children = childSeriesMap.get(seriesId) || [];
+    return direct + children.reduce((sum, c) => sum + countDescendantArticles(c.id), 0);
+  }
+
+  // Track which series are expanded
+  let expandedSeries = $state(new Set<string>());
+  function toggleExpand(e: MouseEvent, seriesId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = new Set(expandedSeries);
+    if (next.has(seriesId)) next.delete(seriesId);
+    else next.add(seriesId);
+    expandedSeries = next;
+  }
+
   let profileFeed = $derived.by(() => {
     const items: ProfileFeedItem[] = [];
     // Standalone articles (not in any series)
@@ -48,10 +85,11 @@
         items.push({ type: 'article', article: a, sortDate: a.created_at });
       }
     }
-    // Series cards
-    for (const s of userSeries) {
-      const memberUris = seriesArticleMap.get(s.id) || [];
-      items.push({ type: 'series', series: s, articleCount: memberUris.length, sortDate: s.created_at });
+    // Only top-level series (no parent)
+    for (const s of allUserSeries) {
+      if (s.parent_id) continue;
+      const totalArticles = countDescendantArticles(s.id);
+      items.push({ type: 'series', series: s, articleCount: totalArticles, sortDate: s.created_at });
     }
     items.sort((a, b) => b.sortDate.localeCompare(a.sortDate));
     return items;
@@ -73,7 +111,7 @@
       ]);
       profile = prof;
       articles = arts;
-      userSeries = allSeries.filter(s => s.created_by === did);
+      allUserSeries = allSeries.filter(s => s.created_by === did);
 
       const saMaps = buildSeriesArticleMaps(seriesArts);
       seriesArticleUris = saMaps.seriesArticleUris;
@@ -147,6 +185,59 @@
     return d.replace('did:plc:', '').slice(0, 12);
   }
 </script>
+
+{#snippet seriesTree(s: Series, depth: number, totalArticles?: number)}
+  {@const children = childSeriesMap.get(s.id) || []}
+  {@const directArticleUris = seriesArticleMap.get(s.id) || []}
+  {@const hasChildren = children.length > 0 || directArticleUris.length > 0}
+  {@const isExpanded = expandedSeries.has(s.id)}
+  {@const count = totalArticles ?? countDescendantArticles(s.id)}
+
+  <div class="series-tree-node" style="margin-left: {depth * 20}px">
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="series-tree-card" onclick={(e) => hasChildren ? toggleExpand(e, s.id) : null}>
+      <div class="series-tree-top">
+        {#if hasChildren}
+          <span class="expand-arrow" class:expanded={isExpanded}>&#9654;</span>
+        {:else}
+          <span class="expand-arrow-placeholder"></span>
+        {/if}
+        <a href="#/series?id={encodeURIComponent(s.id)}" class="series-tree-title" onclick={(e) => e.stopPropagation()}>
+          {s.title}
+        </a>
+        <span class="series-badge-inline">{t('profile.seriesBadge')}</span>
+      </div>
+      {#if s.description}
+        <p class="series-tree-desc">{s.description}</p>
+      {/if}
+      <div class="series-tree-bottom">
+        <span class="post-meta">{s.created_at.split(' ')[0]}</span>
+        <span class="card-stats">
+          <span class="stat">{count} {t('profile.lectureCount')}</span>
+        </span>
+      </div>
+    </div>
+
+    {#if isExpanded}
+      {#each children as child}
+        {@render seriesTree(child, depth + 1)}
+      {/each}
+      {#each directArticleUris as uri}
+        {@const art = articles.find(a => a.at_uri === uri)}
+        {#if art}
+          <div style="margin-left: {(depth + 1) * 20}px">
+            <PostCard
+              article={art}
+              articleTeaches={articleTeaches.get(art.at_uri) || []}
+              variant="profile"
+            />
+          </div>
+        {/if}
+      {/each}
+    {/if}
+  </div>
+{/snippet}
 
 {#if loading}
   <p class="meta">Loading...</p>
@@ -275,11 +366,7 @@
         variant="profile"
       />
     {:else if item.type === 'series' && item.series}
-      <PostCard
-        series={item.series}
-        articleCount={item.articleCount}
-        variant="profile"
-      />
+      {@render seriesTree(item.series, 0, item.articleCount)}
     {/if}
   {/each}
 
@@ -583,5 +670,67 @@
   .follow-handle {
     font-size: 12px;
     color: var(--text-hint);
+  }
+
+  /* Series tree */
+  .series-tree-node {
+    margin-bottom: 8px;
+  }
+  .series-tree-card {
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .series-tree-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  }
+  .series-tree-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .expand-arrow {
+    font-size: 10px;
+    color: var(--text-hint);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+  }
+  .expand-arrow.expanded {
+    transform: rotate(90deg);
+  }
+  .expand-arrow-placeholder {
+    width: 14px;
+    flex-shrink: 0;
+  }
+  .series-tree-title {
+    font-family: var(--font-serif);
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    flex: 1;
+    min-width: 0;
+  }
+  .series-tree-title:hover {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .series-tree-desc {
+    margin: 6px 0 0 22px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .series-tree-bottom {
+    margin-top: 8px;
+    margin-left: 22px;
+    display: flex;
+    align-items: center;
   }
 </style>

@@ -79,8 +79,13 @@
   }
 
   async function doDeleteComment(id: string) {
-    await deleteComment(id);
-    comments = comments.filter(c => c.id !== id && c.parent_id !== id);
+    if (!confirm(t('comments.deleteConfirm'))) return;
+    try {
+      await deleteComment(id);
+      comments = comments.filter(c => c.id !== id && c.parent_id !== id);
+    } catch (e: any) {
+      commentError = e.message || t('comments.deleteFailed');
+    }
   }
 
   async function submitReply(parentId: string) {

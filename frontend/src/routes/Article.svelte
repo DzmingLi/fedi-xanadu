@@ -92,6 +92,7 @@
     tocItems = items;
 
     convertFootnotesToSidenotes(contentEl);
+    initPytutorWidgets(contentEl);
 
     if (article?.content_format === 'markdown') {
       renderKatex(contentEl);
@@ -184,6 +185,77 @@
       const tex = div.textContent || '';
       try { katex.default.render(tex, div as HTMLElement, { throwOnError: false, displayMode: true }); } catch { /* ignore */ }
     });
+  }
+
+  function initPytutorWidgets(el: HTMLDivElement) {
+    const widgets = el.querySelectorAll('.pytutor-widget[data-trace]');
+    if (widgets.length === 0) return;
+
+    widgets.forEach((widget, idx) => {
+      const traceB64 = widget.getAttribute('data-trace');
+      if (!traceB64) return;
+
+      const iframe = document.createElement('iframe');
+      iframe.className = 'pytutor-iframe';
+      iframe.sandbox.add('allow-scripts');
+      // No allow-same-origin: fully isolated from parent page
+
+      const srcdoc = `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/pytutor/pytutor.css">
+<style>
+  body { margin: 0; padding: 8px; font-family: sans-serif; overflow: hidden; }
+  #pytutor-container { width: 100%; }
+</style>
+</head><body>
+<div id="pytutor-container"></div>
+<script src="/pytutor/jquery.min.js"><\/script>
+<script src="/pytutor/jquery-ui.min.js"><\/script>
+<script src="/pytutor/jquery.ba-bbq.min.js"><\/script>
+<script src="/pytutor/jquery.jsPlumb.min.js"><\/script>
+<script src="/pytutor/d3.v2.min.js"><\/script>
+<script src="/pytutor/codemirror.js"><\/script>
+<script src="/pytutor/codemirror-python.js"><\/script>
+<script src="/pytutor/pytutor.js"><\/script>
+<script>
+try {
+  var trace = JSON.parse(atob("${traceB64}"));
+  var vis = new ExecutionVisualizer('pytutor-container', trace, {
+    embeddedMode: true,
+    heightChangeCallback: function() {
+      var h = document.getElementById('pytutor-container').scrollHeight + 16;
+      window.parent.postMessage({ type: 'pytutor-resize', idx: ${idx}, height: h }, '*');
+    }
+  });
+  // Initial resize after render
+  setTimeout(function() {
+    var h = document.getElementById('pytutor-container').scrollHeight + 16;
+    window.parent.postMessage({ type: 'pytutor-resize', idx: ${idx}, height: h }, '*');
+  }, 200);
+} catch(e) { document.body.textContent = 'Failed to load visualization'; }
+<\/script>
+</body></html>`;
+
+      iframe.srcdoc = srcdoc;
+      iframe.style.width = '100%';
+      iframe.style.border = '1px solid var(--border, #ddd)';
+      iframe.style.borderRadius = '4px';
+      iframe.style.minHeight = '400px';
+      iframe.setAttribute('data-pytutor-idx', String(idx));
+
+      widget.replaceWith(iframe);
+    });
+
+    // Listen for resize messages from sandboxed iframes
+    const resizeHandler = (e: MessageEvent) => {
+      if (e.data?.type === 'pytutor-resize') {
+        const iframe = el.querySelector(`iframe[data-pytutor-idx="${e.data.idx}"]`) as HTMLIFrameElement;
+        if (iframe) iframe.style.height = e.data.height + 'px';
+      }
+    };
+    window.addEventListener('message', resizeHandler);
+    // Cleanup on effect re-run would need a separate mechanism, but iframes are replaced on content change
   }
 
   function convertFootnotesToSidenotes(el: HTMLDivElement) {
@@ -353,17 +425,19 @@
           </button>
         </div>
 
-        <button class="action-btn" class:active={isBookmarked} onclick={toggleBookmark} title={isBookmarked ? t('article.bookmarked') : t('article.bookmark')}>
+        <button class="action-btn labeled-btn" class:active={isBookmarked} onclick={toggleBookmark} disabled={!isLoggedIn} title={isBookmarked ? t('article.bookmarked') : t('article.bookmark')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+          <span class="btn-label">{isBookmarked ? t('article.bookmarked') : t('article.bookmark')}</span>
         </button>
 
-        <button class="action-btn learned-btn" class:active={learned} onclick={toggleLearned} disabled={!isLoggedIn} title={learned ? '已学会' : '标记学会'}>
+        <button class="action-btn labeled-btn" class:active={learned} onclick={toggleLearned} disabled={!isLoggedIn} title={learned ? '已学会' : '标记学会'}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill={learned ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <span class="learned-label">{learned ? '已学会' : '学会'}</span>
+          <span class="btn-label">{learned ? '已学会' : '学会'}</span>
         </button>
 
-        <button class="action-btn" onclick={doFork} title={t('article.fork')}>
+        <button class="action-btn labeled-btn" onclick={doFork} disabled={!isLoggedIn} title={t('article.fork')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
+          <span class="btn-label">{t('article.fork')}</span>
         </button>
 
         {#if isOwner}
@@ -553,17 +627,17 @@
     border-color: #c44;
     color: #c44;
   }
-  .learned-btn {
+  .labeled-btn {
     display: flex;
     align-items: center;
     gap: 4px;
   }
-  .learned-btn.active {
+  .labeled-btn.active {
     background: rgba(95, 155, 101, 0.1);
     border-color: var(--accent);
     color: var(--accent);
   }
-  .learned-label {
+  .btn-label {
     font-size: 12px;
   }
   .action-score {

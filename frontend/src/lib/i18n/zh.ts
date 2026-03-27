@@ -93,6 +93,8 @@ export default {
   // Comments
   'comments.edit': '编辑',
   'comments.delete': '删除',
+  'comments.deleteConfirm': '确定删除此评论？',
+  'comments.deleteFailed': '删除评论失败',
   'comments.save': '保存',
   'comments.cancel': '取消',
   'comments.quoteHint': '引用评论',
