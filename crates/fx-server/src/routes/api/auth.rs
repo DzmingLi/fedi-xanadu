@@ -154,6 +154,8 @@ pub(crate) struct AuthMeOutput {
     handle: String,
     display_name: Option<String>,
     avatar: Option<String>,
+    is_banned: bool,
+    ban_reason: Option<String>,
 }
 
 pub async fn auth_me(
@@ -164,10 +166,25 @@ pub async fn auth_me(
         .await?
         .ok_or(AppError(fx_core::Error::Unauthorized))?;
 
+    let (is_banned, ban_reason) = if user.banned {
+        let reason: Option<String> = sqlx::query_scalar(
+            "SELECT ban_reason FROM platform_users WHERE did = $1",
+        )
+        .bind(&user.did)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten();
+        (true, reason)
+    } else {
+        (false, None)
+    };
+
     Ok(Json(AuthMeOutput {
         did: session.did,
         handle: session.handle,
         display_name: session.display_name,
         avatar: session.avatar_url,
+        is_banned,
+        ban_reason,
     }))
 }

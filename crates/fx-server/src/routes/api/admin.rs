@@ -4,7 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use fx_core::models::{Article, CreateArticle};
-use fx_core::services::{article_service, moderation_service, platform_user_service, series_service, tag_service};
+use fx_core::services::{article_service, moderation_service, notification_service, platform_user_service, series_service, tag_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -265,6 +265,21 @@ pub async fn admin_ban_user(
 ) -> ApiResult<StatusCode> {
     require_admin(&state, &headers)?;
     moderation_service::ban_user(&state.pool, &input.did, input.reason.as_deref()).await?;
+
+    // Send in-app notification to the banned user with the reason
+    let notif_id = super::tid();
+    if let Err(e) = notification_service::create_notification(
+        &state.pool,
+        &notif_id,
+        &input.did,
+        "system",
+        "banned",
+        None,
+        input.reason.as_deref(),
+    ).await {
+        tracing::warn!("failed to send ban notification: {e}");
+    }
+
     Ok(StatusCode::OK)
 }
 
