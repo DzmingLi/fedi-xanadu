@@ -55,7 +55,7 @@ pub struct Article {
     pub license: String,
     pub prereq_threshold: f64,
     pub question_uri: Option<String>,
-    pub answer_count: i64,
+    pub answer_count: i32,
     pub vote_score: i64,
     pub bookmark_count: i64,
     pub created_at: DateTime<Utc>,
