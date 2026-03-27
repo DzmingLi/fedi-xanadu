@@ -292,6 +292,24 @@ export default {
   'kb.syncHint': 'Log in to sync shortcuts to PDS',
   'kb.resetDefault': 'Reset to default',
 
+  // Questions & Answers
+  'nav.questions': 'Q&A',
+  'qa.questions': 'Questions',
+  'qa.askQuestion': 'Ask',
+  'qa.answers': 'answers',
+  'qa.noQuestions': 'No questions yet',
+  'qa.noAnswers': 'No answers yet — write the first one',
+  'qa.writeAnswer': 'Write an answer',
+  'qa.postAnswer': 'Post Answer',
+  'qa.answerPlaceholder': 'Write your answer...',
+  'qa.questionBadge': 'Question',
+  'qa.answerBadge': 'Answer',
+  'qa.answerCount': '{0} answers',
+  'qa.myQuestions': 'My Questions',
+  'qa.myAnswers': 'My Answers',
+  'notification.newAnswer': 'answered your question',
+  'profile.questions': 'Q&A',
+
   // Roadmap
   'roadmap.title': 'Roadmap',
   'roadmap.subtitle': 'Planned features',

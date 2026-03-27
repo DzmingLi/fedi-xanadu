@@ -28,7 +28,7 @@ pub async fn list_comments(
 
 #[derive(serde::Deserialize)]
 pub struct CreateComment {
-    pub article_uri: String,
+    pub content_uri: String,
     pub body: String,
     pub parent_id: Option<String>,
     pub quote_text: Option<String>,
@@ -43,14 +43,14 @@ pub async fn create_comment(
         .map_err(|e| AppError(fx_core::Error::Validation(vec![e])))?;
 
     if let Some(ref pid) = input.parent_id {
-        comment_service::verify_parent_comment(&state.pool, pid, &input.article_uri).await?;
+        comment_service::verify_parent_comment(&state.pool, pid, &input.content_uri).await?;
     }
 
     let id = tid();
     let comment = comment_service::create_comment(
         &state.pool,
         &id,
-        &input.article_uri,
+        &input.content_uri,
         &user.did,
         &input.body,
         input.parent_id.as_deref(),
@@ -58,13 +58,13 @@ pub async fn create_comment(
     )
     .await?;
 
-    // Notify article author
-    if let Ok(Some(article_did)) = sqlx::query_scalar::<_, String>(
+    // Notify content author
+    if let Ok(Some(content_did)) = sqlx::query_scalar::<_, String>(
         "SELECT did FROM articles WHERE at_uri = $1"
-    ).bind(&input.article_uri).fetch_optional(&state.pool).await {
+    ).bind(&input.content_uri).fetch_optional(&state.pool).await {
         if let Err(e) = notification_service::create_notification(
-            &state.pool, &tid(), &article_did, &user.did,
-            "article_comment", Some(&input.article_uri), Some(&id),
+            &state.pool, &tid(), &content_did, &user.did,
+            "article_comment", Some(&input.content_uri), Some(&id),
         ).await {
             tracing::warn!("notification failed: {e}");
         }
@@ -77,7 +77,7 @@ pub async fn create_comment(
         ).bind(pid).fetch_optional(&state.pool).await {
             if let Err(e) = notification_service::create_notification(
                 &state.pool, &tid(), &parent_did, &user.did,
-                "comment_reply", Some(&input.article_uri), Some(&id),
+                "comment_reply", Some(&input.content_uri), Some(&id),
             ).await {
                 tracing::warn!("notification failed: {e}");
             }

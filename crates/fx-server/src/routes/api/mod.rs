@@ -12,6 +12,7 @@ mod learned;
 mod notifications;
 mod keybindings;
 mod profile;
+mod questions;
 mod series;
 mod skill_trees;
 mod skills;
@@ -144,6 +145,13 @@ pub fn routes() -> Router<AppState> {
         .route("/keybindings", get(keybindings::get_keybindings).post(keybindings::set_keybindings))
         // Knowledge graph
         .route("/graph", get(graph::get_graph))
+        // Questions & Answers
+        .route("/questions", get(questions::list_questions).post(questions::create_question))
+        .route("/questions/by-uri", get(questions::get_question))
+        .route("/questions/by-did", get(questions::get_questions_by_did))
+        .route("/questions/by-tag", get(questions::get_questions_by_tag))
+        .route("/questions/answer", post(questions::post_answer))
+        .route("/answers/by-did", get(questions::get_answers_by_did))
         // Search
         .route("/search", get(articles::search_articles))
         // Admin
@@ -155,6 +163,7 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/articles/delete", post(admin::admin_delete_article))
         .route("/admin/articles/visibility", post(admin::admin_set_visibility))
         .route("/admin/tags/merge", post(admin::admin_merge_tag))
+        .route("/admin/questions/merge", post(admin::admin_merge_questions))
         .route("/admin/ban-user", post(admin::admin_ban_user))
         .route("/admin/unban-user", post(admin::admin_unban_user))
         .route("/admin/banned-users", get(admin::admin_list_banned_users))

@@ -452,7 +452,7 @@ try {
       </div>
 
       <!-- Comments -->
-      <CommentThread bind:this={commentThread} articleUri={uri} {contentEl} />
+      <CommentThread bind:this={commentThread} contentUri={uri} {contentEl} />
 
     </article>
   </div>

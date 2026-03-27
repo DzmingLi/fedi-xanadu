@@ -3,7 +3,7 @@ import type {
   ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
-  ArticleFullResponse, Notification,
+  ArticleFullResponse, Notification, QuestionDetail,
 } from './types';
 import { getToken } from './auth';
 
@@ -64,6 +64,15 @@ export const getArticlesByTag = (tagId: string) => get<Article[]>(`/articles/by-
 export const getArticlesByDid = (did: string) => get<Article[]>(`/articles/by-did?did=${encodeURIComponent(did)}`);
 export const getTranslations = (uri: string) => get<Article[]>(`/articles/translations?uri=${encodeURIComponent(uri)}`);
 export const getArticleFull = (uri: string) => get<ArticleFullResponse>(`/articles/full?uri=${encodeURIComponent(uri)}`);
+
+// Questions & Answers
+export const listQuestions = (limit = 50, offset = 0) => get<Article[]>(`/questions?limit=${limit}&offset=${offset}`);
+export const getQuestionDetail = (uri: string) => get<QuestionDetail>(`/questions/by-uri?uri=${encodeURIComponent(uri)}`);
+export const createQuestion = (data: CreateArticle) => post<Article>('/questions', data);
+export const postAnswer = (data: CreateArticle) => post<Article>('/questions/answer', data);
+export const getQuestionsByDid = (did: string, limit = 50) => get<Article[]>(`/questions/by-did?did=${encodeURIComponent(did)}&limit=${limit}`);
+export const getAnswersByDid = (did: string, limit = 50) => get<Article[]>(`/answers/by-did?did=${encodeURIComponent(did)}&limit=${limit}`);
+export const getQuestionsByTag = (tagId: string, limit = 50) => get<Article[]>(`/questions/by-tag?tag_id=${encodeURIComponent(tagId)}&limit=${limit}`);
 
 // Votes
 export const castVote = (target_uri: string, value: number) =>
@@ -183,8 +192,8 @@ export async function uploadImage(articleUri: string, file: File): Promise<{ fil
 
 // Comments
 export const listComments = (uri: string) => get<Comment[]>(`/comments?uri=${encodeURIComponent(uri)}`);
-export const createComment = (article_uri: string, body: string, parent_id?: string, quote_text?: string) =>
-  post<Comment>('/comments', { article_uri, body, parent_id, quote_text });
+export const createComment = (content_uri: string, body: string, parent_id?: string, quote_text?: string) =>
+  post<Comment>('/comments', { content_uri, body, parent_id, quote_text });
 export const updateComment = (id: string, body: string) =>
   post<Comment>('/comments/update', { id, body });
 export const deleteComment = (id: string) =>

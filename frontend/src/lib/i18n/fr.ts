@@ -292,6 +292,24 @@ export default {
   'kb.syncHint': 'Connectez-vous pour synchroniser les raccourcis vers PDS',
   'kb.resetDefault': 'Réinitialiser',
 
+  // Questions & Answers
+  'nav.questions': 'Q&R',
+  'qa.questions': 'Questions',
+  'qa.askQuestion': 'Poser',
+  'qa.answers': 'réponses',
+  'qa.noQuestions': 'Pas encore de questions',
+  'qa.noAnswers': 'Pas encore de réponses — écrivez la première',
+  'qa.writeAnswer': 'Écrire une réponse',
+  'qa.postAnswer': 'Publier',
+  'qa.answerPlaceholder': 'Écrivez votre réponse...',
+  'qa.questionBadge': 'Question',
+  'qa.answerBadge': 'Réponse',
+  'qa.answerCount': '{0} réponses',
+  'qa.myQuestions': 'Mes questions',
+  'qa.myAnswers': 'Mes réponses',
+  'notification.newAnswer': 'a répondu à votre question',
+  'profile.questions': 'Q&R',
+
   // Roadmap
   'roadmap.title': 'Feuille de route',
   'roadmap.subtitle': 'Fonctionnalités prévues',

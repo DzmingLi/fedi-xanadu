@@ -118,7 +118,7 @@ pub async fn admin_create_article(
 
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, translation_group,
-        default_visibility(true), // admin is always verified
+        default_visibility(true), "article", None, // admin is always verified
     ).await?;
 
     // Auto-bookmark
@@ -398,6 +398,28 @@ pub async fn admin_set_visibility(
     }
 
     Ok(StatusCode::OK)
+}
+
+// --- Question merge ---
+
+#[derive(serde::Deserialize)]
+pub struct MergeQuestionsInput {
+    pub from_uri: String,
+    pub into_uri: String,
+}
+
+pub async fn admin_merge_questions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<MergeQuestionsInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    require_admin(&state, &headers)?;
+
+    let moved = article_service::merge_questions(&state.pool, &input.from_uri, &input.into_uri).await?;
+    Ok(Json(serde_json::json!({
+        "merged": true,
+        "answers_moved": moved,
+    })))
 }
 
 // --- Appeals management ---

@@ -232,6 +232,16 @@ enum AdminCommand {
         #[arg(long)]
         response: Option<String>,
     },
+    /// Merge two questions (move answers from one to another)
+    #[command(name = "merge-questions")]
+    MergeQuestions {
+        /// Source question URI (will be deleted)
+        #[arg(long)]
+        from: String,
+        /// Target question URI (will absorb answers)
+        #[arg(long)]
+        into: String,
+    },
     /// Publish an article as a platform user
     Publish {
         /// Platform user handle to publish as
@@ -976,6 +986,19 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 .error_for_status().context("Merge tag failed")?;
 
             println!("Merged tag '{from}' into '{into}'");
+        }
+
+        AdminCommand::MergeQuestions { from, into } => {
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/questions/merge"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "from_uri": from, "into_uri": into }))
+                .send().await?
+                .error_for_status().context("Merge questions failed")?
+                .json().await?;
+
+            let moved = resp.get("answers_moved").and_then(|v| v.as_u64()).unwrap_or(0);
+            println!("Merged question into '{into}' ({moved} answers moved)");
         }
 
         AdminCommand::CreateSeries { r#as: as_handle, title, desc, topics, parent } => {

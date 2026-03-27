@@ -45,6 +45,7 @@ pub struct Article {
     pub at_uri: String,
     pub did: String,
     pub author_handle: Option<String>,
+    pub kind: String,
     pub title: String,
     pub description: String,
     pub content_hash: Option<String>,
@@ -53,6 +54,8 @@ pub struct Article {
     pub translation_group: Option<String>,
     pub license: String,
     pub prereq_threshold: f64,
+    pub question_uri: Option<String>,
+    pub answer_count: i64,
     pub vote_score: i64,
     pub bookmark_count: i64,
     pub created_at: DateTime<Utc>,
@@ -180,7 +183,7 @@ pub struct UserBookmark {
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Comment {
     pub id: String,
-    pub article_uri: String,
+    pub content_uri: String,
     pub did: String,
     pub author_handle: Option<String>,
     pub parent_id: Option<String>,

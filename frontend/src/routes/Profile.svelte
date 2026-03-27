@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { tagName, deduplicateByTranslation } from '../lib/display';
@@ -29,6 +29,10 @@
   let editLinks = $state<ProfileLink[]>([]);
   let newLinkLabel = $state('');
   let newLinkUrl = $state('');
+
+  let questions = $state<Article[]>([]);
+  let answers = $state<Article[]>([]);
+  let profileTab = $state<'works' | 'qa'>('works');
 
   let isOwnProfile = $derived(getAuth()?.did === did);
   let following = $state<FollowEntry[]>([]);
@@ -103,15 +107,19 @@
   async function load() {
     loading = true;
     try {
-      const [prof, arts, allSeries, tags, seriesArts] = await Promise.all([
+      const [prof, arts, qs, ans, allSeries, tags, seriesArts] = await Promise.all([
         getProfile(did),
         getArticlesByDid(did),
+        getQuestionsByDid(did),
+        getAnswersByDid(did),
         listSeries(),
         getAllArticleTeaches(),
         getAllSeriesArticles(),
       ]);
       profile = prof;
       articles = arts;
+      questions = qs;
+      answers = ans;
       allUserSeries = allSeries.filter(s => s.created_by === did);
 
       const saMaps = buildSeriesArticleMaps(seriesArts);
@@ -357,29 +365,71 @@
     </div>
   {/if}
 
-  <h2 class="section-title">{t('profile.works')}</h2>
+  <div class="profile-tabs">
+    <button class="tab-btn" class:active={profileTab === 'works'} onclick={() => { profileTab = 'works'; }}>{t('profile.works')}</button>
+    <button class="tab-btn" class:active={profileTab === 'qa'} onclick={() => { profileTab = 'qa'; }}>
+      {t('profile.questions')}
+      {#if questions.length + answers.length > 0}
+        <span class="tab-count">{questions.length + answers.length}</span>
+      {/if}
+    </button>
+  </div>
 
-  {#each profileFeed as item}
-    {#if item.type === 'article' && item.article}
-      <PostCard
-        article={item.article}
-        articleTeaches={articleTeaches.get(item.article.at_uri) || []}
-        variant="profile"
-      />
-    {:else if item.type === 'series' && item.series}
-      {@render seriesTree(item.series, 0, item.articleCount)}
+  {#if profileTab === 'works'}
+    {#each profileFeed as item}
+      {#if item.type === 'article' && item.article}
+        <PostCard
+          article={item.article}
+          articleTeaches={articleTeaches.get(item.article.at_uri) || []}
+          variant="profile"
+        />
+      {:else if item.type === 'series' && item.series}
+        {@render seriesTree(item.series, 0, item.articleCount)}
+      {/if}
+    {/each}
+
+    {#if profileFeed.length === 0}
+      <p class="empty-text">{t('profile.noWorks')}</p>
     {/if}
-  {/each}
 
-  {#if profileFeed.length === 0}
-    <p class="empty-text">{t('profile.noWorks')}</p>
-  {/if}
+    {#if isOwnProfile}
+      <div class="create-actions">
+        <a href="#/new" class="create-link">{t('profile.writeArticle')}</a>
+        <a href="#/new-series" class="create-link">{t('profile.createSeries')}</a>
+      </div>
+    {/if}
+  {:else}
+    {#if questions.length > 0}
+      <h3 class="section-title">{t('qa.myQuestions')}</h3>
+      {#each questions as q}
+        <a href="#/question?uri={encodeURIComponent(q.at_uri)}" class="qa-card question">
+          <span class="qa-badge question-badge">{t('qa.questionBadge')}</span>
+          <span class="qa-title">{q.title}</span>
+          <span class="qa-stat">{t('qa.answerCount', q.answer_count)}</span>
+        </a>
+      {/each}
+    {/if}
 
-  {#if isOwnProfile}
-    <div class="create-actions">
-      <a href="#/new" class="create-link">{t('profile.writeArticle')}</a>
-      <a href="#/new-series" class="create-link">{t('profile.createSeries')}</a>
-    </div>
+    {#if answers.length > 0}
+      <h3 class="section-title">{t('qa.myAnswers')}</h3>
+      {#each answers as a}
+        <a href="#/question?uri={encodeURIComponent(a.question_uri || '')}" class="qa-card answer">
+          <span class="qa-badge answer-badge">{t('qa.answerBadge')}</span>
+          <span class="qa-title">{a.title}</span>
+          <span class="qa-stat">&#9650; {a.vote_score}</span>
+        </a>
+      {/each}
+    {/if}
+
+    {#if questions.length === 0 && answers.length === 0}
+      <p class="empty-text">{t('qa.noQuestions')}</p>
+    {/if}
+
+    {#if isOwnProfile}
+      <div class="create-actions">
+        <a href="#/new-question" class="create-link">{t('qa.askQuestion')}</a>
+      </div>
+    {/if}
   {/if}
 {/if}
 
@@ -745,5 +795,92 @@
     margin-left: 22px;
     display: flex;
     align-items: center;
+  }
+
+  /* Profile tabs */
+  .profile-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .tab-btn {
+    padding: 8px 20px;
+    font-size: 14px;
+    font-family: var(--font-sans);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tab-btn:hover { color: var(--text-primary); }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab-count {
+    font-size: 11px;
+    background: var(--border);
+    color: var(--text-secondary);
+    padding: 1px 6px;
+    border-radius: 8px;
+  }
+
+  /* Q&A cards in profile */
+  .qa-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 6px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s;
+  }
+  .qa-card:hover {
+    border-color: var(--border-strong);
+    text-decoration: none;
+  }
+  .qa-card.question {
+    border-left: 3px solid #d97706;
+  }
+  .qa-card.answer {
+    border-left: 3px solid var(--accent);
+  }
+  .qa-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .question-badge {
+    color: #d97706;
+    background: rgba(217, 119, 6, 0.1);
+  }
+  .answer-badge {
+    color: var(--accent);
+    background: rgba(95, 155, 101, 0.1);
+  }
+  .qa-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qa-stat {
+    font-size: 12px;
+    color: var(--text-hint);
+    flex-shrink: 0;
   }
 </style>

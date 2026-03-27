@@ -38,6 +38,9 @@
 {#if article}
   <a href="#/article?uri={encodeURIComponent(article.at_uri)}" class="post-card">
     <div class="card-top">
+      {#if article.kind === 'question'}
+        <span class="question-badge">{t('qa.questionBadge')}</span>
+      {/if}
       <span class="post-title">{article.title}</span>
     </div>
 
@@ -162,6 +165,17 @@
   /* Series card */
   .series-card {
     border-left: 3px solid var(--accent);
+  }
+  .question-badge {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: #d97706;
+    background: rgba(217, 119, 6, 0.1);
+    padding: 2px 8px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
   .series-badge {
     font-size: 11px;

@@ -5,8 +5,9 @@ use crate::region::{InstanceMode, visibility_filter};
 
 /// Base SELECT for article queries (no WHERE clause).
 const ARTICLE_BASE: &str = "\
-    SELECT a.at_uri, a.did, p.handle AS author_handle, a.title, a.description, \
+    SELECT a.at_uri, a.did, p.handle AS author_handle, a.kind, a.title, a.description, \
     a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
+    a.question_uri, a.answer_count, \
     COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
     COALESCE((SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = a.at_uri), 0) AS bookmark_count, \
     a.created_at, a.updated_at \
@@ -40,8 +41,31 @@ pub struct ContentPrereqBulkRow {
 
 pub async fn list_articles(pool: &PgPool, mode: InstanceMode, limit: i64, offset: i64) -> crate::Result<Vec<Article>> {
     let rows = sqlx::query_as::<_, Article>(&format!(
-        "{} ORDER BY a.created_at DESC LIMIT $1 OFFSET $2", visible(mode)
+        "{} AND a.kind = 'article' ORDER BY a.created_at DESC LIMIT $1 OFFSET $2", visible(mode)
     ))
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn list_questions(pool: &PgPool, mode: InstanceMode, limit: i64, offset: i64) -> crate::Result<Vec<Article>> {
+    let rows = sqlx::query_as::<_, Article>(&format!(
+        "{} AND a.kind = 'question' ORDER BY a.created_at DESC LIMIT $1 OFFSET $2", visible(mode)
+    ))
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn list_answers(pool: &PgPool, mode: InstanceMode, question_uri: &str, limit: i64, offset: i64) -> crate::Result<Vec<Article>> {
+    let rows = sqlx::query_as::<_, Article>(&format!(
+        "{} AND a.kind = 'answer' AND a.question_uri = $1 ORDER BY vote_score DESC, a.created_at ASC LIMIT $2 OFFSET $3", visible(mode)
+    ))
+    .bind(question_uri)
     .bind(limit)
     .bind(offset)
     .fetch_all(pool)
@@ -55,6 +79,34 @@ pub async fn get_article(pool: &PgPool, mode: InstanceMode, uri: &str) -> crate:
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() })
+}
+
+pub async fn get_questions_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
+    let descendant_tags: Vec<String> = sqlx::query_scalar(
+        "WITH RECURSIVE descendants(tag) AS ( \
+           SELECT $1::TEXT UNION \
+           SELECT e.child_tag FROM skill_tree_edges e JOIN descendants d ON e.parent_tag = d.tag \
+         ) SELECT tag FROM descendants",
+    )
+    .bind(tag_id)
+    .fetch_all(pool)
+    .await?;
+
+    if descendant_tags.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let rows = sqlx::query_as::<_, Article>(&format!(
+        "{} AND a.kind = 'question' AND a.at_uri IN (\
+            SELECT ct.content_uri FROM content_teaches ct WHERE ct.tag_id = ANY($1)\
+         ) ORDER BY a.created_at DESC LIMIT $2",
+        visible(mode)
+    ))
+    .bind(&descendant_tags)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }
 
 pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
@@ -89,7 +141,29 @@ pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str
 
 pub async fn get_articles_by_did(pool: &PgPool, mode: InstanceMode, did: &str, limit: i64) -> crate::Result<Vec<Article>> {
     let rows = sqlx::query_as::<_, Article>(&format!(
-        "{} AND a.did = $1 ORDER BY a.created_at DESC LIMIT $2", visible(mode)
+        "{} AND a.kind = 'article' AND a.did = $1 ORDER BY a.created_at DESC LIMIT $2", visible(mode)
+    ))
+    .bind(did)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn get_questions_by_did(pool: &PgPool, mode: InstanceMode, did: &str, limit: i64) -> crate::Result<Vec<Article>> {
+    let rows = sqlx::query_as::<_, Article>(&format!(
+        "{} AND a.kind = 'question' AND a.did = $1 ORDER BY a.created_at DESC LIMIT $2", visible(mode)
+    ))
+    .bind(did)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn get_answers_by_did(pool: &PgPool, mode: InstanceMode, did: &str, limit: i64) -> crate::Result<Vec<Article>> {
+    let rows = sqlx::query_as::<_, Article>(&format!(
+        "{} AND a.kind = 'answer' AND a.did = $1 ORDER BY a.created_at DESC LIMIT $2", visible(mode)
     ))
     .bind(did)
     .bind(limit)
@@ -219,7 +293,7 @@ pub async fn get_all_article_prereqs(pool: &PgPool, limit: i64) -> crate::Result
 
 // ---- Mutations ----
 
-/// Create a new article with tags and prereqs.
+/// Create a new article/question/answer with tags and prereqs.
 pub async fn create_article(
     pool: &PgPool,
     did: &str,
@@ -228,6 +302,8 @@ pub async fn create_article(
     content_hash: &str,
     translation_group: Option<String>,
     visibility: &str,
+    kind: &str,
+    question_uri: Option<&str>,
 ) -> crate::Result<Article> {
     let lang = input.lang.as_deref().unwrap_or("zh");
     let license = input.license.as_deref().unwrap_or("CC-BY-NC-SA-4.0");
@@ -235,8 +311,8 @@ pub async fn create_article(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0.8, $10)",
+        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0.8, $10, $11, $12)",
     )
     .bind(at_uri)
     .bind(did)
@@ -248,6 +324,8 @@ pub async fn create_article(
     .bind(&translation_group)
     .bind(license)
     .bind(visibility)
+    .bind(kind)
+    .bind(question_uri)
     .execute(&mut *tx)
     .await?;
 
@@ -422,6 +500,46 @@ pub async fn resolve_translation_group(pool: &PgPool, source_uri: &str) -> crate
     .execute(pool).await?;
 
     Ok(g)
+}
+
+/// Merge question `from_uri` into `into_uri`: move all answers, log merge, delete old question.
+pub async fn merge_questions(pool: &PgPool, from_uri: &str, into_uri: &str) -> crate::Result<u64> {
+    let mut tx = pool.begin().await?;
+
+    // Move answers
+    let result = sqlx::query(
+        "UPDATE articles SET question_uri = $2 WHERE question_uri = $1 AND kind = 'answer'",
+    )
+    .bind(from_uri).bind(into_uri)
+    .execute(&mut *tx).await?;
+    let moved = result.rows_affected();
+
+    // Recount answer_count on both questions
+    sqlx::query(
+        "UPDATE articles SET answer_count = (SELECT COUNT(*) FROM articles WHERE question_uri = $1 AND kind = 'answer') WHERE at_uri = $1",
+    )
+    .bind(into_uri).execute(&mut *tx).await?;
+
+    // Log merge
+    sqlx::query(
+        "INSERT INTO question_merges (from_uri, into_uri) VALUES ($1, $2) ON CONFLICT (from_uri) DO NOTHING",
+    )
+    .bind(from_uri).bind(into_uri)
+    .execute(&mut *tx).await?;
+
+    // Delete old question (CASCADE handles content_teaches, content_prereqs, etc.)
+    delete_article_in_tx(&mut tx, from_uri).await?;
+
+    tx.commit().await?;
+    Ok(moved)
+}
+
+async fn delete_article_in_tx(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, uri: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM votes WHERE target_uri = $1")
+        .bind(uri).execute(&mut **tx).await?;
+    sqlx::query("DELETE FROM articles WHERE at_uri = $1")
+        .bind(uri).execute(&mut **tx).await?;
+    Ok(())
 }
 
 /// Auto-bookmark an article into the user's folder.

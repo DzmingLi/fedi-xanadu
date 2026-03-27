@@ -292,6 +292,24 @@ export default {
   'kb.syncHint': '登录后可将快捷键同步至 PDS',
   'kb.resetDefault': '恢复默认',
 
+  // Questions & Answers
+  'nav.questions': '问答',
+  'qa.questions': '问答',
+  'qa.askQuestion': '提问',
+  'qa.answers': '个回答',
+  'qa.noQuestions': '暂无问题',
+  'qa.noAnswers': '暂无回答，来写第一个回答吧',
+  'qa.writeAnswer': '写回答',
+  'qa.postAnswer': '发布回答',
+  'qa.answerPlaceholder': '写下你的回答...',
+  'qa.questionBadge': '问题',
+  'qa.answerBadge': '回答',
+  'qa.answerCount': '{0} 个回答',
+  'qa.myQuestions': '我的提问',
+  'qa.myAnswers': '我的回答',
+  'notification.newAnswer': '回答了你的问题',
+  'profile.questions': '问答',
+
   // Roadmap
   'roadmap.title': '路线图',
   'roadmap.subtitle': '计划实现的功能',

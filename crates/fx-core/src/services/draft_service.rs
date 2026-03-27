@@ -178,8 +178,8 @@ pub async fn publish_to_article(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, license, prereq_threshold, visibility)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0.8, $9)",
+        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, license, prereq_threshold, visibility, kind)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0.8, $9, 'article')",
     )
     .bind(at_uri)
     .bind(&draft.did)

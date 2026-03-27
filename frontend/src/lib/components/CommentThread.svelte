@@ -5,10 +5,10 @@
   import type { Comment } from '../types';
 
   let {
-    articleUri,
+    contentUri,
     contentEl = undefined,
   }: {
-    articleUri: string;
+    contentUri: string;
     contentEl?: HTMLDivElement;
   } = $props();
 
@@ -34,9 +34,9 @@
 
   export async function loadComments() {
     try {
-      comments = await listComments(articleUri);
+      comments = await listComments(contentUri);
       if (getAuth()) {
-        getMyCommentVotes(articleUri).then(votes => {
+        getMyCommentVotes(contentUri).then(votes => {
           const map: Record<string, number> = {};
           for (const v of votes) map[v.comment_id] = v.value;
           myCommentVotes = map;
@@ -54,7 +54,7 @@
     submittingComment = true;
     commentError = '';
     try {
-      const c = await createComment(articleUri, commentBody.trim(), undefined, quoteText ?? undefined);
+      const c = await createComment(contentUri, commentBody.trim(), undefined, quoteText ?? undefined);
       comments = [...comments, c];
       commentBody = '';
       quoteText = null;
@@ -92,7 +92,7 @@
     if (!replyBody.trim()) return;
     commentError = '';
     try {
-      const c = await createComment(articleUri, replyBody.trim(), parentId);
+      const c = await createComment(contentUri, replyBody.trim(), parentId);
       comments = [...comments, c];
       replyBody = '';
       replyingToId = null;

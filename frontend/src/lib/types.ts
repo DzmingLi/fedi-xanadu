@@ -11,6 +11,7 @@ export interface Article {
   at_uri: string;
   did: string;
   author_handle: string | null;
+  kind: string;
   title: string;
   description: string;
   content_hash: string | null;
@@ -19,6 +20,8 @@ export interface Article {
   translation_group: string | null;
   license: string;
   prereq_threshold: number;
+  question_uri: string | null;
+  answer_count: number;
   vote_score: number;
   bookmark_count: number;
   created_at: string;
@@ -219,7 +222,7 @@ export interface ProfileData {
 
 export interface Comment {
   id: string;
-  article_uri: string;
+  content_uri: string;
   did: string;
   author_handle: string | null;
   parent_id: string | null;
@@ -262,12 +265,17 @@ export interface Notification {
   recipient_did: string;
   actor_did: string;
   actor_handle: string | null;
-  kind: 'comment_reply' | 'article_comment' | 'new_follower' | 'article_fork';
+  kind: 'comment_reply' | 'article_comment' | 'new_follower' | 'article_fork' | 'new_answer';
   target_uri: string | null;
   target_title: string | null;
   context_id: string | null;
   read: boolean;
   created_at: string;
+}
+
+export interface QuestionDetail {
+  question: Article;
+  answers: Article[];
 }
 
 export interface CreateArticle {

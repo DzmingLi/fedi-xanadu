@@ -101,6 +101,7 @@
 <nav>
   <a href="#/" class="brand">Fedi-Xanadu</a>
   <div class="nav-links">
+    <a href="#/questions">{t('nav.questions')}</a>
     <a href="#/skills">{t('nav.skills')}</a>
     <a href="#/library">{t('nav.library')}</a>
     <a href="#/roadmap">{t('nav.roadmap')}</a>

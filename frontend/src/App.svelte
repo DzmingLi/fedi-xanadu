@@ -22,6 +22,9 @@
   import Forks from './routes/Forks.svelte';
   import Drafts from './routes/Drafts.svelte';
   import Notifications from './routes/Notifications.svelte';
+  import Questions from './routes/Questions.svelte';
+  import QuestionDetail from './routes/QuestionDetail.svelte';
+  import NewQuestion from './routes/NewQuestion.svelte';
 
   let hash = $state(window.location.hash || '#/');
 
@@ -64,6 +67,9 @@
     if (base === '/forks') return { page: 'forks', params };
     if (base === '/drafts') return { page: 'drafts', params };
     if (base === '/notifications') return { page: 'notifications', params };
+    if (base === '/questions') return { page: 'questions', params };
+    if (base === '/question') return { page: 'question', params };
+    if (base === '/new-question') return { page: 'new-question', params };
     return { page: 'home', params };
   }
 
@@ -133,6 +139,12 @@
       <Drafts />
     {:else if route.page === 'notifications'}
       <Notifications />
+    {:else if route.page === 'questions'}
+      <Questions />
+    {:else if route.page === 'question'}
+      <QuestionDetail uri={route.params.uri || ''} />
+    {:else if route.page === 'new-question'}
+      <NewQuestion />
     {/if}
   </div>
 {/if}

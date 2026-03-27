@@ -153,7 +153,7 @@ pub async fn create_article(
 
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, translation_group,
-        default_visibility(user.phone_verified),
+        default_visibility(user.phone_verified), "article", None,
     ).await?;
 
     if let Some(pds) = pds_session(&state.pool, &user.token).await {
