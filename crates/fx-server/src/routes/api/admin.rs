@@ -4,7 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use fx_core::models::{Article, CreateArticle};
-use fx_core::services::{article_service, platform_user_service};
+use fx_core::services::{article_service, platform_user_service, series_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -123,4 +123,56 @@ pub async fn admin_create_article(
     let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
 
     Ok((StatusCode::CREATED, Json(article)))
+}
+
+// --- Admin series management ---
+
+#[derive(serde::Deserialize)]
+pub struct AdminCreateSeriesInput {
+    pub as_handle: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub tag_id: String,
+    pub parent_id: Option<String>,
+}
+
+pub async fn admin_create_series(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<AdminCreateSeriesInput>,
+) -> ApiResult<(StatusCode, Json<series_service::SeriesRow>)> {
+    require_admin(&state, &headers)?;
+
+    let did = platform_user_service::local_did(&input.as_handle);
+    let id = format!("s-{}", tid());
+
+    let row = series_service::create_series(
+        &state.pool,
+        &id,
+        &input.title,
+        input.description.as_deref(),
+        &input.tag_id,
+        input.parent_id.as_deref(),
+        &did,
+    )
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(row)))
+}
+
+#[derive(serde::Deserialize)]
+pub struct AdminAddSeriesArticleInput {
+    pub series_id: String,
+    pub article_uri: String,
+}
+
+pub async fn admin_add_series_article(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<AdminAddSeriesArticleInput>,
+) -> ApiResult<StatusCode> {
+    require_admin(&state, &headers)?;
+
+    series_service::add_series_article(&state.pool, &input.series_id, &input.article_uri).await?;
+    Ok(StatusCode::OK)
 }

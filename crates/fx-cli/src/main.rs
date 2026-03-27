@@ -125,6 +125,35 @@ enum AdminCommand {
         /// Localized name
         name: String,
     },
+    /// Create a series as a platform user
+    #[command(name = "create-series")]
+    CreateSeries {
+        /// Platform user handle
+        #[arg(long)]
+        r#as: String,
+        /// Series title
+        #[arg(short, long)]
+        title: String,
+        /// Short description
+        #[arg(short, long)]
+        desc: Option<String>,
+        /// Tag ID (e.g. cs, math)
+        #[arg(long)]
+        tag: String,
+        /// Parent series ID (for sub-series)
+        #[arg(long)]
+        parent: Option<String>,
+    },
+    /// Add an article to a series
+    #[command(name = "add-to-series")]
+    AddToSeries {
+        /// Series ID
+        #[arg(long)]
+        series: String,
+        /// Article AT URI
+        #[arg(long)]
+        article: String,
+    },
     /// Publish an article as a platform user
     Publish {
         /// Platform user handle to publish as
@@ -845,6 +874,42 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
 
             let updated_names = &resp["names"];
             println!("Updated tag '{id}': {updated_names}");
+        }
+
+        AdminCommand::CreateSeries { r#as: as_handle, title, desc, tag, parent } => {
+            let body = serde_json::json!({
+                "as_handle": as_handle,
+                "title": title,
+                "description": desc,
+                "tag_id": tag,
+                "parent_id": parent,
+            });
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/series"))
+                .header("x-admin-secret", &secret)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Create series failed")?
+                .json().await?;
+
+            let id = resp["id"].as_str().unwrap_or("?");
+            println!("Created series: {title}");
+            println!("ID: {id}");
+        }
+
+        AdminCommand::AddToSeries { series, article } => {
+            client()
+                .post(format!("{base}/admin/series/articles"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({
+                    "series_id": series,
+                    "article_uri": article,
+                }))
+                .send().await?
+                .error_for_status().context("Add to series failed")?;
+
+            println!("Added {article} to series {series}");
         }
 
         AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license } => {

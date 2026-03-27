@@ -135,6 +135,8 @@ pub fn routes() -> Router<AppState> {
         // Admin
         .route("/admin/platform-users", get(admin::list_platform_users).post(admin::create_platform_user))
         .route("/admin/articles", post(admin::admin_create_article))
+        .route("/admin/series", post(admin::admin_create_series))
+        .route("/admin/series/articles", post(admin::admin_add_series_article))
 }
 
 // --- Health ---
