@@ -88,7 +88,6 @@ pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesL
         "SELECT s.id, s.title, s.description, s.tag_id, t.name AS tag_name, t.names AS tag_names, \
                 s.parent_id, s.order_index, s.created_by, s.created_at \
          FROM series s JOIN tags t ON s.tag_id = t.id \
-         WHERE s.parent_id IS NULL \
          ORDER BY s.created_at DESC LIMIT $1",
     )
     .bind(limit)
