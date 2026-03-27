@@ -17,7 +17,10 @@ function authHeaders(): Record<string, string> {
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: authHeaders(), signal });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
+    throw new Error(`${res.status} ${res.statusText}`);
+  }
   return res.json();
 }
 
@@ -29,6 +32,7 @@ async function post<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
     signal,
   });
   if (!res.ok) {
+    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
   }
@@ -167,6 +171,7 @@ export async function uploadImage(articleUri: string, file: File): Promise<{ fil
     body: form,
   });
   if (!res.ok) {
+    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
   }

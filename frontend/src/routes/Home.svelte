@@ -150,18 +150,37 @@
       }
     }
 
-    // Add series cards (replacing their individual member articles)
-    const shownSeries = new Set<string>();
+    // Add series cards — only top-level series (no parent)
+    // Collect all descendant article URIs for each top-level series
+    const childSeriesOf = new Map<string, string[]>();
     for (const s of allSeries) {
-      if (shownSeries.has(s.id)) continue;
-      const memberUris = seriesArticleMap.get(s.id) || [];
-      if (memberUris.length === 0) continue;
+      if (s.parent_id) {
+        const arr = childSeriesOf.get(s.parent_id) || [];
+        arr.push(s.id);
+        childSeriesOf.set(s.parent_id, arr);
+      }
+    }
 
-      const memberArts = memberUris
+    for (const s of allSeries) {
+      if (s.parent_id) continue; // skip sub-series
+
+      // Gather articles from this series and all descendant sub-series
+      const allMemberUris: string[] = [];
+      const stack = [s.id];
+      while (stack.length > 0) {
+        const sid = stack.pop()!;
+        const uris = seriesArticleMap.get(sid) || [];
+        allMemberUris.push(...uris);
+        for (const child of (childSeriesOf.get(sid) || [])) {
+          stack.push(child);
+        }
+      }
+      if (allMemberUris.length === 0) continue;
+
+      const memberArts = allMemberUris
         .map(uri => articles.find(a => a.at_uri === uri))
         .filter((a): a is Article => !!a);
 
-      // Only show this series if at least one member matches the current filter
       const hasMatch = memberArts.some(a => artUriSet.has(a.at_uri));
       if (!hasMatch) continue;
 
@@ -169,10 +188,9 @@
       items.push({
         type: 'series',
         series: s,
-        articleCount: memberUris.length,
+        articleCount: allMemberUris.length,
         sortKey: maxScore,
       });
-      shownSeries.add(s.id);
     }
 
     items.sort((a, b) => b.sortKey - a.sortKey);

@@ -40,36 +40,37 @@
     tocItems = [];
     seriesContext = [];
     translations = [];
+    learned = false;
     const ac = new AbortController();
+
+    // Phase 1: Load core data (article + content) — render ASAP
     Promise.all([
       getArticle(uri),
       getArticleContent(uri),
-      getArticlePrereqs(uri),
-      getArticleForks(uri),
-      listBookmarks(),
-      getArticleVotes(uri),
-      getMyVote(uri),
-      getSeriesContext(uri),
-      getTranslations(uri),
-      apiIsLearned(uri),
-    ]).then(([a, c, p, f, bk, v, mv, sc, tr, lr]) => {
+    ]).then(([a, c]) => {
       if (ac.signal.aborted) return;
       article = a;
       content = c;
-      prereqs = p;
-      forks = f;
-      bookmarks = bk;
-      votes = v;
-      myVote = mv.value;
-      seriesContext = sc;
-      translations = tr;
-      learned = lr.learned;
-      // Load comments via component
       commentThread?.loadComments();
     }).catch(e => {
       if (ac.signal.aborted) return;
       error = e.message;
     });
+
+    // Phase 2: Load secondary data in parallel, don't block rendering
+    getArticlePrereqs(uri).then(p => { if (!ac.signal.aborted) prereqs = p; }).catch(() => {});
+    getArticleForks(uri).then(f => { if (!ac.signal.aborted) forks = f; }).catch(() => {});
+    getArticleVotes(uri).then(v => { if (!ac.signal.aborted) votes = v; }).catch(() => {});
+    getSeriesContext(uri).then(sc => { if (!ac.signal.aborted) seriesContext = sc; }).catch(() => {});
+    getTranslations(uri).then(tr => { if (!ac.signal.aborted) translations = tr; }).catch(() => {});
+
+    // Phase 3: Auth-dependent requests — only if logged in
+    if (getAuth()) {
+      listBookmarks().then(bk => { if (!ac.signal.aborted) bookmarks = bk; }).catch(() => {});
+      getMyVote(uri).then(mv => { if (!ac.signal.aborted) myVote = mv.value; }).catch(() => {});
+      apiIsLearned(uri).then(lr => { if (!ac.signal.aborted) learned = lr.learned; }).catch(() => {});
+    }
+
     return () => ac.abort();
   });
 
