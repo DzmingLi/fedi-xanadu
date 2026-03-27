@@ -18,7 +18,7 @@
 <script lang="ts">
   import { listArticles, getAllArticleTeaches, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles } from '../lib/api';
   import { getAuth } from '../lib/auth';
-  import { authorName, tagName } from '../lib/display';
+  import { authorName, tagName, deduplicateByTranslation } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -210,6 +210,8 @@
         return tags.some(t => desc.has(t.tag_id));
       });
     }
+    // Deduplicate translations: show only the locale-preferred version
+    candidateArticles = deduplicateByTranslation(candidateArticles, locale);
     return buildFeed(candidateArticles);
   });
 

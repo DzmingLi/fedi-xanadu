@@ -2,7 +2,7 @@
   import { getProfile, getArticlesByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth';
-  import { tagName } from '../lib/display';
+  import { tagName, deduplicateByTranslation } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -79,8 +79,9 @@
 
   let profileFeed = $derived.by(() => {
     const items: ProfileFeedItem[] = [];
-    // Standalone articles (not in any series)
-    for (const a of articles) {
+    // Standalone articles (not in any series), deduplicated by translation
+    const deduped = deduplicateByTranslation(articles, locale);
+    for (const a of deduped) {
       if (!seriesArticleUris.has(a.at_uri)) {
         items.push({ type: 'article', article: a, sortDate: a.created_at });
       }
