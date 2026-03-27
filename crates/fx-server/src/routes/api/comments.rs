@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
 };
 use fx_core::models::Comment;
-use fx_core::services::comment_service;
+use fx_core::services::{comment_service, notification_service};
 use fx_core::validation::validate_comment_body;
 
 use crate::error::{AppError, ApiResult};
@@ -57,6 +57,32 @@ pub async fn create_comment(
         input.quote_text.as_deref(),
     )
     .await?;
+
+    // Notify article author
+    if let Ok(Some(article_did)) = sqlx::query_scalar::<_, String>(
+        "SELECT did FROM articles WHERE at_uri = $1"
+    ).bind(&input.article_uri).fetch_optional(&state.pool).await {
+        if let Err(e) = notification_service::create_notification(
+            &state.pool, &tid(), &article_did, &user.did,
+            "article_comment", Some(&input.article_uri), Some(&id),
+        ).await {
+            tracing::warn!("notification failed: {e}");
+        }
+    }
+
+    // Notify parent comment author (reply)
+    if let Some(ref pid) = input.parent_id {
+        if let Ok(Some(parent_did)) = sqlx::query_scalar::<_, String>(
+            "SELECT did FROM comments WHERE id = $1"
+        ).bind(pid).fetch_optional(&state.pool).await {
+            if let Err(e) = notification_service::create_notification(
+                &state.pool, &tid(), &parent_did, &user.did,
+                "comment_reply", Some(&input.article_uri), Some(&id),
+            ).await {
+                tracing::warn!("notification failed: {e}");
+            }
+        }
+    }
 
     Ok((StatusCode::CREATED, Json(comment)))
 }

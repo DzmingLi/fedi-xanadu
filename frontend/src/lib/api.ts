@@ -3,7 +3,7 @@ import type {
   ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
-  ArticleFullResponse,
+  ArticleFullResponse, Notification,
 } from './types';
 import { getToken } from './auth';
 
@@ -215,6 +215,16 @@ export const isLearned = (uri: string) => get<{ learned: boolean }>(`/learned/ch
 
 // Tag search
 export const searchTags = (q: string) => get<Tag[]>(`/tags/search?q=${encodeURIComponent(q)}`);
+
+// Notifications
+export const listNotifications = (limit = 50, offset = 0) =>
+  get<Notification[]>(`/notifications?limit=${limit}&offset=${offset}`);
+export const getUnreadCount = () =>
+  get<{ count: number }>('/notifications/unread');
+export const markNotificationRead = (id: string) =>
+  post<void>('/notifications/read', { id });
+export const markAllNotificationsRead = () =>
+  post<void>('/notifications/read-all');
 
 // Graph
 export const getGraph = () => get<GraphData>('/graph');

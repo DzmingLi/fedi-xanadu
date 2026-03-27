@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
 };
 use fx_core::models::*;
-use fx_core::services::article_service;
+use fx_core::services::{article_service, notification_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult, require_owner};
@@ -399,6 +399,14 @@ pub async fn fork_article(
         ).await {
             log_pds_error("create fork", e);
         }
+    }
+
+    // Notify source article author
+    if let Err(e) = notification_service::create_notification(
+        &state.pool, &tid(), &source.did, &user.did,
+        "article_fork", Some(&input.uri), Some(&fork_at_uri),
+    ).await {
+        tracing::warn!("notification failed: {e}");
     }
 
     Ok((StatusCode::CREATED, Json(article)))

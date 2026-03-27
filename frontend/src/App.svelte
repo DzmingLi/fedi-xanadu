@@ -21,6 +21,7 @@
   import Roadmap from './routes/Roadmap.svelte';
   import Forks from './routes/Forks.svelte';
   import Drafts from './routes/Drafts.svelte';
+  import Notifications from './routes/Notifications.svelte';
 
   let hash = $state(window.location.hash || '#/');
 
@@ -62,6 +63,7 @@
     if (base === '/skill-tree') return { page: 'skill-tree', params };
     if (base === '/forks') return { page: 'forks', params };
     if (base === '/drafts') return { page: 'drafts', params };
+    if (base === '/notifications') return { page: 'notifications', params };
     return { page: 'home', params };
   }
 
@@ -129,6 +131,8 @@
       <Forks uri={route.params.uri || ''} />
     {:else if route.page === 'drafts'}
       <Drafts />
+    {:else if route.page === 'notifications'}
+      <Notifications />
     {/if}
   </div>
 {/if}

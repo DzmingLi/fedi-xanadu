@@ -26,6 +26,16 @@ export default {
   'nav.login': 'Login',
   'nav.logout': 'Logout',
   'nav.drafts': 'Drafts',
+  'nav.notifications': 'Notifications',
+
+  // Notifications
+  'notification.commentReply': 'replied to your comment',
+  'notification.articleComment': 'commented on your article',
+  'notification.newFollower': 'followed you',
+  'notification.articleFork': 'forked your article',
+  'notification.markAllRead': 'Mark all read',
+  'notification.empty': 'No notifications',
+  'notification.justNow': 'just now',
 
   // Sidebar
   'sidebar.home': 'Home',

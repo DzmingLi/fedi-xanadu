@@ -8,6 +8,7 @@ mod follows;
 mod graph;
 mod interests;
 mod learned;
+mod notifications;
 mod keybindings;
 mod profile;
 mod series;
@@ -122,6 +123,11 @@ pub fn routes() -> Router<AppState> {
         .route("/series/prereqs/remove", post(series::remove_series_prereq))
         .route("/series/context", get(series::get_series_context))
         .route("/series/all-articles", get(series::all_series_articles))
+        // Notifications
+        .route("/notifications", get(notifications::list_notifications))
+        .route("/notifications/unread", get(notifications::unread_count))
+        .route("/notifications/read", post(notifications::mark_read))
+        .route("/notifications/read-all", post(notifications::mark_all_read))
         // Follows
         .route("/follows", get(follows::list_follows).post(follows::follow))
         .route("/follows/remove", post(follows::unfollow))

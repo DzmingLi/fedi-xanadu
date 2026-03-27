@@ -26,6 +26,16 @@ export default {
   'nav.login': '登录',
   'nav.logout': '退出',
   'nav.drafts': '草稿',
+  'nav.notifications': '通知',
+
+  // Notifications
+  'notification.commentReply': '回复了你的评论',
+  'notification.articleComment': '评论了你的文章',
+  'notification.newFollower': '关注了你',
+  'notification.articleFork': '转制了你的文章',
+  'notification.markAllRead': '全部已读',
+  'notification.empty': '暂无通知',
+  'notification.justNow': '刚刚',
 
   // Sidebar
   'sidebar.home': '首页',

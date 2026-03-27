@@ -257,6 +257,19 @@ export interface Draft {
   updated_at: string;
 }
 
+export interface Notification {
+  id: string;
+  recipient_did: string;
+  actor_did: string;
+  actor_handle: string | null;
+  kind: 'comment_reply' | 'article_comment' | 'new_follower' | 'article_fork';
+  target_uri: string | null;
+  target_title: string | null;
+  context_id: string | null;
+  read: boolean;
+  created_at: string;
+}
+
 export interface CreateArticle {
   title: string;
   description?: string;

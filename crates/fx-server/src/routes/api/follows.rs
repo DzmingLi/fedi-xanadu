@@ -3,11 +3,11 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
 };
-use fx_core::services::social_service;
+use fx_core::services::{social_service, notification_service};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, DidQuery};
+use super::{Auth, DidQuery, tid};
 
 #[derive(serde::Deserialize)]
 pub struct FollowInput {
@@ -28,6 +28,14 @@ pub async fn follow(
     Json(input): Json<FollowInput>,
 ) -> ApiResult<StatusCode> {
     social_service::follow(&state.pool, &user.did, &input.did).await?;
+
+    if let Err(e) = notification_service::create_notification(
+        &state.pool, &tid(), &input.did, &user.did,
+        "new_follower", None, None,
+    ).await {
+        tracing::warn!("notification failed: {e}");
+    }
+
     Ok(StatusCode::OK)
 }
 

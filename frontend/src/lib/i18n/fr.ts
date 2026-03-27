@@ -26,6 +26,16 @@ export default {
   'nav.login': 'Connexion',
   'nav.logout': 'Déconnexion',
   'nav.drafts': 'Brouillons',
+  'nav.notifications': 'Notifications',
+
+  // Notifications
+  'notification.commentReply': 'a répondu à votre commentaire',
+  'notification.articleComment': 'a commenté votre article',
+  'notification.newFollower': 'vous suit',
+  'notification.articleFork': 'a forké votre article',
+  'notification.markAllRead': 'Tout marquer comme lu',
+  'notification.empty': 'Aucune notification',
+  'notification.justNow': "à l'instant",
 
   // Sidebar
   'sidebar.home': 'Accueil',

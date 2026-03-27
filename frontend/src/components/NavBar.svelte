@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { listArticles, logout as apiLogout } from '../lib/api';
+  import { listArticles, logout as apiLogout, getUnreadCount } from '../lib/api';
   import { getAuth, setAuth, onAuthChange } from '../lib/auth';
   import { t, getLocale, setLocale, onLocaleChange, LOCALES } from '../lib/i18n';
   import type { Locale } from '../lib/i18n';
@@ -80,6 +80,18 @@
     closeSearch();
   }
 
+  let unreadCount = $state(0);
+
+  $effect(() => {
+    if (!user) { unreadCount = 0; return; }
+    const poll = async () => {
+      try { unreadCount = (await getUnreadCount()).count; } catch {}
+    };
+    poll();
+    const timer = setInterval(poll, 60_000);
+    return () => clearInterval(timer);
+  });
+
   async function doLogout() {
     try { await apiLogout(); } catch { /* ignore */ }
     setAuth(null);
@@ -116,6 +128,15 @@
     </button>
 
     {#if user}
+      <a href="#/notifications" class="notif-btn" title={t('nav.notifications')}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        {#if unreadCount > 0}
+          <span class="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+        {/if}
+      </a>
       <div class="user-menu">
         <a href="#/profile?did={encodeURIComponent(user.did)}" class="user-link">
           {#if user.avatar}
@@ -264,6 +285,38 @@
   }
   .search-btn:hover {
     color: var(--accent);
+  }
+
+  /* Notification bell */
+  .notif-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    color: var(--text-secondary);
+    padding: 4px;
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  .notif-btn:hover {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .notif-badge {
+    position: absolute;
+    top: -2px;
+    right: -4px;
+    background: #dc2626;
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+    line-height: 1;
   }
 
   /* Auth buttons */
