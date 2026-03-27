@@ -4,6 +4,7 @@ use axum::{
     http::StatusCode,
 };
 use fx_core::models::*;
+use fx_core::region::default_visibility;
 use fx_core::services::{article_service, draft_service};
 use fx_core::validation;
 
@@ -146,7 +147,9 @@ pub async fn publish_draft(
     let hash = content_hash(&draft.content);
 
     // Publish: create article + tags + prereqs + delete draft in one transaction
-    let (tags, _prereqs) = draft_service::publish_to_article(&state.pool, &draft, &at_uri, &hash).await?;
+    let (tags, _prereqs) = draft_service::publish_to_article(
+        &state.pool, &draft, &at_uri, &hash, default_visibility(user.phone_verified),
+    ).await?;
 
     // PDS: create article record, delete draft record
     if let Some(pds) = pds_session(&state.pool, &user.token).await {
@@ -184,6 +187,6 @@ pub async fn publish_draft(
         }
     }
 
-    let article = article_service::get_article(&state.pool, &at_uri).await?;
+    let article = article_service::get_article_any_visibility(&state.pool, &at_uri).await?;
     Ok((StatusCode::CREATED, Json(article)))
 }

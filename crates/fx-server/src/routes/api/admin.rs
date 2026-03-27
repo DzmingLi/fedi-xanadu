@@ -4,6 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use fx_core::models::{Article, CreateArticle};
+use fx_core::region::default_visibility;
 use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, series_service, tag_service};
 use fx_core::validation::validate_create_article;
 
@@ -117,6 +118,7 @@ pub async fn admin_create_article(
 
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, translation_group,
+        default_visibility(true), // admin is always verified
     ).await?;
 
     // Auto-bookmark
@@ -227,7 +229,7 @@ pub async fn admin_update_article(
         }
     }
 
-    let article = article_service::get_article(&state.pool, &input.uri).await?;
+    let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
     Ok(Json(article))
 }
 
@@ -320,11 +322,11 @@ pub async fn admin_delete_article(
 ) -> ApiResult<StatusCode> {
     require_admin(&state, &headers)?;
 
-    // Fetch article info before soft-deleting so we can notify the author
-    let article = article_service::get_article(&state.pool, &input.uri).await?;
+    // Fetch article info before removing so we can notify the author
+    let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
 
-    // Soft-delete: article is hidden but preserved for 30-day appeal window
-    article_service::soft_delete_article(&state.pool, &input.uri, input.reason.as_deref()).await?;
+    // Remove: article is hidden but preserved for 30-day appeal window
+    article_service::set_visibility(&state.pool, &input.uri, "removed", input.reason.as_deref()).await?;
 
     // Notify author with title + reason
     let reason_text = match &input.reason {
@@ -342,6 +344,57 @@ pub async fn admin_delete_article(
         Some(&reason_text),
     ).await {
         tracing::warn!("failed to send article deletion notification: {e}");
+    }
+
+    Ok(StatusCode::OK)
+}
+
+// --- Visibility management ---
+
+#[derive(serde::Deserialize)]
+pub struct SetVisibilityInput {
+    pub uri: String,
+    /// One of: public, cn_hidden, unlisted, pending_review, removed
+    pub visibility: String,
+    pub reason: Option<String>,
+}
+
+const VALID_VISIBILITIES: &[&str] = &["public", "cn_hidden", "removed"];
+
+pub async fn admin_set_visibility(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SetVisibilityInput>,
+) -> ApiResult<StatusCode> {
+    require_admin(&state, &headers)?;
+
+    if !VALID_VISIBILITIES.contains(&input.visibility.as_str()) {
+        return Err(AppError(fx_core::Error::BadRequest(
+            format!("invalid visibility: {}. Must be one of: {}", input.visibility, VALID_VISIBILITIES.join(", ")),
+        )));
+    }
+
+    article_service::set_visibility(&state.pool, &input.uri, &input.visibility, input.reason.as_deref()).await?;
+
+    // Notify author if visibility was restricted
+    if input.visibility == "removed" || input.visibility == "cn_hidden" {
+        let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
+        let msg = match input.visibility.as_str() {
+            "removed" => match &input.reason {
+                Some(r) => format!("「{}」已被删除: {}。你可以在30天内提交申诉。", article.title, r),
+                None => format!("「{}」已被删除。你可以在30天内提交申诉。", article.title),
+            },
+            "cn_hidden" => match &input.reason {
+                Some(r) => format!("「{}」已被设为仅国际站可见: {}", article.title, r),
+                None => format!("「{}」已被设为仅国际站可见", article.title),
+            },
+            _ => unreachable!(),
+        };
+        let notif_id = super::tid();
+        let _ = notification_service::create_notification(
+            &state.pool, &notif_id, &article.did, "system",
+            "visibility_changed", Some(&input.uri), Some(&msg),
+        ).await;
     }
 
     Ok(StatusCode::OK)
@@ -394,7 +447,7 @@ pub async fn admin_resolve_appeal(
             }
             "article_deleted" => {
                 if let Some(ref uri) = appeal.target_uri {
-                    let _ = article_service::restore_article(&state.pool, uri).await;
+                    let _ = article_service::set_visibility(&state.pool, uri, "public", None).await;
                 }
             }
             _ => {}

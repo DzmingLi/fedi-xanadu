@@ -4,6 +4,7 @@ use axum::{
     http::StatusCode,
 };
 use fx_core::models::*;
+use fx_core::region::default_visibility;
 use fx_core::services::{article_service, notification_service};
 use fx_core::validation::validate_create_article;
 
@@ -23,7 +24,7 @@ pub async fn list_articles(
 ) -> ApiResult<Json<Vec<Article>>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 100);
     let offset = q.offset.unwrap_or(0).max(0);
-    let articles = article_service::list_articles(&state.pool, limit, offset).await?;
+    let articles = article_service::list_articles(&state.pool, state.instance_mode, limit, offset).await?;
     Ok(Json(articles))
 }
 
@@ -31,7 +32,7 @@ pub async fn get_article(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
 ) -> ApiResult<Json<Article>> {
-    let article = article_service::get_article(&state.pool, &uri).await?;
+    let article = article_service::get_article(&state.pool, state.instance_mode, &uri).await?;
     Ok(Json(article))
 }
 
@@ -55,7 +56,6 @@ pub async fn get_article_content(
     let source = match tokio::fs::read_to_string(&src_path).await {
         Ok(s) => s,
         Err(_) => {
-            // Try fallback .typ extension
             tokio::fs::read_to_string(repo.join("content.typ"))
                 .await
                 .map_err(|_| AppError(fx_core::Error::NotFound {
@@ -65,7 +65,6 @@ pub async fn get_article_content(
         }
     };
 
-    // HTML format: source IS the html fragment, no rendering needed
     let html = if format == "html" {
         source.clone()
     } else if is_cached_fresh(&html_path, &src_path).await {
@@ -79,7 +78,6 @@ pub async fn get_article_content(
     Ok(Json(ArticleContent { source, html }))
 }
 
-/// Check if the cached HTML file exists and is newer than the source file.
 async fn is_cached_fresh(cache: &std::path::Path, source: &std::path::Path) -> bool {
     let (cache_meta, source_meta) = tokio::join!(
         tokio::fs::metadata(cache),
@@ -124,7 +122,6 @@ pub async fn create_article(
 
     let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
 
-    // Init pijul repo and write source file
     let node_id = uri_to_node_id(&at_uri);
     state.pijul.init_repo(&node_id)
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
@@ -137,7 +134,6 @@ pub async fn create_article(
     };
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
 
-    // For HTML format, no separate rendered file needed (source is the HTML)
     if input.content_format != "html" {
         let rendered_html = render_content(&input.content_format, &input.content, &repo_path)?;
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
@@ -157,9 +153,9 @@ pub async fn create_article(
 
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, translation_group,
+        default_visibility(user.phone_verified),
     ).await?;
 
-    // AT Protocol side-effect
     if let Some(pds) = pds_session(&state.pool, &user.token).await {
         let record = serde_json::json!({
             "$type": fx_atproto::lexicon::ARTICLE,
@@ -182,7 +178,6 @@ pub async fn create_article(
         }
     }
 
-    // Auto-bookmark
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
 
     Ok((StatusCode::CREATED, Json(article)))
@@ -199,7 +194,6 @@ pub struct ArticleFullResponse {
     votes: ArticleVoteSummary,
     series_context: Vec<fx_core::services::series_service::SeriesContextItem>,
     translations: Vec<Article>,
-    // Auth-dependent (None if not logged in)
     my_vote: i32,
     is_bookmarked: bool,
     learned: bool,
@@ -219,17 +213,16 @@ pub async fn get_article_full(
 ) -> ApiResult<Json<ArticleFullResponse>> {
     use fx_core::services::{vote_service, bookmark_service, series_service, learned_service};
 
-    // Run all queries concurrently on the server side
+    let mode = state.instance_mode;
     let (article, prereqs, forks, vote_summary, series_ctx, translations) = tokio::try_join!(
-        article_service::get_article(&state.pool, &uri),
+        article_service::get_article(&state.pool, mode, &uri),
         article_service::get_article_prereqs(&state.pool, &uri),
         article_service::get_article_forks(&state.pool, &uri),
         vote_service::get_vote_summary(&state.pool, &uri),
         series_service::get_series_context(&state.pool, &uri),
-        article_service::get_translations(&state.pool, &uri),
+        article_service::get_translations(&state.pool, mode, &uri),
     ).map_err(AppError)?;
 
-    // Content from filesystem (can't be in try_join with sqlx)
     let node_id = uri_to_node_id(&uri);
     let repo = state.pijul.repo_path(&node_id);
     let src_ext = match article.content_format.as_str() {
@@ -256,7 +249,6 @@ pub async fn get_article_full(
         rendered
     };
 
-    // Auth-dependent fields
     let (my_vote, is_bookmarked, learned) = if let Some(ref u) = user {
         let (mv, bk, lr) = tokio::join!(
             vote_service::get_my_vote(&state.pool, &uri, &u.did),
@@ -326,7 +318,7 @@ pub async fn get_articles_by_tag(
     Query(q): Query<TagArticlesQuery>,
 ) -> ApiResult<Json<Vec<Article>>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 100);
-    let articles = article_service::get_articles_by_tag(&state.pool, &q.tag_id, limit).await?;
+    let articles = article_service::get_articles_by_tag(&state.pool, state.instance_mode, &q.tag_id, limit).await?;
     Ok(Json(articles))
 }
 
@@ -341,17 +333,15 @@ pub async fn get_articles_by_did(
     Query(q): Query<DidArticlesQuery>,
 ) -> ApiResult<Json<Vec<Article>>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 200);
-    let articles = article_service::get_articles_by_did(&state.pool, &q.did, limit).await?;
+    let articles = article_service::get_articles_by_did(&state.pool, state.instance_mode, &q.did, limit).await?;
     Ok(Json(articles))
 }
-
-// --- Translations ---
 
 pub async fn get_translations(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
 ) -> ApiResult<Json<Vec<Article>>> {
-    let articles = article_service::get_translations(&state.pool, &uri).await?;
+    let articles = article_service::get_translations(&state.pool, state.instance_mode, &uri).await?;
     Ok(Json(articles))
 }
 
@@ -366,7 +356,7 @@ pub async fn fork_article(
         return Err(AppError(fx_core::Error::Validation(vec![e])));
     }
 
-    let source = article_service::get_article(&state.pool, &input.uri).await?;
+    let source = article_service::get_article(&state.pool, state.instance_mode, &input.uri).await?;
 
     let fork_at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
     let fork_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::FORK, tid());
@@ -378,9 +368,9 @@ pub async fn fork_article(
 
     let article = article_service::create_fork_record(
         &state.pool, &fork_uri, &input.uri, &fork_at_uri, &user.did, &source,
+        default_visibility(user.phone_verified),
     ).await?;
 
-    // AT Protocol side-effect
     if let Some(pds) = pds_session(&state.pool, &user.token).await {
         let record = serde_json::json!({
             "$type": fx_atproto::lexicon::FORK,
@@ -401,7 +391,6 @@ pub async fn fork_article(
         }
     }
 
-    // Notify source article author
     if let Err(e) = notification_service::create_notification(
         &state.pool, &tid(), &source.did, &user.did,
         "article_fork", Some(&input.uri), Some(&fork_at_uri),
@@ -419,7 +408,7 @@ pub struct ForkArticleInput {
 
 // --- Image upload ---
 
-const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024; // 10 MB
+const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp"];
 
 pub async fn upload_image(
@@ -471,7 +460,6 @@ pub async fn upload_image(
         .chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
         .collect();
-    // Prevent hidden files, path traversal, or empty names
     let safe_name = safe_name.trim_start_matches('.').to_string();
     if safe_name.is_empty() || safe_name == "content.typ" || safe_name == "content.md" || safe_name == "content.html" {
         return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
@@ -483,7 +471,6 @@ pub async fn upload_image(
 
     tokio::fs::write(&dest, &data).await?;
 
-    // Invalidate HTML cache
     let _ = tokio::fs::remove_file(repo_path.join("content.html")).await;
 
     if let Err(e) = state.pijul.record(&node_id, &format!("Add image: {safe_name}")) {
@@ -603,7 +590,7 @@ pub async fn update_article(
         }
     }
 
-    let article = article_service::get_article(&state.pool, &input.uri).await?;
+    let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
     Ok(Json(article))
 }
 
@@ -648,6 +635,6 @@ pub async fn search_articles(
     let uris = engine.search(&q.q, limit).await
         .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
 
-    let articles = article_service::get_articles_by_uris(&state.pool, &uris).await?;
+    let articles = article_service::get_articles_by_uris(&state.pool, state.instance_mode, &uris).await?;
     Ok(Json(articles))
 }

@@ -206,6 +206,17 @@ enum AdminCommand {
         #[arg(long)]
         reason: Option<String>,
     },
+    /// Set article visibility (public, cn_hidden, unlisted, pending_review, removed)
+    #[command(name = "set-visibility")]
+    SetVisibility {
+        /// Article AT URI
+        uri: String,
+        /// Visibility: public, cn_hidden, unlisted, pending_review, removed
+        visibility: String,
+        /// Reason (shown to author for cn_hidden/removed)
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// List pending appeals
     #[command(name = "appeals")]
     Appeals,
@@ -244,6 +255,9 @@ enum AdminCommand {
         /// License (default: CC-BY-SA-3.0)
         #[arg(long, default_value = "CC-BY-SA-3.0")]
         license: String,
+        /// AT URI of the article this is a translation of
+        #[arg(long)]
+        translation_of: Option<String>,
     },
 }
 
@@ -1083,6 +1097,17 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             println!("Soft-deleted (30-day appeal window): {uri}");
         }
 
+        AdminCommand::SetVisibility { uri, visibility, reason } => {
+            client()
+                .post(format!("{base}/admin/articles/visibility"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "uri": uri, "visibility": visibility, "reason": reason }))
+                .send().await?
+                .error_for_status().context("Set visibility failed")?;
+
+            println!("Set visibility to '{visibility}': {uri}");
+        }
+
         AdminCommand::Appeals => {
             let appeals: Vec<serde_json::Value> = client()
                 .get(format!("{base}/admin/appeals"))
@@ -1128,7 +1153,7 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             println!("Appeal {id} ({kind} by {did}): {status}");
         }
 
-        AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license } => {
+        AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license, translation_of } => {
             let content = std::fs::read_to_string(&file)
                 .with_context(|| format!("Cannot read {}", file.display()))?;
 
@@ -1159,6 +1184,7 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "content_format": content_format,
                 "lang": lang,
                 "license": license,
+                "translation_of": translation_of,
                 "tags": tags,
                 "prereqs": [],
             });

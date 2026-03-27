@@ -153,6 +153,7 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/series/articles", post(admin::admin_add_series_article))
         .route("/admin/articles/update", post(admin::admin_update_article))
         .route("/admin/articles/delete", post(admin::admin_delete_article))
+        .route("/admin/articles/visibility", post(admin::admin_set_visibility))
         .route("/admin/tags/merge", post(admin::admin_merge_tag))
         .route("/admin/ban-user", post(admin::admin_ban_user))
         .route("/admin/unban-user", post(admin::admin_unban_user))
@@ -207,6 +208,7 @@ pub(crate) struct AuthUser {
     pub did: String,
     pub token: String,
     pub banned: bool,
+    pub phone_verified: bool,
 }
 
 /// Requires authentication. Returns 401 if no valid session.
@@ -223,20 +225,30 @@ impl FromRequestParts<AppState> for Auth {
     }
 }
 
-/// Requires authentication + user is not banned. Returns 403 if banned.
+/// Requires authentication + permission to write.
+/// Rejects banned users (403) and, on CN instances, users without phone verification.
 pub(crate) struct WriteAuth(pub AuthUser);
 
 impl FromRequestParts<AppState> for WriteAuth {
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        match extract_auth_user(&state.pool, &parts.headers).await {
-            Some(user) if user.banned => Err(AppError(fx_core::Error::Forbidden {
+        let user = extract_auth_user(&state.pool, &parts.headers).await
+            .ok_or(AppError(fx_core::Error::Unauthorized))?;
+
+        if user.banned {
+            return Err(AppError(fx_core::Error::Forbidden {
                 action: "account is banned",
-            })),
-            Some(user) => Ok(WriteAuth(user)),
-            None => Err(AppError(fx_core::Error::Unauthorized)),
+            }));
         }
+
+        if state.instance_mode.requires_phone() && !user.phone_verified {
+            return Err(AppError(fx_core::Error::Forbidden {
+                action: "phone verification required",
+            }));
+        }
+
+        Ok(WriteAuth(user))
     }
 }
 
@@ -254,10 +266,22 @@ impl FromRequestParts<AppState> for MaybeAuth {
 async fn extract_auth_user(pool: &sqlx::PgPool, headers: &HeaderMap) -> Option<AuthUser> {
     let token = extract_bearer_token(headers)?;
     let did = auth_service::get_did_by_token(pool, token).await.ok()??;
-    let banned = fx_core::services::moderation_service::is_user_banned(pool, &did)
-        .await
-        .unwrap_or(false);
-    Some(AuthUser { did, token: token.to_string(), banned })
+
+    // Fetch ban status and phone verification in one query
+    let row: Option<(bool, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
+        "SELECT COALESCE(is_banned, false), phone_verified_at FROM platform_users WHERE did = $1",
+    )
+    .bind(&did)
+    .fetch_optional(pool)
+    .await
+    .ok()?;
+
+    let (banned, phone_verified) = match row {
+        Some((b, pv)) => (b, pv.is_some()),
+        None => (false, false), // AT Protocol user without platform_users row
+    };
+
+    Some(AuthUser { did, token: token.to_string(), banned, phone_verified })
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {

@@ -17,6 +17,10 @@ pub struct Config {
     /// Shared secret for admin API endpoints. Set via FX_ADMIN_SECRET env var.
     #[serde(default)]
     pub admin_secret: Option<String>,
+    /// Instance mode: "cn" or "intl" (default). Controls auth requirements
+    /// and content visibility rules. Set via FX_INSTANCE_MODE env var.
+    #[serde(default)]
+    pub instance_mode: String,
 }
 
 impl Default for Config {
@@ -29,6 +33,7 @@ impl Default for Config {
             instance_name: "Fedi-Xanadu".into(),
             cors_origins: String::new(),
             admin_secret: None,
+            instance_mode: String::new(),
         }
     }
 }

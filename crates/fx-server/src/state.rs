@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use fx_atproto::client::AtClient;
+use fx_core::region::InstanceMode;
 use fx_pijul::PijulStore;
 use sqlx::PgPool;
 
@@ -12,6 +13,7 @@ pub struct AppState {
     pub pijul: Arc<PijulStore>,
     pub at_client: AtClient,
     pub admin_secret: Option<String>,
+    pub instance_mode: InstanceMode,
 }
 
 impl AppState {
@@ -19,14 +21,18 @@ impl AppState {
         let pool = fx_core::db::create_pool(&config.database_url).await?;
         let pijul = Arc::new(PijulStore::new(&config.pijul_store_path));
         let at_client = AtClient::new();
+        let instance_mode = InstanceMode::from_str(&config.instance_mode);
 
         std::fs::create_dir_all(&config.pijul_store_path)?;
+
+        tracing::info!("instance mode: {}", instance_mode.as_str());
 
         Ok(Self {
             pool,
             pijul,
             at_client,
             admin_secret: config.admin_secret.clone(),
+            instance_mode,
         })
     }
 }

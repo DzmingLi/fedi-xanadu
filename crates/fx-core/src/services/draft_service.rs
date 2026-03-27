@@ -170,6 +170,7 @@ pub async fn publish_to_article(
     draft: &Draft,
     at_uri: &str,
     content_hash: &str,
+    default_visibility: &str,
 ) -> Result<(Vec<String>, Vec<ArticlePrereq>)> {
     let tags: Vec<String> = serde_json::from_str(&draft.tags).unwrap_or_default();
     let prereqs: Vec<ArticlePrereq> = serde_json::from_str(&draft.prereqs).unwrap_or_default();
@@ -177,8 +178,8 @@ pub async fn publish_to_article(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, license, prereq_threshold)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0.8)",
+        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, license, prereq_threshold, visibility)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0.8, $9)",
     )
     .bind(at_uri)
     .bind(&draft.did)
@@ -188,6 +189,7 @@ pub async fn publish_to_article(
     .bind(&draft.content_format)
     .bind(&draft.lang)
     .bind(&draft.license)
+    .bind(default_visibility)
     .execute(&mut *tx)
     .await?;
 

@@ -1,7 +1,18 @@
--- Soft-delete support for articles
+-- Article visibility
+--   public     — visible everywhere
+--   cn_hidden  — visible on intl only, hidden on CN instance
+--   removed    — admin-removed, 30-day appeal window
 ALTER TABLE articles
-  ADD COLUMN deleted_at   TIMESTAMPTZ,
-  ADD COLUMN delete_reason TEXT;
+  ADD COLUMN visibility    VARCHAR(20) NOT NULL DEFAULT 'public',
+  ADD COLUMN removed_at    TIMESTAMPTZ,
+  ADD COLUMN remove_reason TEXT;
+
+CREATE INDEX idx_articles_visibility ON articles(visibility);
+
+-- Phone verification (CN instance requires this for writes)
+ALTER TABLE platform_users
+  ADD COLUMN phone             VARCHAR(20) UNIQUE,
+  ADD COLUMN phone_verified_at TIMESTAMPTZ;
 
 -- Appeal system
 CREATE TABLE IF NOT EXISTS appeals (
