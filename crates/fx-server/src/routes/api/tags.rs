@@ -11,7 +11,7 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, IdQuery};
+use super::{WriteAuth, IdQuery};
 
 #[derive(serde::Deserialize)]
 pub struct SearchTagsQuery {
@@ -52,7 +52,7 @@ pub async fn get_tag(
 
 pub async fn create_tag(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<CreateTag>,
 ) -> ApiResult<(StatusCode, Json<Tag>)> {
     let mut errors = Vec::new();

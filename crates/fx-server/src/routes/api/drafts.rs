@@ -9,7 +9,7 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use super::{Auth, tid, content_hash, uri_to_node_id, pds_session, now_rfc3339, log_pds_error};
+use super::{Auth, WriteAuth, tid, content_hash, uri_to_node_id, pds_session, now_rfc3339, log_pds_error};
 
 pub async fn list_drafts(
     State(state): State<AppState>,
@@ -21,7 +21,7 @@ pub async fn list_drafts(
 
 pub async fn save_draft(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<SaveDraft>,
 ) -> ApiResult<(StatusCode, Json<Draft>)> {
     validation::validate_save_draft(&input)?;
@@ -64,7 +64,7 @@ pub async fn save_draft(
 
 pub async fn update_draft(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<UpdateDraft>,
 ) -> ApiResult<Json<Draft>> {
     let draft = draft_service::update_draft(&state.pool, &user.did, &input).await?;
@@ -78,7 +78,7 @@ pub struct DeleteDraftInput {
 
 pub async fn delete_draft(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<DeleteDraftInput>,
 ) -> ApiResult<StatusCode> {
     let draft = draft_service::get_draft(&state.pool, &input.id).await?;
@@ -114,7 +114,7 @@ pub struct PublishDraftInput {
 
 pub async fn publish_draft(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<PublishDraftInput>,
 ) -> ApiResult<(StatusCode, Json<Article>)> {
     let draft = draft_service::get_draft(&state.pool, &input.id).await?;

@@ -8,7 +8,7 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use super::{Auth, UriQuery, tid};
+use super::{WriteAuth, UriQuery, tid};
 
 #[derive(serde::Deserialize)]
 pub(crate) struct CreateSeriesInput {
@@ -39,7 +39,7 @@ pub async fn list_series(
 
 pub async fn create_series(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<CreateSeriesInput>,
 ) -> ApiResult<(StatusCode, Json<series_service::SeriesRow>)> {
     if let Err(e) = validation::validate_title(&input.title) {
@@ -85,7 +85,7 @@ pub(crate) struct AddSeriesArticleInput {
 
 pub async fn add_series_article(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<AddSeriesArticleInput>,
 ) -> ApiResult<StatusCode> {
     if let Err(e) = validation::validate_at_uri(&input.article_uri) {
@@ -107,7 +107,7 @@ pub struct RemoveSeriesArticleInput {
 
 pub async fn remove_series_article(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<RemoveSeriesArticleInput>,
 ) -> ApiResult<StatusCode> {
     let owner = series_service::get_series_owner(&state.pool, &input.series_id).await?;
@@ -127,7 +127,7 @@ pub(crate) struct AddSeriesPrereqInput {
 
 pub async fn add_series_prereq(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<AddSeriesPrereqInput>,
 ) -> ApiResult<StatusCode> {
     let owner = series_service::get_series_owner(&state.pool, &input.series_id).await?;
@@ -152,7 +152,7 @@ pub(crate) struct RemoveSeriesPrereqInput {
 
 pub async fn remove_series_prereq(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<RemoveSeriesPrereqInput>,
 ) -> ApiResult<StatusCode> {
     let owner = series_service::get_series_owner(&state.pool, &input.series_id).await?;
@@ -214,7 +214,7 @@ pub(crate) struct ReorderArticlesInput {
 
 pub async fn reorder_articles(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<ReorderArticlesInput>,
 ) -> ApiResult<StatusCode> {
     let owner = series_service::get_series_owner(&state.pool, &input.series_id).await?;
@@ -235,7 +235,7 @@ pub(crate) struct ReorderChildrenInput {
 
 pub async fn reorder_children(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<ReorderChildrenInput>,
 ) -> ApiResult<StatusCode> {
     let owner = series_service::get_series_owner(&state.pool, &input.parent_id).await?;

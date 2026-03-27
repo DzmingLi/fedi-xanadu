@@ -151,7 +151,11 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/series", post(admin::admin_create_series))
         .route("/admin/series/articles", post(admin::admin_add_series_article))
         .route("/admin/articles/update", post(admin::admin_update_article))
+        .route("/admin/articles/delete", post(admin::admin_delete_article))
         .route("/admin/tags/merge", post(admin::admin_merge_tag))
+        .route("/admin/ban-user", post(admin::admin_ban_user))
+        .route("/admin/unban-user", post(admin::admin_unban_user))
+        .route("/admin/banned-users", get(admin::admin_list_banned_users))
 }
 
 // --- Health ---
@@ -197,6 +201,7 @@ pub(crate) struct TagIdQuery {
 pub(crate) struct AuthUser {
     pub did: String,
     pub token: String,
+    pub banned: bool,
 }
 
 /// Requires authentication. Returns 401 if no valid session.
@@ -208,6 +213,23 @@ impl FromRequestParts<AppState> for Auth {
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         match extract_auth_user(&state.pool, &parts.headers).await {
             Some(user) => Ok(Auth(user)),
+            None => Err(AppError(fx_core::Error::Unauthorized)),
+        }
+    }
+}
+
+/// Requires authentication + user is not banned. Returns 403 if banned.
+pub(crate) struct WriteAuth(pub AuthUser);
+
+impl FromRequestParts<AppState> for WriteAuth {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        match extract_auth_user(&state.pool, &parts.headers).await {
+            Some(user) if user.banned => Err(AppError(fx_core::Error::Forbidden {
+                action: "account is banned",
+            })),
+            Some(user) => Ok(WriteAuth(user)),
             None => Err(AppError(fx_core::Error::Unauthorized)),
         }
     }
@@ -227,7 +249,10 @@ impl FromRequestParts<AppState> for MaybeAuth {
 async fn extract_auth_user(pool: &sqlx::PgPool, headers: &HeaderMap) -> Option<AuthUser> {
     let token = extract_bearer_token(headers)?;
     let did = auth_service::get_did_by_token(pool, token).await.ok()??;
-    Some(AuthUser { did, token: token.to_string() })
+    let banned = fx_core::services::moderation_service::is_user_banned(pool, &did)
+        .await
+        .unwrap_or(false);
+    Some(AuthUser { did, token: token.to_string(), banned })
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {

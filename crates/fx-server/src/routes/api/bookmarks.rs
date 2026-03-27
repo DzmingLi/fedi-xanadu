@@ -8,7 +8,7 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::Auth;
+use super::{Auth, WriteAuth};
 
 #[derive(serde::Deserialize)]
 pub struct AddBookmarkInput {
@@ -26,7 +26,7 @@ pub async fn list_bookmarks(
 
 pub async fn add_bookmark(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<AddBookmarkInput>,
 ) -> ApiResult<StatusCode> {
     let folder = input.folder_path.unwrap_or_else(|| "/".to_string());
@@ -49,7 +49,7 @@ pub struct RemoveBookmarkInput {
 
 pub async fn remove_bookmark(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<RemoveBookmarkInput>,
 ) -> ApiResult<StatusCode> {
     bookmark_service::remove_bookmark(&state.pool, &user.did, &input.uri).await?;
@@ -64,7 +64,7 @@ pub(crate) struct MoveBookmarkInput {
 
 pub async fn move_bookmark(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<MoveBookmarkInput>,
 ) -> ApiResult<StatusCode> {
     if let Err(e) = validation::validate_folder_path(&input.folder_path) {

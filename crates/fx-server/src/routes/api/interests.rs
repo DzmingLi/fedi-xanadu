@@ -6,7 +6,7 @@ use axum::{
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::Auth;
+use super::{Auth, WriteAuth};
 
 const MAX_INTERESTS: usize = 100;
 
@@ -30,7 +30,7 @@ pub(crate) struct SetInterestsInput {
 
 pub async fn set_interests(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<SetInterestsInput>,
 ) -> ApiResult<StatusCode> {
     if input.tag_ids.len() > MAX_INTERESTS {

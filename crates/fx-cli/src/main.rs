@@ -179,6 +179,30 @@ enum AdminCommand {
         #[arg(short, long)]
         desc: Option<String>,
     },
+    /// Ban a user (by DID or handle)
+    #[command(name = "ban-user")]
+    BanUser {
+        /// DID or handle of the user to ban
+        did_or_handle: String,
+        /// Reason for the ban
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Unban a user (by DID or handle)
+    #[command(name = "unban-user")]
+    UnbanUser {
+        /// DID or handle of the user to unban
+        did_or_handle: String,
+    },
+    /// List all banned users
+    #[command(name = "banned-users")]
+    BannedUsers,
+    /// Delete an article (admin override, bypasses ownership)
+    #[command(name = "delete-article")]
+    DeleteArticle {
+        /// Article AT URI
+        uri: String,
+    },
     /// Publish an article as a platform user
     Publish {
         /// Platform user handle to publish as
@@ -830,6 +854,16 @@ fn validate_html_fragment(content: &str) -> Result<()> {
     Ok(())
 }
 
+/// Resolve a DID or handle to a DID. If already a DID (starts with "did:"), pass through.
+/// Otherwise treat as a platform user handle and generate did:local:<handle>.
+fn resolve_did_or_handle(input: &str) -> String {
+    if input.starts_with("did:") {
+        input.to_string()
+    } else {
+        format!("did:local:{input}")
+    }
+}
+
 async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> Result<()> {
     let secret = std::env::var("FX_ADMIN_SECRET")
         .ok()
@@ -974,6 +1008,61 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 .error_for_status().context("Admin update failed")?;
 
             println!("Updated article: {uri}");
+        }
+
+        AdminCommand::BanUser { did_or_handle, reason } => {
+            let did = resolve_did_or_handle(&did_or_handle);
+            client()
+                .post(format!("{base}/admin/ban-user"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "did": did, "reason": reason }))
+                .send().await?
+                .error_for_status().context("Ban user failed")?;
+
+            println!("Banned: {did_or_handle} ({did})");
+        }
+
+        AdminCommand::UnbanUser { did_or_handle } => {
+            let did = resolve_did_or_handle(&did_or_handle);
+            client()
+                .post(format!("{base}/admin/unban-user"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "did": did }))
+                .send().await?
+                .error_for_status().context("Unban user failed")?;
+
+            println!("Unbanned: {did_or_handle} ({did})");
+        }
+
+        AdminCommand::BannedUsers => {
+            let users: Vec<serde_json::Value> = client()
+                .get(format!("{base}/admin/banned-users"))
+                .header("x-admin-secret", &secret)
+                .send().await?
+                .error_for_status().context("List banned users failed")?
+                .json().await?;
+
+            if users.is_empty() {
+                println!("No banned users.");
+            }
+            for u in &users {
+                let handle = u["handle"].as_str().unwrap_or("?");
+                let did = u["did"].as_str().unwrap_or("?");
+                let reason = u["ban_reason"].as_str().unwrap_or("-");
+                let at = u["banned_at"].as_str().unwrap_or("?");
+                println!("{handle}\t{did}\t{at}\t{reason}");
+            }
+        }
+
+        AdminCommand::DeleteArticle { uri } => {
+            client()
+                .post(format!("{base}/admin/articles/delete"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "uri": uri }))
+                .send().await?
+                .error_for_status().context("Delete article failed")?;
+
+            println!("Deleted: {uri}");
         }
 
         AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license } => {

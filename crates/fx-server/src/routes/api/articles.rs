@@ -9,7 +9,7 @@ use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use super::{Auth, UriQuery, content_hash, tid, uri_to_node_id, pds_session, now_rfc3339, log_pds_error};
+use super::{WriteAuth, UriQuery, content_hash, tid, uri_to_node_id, pds_session, now_rfc3339, log_pds_error};
 
 #[derive(serde::Deserialize)]
 pub struct ListArticlesQuery {
@@ -117,7 +117,7 @@ pub async fn get_article_forks(
 
 pub async fn create_article(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<CreateArticle>,
 ) -> ApiResult<(StatusCode, Json<Article>)> {
     validate_create_article(&input)?;
@@ -359,7 +359,7 @@ pub async fn get_translations(
 
 pub async fn fork_article(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<ForkArticleInput>,
 ) -> ApiResult<(StatusCode, Json<Article>)> {
     if let Err(e) = fx_core::validation::validate_at_uri(&input.uri) {
@@ -424,7 +424,7 @@ const ALLOWED_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp"
 
 pub async fn upload_image(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     mut multipart: Multipart,
 ) -> ApiResult<Json<ImageUploadResponse>> {
     let mut article_uri: Option<String> = None;
@@ -550,7 +550,7 @@ pub struct UpdateArticleInput {
 
 pub async fn update_article(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<UpdateArticleInput>,
 ) -> ApiResult<Json<Article>> {
     let mut errors = Vec::new();
@@ -616,7 +616,7 @@ pub struct DeleteArticleInput {
 
 pub async fn delete_article(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<DeleteArticleInput>,
 ) -> ApiResult<StatusCode> {
     let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;

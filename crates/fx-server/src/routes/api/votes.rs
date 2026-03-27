@@ -6,7 +6,7 @@ use fx_core::services::vote_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, MaybeAuth, UriQuery, pds_session, tid, now_rfc3339, log_pds_error};
+use super::{WriteAuth, MaybeAuth, UriQuery, pds_session, tid, now_rfc3339, log_pds_error};
 
 #[derive(serde::Deserialize)]
 pub struct CastVoteInput {
@@ -29,7 +29,7 @@ pub(crate) struct MyVoteOutput {
 
 pub async fn cast_vote(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<CastVoteInput>,
 ) -> ApiResult<Json<VoteSummary>> {
     let vote_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::VOTE, tid());

@@ -4,7 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use fx_core::models::{Article, CreateArticle};
-use fx_core::services::{article_service, platform_user_service, series_service, tag_service};
+use fx_core::services::{article_service, moderation_service, platform_user_service, series_service, tag_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -247,5 +247,62 @@ pub async fn admin_merge_tag(
     require_admin(&state, &headers)?;
 
     tag_service::merge_tag(&state.pool, &input.from, &input.into).await?;
+    Ok(StatusCode::OK)
+}
+
+// --- Moderation ---
+
+#[derive(serde::Deserialize)]
+pub struct BanUserInput {
+    pub did: String,
+    pub reason: Option<String>,
+}
+
+pub async fn admin_ban_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<BanUserInput>,
+) -> ApiResult<StatusCode> {
+    require_admin(&state, &headers)?;
+    moderation_service::ban_user(&state.pool, &input.did, input.reason.as_deref()).await?;
+    Ok(StatusCode::OK)
+}
+
+#[derive(serde::Deserialize)]
+pub struct UnbanUserInput {
+    pub did: String,
+}
+
+pub async fn admin_unban_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<UnbanUserInput>,
+) -> ApiResult<StatusCode> {
+    require_admin(&state, &headers)?;
+    moderation_service::unban_user(&state.pool, &input.did).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn admin_list_banned_users(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Json<Vec<moderation_service::BannedUser>>> {
+    require_admin(&state, &headers)?;
+    let users = moderation_service::list_banned_users(&state.pool).await?;
+    Ok(Json(users))
+}
+
+#[derive(serde::Deserialize)]
+pub struct AdminDeleteArticleInput {
+    pub uri: String,
+}
+
+pub async fn admin_delete_article(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<AdminDeleteArticleInput>,
+) -> ApiResult<StatusCode> {
+    require_admin(&state, &headers)?;
+    article_service::delete_article(&state.pool, &input.uri).await?;
     Ok(StatusCode::OK)
 }

@@ -7,7 +7,7 @@ use fx_core::services::{social_service, notification_service};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, DidQuery, tid};
+use super::{Auth, WriteAuth, DidQuery, tid};
 
 #[derive(serde::Deserialize)]
 pub struct FollowInput {
@@ -24,7 +24,7 @@ pub async fn list_follows(
 
 pub async fn follow(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<FollowInput>,
 ) -> ApiResult<StatusCode> {
     social_service::follow(&state.pool, &user.did, &input.did).await?;
@@ -41,7 +41,7 @@ pub async fn follow(
 
 pub async fn unfollow(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<FollowInput>,
 ) -> ApiResult<StatusCode> {
     social_service::unfollow(&state.pool, &user.did, &input.did).await?;
@@ -50,7 +50,7 @@ pub async fn unfollow(
 
 pub async fn mark_seen(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<FollowInput>,
 ) -> ApiResult<StatusCode> {
     social_service::mark_seen(&state.pool, &user.did, &input.did).await?;

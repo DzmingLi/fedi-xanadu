@@ -5,7 +5,7 @@ use axum::{
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, pds_session, now_rfc3339, log_pds_error};
+use super::{Auth, WriteAuth, pds_session, now_rfc3339, log_pds_error};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct KeybindingsData {
@@ -33,7 +33,7 @@ pub async fn get_keybindings(
 
 pub async fn set_keybindings(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<KeybindingsData>,
 ) -> ApiResult<Json<KeybindingsData>> {
     let json_str = serde_json::to_string(&input.bindings)?;

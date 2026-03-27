@@ -7,7 +7,7 @@ use fx_core::services::learned_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, MaybeAuth, UriQuery};
+use super::{Auth, WriteAuth, MaybeAuth, UriQuery};
 
 #[derive(serde::Deserialize)]
 pub struct MarkLearnedInput {
@@ -16,7 +16,7 @@ pub struct MarkLearnedInput {
 
 pub async fn mark_learned(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<MarkLearnedInput>,
 ) -> ApiResult<StatusCode> {
     learned_service::mark_learned(&state.pool, &user.did, &input.article_uri).await?;
@@ -25,7 +25,7 @@ pub async fn mark_learned(
 
 pub async fn unmark_learned(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<MarkLearnedInput>,
 ) -> ApiResult<StatusCode> {
     learned_service::unmark_learned(&state.pool, &user.did, &input.article_uri).await?;

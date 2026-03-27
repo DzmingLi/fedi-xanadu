@@ -7,7 +7,7 @@ use fx_core::services::skill_tree_service;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, MaybeAuth, UriQuery, tid};
+use super::{WriteAuth, MaybeAuth, UriQuery, tid};
 
 #[derive(serde::Deserialize)]
 pub struct ListSkillTreesQuery {
@@ -39,7 +39,7 @@ pub(crate) struct EdgeInput {
 
 pub async fn create_skill_tree(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<CreateSkillTreeInput>,
 ) -> ApiResult<(StatusCode, Json<skill_tree_service::SkillTreeRow>)> {
     if let Err(e) = fx_core::validation::validate_title(&input.title) {
@@ -74,7 +74,7 @@ pub(crate) struct ForkSkillTreeInput {
 
 pub async fn fork_skill_tree(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<ForkSkillTreeInput>,
 ) -> ApiResult<(StatusCode, Json<skill_tree_service::SkillTreeRow>)> {
     let new_uri = format!("at://{}/li.dzming.fedi-xanadu.skilltree/{}", user.did, tid());
@@ -91,7 +91,7 @@ pub(crate) struct SkillTreeEdgeInput {
 
 pub async fn add_skill_tree_edge(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<SkillTreeEdgeInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::add_edge(&state.pool, &input.tree_uri, &user.did, &input.parent_tag, &input.child_tag).await?;
@@ -100,7 +100,7 @@ pub async fn add_skill_tree_edge(
 
 pub async fn remove_skill_tree_edge(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<SkillTreeEdgeInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::remove_edge(&state.pool, &input.tree_uri, &user.did, &input.parent_tag, &input.child_tag).await?;
@@ -114,7 +114,7 @@ pub(crate) struct AdoptTreeInput {
 
 pub async fn adopt_skill_tree(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<AdoptTreeInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::adopt_skill_tree(&state.pool, &user.did, &input.tree_uri).await?;

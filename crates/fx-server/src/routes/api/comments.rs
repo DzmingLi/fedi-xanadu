@@ -9,7 +9,7 @@ use fx_core::validation::validate_comment_body;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, MaybeAuth, UriQuery, tid};
+use super::{WriteAuth, MaybeAuth, UriQuery, tid};
 
 #[derive(serde::Deserialize)]
 pub struct ListCommentsQuery {
@@ -36,7 +36,7 @@ pub struct CreateComment {
 
 pub async fn create_comment(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<CreateComment>,
 ) -> ApiResult<(StatusCode, Json<Comment>)> {
     validate_comment_body(&input.body)
@@ -95,7 +95,7 @@ pub struct UpdateComment {
 
 pub async fn update_comment(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<UpdateComment>,
 ) -> ApiResult<Json<Comment>> {
     validate_comment_body(&input.body)
@@ -118,7 +118,7 @@ pub struct DeleteComment {
 
 pub async fn delete_comment(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<DeleteComment>,
 ) -> ApiResult<StatusCode> {
     let (comment_did, article_did) =
@@ -150,7 +150,7 @@ pub struct CommentVoteResult {
 
 pub async fn vote_comment(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<CommentVoteInput>,
 ) -> ApiResult<Json<CommentVoteResult>> {
     let value = input.value.clamp(-1, 1);

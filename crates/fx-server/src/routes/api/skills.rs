@@ -9,7 +9,7 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, MaybeAuth, TagIdQuery};
+use super::{WriteAuth, MaybeAuth, TagIdQuery};
 
 pub async fn list_user_skills(
     State(state): State<AppState>,
@@ -28,7 +28,7 @@ pub struct LightSkillInput {
 
 pub async fn light_skill(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<LightSkillInput>,
 ) -> ApiResult<StatusCode> {
     if let Err(e) = validation::validate_tag_id(&input.tag_id) {
@@ -42,7 +42,7 @@ pub async fn light_skill(
 
 pub async fn delete_skill(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<TagIdQuery>,
 ) -> ApiResult<StatusCode> {
     if let Err(e) = validation::validate_tag_id(&input.tag_id) {
@@ -72,7 +72,7 @@ pub struct AddTagChildInput {
 
 pub async fn add_tag_child(
     State(state): State<AppState>,
-    Auth(user): Auth,
+    WriteAuth(user): WriteAuth,
     Json(input): Json<AddTagChildInput>,
 ) -> ApiResult<StatusCode> {
     let mut errors = Vec::new();
