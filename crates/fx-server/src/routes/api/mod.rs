@@ -144,6 +144,7 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/articles", post(admin::admin_create_article))
         .route("/admin/series", post(admin::admin_create_series))
         .route("/admin/series/articles", post(admin::admin_add_series_article))
+        .route("/admin/articles/update", post(admin::admin_update_article))
         .route("/admin/tags/merge", post(admin::admin_merge_tag))
 }
 

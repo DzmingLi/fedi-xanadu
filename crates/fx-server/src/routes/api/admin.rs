@@ -177,6 +177,59 @@ pub async fn admin_add_series_article(
     Ok(StatusCode::OK)
 }
 
+// --- Admin article update (bypass ownership check) ---
+
+#[derive(serde::Deserialize)]
+pub struct AdminUpdateArticleInput {
+    pub uri: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub content: Option<String>,
+}
+
+pub async fn admin_update_article(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<AdminUpdateArticleInput>,
+) -> ApiResult<Json<Article>> {
+    require_admin(&state, &headers)?;
+
+    if let Some(ref title) = input.title {
+        article_service::update_article_title(&state.pool, &input.uri, title).await?;
+    }
+    if let Some(ref desc) = input.description {
+        article_service::update_article_description(&state.pool, &input.uri, desc).await?;
+    }
+
+    if let Some(ref content) = input.content {
+        let format = article_service::get_content_format(&state.pool, &input.uri).await?;
+
+        let node_id = uri_to_node_id(&input.uri);
+        let repo_path = state.pijul.repo_path(&node_id);
+        let src_ext = match format.as_str() {
+            "markdown" => "md",
+            "html" => "html",
+            _ => "typ",
+        };
+        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
+
+        if format != "html" {
+            let rendered = super::articles::render_content(&format, content, &repo_path)?;
+            let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+        }
+
+        let hash = content_hash(content);
+        article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;
+
+        if let Err(e) = state.pijul.record(&node_id, "Admin update") {
+            tracing::warn!("pijul record failed for {node_id}: {e}");
+        }
+    }
+
+    let article = article_service::get_article(&state.pool, &input.uri).await?;
+    Ok(Json(article))
+}
+
 // --- Admin tag merge ---
 
 #[derive(serde::Deserialize)]

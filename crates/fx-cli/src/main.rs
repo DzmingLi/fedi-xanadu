@@ -164,6 +164,21 @@ enum AdminCommand {
         #[arg(long)]
         article: String,
     },
+    /// Update an article's content (admin override, no auth needed)
+    Update {
+        /// Article AT URI
+        #[arg(long)]
+        uri: String,
+        /// Path to .md, .typ, or .html file
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+        /// New title
+        #[arg(short, long)]
+        title: Option<String>,
+        /// New description
+        #[arg(short, long)]
+        desc: Option<String>,
+    },
     /// Publish an article as a platform user
     Publish {
         /// Platform user handle to publish as
@@ -931,6 +946,33 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 .error_for_status().context("Add to series failed")?;
 
             println!("Added {article} to series {series}");
+        }
+
+        AdminCommand::Update { uri, file, title, desc } => {
+            let mut body = serde_json::json!({ "uri": uri });
+            if let Some(ref t) = title {
+                body["title"] = serde_json::Value::String(t.clone());
+            }
+            if let Some(ref d) = desc {
+                body["description"] = serde_json::Value::String(d.clone());
+            }
+            if let Some(ref f) = file {
+                let content = std::fs::read_to_string(f)
+                    .with_context(|| format!("Cannot read {}", f.display()))?;
+                if f.extension().and_then(|e| e.to_str()) == Some("html") {
+                    validate_html_fragment(&content)?;
+                }
+                body["content"] = serde_json::Value::String(content);
+            }
+
+            client()
+                .post(format!("{base}/admin/articles/update"))
+                .header("x-admin-secret", &secret)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Admin update failed")?;
+
+            println!("Updated article: {uri}");
         }
 
         AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license } => {
