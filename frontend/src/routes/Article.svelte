@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getArticle, getArticleContent, getArticlePrereqs, getArticleForks, listBookmarks, addBookmark, removeBookmark, getArticleVotes, getMyVote, castVote, getSeriesContext, forkArticle, getTranslations, deleteArticle, isLearned as apiIsLearned, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned } from '../lib/api';
+  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { tagName } from '../lib/display';
   import { t, LANG_NAMES } from '../lib/i18n';
@@ -43,33 +43,29 @@
     learned = false;
     const ac = new AbortController();
 
-    // Phase 1: Load core data (article + content) — render ASAP
-    Promise.all([
-      getArticle(uri),
-      getArticleContent(uri),
-    ]).then(([a, c]) => {
+    // Single request for all article page data
+    getArticleFull(uri).then(data => {
       if (ac.signal.aborted) return;
-      article = a;
-      content = c;
+      article = data.article;
+      content = data.content;
+      prereqs = data.prereqs;
+      forks = data.forks;
+      votes = { target_uri: uri, score: data.votes.score, upvotes: data.votes.upvotes, downvotes: data.votes.downvotes };
+      seriesContext = data.series_context;
+      translations = data.translations;
+      myVote = data.my_vote;
+      learned = data.learned;
+      // Set bookmarked state from server response
+      if (data.is_bookmarked) {
+        bookmarks = [{ article_uri: uri, folder_path: '/', created_at: '', title: '', description: '' }];
+      } else {
+        bookmarks = bookmarks.filter(b => b.article_uri !== uri);
+      }
       commentThread?.loadComments();
     }).catch(e => {
       if (ac.signal.aborted) return;
       error = e.message;
     });
-
-    // Phase 2: Load secondary data in parallel, don't block rendering
-    getArticlePrereqs(uri).then(p => { if (!ac.signal.aborted) prereqs = p; }).catch(() => {});
-    getArticleForks(uri).then(f => { if (!ac.signal.aborted) forks = f; }).catch(() => {});
-    getArticleVotes(uri).then(v => { if (!ac.signal.aborted) votes = v; }).catch(() => {});
-    getSeriesContext(uri).then(sc => { if (!ac.signal.aborted) seriesContext = sc; }).catch(() => {});
-    getTranslations(uri).then(tr => { if (!ac.signal.aborted) translations = tr; }).catch(() => {});
-
-    // Phase 3: Auth-dependent requests — only if logged in
-    if (getAuth()) {
-      listBookmarks().then(bk => { if (!ac.signal.aborted) bookmarks = bk; }).catch(() => {});
-      getMyVote(uri).then(mv => { if (!ac.signal.aborted) myVote = mv.value; }).catch(() => {});
-      apiIsLearned(uri).then(lr => { if (!ac.signal.aborted) learned = lr.learned; }).catch(() => {});
-    }
 
     return () => ac.abort();
   });

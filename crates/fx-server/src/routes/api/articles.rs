@@ -188,6 +188,108 @@ pub async fn create_article(
     Ok((StatusCode::CREATED, Json(article)))
 }
 
+// --- Full article page data (single request) ---
+
+#[derive(serde::Serialize)]
+pub struct ArticleFullResponse {
+    article: Article,
+    content: ArticleContent,
+    prereqs: Vec<ArticlePrereqRow>,
+    forks: Vec<ForkWithTitle>,
+    votes: ArticleVoteSummary,
+    series_context: Vec<fx_core::services::series_service::SeriesContextItem>,
+    translations: Vec<Article>,
+    // Auth-dependent (None if not logged in)
+    my_vote: i32,
+    is_bookmarked: bool,
+    learned: bool,
+}
+
+#[derive(serde::Serialize)]
+struct ArticleVoteSummary {
+    score: i64,
+    upvotes: i64,
+    downvotes: i64,
+}
+
+pub async fn get_article_full(
+    State(state): State<AppState>,
+    super::MaybeAuth(user): super::MaybeAuth,
+    Query(UriQuery { uri }): Query<UriQuery>,
+) -> ApiResult<Json<ArticleFullResponse>> {
+    use fx_core::services::{vote_service, bookmark_service, series_service, learned_service};
+
+    // Run all queries concurrently on the server side
+    let (article, prereqs, forks, vote_summary, series_ctx, translations) = tokio::try_join!(
+        article_service::get_article(&state.pool, &uri),
+        article_service::get_article_prereqs(&state.pool, &uri),
+        article_service::get_article_forks(&state.pool, &uri),
+        vote_service::get_vote_summary(&state.pool, &uri),
+        series_service::get_series_context(&state.pool, &uri),
+        article_service::get_translations(&state.pool, &uri),
+    ).map_err(AppError)?;
+
+    // Content from filesystem (can't be in try_join with sqlx)
+    let node_id = uri_to_node_id(&uri);
+    let repo = state.pijul.repo_path(&node_id);
+    let src_ext = match article.content_format.as_str() {
+        "markdown" => "md",
+        "html" => "html",
+        _ => "typ",
+    };
+    let src_path = repo.join(format!("content.{src_ext}"));
+    let html_path = repo.join("content.html");
+
+    let source = match tokio::fs::read_to_string(&src_path).await {
+        Ok(s) => s,
+        Err(_) => tokio::fs::read_to_string(repo.join("content.typ"))
+            .await
+            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?,
+    };
+    let html = if article.content_format == "html" {
+        source.clone()
+    } else if is_cached_fresh(&html_path, &src_path).await {
+        tokio::fs::read_to_string(&html_path).await?
+    } else {
+        let rendered = render_content(&article.content_format, &source, &repo)?;
+        let _ = tokio::fs::write(&html_path, &rendered).await;
+        rendered
+    };
+
+    // Auth-dependent fields
+    let (my_vote, is_bookmarked, learned) = if let Some(ref u) = user {
+        let (mv, bk, lr) = tokio::join!(
+            vote_service::get_my_vote(&state.pool, &uri, &u.did),
+            bookmark_service::list_bookmarks(&state.pool, &u.did),
+            learned_service::is_learned(&state.pool, &u.did, &uri),
+        );
+        (
+            mv.unwrap_or(0),
+            bk.map(|bks| bks.iter().any(|b| b.article_uri == uri)).unwrap_or(false),
+            lr.unwrap_or(false),
+        )
+    } else {
+        (0, false, false)
+    };
+
+    Ok(Json(ArticleFullResponse {
+        article,
+        content: ArticleContent { source, html },
+        prereqs,
+        forks,
+        votes: ArticleVoteSummary {
+            score: vote_summary.score,
+            upvotes: vote_summary.upvotes,
+            downvotes: vote_summary.downvotes,
+        },
+        series_context: series_ctx,
+        translations,
+        my_vote,
+        is_bookmarked,
+        learned,
+    }))
+}
+
 // --- Bulk article metadata ---
 
 #[derive(serde::Deserialize)]

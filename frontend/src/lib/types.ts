@@ -189,6 +189,19 @@ export interface SeriesContextItem {
   next: { article_uri: string; title: string }[];
 }
 
+export interface ArticleFullResponse {
+  article: Article;
+  content: ArticleContent;
+  prereqs: ArticlePrereqRow[];
+  forks: ForkWithTitle[];
+  votes: VoteSummary;
+  series_context: SeriesContextItem[];
+  translations: Article[];
+  my_vote: number;
+  is_bookmarked: boolean;
+  learned: boolean;
+}
+
 export interface ProfileLink {
   label: string;
   url: string;

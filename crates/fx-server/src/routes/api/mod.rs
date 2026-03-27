@@ -58,6 +58,7 @@ pub fn routes() -> Router<AppState> {
         .route("/articles", get(articles::list_articles).post(articles::create_article))
         .route("/articles/by-uri", get(articles::get_article))
         .route("/articles/by-uri/content", get(articles::get_article_content))
+        .route("/articles/full", get(articles::get_article_full))
         .route("/articles/by-uri/prereqs", get(articles::get_article_prereqs))
         .route("/articles/by-uri/forks", get(articles::get_article_forks))
         .route("/articles/all-teaches", get(articles::get_all_article_teaches))
