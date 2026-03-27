@@ -1,4 +1,5 @@
 pub mod article_service;
+pub mod learned_service;
 pub mod auth_service;
 pub mod platform_user_service;
 pub mod bookmark_service;

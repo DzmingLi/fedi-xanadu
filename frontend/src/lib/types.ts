@@ -76,12 +76,13 @@ export interface TagTreeEntry {
   child_tag: string;
 }
 
-export interface ArticleTagRow {
+export interface ArticleTeachRow {
   article_uri: string;
   tag_id: string;
   tag_name: string;
   tag_names: Record<string, string>;
 }
+
 
 export interface ArticlePrereqBulkRow {
   article_uri: string;

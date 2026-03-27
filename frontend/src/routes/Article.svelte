@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getArticle, getArticleContent, getArticlePrereqs, getArticleForks, listBookmarks, addBookmark, removeBookmark, getArticleVotes, getMyVote, castVote, getSeriesContext, forkArticle, getTranslations, deleteArticle } from '../lib/api';
+  import { getArticle, getArticleContent, getArticlePrereqs, getArticleForks, listBookmarks, addBookmark, removeBookmark, getArticleVotes, getMyVote, castVote, getSeriesContext, forkArticle, getTranslations, deleteArticle, isLearned as apiIsLearned, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { tagName } from '../lib/display';
   import { t, LANG_NAMES } from '../lib/i18n';
@@ -21,6 +21,7 @@
   let isLoggedIn = $derived(!!getAuth());
   let seriesContext = $state<SeriesContextItem[]>([]);
   let isOwner = $derived(!!getAuth() && article?.did === getAuth()?.did);
+  let learned = $state(false);
 
   interface TocItem { id: string; text: string; level: number; }
   let tocItems = $state<TocItem[]>([]);
@@ -50,7 +51,8 @@
       getMyVote(uri),
       getSeriesContext(uri),
       getTranslations(uri),
-    ]).then(([a, c, p, f, bk, v, mv, sc, tr]) => {
+      apiIsLearned(uri),
+    ]).then(([a, c, p, f, bk, v, mv, sc, tr, lr]) => {
       if (ac.signal.aborted) return;
       article = a;
       content = c;
@@ -61,6 +63,7 @@
       myVote = mv.value;
       seriesContext = sc;
       translations = tr;
+      learned = lr.learned;
       // Load comments via component
       commentThread?.loadComments();
     }).catch(e => {
@@ -125,6 +128,15 @@
       await addBookmark(uri);
     }
     bookmarks = await listBookmarks();
+  }
+
+  async function toggleLearned() {
+    if (learned) {
+      await apiUnmarkLearned(uri);
+    } else {
+      await apiMarkLearned(uri);
+    }
+    learned = !learned;
   }
 
   function doFork() {
@@ -348,6 +360,11 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
         </button>
 
+        <button class="action-btn learned-btn" class:active={learned} onclick={toggleLearned} disabled={!isLoggedIn} title={learned ? '已学会' : '标记学会'}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill={learned ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span class="learned-label">{learned ? '已学会' : '学会'}</span>
+        </button>
+
         <button class="action-btn" onclick={doFork} title={t('article.fork')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
         </button>
@@ -538,6 +555,19 @@
   .action-btn.danger:hover {
     border-color: #c44;
     color: #c44;
+  }
+  .learned-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .learned-btn.active {
+    background: rgba(95, 155, 101, 0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .learned-label {
+    font-size: 12px;
   }
   .action-score {
     font-size: 15px;

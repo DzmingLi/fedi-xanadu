@@ -2,7 +2,7 @@
   import { tagName } from '../display';
   import { authorName } from '../display';
   import { t } from '../i18n';
-  import type { Article, ArticleTagRow, ArticlePrereqBulkRow, Series } from '../types';
+  import type { Article, ArticleTeachRow, ArticlePrereqBulkRow, Series } from '../types';
 
   type CardVariant = 'home' | 'profile';
 
@@ -10,14 +10,14 @@
     article = undefined,
     series = undefined,
     articleCount = 0,
-    articleTags = [],
+    articleTeaches = [],
     articlePrereqs = [],
     variant = 'home' as CardVariant,
   }: {
     article?: Article;
     series?: Series;
     articleCount?: number;
-    articleTags?: ArticleTagRow[];
+    articleTeaches?: ArticleTeachRow[];
     articlePrereqs?: ArticlePrereqBulkRow[];
     variant?: CardVariant;
   } = $props();
@@ -35,7 +35,7 @@
     <div class="card-top">
       <span class="post-title">{article.title}</span>
       <div class="card-tags">
-        {#each articleTags as t}
+        {#each articleTeaches as t}
           <span class="tag" role="link" tabindex="0" onclick={(e) => navToTag(e, t.tag_id)} onkeydown={(e) => navToTag(e, t.tag_id)}>{tagName(t.tag_names, t.tag_name, t.tag_id)}</span>
         {/each}
         {#each articlePrereqs as p}

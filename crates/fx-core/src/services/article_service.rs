@@ -15,7 +15,7 @@ pub const ARTICLE_SELECT: &str = "\
 // ---- Row types local to this service ----
 
 #[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
-pub struct ArticleTagRow {
+pub struct ArticleTeachRow {
     pub article_uri: String,
     pub tag_id: String,
     pub tag_name: String,
@@ -98,7 +98,7 @@ pub async fn create_article(
         .await?;
 
         sqlx::query(
-            "INSERT INTO article_tags (article_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            "INSERT INTO article_teaches (article_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
         .bind(at_uri)
         .bind(tag_id)
@@ -162,10 +162,10 @@ pub async fn get_article_forks(pool: &PgPool, uri: &str) -> crate::Result<Vec<Fo
 }
 
 /// Bulk-fetch all article-tag mappings (with safety limit).
-pub async fn get_all_article_tags(pool: &PgPool, limit: i64) -> crate::Result<Vec<ArticleTagRow>> {
-    let rows = sqlx::query_as::<_, ArticleTagRow>(
+pub async fn get_all_article_teaches(pool: &PgPool, limit: i64) -> crate::Result<Vec<ArticleTeachRow>> {
+    let rows = sqlx::query_as::<_, ArticleTeachRow>(
         "SELECT at2.article_uri, at2.tag_id, t.name as tag_name, t.names as tag_names \
-         FROM article_tags at2 \
+         FROM article_teaches at2 \
          JOIN tags t ON t.id = at2.tag_id \
          ORDER BY at2.article_uri LIMIT $1",
     )
@@ -211,7 +211,7 @@ pub async fn get_articles_by_tag(pool: &PgPool, tag_id: &str, limit: i64) -> cra
     // Use ANY($1) with PostgreSQL array parameter
     let sql = format!(
         "{ARTICLE_SELECT} WHERE a.at_uri IN (\
-            SELECT at2.article_uri FROM article_tags at2 WHERE at2.tag_id = ANY($1)\
+            SELECT at2.article_uri FROM article_teaches at2 WHERE at2.tag_id = ANY($1)\
          ) \
          ORDER BY a.created_at DESC LIMIT $2"
     );
@@ -325,8 +325,8 @@ pub async fn create_fork_record(
     .await?;
 
     sqlx::query(
-        "INSERT INTO article_tags (article_uri, tag_id) \
-         SELECT $1, tag_id FROM article_tags WHERE article_uri = $2 \
+        "INSERT INTO article_teaches (article_uri, tag_id) \
+         SELECT $1, tag_id FROM article_teaches WHERE article_uri = $2 \
          ON CONFLICT DO NOTHING",
     )
     .bind(forked_uri)
@@ -398,7 +398,7 @@ pub async fn delete_article(pool: &PgPool, uri: &str) -> crate::Result<()> {
         .execute(&mut *tx)
         .await?;
 
-    // CASCADE handles: article_tags, article_prereqs, forks, user_bookmarks,
+    // CASCADE handles: article_teaches, article_prereqs, forks, user_bookmarks,
     // series_articles, comments (+ comment_votes via comments CASCADE)
     sqlx::query("DELETE FROM articles WHERE at_uri = $1")
         .bind(uri)

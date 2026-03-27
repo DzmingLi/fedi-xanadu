@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { listTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts } from '../lib/api';
+  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts } from '../lib/api';
   import { t } from '../lib/i18n';
   import type { Tag, Article } from '../lib/types';
 
@@ -70,14 +70,20 @@
     input.value = '';
   }
 
-  // For tag input
+  // For tag input with server-side autocomplete
   let newTagInput = $state('');
   let showTagSuggestions = $state(false);
-  let tagSuggestionList = $derived(
-    newTagInput.trim()
-      ? tags.filter(t => t.id.toLowerCase().includes(newTagInput.toLowerCase()) || t.name.toLowerCase().includes(newTagInput.toLowerCase())).slice(0, 8)
-      : []
-  );
+  let tagSuggestionList = $state<Tag[]>([]);
+  let searchTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    const q = newTagInput.trim();
+    clearTimeout(searchTimeout);
+    if (!q) { tagSuggestionList = []; return; }
+    searchTimeout = setTimeout(() => {
+      searchTags(q).then(results => { tagSuggestionList = results; });
+    }, 150);
+  });
 
   function addNewTag() {
     const val = newTagInput.trim();

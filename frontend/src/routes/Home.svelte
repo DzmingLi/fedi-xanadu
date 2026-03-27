@@ -1,6 +1,6 @@
 <script lang="ts" module>
   // Module-level cache — survives component destroy/recreate during SPA navigation
-  import type { Article, ArticleTagRow, ArticlePrereqBulkRow, Tag, TagTreeEntry, Series } from '../lib/types';
+  import type { Article, ArticleTeachRow, ArticlePrereqBulkRow, Tag, TagTreeEntry, Series } from '../lib/types';
   let _cache: {
     articles: Article[];
     allTags: Tag[];
@@ -8,7 +8,7 @@
     allSeries: Series[];
     seriesArticleUris: Set<string>;
     seriesArticleMap: Map<string, string[]>;
-    articleTags: Map<string, ArticleTagRow[]>;
+    articleTeaches: Map<string, ArticleTeachRow[]>;
     articlePrereqs: Map<string, ArticlePrereqBulkRow[]>;
     interests: string[];
     ts: number;
@@ -16,11 +16,11 @@
 </script>
 
 <script lang="ts">
-  import { listArticles, getAllArticleTags, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles } from '../lib/api';
+  import { listArticles, getAllArticleTeaches, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { authorName, tagName } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
-  import { buildSeriesArticleMaps, buildArticleTagMap } from '../lib/series';
+  import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
 
   let locale = $state(getLocale());
@@ -31,7 +31,7 @@
   let tagTree = $state<TagTreeEntry[]>(_cache?.tagTree ?? []);
   let loading = $state(!_cache);
 
-  let articleTags = $state(new Map<string, ArticleTagRow[]>(_cache?.articleTags ?? []));
+  let articleTeaches = $state(new Map<string, ArticleTeachRow[]>(_cache?.articleTeaches ?? []));
   let articlePrereqs = $state(new Map<string, ArticlePrereqBulkRow[]>(_cache?.articlePrereqs ?? []));
 
   // Series data
@@ -188,7 +188,7 @@
       const desc = categoryDescendants.get(activeTab);
       if (!desc) return [];
       candidateArticles = articles.filter(a => {
-        const tags = articleTags.get(a.at_uri) || [];
+        const tags = articleTeaches.get(a.at_uri) || [];
         return tags.some(t => desc.has(t.tag_id));
       });
     }
@@ -204,7 +204,7 @@
     const fetchData = async () => {
       const [arts, tags, prereqs, tgs, tree, seriesList, seriesArts] = await Promise.all([
         listArticles(),
-        getAllArticleTags(),
+        getAllArticleTeaches(),
         getAllArticlePrereqs(),
         listTags(),
         getTagTree(),
@@ -222,8 +222,8 @@
       seriesArticleUris = saMaps.seriesArticleUris;
       seriesArticleMap = saMaps.seriesArticleMap;
 
-      articleTags = buildArticleTagMap(tags);
-      articlePrereqs = buildArticleTagMap(prereqs);
+      articleTeaches = buildArticleRowMap(tags);
+      articlePrereqs = buildArticleRowMap(prereqs);
 
       // Load interests from server if logged in
       if (getAuth()) {
@@ -243,7 +243,7 @@
       _cache = {
         articles, allTags, tagTree, allSeries,
         seriesArticleUris, seriesArticleMap,
-        articleTags, articlePrereqs, interests,
+        articleTeaches, articlePrereqs, interests,
         ts: Date.now(),
       };
 
@@ -336,7 +336,7 @@
       {#if item.type === 'article' && item.article}
         <PostCard
           article={item.article}
-          articleTags={articleTags.get(item.article.at_uri) || []}
+          articleTeaches={articleTeaches.get(item.article.at_uri) || []}
           articlePrereqs={articlePrereqs.get(item.article.at_uri) || []}
           variant="home"
         />

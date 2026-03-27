@@ -14,6 +14,21 @@ use crate::state::AppState;
 use super::{Auth, IdQuery};
 
 #[derive(serde::Deserialize)]
+pub struct SearchTagsQuery {
+    pub q: String,
+    pub limit: Option<i64>,
+}
+
+pub async fn search_tags(
+    State(state): State<AppState>,
+    Query(q): Query<SearchTagsQuery>,
+) -> ApiResult<Json<Vec<Tag>>> {
+    let limit = q.limit.unwrap_or(10).clamp(1, 50);
+    let tags = tag_service::search_tags(&state.pool, &q.q, limit).await?;
+    Ok(Json(tags))
+}
+
+#[derive(serde::Deserialize)]
 pub struct ListTagsQuery {
     pub limit: Option<i64>,
 }

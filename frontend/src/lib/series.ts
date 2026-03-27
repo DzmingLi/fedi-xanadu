@@ -28,9 +28,9 @@ export function buildSeriesArticleMaps(rows: SeriesArticleRow[]): SeriesArticleM
 }
 
 /**
- * Build a map of article_uri -> tag rows from a flat list.
+ * Build a map of article_uri -> rows from a flat list.
  */
-export function buildArticleTagMap<T extends { article_uri: string }>(rows: T[]): Map<string, T[]> {
+export function buildArticleRowMap<T extends { article_uri: string }>(rows: T[]): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const t of rows) {
     const arr = map.get(t.article_uri) || [];

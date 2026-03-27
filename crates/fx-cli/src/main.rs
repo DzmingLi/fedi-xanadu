@@ -125,6 +125,16 @@ enum AdminCommand {
         /// Localized name
         name: String,
     },
+    /// Merge one tag into another (migrate all references)
+    #[command(name = "merge-tag")]
+    MergeTag {
+        /// Source tag ID (will be deleted)
+        #[arg(long)]
+        from: String,
+        /// Target tag ID (will absorb references)
+        #[arg(long)]
+        into: String,
+    },
     /// Create a series as a platform user
     #[command(name = "create-series")]
     CreateSeries {
@@ -874,6 +884,17 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
 
             let updated_names = &resp["names"];
             println!("Updated tag '{id}': {updated_names}");
+        }
+
+        AdminCommand::MergeTag { from, into } => {
+            client()
+                .post(format!("{base}/admin/tags/merge"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "from": from, "into": into }))
+                .send().await?
+                .error_for_status().context("Merge tag failed")?;
+
+            println!("Merged tag '{from}' into '{into}'");
         }
 
         AdminCommand::CreateSeries { r#as: as_handle, title, desc, tag, parent } => {

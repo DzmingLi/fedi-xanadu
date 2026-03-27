@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, listSeries, getAllArticleTags, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers } from '../lib/api';
+  import { getProfile, getArticlesByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { tagName } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
-  import { buildSeriesArticleMaps, buildArticleTagMap } from '../lib/series';
+  import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { ProfileData, Article, Series, ArticleTagRow, ProfileLink } from '../lib/types';
+  import type { ProfileData, Article, Series, ArticleTeachRow, ProfileLink } from '../lib/types';
 
   let { did } = $props<{ did: string }>();
 
@@ -16,7 +16,7 @@
   let profile = $state<ProfileData | null>(null);
   let articles = $state<Article[]>([]);
   let userSeries = $state<Series[]>([]);
-  let articleTags = $state(new Map<string, ArticleTagRow[]>());
+  let articleTeaches = $state(new Map<string, ArticleTeachRow[]>());
   let seriesArticleUris = $state(new Set<string>());
   let seriesArticleMap = $state(new Map<string, string[]>());
   let loading = $state(true);
@@ -68,7 +68,7 @@
         getProfile(did),
         getArticlesByDid(did),
         listSeries(),
-        getAllArticleTags(),
+        getAllArticleTeaches(),
         getAllSeriesArticles(),
       ]);
       profile = prof;
@@ -79,7 +79,7 @@
       seriesArticleUris = saMaps.seriesArticleUris;
       seriesArticleMap = saMaps.seriesArticleMap;
 
-      articleTags = buildArticleTagMap(tags);
+      articleTeaches = buildArticleRowMap(tags);
 
       // Load following/followers
       const [fg, fr] = await Promise.all([getFollowing(did), getFollowers(did)]);
@@ -271,7 +271,7 @@
     {#if item.type === 'article' && item.article}
       <PostCard
         article={item.article}
-        articleTags={articleTags.get(item.article.at_uri) || []}
+        articleTeaches={articleTeaches.get(item.article.at_uri) || []}
         variant="profile"
       />
     {:else if item.type === 'series' && item.series}

@@ -113,6 +113,118 @@ pub async fn update_tag_names(
     get_tag(pool, tag_id).await
 }
 
+/// Merge tag `from_id` into `into_id`: migrate all references, then delete the source tag.
+pub async fn merge_tag(pool: &PgPool, from_id: &str, into_id: &str) -> Result<()> {
+    let mut tx = pool.begin().await?;
+
+    // article_teaches
+    sqlx::query(
+        "UPDATE article_teaches SET tag_id = $2 WHERE tag_id = $1 \
+         AND article_uri NOT IN (SELECT article_uri FROM article_teaches WHERE tag_id = $2)",
+    )
+    .bind(from_id)
+    .bind(into_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM article_teaches WHERE tag_id = $1")
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // article_prereqs
+    sqlx::query(
+        "UPDATE article_prereqs SET tag_id = $2 WHERE tag_id = $1 \
+         AND article_uri NOT IN (SELECT article_uri FROM article_prereqs WHERE tag_id = $2)",
+    )
+    .bind(from_id)
+    .bind(into_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM article_prereqs WHERE tag_id = $1")
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // skill_tree_edges (both parent and child)
+    sqlx::query("UPDATE skill_tree_edges SET parent_tag = $2 WHERE parent_tag = $1")
+        .bind(from_id)
+        .bind(into_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE skill_tree_edges SET child_tag = $2 WHERE child_tag = $1")
+        .bind(from_id)
+        .bind(into_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // user_skills
+    sqlx::query(
+        "UPDATE user_skills SET tag_id = $2 WHERE tag_id = $1 \
+         AND did NOT IN (SELECT did FROM user_skills WHERE tag_id = $2)",
+    )
+    .bind(from_id)
+    .bind(into_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM user_skills WHERE tag_id = $1")
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // user_tag_tree
+    sqlx::query("UPDATE user_tag_tree SET parent_tag = $2 WHERE parent_tag = $1")
+        .bind(from_id)
+        .bind(into_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE user_tag_tree SET child_tag = $2 WHERE child_tag = $1")
+        .bind(from_id)
+        .bind(into_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // user_interests
+    sqlx::query(
+        "UPDATE user_interests SET tag_id = $2 WHERE tag_id = $1 \
+         AND did NOT IN (SELECT did FROM user_interests WHERE tag_id = $2)",
+    )
+    .bind(from_id)
+    .bind(into_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM user_interests WHERE tag_id = $1")
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Delete the source tag
+    sqlx::query("DELETE FROM tags WHERE id = $1")
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Search tags by prefix/substring match on id and name.
+pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<Tag>> {
+    let pattern = format!("%{query}%");
+    let tags = sqlx::query_as::<_, Tag>(
+        "SELECT id, name, names, description, created_by, created_at FROM tags \
+         WHERE id ILIKE $1 OR name ILIKE $1 \
+         ORDER BY CASE WHEN id = $2 THEN 0 WHEN id ILIKE $3 THEN 1 ELSE 2 END, name \
+         LIMIT $4",
+    )
+    .bind(&pattern)
+    .bind(query)
+    .bind(format!("{query}%"))
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(tags)
+}
+
 /// Batch-fetch tag i18n names for a set of IDs. Returns id -> { locale -> name }.
 pub async fn get_tag_names_i18n(
     pool: &PgPool,

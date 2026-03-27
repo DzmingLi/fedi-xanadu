@@ -7,6 +7,7 @@ mod drafts;
 mod follows;
 mod graph;
 mod interests;
+mod learned;
 mod keybindings;
 mod profile;
 mod series;
@@ -51,6 +52,7 @@ pub fn routes() -> Router<AppState> {
         // Tags
         .route("/tags", get(tags::list_tags).post(tags::create_tag))
         .route("/tags/by-id", get(tags::get_tag))
+        .route("/tags/search", get(tags::search_tags))
         .route("/tags/names", post(tags::update_tag_names))
         // Articles
         .route("/articles", get(articles::list_articles).post(articles::create_article))
@@ -58,7 +60,7 @@ pub fn routes() -> Router<AppState> {
         .route("/articles/by-uri/content", get(articles::get_article_content))
         .route("/articles/by-uri/prereqs", get(articles::get_article_prereqs))
         .route("/articles/by-uri/forks", get(articles::get_article_forks))
-        .route("/articles/all-tags", get(articles::get_all_article_tags))
+        .route("/articles/all-teaches", get(articles::get_all_article_teaches))
         .route("/articles/by-tag", get(articles::get_articles_by_tag))
         .route("/articles/all-prereqs", get(articles::get_all_article_prereqs))
         .route("/articles/by-did", get(articles::get_articles_by_did))
@@ -98,6 +100,10 @@ pub fn routes() -> Router<AppState> {
         .route("/bookmarks/remove", post(bookmarks::remove_bookmark))
         .route("/bookmarks/move", post(bookmarks::move_bookmark))
         .route("/bookmarks/folders", get(bookmarks::list_bookmark_folders))
+        // Learned marks
+        .route("/learned", get(learned::list_learned).post(learned::mark_learned))
+        .route("/learned/check", get(learned::is_learned))
+        .route("/learned/remove", post(learned::unmark_learned))
         // Interests
         .route("/interests", get(interests::get_interests).post(interests::set_interests))
         // Profile
@@ -137,6 +143,7 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/articles", post(admin::admin_create_article))
         .route("/admin/series", post(admin::admin_create_series))
         .route("/admin/series/articles", post(admin::admin_add_series_article))
+        .route("/admin/tags/merge", post(admin::admin_merge_tag))
 }
 
 // --- Health ---

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { listSkills, listTags, getAllArticlePrereqs, getAllArticleTags } from '../lib/api';
+  import { listSkills, listTags, getAllArticlePrereqs, getAllArticleTeaches } from '../lib/api';
   import { tagName as resolveTagName } from '../lib/display';
   import { t } from '../lib/i18n';
-  import type { UserSkill, Tag, ArticlePrereqBulkRow, ArticleTagRow } from '../lib/types';
+  import type { UserSkill, Tag, ArticlePrereqBulkRow, ArticleTeachRow } from '../lib/types';
 
   let skills = $state<UserSkill[]>([]);
   let tags = $state<Tag[]>([]);
   let allPrereqs = $state<ArticlePrereqBulkRow[]>([]);
-  let allArticleTags = $state<ArticleTagRow[]>([]);
+  let allArticleTeaches = $state<ArticleTeachRow[]>([]);
   let loading = $state(true);
 
   // Tags the user can explore: tags that appear on articles whose required prereqs are all satisfied
@@ -29,7 +29,7 @@
     // Find articles where all required prereqs are satisfied
     const reachableArticles = new Set<string>();
     // Get all unique article URIs (including those with no prereqs)
-    const allArticleUris = new Set(allArticleTags.map(t => t.article_uri));
+    const allArticleUris = new Set(allArticleTeaches.map(t => t.article_uri));
     for (const uri of allArticleUris) {
       const prereqs = articlePrereqMap.get(uri) || [];
       const requiredPrereqs = prereqs.filter(p => p.prereq_type === 'required');
@@ -41,7 +41,7 @@
 
     // Collect tags from reachable articles, excluding already-lit tags
     const tagCounts = new Map<string, number>();
-    for (const t of allArticleTags) {
+    for (const t of allArticleTeaches) {
       if (reachableArticles.has(t.article_uri) && !litTagIds.has(t.tag_id)) {
         tagCounts.set(t.tag_id, (tagCounts.get(t.tag_id) || 0) + 1);
       }
@@ -57,12 +57,12 @@
   let litCount = $derived(skills.length);
 
   $effect(() => {
-    Promise.all([listSkills(), listTags(), getAllArticlePrereqs(), getAllArticleTags()])
+    Promise.all([listSkills(), listTags(), getAllArticlePrereqs(), getAllArticleTeaches()])
       .then(([sk, tg, pr, at]) => {
         skills = sk;
         tags = tg;
         allPrereqs = pr;
-        allArticleTags = at;
+        allArticleTeaches = at;
         loading = false;
       });
   });

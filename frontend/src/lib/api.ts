@@ -1,5 +1,5 @@
 import type {
-  Tag, Article, ArticleContent, ArticlePrereqRow, ArticleTagRow, ArticlePrereqBulkRow,
+  Tag, Article, ArticleContent, ArticlePrereqRow, ArticleTeachRow, ArticlePrereqBulkRow,
   ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
@@ -52,7 +52,7 @@ export const getArticleContent = (uri: string) => get<ArticleContent>(`/articles
 export const getArticlePrereqs = (uri: string) => get<ArticlePrereqRow[]>(`/articles/by-uri/prereqs?uri=${encodeURIComponent(uri)}`);
 export const getArticleForks = (uri: string) => get<ForkWithTitle[]>(`/articles/by-uri/forks?uri=${encodeURIComponent(uri)}`);
 export const createArticle = (data: CreateArticle) => post<Article>('/articles', data);
-export const getAllArticleTags = () => get<ArticleTagRow[]>('/articles/all-tags');
+export const getAllArticleTeaches = () => get<ArticleTeachRow[]>('/articles/all-teaches');
 export const getAllArticlePrereqs = () => get<ArticlePrereqBulkRow[]>('/articles/all-prereqs');
 export const getArticlesByTag = (tagId: string) => get<Article[]>(`/articles/by-tag?tag_id=${encodeURIComponent(tagId)}`);
 export const getArticlesByDid = (did: string) => get<Article[]>(`/articles/by-did?did=${encodeURIComponent(did)}`);
@@ -199,6 +199,14 @@ export const updateDraft = (id: string, data: Partial<CreateArticle>) =>
   post<Draft>('/drafts/update', { id, ...data });
 export const deleteDraft = (id: string) => post<void>('/drafts/delete', { id });
 export const publishDraft = (id: string) => post<Article>('/drafts/publish', { id });
+
+// Learned marks
+export const markLearned = (article_uri: string) => post<void>('/learned', { article_uri });
+export const unmarkLearned = (article_uri: string) => post<void>('/learned/remove', { article_uri });
+export const isLearned = (uri: string) => get<{ learned: boolean }>(`/learned/check?uri=${encodeURIComponent(uri)}`);
+
+// Tag search
+export const searchTags = (q: string) => get<Tag[]>(`/tags/search?q=${encodeURIComponent(q)}`);
 
 // Graph
 export const getGraph = () => get<GraphData>('/graph');

@@ -4,7 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use fx_core::models::{Article, CreateArticle};
-use fx_core::services::{article_service, platform_user_service, series_service};
+use fx_core::services::{article_service, platform_user_service, series_service, tag_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -174,5 +174,24 @@ pub async fn admin_add_series_article(
     require_admin(&state, &headers)?;
 
     series_service::add_series_article(&state.pool, &input.series_id, &input.article_uri).await?;
+    Ok(StatusCode::OK)
+}
+
+// --- Admin tag merge ---
+
+#[derive(serde::Deserialize)]
+pub struct MergeTagInput {
+    pub from: String,
+    pub into: String,
+}
+
+pub async fn admin_merge_tag(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<MergeTagInput>,
+) -> ApiResult<StatusCode> {
+    require_admin(&state, &headers)?;
+
+    tag_service::merge_tag(&state.pool, &input.from, &input.into).await?;
     Ok(StatusCode::OK)
 }
