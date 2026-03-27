@@ -244,6 +244,8 @@ export default {
   'newSkillTree.titleLabel': 'Titre',
   'newSkillTree.titlePlaceholder': 'Ex. : Arbre informatique',
   'newSkillTree.descPlaceholder': 'Décrivez la conception de votre arbre',
+  'newSkillTree.tagLabel': 'Tag associé',
+  'newSkillTree.tagPlaceholder': 'Rechercher un tag, ex. « informatique », « graphisme »',
   'newSkillTree.addRelation': 'Ajouter une relation',
   'newSkillTree.relationHint': 'Définissez les relations parent-enfant entre les tags. Les tags inexistants seront créés automatiquement.',
   'newSkillTree.parentPlaceholder': 'Tag parent',
@@ -287,9 +289,4 @@ export default {
   'roadmap.inProgress': 'En cours',
   'roadmap.done': 'Terminé',
 
-  // Field names
-  'field.math': 'Mathématiques',
-  'field.physics': 'Physique',
-  'field.cs': 'Informatique',
-  'field.economics': 'Économie',
 } as const;

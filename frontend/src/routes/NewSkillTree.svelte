@@ -1,14 +1,15 @@
 <script lang="ts">
-  import { createSkillTree, listTags } from '../lib/api';
+  import { createSkillTree, listTags, searchTags } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { t } from '../lib/i18n';
   import type { Tag, SkillTreeEdge } from '../lib/types';
 
-  const FIELDS = ['math', 'physics', 'cs', 'economics'];
-
   let title = $state('');
   let description = $state('');
-  let field = $state('');
+  let tagId = $state('');
+  let fieldQuery = $state('');
+  let fieldSuggestions = $state<Tag[]>([]);
+  let showFieldSugg = $state(false);
   let edges = $state<SkillTreeEdge[]>([]);
   let allTags = $state<Tag[]>([]);
   let error = $state('');
@@ -26,6 +27,28 @@
 
   let showParentSugg = $state(false);
   let showChildSugg = $state(false);
+
+  let fieldDebounce: ReturnType<typeof setTimeout>;
+  function onFieldInput() {
+    clearTimeout(fieldDebounce);
+    if (!fieldQuery.trim()) { fieldSuggestions = []; return; }
+    fieldDebounce = setTimeout(async () => {
+      fieldSuggestions = await searchTags(fieldQuery.trim());
+    }, 150);
+  }
+
+  function selectField(tag: Tag) {
+    tagId = tag.id;
+    fieldQuery = tag.name;
+    fieldSuggestions = [];
+    showFieldSugg = false;
+  }
+
+  function clearField() {
+    tagId = '';
+    fieldQuery = '';
+    fieldSuggestions = [];
+  }
 
   $effect(() => { listTags().then(t => allTags = t); });
 
@@ -54,7 +77,7 @@
     creating = true;
     error = '';
     try {
-      const tree = await createSkillTree({ title: title.trim(), description: description.trim() || undefined, field: field || undefined, edges });
+      const tree = await createSkillTree({ title: title.trim(), description: description.trim() || undefined, tag_id: tagId || undefined, edges });
       window.location.hash = `#/skill-tree?uri=${encodeURIComponent(tree.at_uri)}`;
     } catch (e: any) {
       error = e.message || t('newSkillTree.errCreate');
@@ -79,13 +102,22 @@
     <textarea bind:value={description} rows="2" placeholder={t('newSkillTree.descPlaceholder')}></textarea>
   </label>
   <label>
-    {t('newArticle.langLabel')}
-    <select bind:value={field}>
-      <option value="">—</option>
-      {#each FIELDS as f}
-        <option value={f}>{t(`field.${f}`)}</option>
-      {/each}
-    </select>
+    {t('newSkillTree.tagLabel')}
+    <div class="field-input-wrap">
+      <input type="text" bind:value={fieldQuery} oninput={onFieldInput}
+        onfocus={() => showFieldSugg = true} onblur={() => setTimeout(() => showFieldSugg = false, 200)}
+        placeholder={t('newSkillTree.tagPlaceholder')} />
+      {#if tagId}
+        <button class="field-clear" onclick={clearField} type="button">×</button>
+      {/if}
+      {#if showFieldSugg && fieldSuggestions.length > 0}
+        <div class="suggestions">
+          {#each fieldSuggestions as s}
+            <button type="button" onmousedown={() => selectField(s)}>{s.name} <span class="sg-id">{s.id}</span></button>
+          {/each}
+        </div>
+      {/if}
+    </div>
   </label>
 
   <h2>{t('newSkillTree.addRelation')}</h2>
@@ -177,4 +209,12 @@
   }
   .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .error { color: var(--error, #c33); font-size: 14px; }
+  .field-input-wrap { position: relative; }
+  .field-input-wrap input { width: 100%; box-sizing: border-box; }
+  .field-clear {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; color: var(--text-hint);
+    font-size: 16px; padding: 0 4px;
+  }
+  .field-clear:hover { color: var(--text-primary); }
 </style>

@@ -122,7 +122,7 @@ export const reorderSeriesChildren = (parent_id: string, child_ids: string[]) =>
 // Skill Trees
 export const listSkillTrees = () => get<SkillTree[]>('/skill-trees');
 export const getSkillTree = (uri: string) => get<SkillTreeDetail>(`/skill-trees/by-uri?uri=${encodeURIComponent(uri)}`);
-export const createSkillTree = (data: { title: string; description?: string; field?: string; edges: SkillTreeEdge[] }) =>
+export const createSkillTree = (data: { title: string; description?: string; tag_id?: string; edges: SkillTreeEdge[] }) =>
   post<SkillTree>('/skill-trees', data);
 export const forkSkillTree = (uri: string) => post<SkillTree>('/skill-trees/fork', { uri });
 export const addSkillTreeEdge = (tree_uri: string, parent_tag: string, child_tag: string) =>

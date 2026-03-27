@@ -361,15 +361,30 @@
   });
 
   // --- Community skill trees state ---
-  const FIELDS = ['math', 'physics', 'cs', 'economics'];
 
   let treesLoading = $state(true);
   let communityTrees = $state<SkillTree[]>([]);
   let filterField = $state('');
   let isLoggedIn = $derived(!!getAuth());
   let filteredTrees = $derived(
-    filterField ? communityTrees.filter(t => t.field === filterField) : communityTrees
+    filterField ? communityTrees.filter(t => t.tag_id === filterField) : communityTrees
   );
+
+  // Dynamic field list from trees
+  let availableFields = $derived.by(() => {
+    const fieldMap = new Map<string, { id: string; name: string; count: number }>();
+    for (const tr of communityTrees) {
+      if (!tr.tag_id) continue;
+      const existing = fieldMap.get(tr.tag_id);
+      if (existing) {
+        existing.count++;
+      } else {
+        const name = tr.tag_names ? resolveTagName(tr.tag_names, tr.tag_name || tr.tag_id, tr.tag_id) : (tr.tag_name || tr.tag_id);
+        fieldMap.set(tr.tag_id, { id: tr.tag_id, name, count: 1 });
+      }
+    }
+    return [...fieldMap.values()].sort((a, b) => b.count - a.count);
+  });
 
   $effect(() => {
     if (activeTab === 'community' && treesLoading) {
@@ -434,8 +449,8 @@
 
       <div class="field-filter">
         <button class="filter-btn" class:active={!filterField} onclick={() => filterField = ''}>{t('home.all')}</button>
-        {#each FIELDS as f}
-          <button class="filter-btn" class:active={filterField === f} onclick={() => filterField = f}>{t(`field.${f}`)}</button>
+        {#each availableFields as f}
+          <button class="filter-btn" class:active={filterField === f.id} onclick={() => filterField = f.id}>{f.name} ({f.count})</button>
         {/each}
       </div>
 
@@ -454,8 +469,8 @@
             <div class="tree-card">
               <div class="tree-main">
                 <a href="#/skill-tree?uri={encodeURIComponent(tree.at_uri)}" class="tree-title">{tree.title}</a>
-                {#if tree.field}
-                  <span class="field-badge">{t(`field.${tree.field}`)}</span>
+                {#if tree.tag_id}
+                  <span class="field-badge">{tree.tag_names ? resolveTagName(tree.tag_names, tree.tag_name || tree.tag_id, tree.tag_id) : (tree.tag_name || tree.tag_id)}</span>
                 {/if}
                 {#if tree.forked_from}
                   <span class="forked-badge">Fork</span>

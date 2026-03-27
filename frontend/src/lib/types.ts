@@ -162,7 +162,9 @@ export interface SkillTree {
   author_handle?: string;
   title: string;
   description: string | null;
-  field: string | null;
+  tag_id: string | null;
+  tag_name?: string | null;
+  tag_names?: Record<string, string> | null;
   forked_from: string | null;
   created_at: string;
   score?: number;
@@ -178,7 +180,7 @@ export interface SkillTreeEdge {
 export interface SkillTreeDetail {
   tree: SkillTree;
   edges: SkillTreeEdge[];
-  tag_names: Record<string, string>;
+  tag_names_map: Record<string, string>;
   tag_names_i18n: Record<string, Record<string, string>>;
 }
 

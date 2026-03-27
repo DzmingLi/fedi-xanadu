@@ -99,7 +99,7 @@
 
   function tagName(id: string): string {
     const i18nNames = detail?.tag_names_i18n?.[id];
-    const fallbackName = detail?.tag_names[id] || id;
+    const fallbackName = detail?.tag_names_map[id] || id;
     return resolveTagName(i18nNames, fallbackName, id);
   }
 </script>
@@ -110,8 +110,8 @@
   <div class="tree-header">
     <div class="tree-title-row">
       <h1>{detail.tree.title}</h1>
-      {#if detail.tree.field}
-        <span class="field-badge">{detail.tree.field}</span>
+      {#if detail.tree.tag_id}
+        <span class="field-badge">{tagName(detail.tree.tag_id)}</span>
       {/if}
     </div>
     <div class="tree-actions">

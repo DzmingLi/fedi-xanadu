@@ -12,7 +12,7 @@ pub struct SkillTreeRow {
     pub did: String,
     pub title: String,
     pub description: Option<String>,
-    pub field: Option<String>,
+    pub tag_id: Option<String>,
     pub forked_from: Option<String>,
     pub created_at: DateTime<Utc>,
 }
@@ -24,7 +24,9 @@ pub struct SkillTreeListRow {
     pub author_handle: Option<String>,
     pub title: String,
     pub description: Option<String>,
-    pub field: Option<String>,
+    pub tag_id: Option<String>,
+    pub tag_name: Option<String>,
+    pub tag_names: Option<sqlx::types::Json<HashMap<String, String>>>,
     pub forked_from: Option<String>,
     pub created_at: DateTime<Utc>,
     pub score: i64,
@@ -42,26 +44,29 @@ pub struct SkillTreeEdgeRow {
 pub struct SkillTreeDetailResponse {
     pub tree: SkillTreeRow,
     pub edges: Vec<SkillTreeEdgeRow>,
-    pub tag_names: HashMap<String, String>,
+    pub tag_names_map: HashMap<String, String>,
     pub tag_names_i18n: HashMap<String, HashMap<String, String>>,
 }
 
 pub struct CreateSkillTree {
     pub title: String,
     pub description: Option<String>,
-    pub field: Option<String>,
+    pub tag_id: Option<String>,
     pub edges: Vec<(String, String)>,
 }
 
-const TREE_SELECT: &str = "SELECT at_uri, did, title, description, field, forked_from, created_at FROM skill_trees";
+const TREE_SELECT: &str = "SELECT at_uri, did, title, description, tag_id, forked_from, created_at FROM skill_trees";
 
 pub async fn list_skill_trees(pool: &PgPool, limit: i64) -> Result<Vec<SkillTreeListRow>> {
     let rows = sqlx::query_as::<_, SkillTreeListRow>(
-        "SELECT st.at_uri, st.did, p.handle AS author_handle, st.title, st.description, st.field, st.forked_from, st.created_at,
-         COALESCE((SELECT SUM(CASE WHEN v.value > 0 THEN 1 WHEN v.value < 0 THEN -1 ELSE 0 END) FROM votes v WHERE v.target_uri = st.at_uri), 0) AS score,
-         (SELECT COUNT(*) FROM skill_tree_edges e WHERE e.tree_uri = st.at_uri) AS edge_count,
-         (SELECT COUNT(*) FROM user_active_tree ua WHERE ua.tree_uri = st.at_uri) AS adopt_count
-         FROM skill_trees st LEFT JOIN profiles p ON st.did = p.did
+        "SELECT st.at_uri, st.did, p.handle AS author_handle, st.title, st.description, \
+         st.tag_id, ft.name AS tag_name, ft.names AS tag_names, \
+         st.forked_from, st.created_at, \
+         COALESCE((SELECT SUM(CASE WHEN v.value > 0 THEN 1 WHEN v.value < 0 THEN -1 ELSE 0 END) FROM votes v WHERE v.target_uri = st.at_uri), 0) AS score, \
+         (SELECT COUNT(*) FROM skill_tree_edges e WHERE e.tree_uri = st.at_uri) AS edge_count, \
+         (SELECT COUNT(*) FROM user_active_tree ua WHERE ua.tree_uri = st.at_uri) AS adopt_count \
+         FROM skill_trees st LEFT JOIN profiles p ON st.did = p.did \
+         LEFT JOIN tags ft ON st.tag_id = ft.id \
          ORDER BY score DESC, st.created_at DESC LIMIT $1",
     )
     .bind(limit)
@@ -84,8 +89,18 @@ pub async fn get_skill_tree(pool: &PgPool, uri: &str) -> Result<SkillTreeRow> {
 pub async fn get_skill_tree_detail(pool: &PgPool, uri: &str) -> Result<SkillTreeDetailResponse> {
     let tree = get_skill_tree(pool, uri).await?;
     let edges = get_edges(pool, uri).await?;
-    let (tag_names, tag_names_i18n) = collect_tag_names(pool, &edges).await?;
-    Ok(SkillTreeDetailResponse { tree, edges, tag_names, tag_names_i18n })
+    let (mut names_map, mut names_i18n) = collect_tag_names(pool, &edges).await?;
+    // Also resolve the tree's tag name if present
+    if let Some(ref tid) = tree.tag_id {
+        if !names_map.contains_key(tid) {
+            let ids = vec![tid.clone()];
+            let fn_map = super::tag_service::get_tag_names(pool, &ids).await?;
+            let fi_map = super::tag_service::get_tag_names_i18n(pool, &ids).await?;
+            names_map.extend(fn_map);
+            names_i18n.extend(fi_map);
+        }
+    }
+    Ok(SkillTreeDetailResponse { tree, edges, tag_names_map: names_map, tag_names_i18n: names_i18n })
 }
 
 pub async fn create_skill_tree(
@@ -96,12 +111,12 @@ pub async fn create_skill_tree(
 ) -> Result<SkillTreeRow> {
     let mut tx = pool.begin().await?;
 
-    sqlx::query("INSERT INTO skill_trees (at_uri, did, title, description, field) VALUES ($1, $2, $3, $4, $5)")
+    sqlx::query("INSERT INTO skill_trees (at_uri, did, title, description, tag_id) VALUES ($1, $2, $3, $4, $5)")
         .bind(at_uri)
         .bind(did)
         .bind(&input.title)
         .bind(&input.description)
-        .bind(&input.field)
+        .bind(&input.tag_id)
         .execute(&mut *tx)
         .await?;
 
@@ -131,13 +146,13 @@ pub async fn fork_skill_tree(
     let new_title = format!("Fork: {}", source.title);
 
     sqlx::query(
-        "INSERT INTO skill_trees (at_uri, did, title, description, field, forked_from) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO skill_trees (at_uri, did, title, description, tag_id, forked_from) VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(new_uri)
     .bind(did)
     .bind(&new_title)
     .bind(&source.description)
-    .bind(&source.field)
+    .bind(&source.tag_id)
     .bind(source_uri)
     .execute(pool)
     .await?;
@@ -239,9 +254,9 @@ pub async fn get_active_tree(pool: &PgPool, did: &str) -> Result<Option<SkillTre
     let Some(tree) = tree else { return Ok(None) };
 
     let edges = get_edges(pool, &uri).await?;
-    let (tag_names, tag_names_i18n) = collect_tag_names(pool, &edges).await?;
+    let (tag_names_map, tag_names_i18n) = collect_tag_names(pool, &edges).await?;
 
-    Ok(Some(SkillTreeDetailResponse { tree, edges, tag_names, tag_names_i18n }))
+    Ok(Some(SkillTreeDetailResponse { tree, edges, tag_names_map, tag_names_i18n }))
 }
 
 // --- Helpers ---

@@ -244,6 +244,8 @@ export default {
   'newSkillTree.titleLabel': '标题',
   'newSkillTree.titlePlaceholder': '例：计算机科学技能树',
   'newSkillTree.descPlaceholder': '描述你的技能树的设计思路',
+  'newSkillTree.tagLabel': '关联标签',
+  'newSkillTree.tagPlaceholder': '搜索标签，如"计算机科学"、"图形学"',
   'newSkillTree.addRelation': '添加关系',
   'newSkillTree.relationHint': '定义 tag 之间的父子关系，构建技能树结构。输入不存在的 tag 会自动创建。',
   'newSkillTree.parentPlaceholder': '父 tag',
@@ -287,9 +289,4 @@ export default {
   'roadmap.inProgress': '进行中',
   'roadmap.done': '已完成',
 
-  // Field names
-  'field.math': '数学',
-  'field.physics': '物理',
-  'field.cs': '计算机科学',
-  'field.economics': '经济学',
 } as const;

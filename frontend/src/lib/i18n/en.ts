@@ -244,6 +244,8 @@ export default {
   'newSkillTree.titleLabel': 'Title',
   'newSkillTree.titlePlaceholder': 'e.g. Computer Science Skill Tree',
   'newSkillTree.descPlaceholder': 'Describe your skill tree design',
+  'newSkillTree.tagLabel': 'Associated Tag',
+  'newSkillTree.tagPlaceholder': 'Search tags, e.g. "computer science", "graphics"',
   'newSkillTree.addRelation': 'Add Relation',
   'newSkillTree.relationHint': 'Define parent-child relationships between tags to build the skill tree. Non-existent tags will be created automatically.',
   'newSkillTree.parentPlaceholder': 'Parent tag',
@@ -287,9 +289,4 @@ export default {
   'roadmap.inProgress': 'In Progress',
   'roadmap.done': 'Done',
 
-  // Field names
-  'field.math': 'Mathematics',
-  'field.physics': 'Physics',
-  'field.cs': 'Computer Science',
-  'field.economics': 'Economics',
 } as const;

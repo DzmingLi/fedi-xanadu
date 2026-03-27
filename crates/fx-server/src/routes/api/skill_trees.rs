@@ -27,7 +27,7 @@ pub async fn list_skill_trees(
 pub struct CreateSkillTreeInput {
     title: String,
     description: Option<String>,
-    field: Option<String>,
+    tag_id: Option<String>,
     edges: Vec<EdgeInput>,
 }
 
@@ -51,7 +51,7 @@ pub async fn create_skill_tree(
     let svc_input = skill_tree_service::CreateSkillTree {
         title: input.title,
         description: input.description,
-        field: input.field,
+        tag_id: input.tag_id,
         edges: input.edges.into_iter().map(|e| (e.parent_tag, e.child_tag)).collect(),
     };
 
