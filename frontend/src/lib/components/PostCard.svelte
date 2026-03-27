@@ -28,12 +28,20 @@
     e.stopPropagation();
     window.location.hash = `#/tag?id=${encodeURIComponent(tagId)}`;
   }
+
+  function seriesAuthor(s: Series): string {
+    if (s.author_handle) return `@${s.author_handle}`;
+    return s.created_by.replace('did:plc:', '').replace('did:web:', '').slice(0, 16);
+  }
 </script>
 
 {#if article}
   <a href="#/article?uri={encodeURIComponent(article.at_uri)}" class="post-card">
     <div class="card-top">
       <span class="post-title">{article.title}</span>
+    </div>
+
+    {#if articleTeaches.length > 0 || articlePrereqs.length > 0}
       <div class="card-tags">
         {#each articleTeaches as t}
           <span class="tag" role="link" tabindex="0" onclick={(e) => navToTag(e, t.tag_id)} onkeydown={(e) => navToTag(e, t.tag_id)}>{tagName(t.tag_names, t.tag_name, t.tag_id)}</span>
@@ -42,7 +50,7 @@
           <span class="tag {p.prereq_type}" role="link" tabindex="0" onclick={(e) => navToTag(e, p.tag_id)} onkeydown={(e) => navToTag(e, p.tag_id)}>{tagName(p.tag_names, p.tag_name, p.tag_id)}</span>
         {/each}
       </div>
-    </div>
+    {/if}
 
     {#if article.description}
       <p class="post-desc">{article.description}</p>
@@ -66,27 +74,25 @@
   </a>
 {:else if series}
   <a href="#/series?id={encodeURIComponent(series.id)}" class="post-card series-card">
-    {#if variant === 'home'}
-      <div class="series-badge-abs">{t('home.series')}</div>
-    {/if}
     <div class="card-top">
       <span class="post-title">{series.title}</span>
-      {#if variant === 'profile'}
-        <span class="series-badge-inline">{t('profile.seriesBadge')}</span>
-      {/if}
-      {#if series.tag_name && variant === 'home'}
-        <div class="card-tags">
-          <span class="tag" role="link" tabindex="0" onclick={(e) => navToTag(e, series.tag_id)} onkeydown={(e) => navToTag(e, series.tag_id)}>{tagName(series.tag_names, series.tag_name || '', series.tag_id)}</span>
-        </div>
-      {/if}
+      <span class="series-badge">{t('home.series')}</span>
     </div>
+
+    {#if series.tag_name}
+      <div class="card-tags">
+        <span class="tag" role="link" tabindex="0" onclick={(e) => navToTag(e, series.tag_id)} onkeydown={(e) => navToTag(e, series.tag_id)}>{tagName(series.tag_names, series.tag_name || '', series.tag_id)}</span>
+      </div>
+    {/if}
 
     {#if series.description}
       <p class="post-desc">{series.description}</p>
     {/if}
 
     <div class="card-bottom">
-      <span class="post-meta">{series.created_at.split(' ')[0]}</span>
+      <span class="post-meta">
+        {#if variant === 'home'}{seriesAuthor(series)} &middot; {/if}{series.created_at.split(' ')[0]}
+      </span>
       <span class="card-stats">
         <span class="stat">{articleCount} {variant === 'home' ? t('home.lectures') : t('profile.lectureCount')}</span>
       </span>
@@ -132,8 +138,7 @@
     flex-wrap: wrap;
     gap: 4px;
     align-items: center;
-    flex-shrink: 0;
-    padding-top: 3px;
+    margin-top: 6px;
   }
   .post-desc {
     margin: 8px 0 0;
@@ -160,30 +165,19 @@
     color: var(--text-hint);
   }
 
-  /* Series card variants */
+  /* Series card */
   .series-card {
     border-left: 3px solid var(--accent);
-    position: relative;
   }
-  .series-badge-abs {
-    position: absolute;
-    top: 8px;
-    right: 12px;
+  .series-badge {
     font-size: 11px;
     font-weight: 600;
-    text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--accent);
     background: rgba(95, 155, 101, 0.1);
     padding: 2px 8px;
     border-radius: 3px;
-  }
-  .series-badge-inline {
-    font-size: 11px;
-    background: rgba(95, 155, 101, 0.12);
-    color: var(--accent);
-    padding: 1px 8px;
-    border-radius: 3px;
     flex-shrink: 0;
+    white-space: nowrap;
   }
 </style>

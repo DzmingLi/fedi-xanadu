@@ -27,6 +27,7 @@ pub struct SeriesListRow {
     pub parent_id: Option<String>,
     pub order_index: i32,
     pub created_by: String,
+    pub author_handle: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -86,8 +87,9 @@ pub struct SeriesNavItem {
 pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, s.tag_id, t.name AS tag_name, t.names AS tag_names, \
-                s.parent_id, s.order_index, s.created_by, s.created_at \
+                s.parent_id, s.order_index, s.created_by, pu.handle AS author_handle, s.created_at \
          FROM series s JOIN tags t ON s.tag_id = t.id \
+         LEFT JOIN platform_users pu ON s.created_by = pu.did \
          ORDER BY s.created_at DESC LIMIT $1",
     )
     .bind(limit)

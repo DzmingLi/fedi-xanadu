@@ -206,7 +206,7 @@
         <a href="#/series?id={encodeURIComponent(s.id)}" class="series-tree-title" onclick={(e) => e.stopPropagation()}>
           {s.title}
         </a>
-        <span class="series-badge-inline">{t('profile.seriesBadge')}</span>
+        <span class="series-badge">{t('profile.seriesBadge')}</span>
       </div>
       {#if s.description}
         <p class="series-tree-desc">{s.description}</p>
@@ -670,6 +670,18 @@
   .follow-handle {
     font-size: 12px;
     color: var(--text-hint);
+  }
+
+  .series-badge {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    background: rgba(95, 155, 101, 0.1);
+    padding: 2px 8px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   /* Series tree */

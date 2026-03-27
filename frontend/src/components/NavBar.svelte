@@ -15,6 +15,20 @@
     setLocale(codes[(idx + 1) % codes.length]);
   }
 
+  let isDark = $state(
+    localStorage.getItem('theme') === 'dark' ||
+    (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  );
+
+  $effect(() => {
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  });
+
+  function toggleTheme() {
+    isDark = !isDark;
+  }
+
   let searchOpen = $state(false);
   let query = $state('');
   let results = $state<Article[]>([]);
@@ -84,6 +98,14 @@
   <div class="nav-right">
     <button type="button" class="locale-toggle" onclick={cycleLocale} title="Switch language">
       {(() => { const codes = LOCALES.map(l => l.code); return LOCALES[(codes.indexOf(locale) + 1) % codes.length].label; })()}
+    </button>
+
+    <button type="button" class="theme-toggle" onclick={toggleTheme} title={isDark ? 'Light mode' : 'Dark mode'}>
+      {#if isDark}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      {:else}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      {/if}
     </button>
 
     <button type="button" class="search-btn" onclick={openSearch} aria-label="Search">
@@ -162,9 +184,9 @@
     gap: 0.5rem 1rem;
     padding: 0.625rem 0;
     margin-bottom: 1.5rem;
-    background: rgba(248, 244, 238, 0.85);
+    background: color-mix(in srgb, var(--bg-page) 85%, transparent);
     backdrop-filter: blur(8px);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid var(--border);
   }
   .brand {
     font-family: var(--font-serif);
@@ -215,6 +237,19 @@
   }
   .locale-toggle:hover {
     border-color: var(--accent);
+    color: var(--accent);
+  }
+  .theme-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+  }
+  .theme-toggle:hover {
     color: var(--accent);
   }
   .search-btn {
