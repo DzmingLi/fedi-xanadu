@@ -337,7 +337,7 @@ pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<Seri
              SELECT id, title, description, parent_id, order_index, created_by, created_at \
              FROM series WHERE id = $1 \
              UNION ALL \
-             SELECT s.id, s.title, s.description, s.tag_id, s.parent_id, s.order_index, s.created_by, s.created_at \
+             SELECT s.id, s.title, s.description, s.parent_id, s.order_index, s.created_by, s.created_at \
              FROM series s JOIN tree t ON s.parent_id = t.id \
          ) SELECT * FROM tree",
     )
