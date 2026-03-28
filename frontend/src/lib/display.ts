@@ -53,25 +53,16 @@ function filterBlocked<T extends { did?: string; created_by?: string }>(items: T
 export function deduplicateByTranslation(articles: Article[], locale: string): Article[] {
   const filtered = filterByKnownLangs(filterBlocked(articles));
   const groups = new Map<string, Article[]>();
-  const ungrouped: Article[] = [];
 
   for (const a of filtered) {
-    const key = a.translation_group;
-    if (key) {
-      const arr = groups.get(key) || [];
-      arr.push(a);
-      groups.set(key, arr);
-    } else {
-      ungrouped.push(a);
-    }
+    // null translation_group means original — use own URI as group key
+    const key = a.translation_group || a.at_uri;
+    const arr = groups.get(key) || [];
+    arr.push(a);
+    groups.set(key, arr);
   }
 
-  const result: Article[] = [...ungrouped];
-  for (const [, variants] of groups) {
-    result.push(pickBest(variants, locale));
-  }
-
-  return result;
+  return [...groups.values()].map(variants => pickBest(variants, locale));
 }
 
 /**
@@ -80,25 +71,16 @@ export function deduplicateByTranslation(articles: Article[], locale: string): A
 export function deduplicateSeriesByTranslation(series: Series[], locale: string): Series[] {
   const filtered = filterByKnownLangs(filterBlocked(series));
   const groups = new Map<string, Series[]>();
-  const ungrouped: Series[] = [];
 
   for (const s of filtered) {
-    const key = s.translation_group;
-    if (key) {
-      const arr = groups.get(key) || [];
-      arr.push(s);
-      groups.set(key, arr);
-    } else {
-      ungrouped.push(s);
-    }
+    // null translation_group means original — use own ID as group key
+    const key = s.translation_group || s.id;
+    const arr = groups.get(key) || [];
+    arr.push(s);
+    groups.set(key, arr);
   }
 
-  const result: Series[] = [...ungrouped];
-  for (const [, variants] of groups) {
-    result.push(pickBest(variants, locale));
-  }
-
-  return result;
+  return [...groups.values()].map(variants => pickBest(variants, locale));
 }
 
 export function tagName(
