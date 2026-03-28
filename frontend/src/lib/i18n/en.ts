@@ -128,6 +128,8 @@ export default {
   'newArticle.restricted': 'Restrict access (paid content, not synced to PDS)',
   'newArticle.translationOf': 'Translation of (optional)',
   'newArticle.originalArticle': '— original article —',
+  'newArticle.editionLabel': 'Edition read',
+  'newArticle.noEdition': 'Not specified',
   'newArticle.formatLabel': 'Format',
   'newArticle.contentLabel': 'Content',
   'newArticle.tagsLabel': 'Tags (click to select)',

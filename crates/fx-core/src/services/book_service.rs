@@ -41,6 +41,7 @@ pub struct BookEdition {
     pub year: Option<String>,
     pub translators: Vec<String>,
     pub purchase_links: sqlx::types::Json<Vec<PurchaseLink>>,
+    pub cover_url: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -53,6 +54,7 @@ pub struct CreateEdition {
     pub year: Option<String>,
     pub translators: Vec<String>,
     pub purchase_links: Vec<PurchaseLink>,
+    pub cover_url: Option<String>,
 }
 
 pub async fn create_book(
@@ -161,8 +163,8 @@ pub async fn create_edition(
 ) -> crate::Result<BookEdition> {
     let links_json = sqlx::types::Json(&input.purchase_links);
     sqlx::query(
-        "INSERT INTO book_editions (id, book_id, title, lang, isbn, publisher, year, translators, purchase_links) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        "INSERT INTO book_editions (id, book_id, title, lang, isbn, publisher, year, translators, purchase_links, cover_url) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(id)
     .bind(book_id)
@@ -173,6 +175,7 @@ pub async fn create_edition(
     .bind(&input.year)
     .bind(&input.translators)
     .bind(&links_json)
+    .bind(&input.cover_url)
     .execute(pool)
     .await?;
 
@@ -225,7 +228,7 @@ pub async fn get_book_reviews(
     let rows = sqlx::query_as::<_, crate::models::Article>(
         "SELECT a.at_uri, a.did, p.handle AS author_handle, a.kind, a.title, a.description, \
          a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
-         a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, \
+         a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
          COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
          COALESCE((SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = a.at_uri), 0) AS bookmark_count, \
          a.created_at, a.updated_at \

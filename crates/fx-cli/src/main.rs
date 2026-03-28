@@ -426,6 +426,9 @@ enum BookCommand {
         /// Purchase links as JSON: [{"label":"Amazon","url":"https://..."}]
         #[arg(long)]
         purchase_links: Option<String>,
+        /// Cover image URL for this edition
+        #[arg(long)]
+        cover_url: Option<String>,
     },
     /// Show a book's detail
     Show {
@@ -676,6 +679,7 @@ async fn main() -> Result<()> {
                 restricted: None,
                 category: Some(category),
                 book_id,
+                edition_id: None,
                 tags,
                 prereqs: vec![],
             };
@@ -860,7 +864,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             println!("Updated book {id}");
         }
 
-        BookCommand::AddEdition { book_id, title, lang, isbn, publisher, year, translators, purchase_links } => {
+        BookCommand::AddEdition { book_id, title, lang, isbn, publisher, year, translators, purchase_links, cover_url } => {
             let links: Vec<serde_json::Value> = if let Some(ref pl) = purchase_links {
                 serde_json::from_str(pl).context("Invalid JSON for --purchase-links")?
             } else {
@@ -876,6 +880,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
                 "year": year,
                 "translators": translators,
                 "purchase_links": links,
+                "cover_url": cover_url,
             });
 
             let resp: serde_json::Value = client()

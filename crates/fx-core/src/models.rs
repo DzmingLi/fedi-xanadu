@@ -57,6 +57,7 @@ pub struct Article {
     pub category: String,
     pub question_uri: Option<String>,
     pub book_id: Option<String>,
+    pub edition_id: Option<String>,
     pub answer_count: i32,
     pub restricted: bool,
     pub vote_score: i64,
@@ -77,6 +78,7 @@ pub struct CreateArticle {
     pub restricted: Option<bool>,
     pub category: Option<String>,
     pub book_id: Option<String>,
+    pub edition_id: Option<String>,
     pub tags: Vec<String>,
     pub prereqs: Vec<ArticlePrereq>,
 }

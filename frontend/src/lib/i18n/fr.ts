@@ -128,6 +128,8 @@ export default {
   'newArticle.restricted': 'Accès restreint (contenu payant, non synchronisé avec PDS)',
   'newArticle.translationOf': 'Traduction de (optionnel)',
   'newArticle.originalArticle': '— article original —',
+  'newArticle.editionLabel': 'Édition lue',
+  'newArticle.noEdition': 'Non spécifié',
   'newArticle.formatLabel': 'Format',
   'newArticle.contentLabel': 'Contenu',
   'newArticle.tagsLabel': 'Tags (cliquer pour sélectionner)',

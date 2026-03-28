@@ -215,7 +215,15 @@
           <p class="empty">{t('books.noReviews')}</p>
         {:else}
           {#each detail.reviews as review}
-            <PostCard article={review} articleTeaches={[]} variant="profile" />
+            <div class="review-wrapper">
+              {#if review.edition_id}
+                {@const ed = detail.editions.find(e => e.id === review.edition_id)}
+                {#if ed}
+                  <span class="review-edition">{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</span>
+                {/if}
+              {/if}
+              <PostCard article={review} articleTeaches={[]} variant="profile" />
+            </div>
           {/each}
         {/if}
       </div>
@@ -226,6 +234,9 @@
       <h3>{t('books.editions')}</h3>
       {#each detail.editions as ed}
         <div class="edition-card">
+          {#if ed.cover_url}
+            <img src={ed.cover_url} alt={ed.title} class="edition-cover" />
+          {/if}
           <div class="edition-top">
             <strong>{ed.title}</strong>
             <span class="edition-lang">{langLabel(ed.lang)}</span>
@@ -442,6 +453,13 @@
     margin-bottom: 8px;
     background: var(--bg-white);
   }
+  .edition-cover {
+    width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    border-radius: 3px;
+    margin-bottom: 8px;
+  }
   .edition-top {
     display: flex;
     align-items: center;
@@ -510,5 +528,19 @@
   .empty {
     color: var(--text-hint);
     font-size: 14px;
+  }
+  .review-wrapper {
+    position: relative;
+  }
+  .review-edition {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 11px;
+    color: var(--text-hint);
+    background: var(--bg-gray, #f5f5f5);
+    padding: 2px 8px;
+    border-radius: 3px;
+    z-index: 1;
   }
 </style>

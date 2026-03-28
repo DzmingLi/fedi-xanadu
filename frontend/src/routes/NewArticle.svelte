@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts } from '../lib/api';
+  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook } from '../lib/api';
   import { t, getLocale } from '../lib/i18n';
   import { getLangPrefs } from '../lib/langPrefs';
-  import type { Tag, Article } from '../lib/types';
+  import type { Tag, Article, BookEdition } from '../lib/types';
 
   let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
   let isEditing = $state(false);
@@ -23,6 +23,8 @@
   let translationOf = $state('');
   let category = $state(initialCategory || 'general');
   let bookId = $state(initialBookId || '');
+  let editionId = $state('');
+  let bookEditions = $state<BookEdition[]>([]);
   let selectedTags = $state<string[]>([]);
   let prereqs = $state<Array<{ tag_id: string; prereq_type: string }>>([]);
   let submitting = $state(false);
@@ -109,6 +111,9 @@
   $effect(() => {
     listTags().then(data => { tags = data; });
     listArticles().then(data => { allArticles = data; });
+    if (bookId) {
+      getBook(bookId).then(d => { bookEditions = d.editions; }).catch(() => {});
+    }
     if (editUri) {
       isEditing = true;
       savedArticleUri = editUri;
@@ -195,6 +200,7 @@
           restricted: restricted || undefined,
           category: category || undefined,
           book_id: bookId || undefined,
+          edition_id: editionId || undefined,
           tags: selectedTags,
           prereqs,
         });
@@ -386,6 +392,7 @@
           restricted: restricted || undefined,
           category: category || undefined,
           book_id: bookId || undefined,
+          edition_id: editionId || undefined,
           tags: selectedTags,
           prereqs,
         });
@@ -492,6 +499,20 @@
     </select>
   </div>
 </div>
+
+{#if category === 'review' && bookEditions.length > 0}
+<div class="form-row">
+  <div class="form-group" style="flex:1">
+    <label for="edition">{t('newArticle.editionLabel')}</label>
+    <select id="edition" bind:value={editionId}>
+      <option value="">{t('newArticle.noEdition')}</option>
+      {#each bookEditions as ed}
+        <option value={ed.id}>{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''}{ed.publisher ? `, ${ed.publisher}` : ''})</option>
+      {/each}
+    </select>
+  </div>
+</div>
+{/if}
 
 <div class="form-row">
   <div class="form-group" style="flex:1">

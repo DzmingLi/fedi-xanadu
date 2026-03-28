@@ -7,7 +7,7 @@ use crate::region::{InstanceMode, visibility_filter};
 const ARTICLE_BASE: &str = "\
     SELECT a.at_uri, a.did, p.handle AS author_handle, a.kind, a.title, a.description, \
     a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
-    a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, \
+    a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
     COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
     COALESCE((SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = a.at_uri), 0) AS bookmark_count, \
     a.created_at, a.updated_at \
@@ -316,8 +316,8 @@ pub async fn create_article(
     let category = input.category.as_deref().unwrap_or("general");
 
     sqlx::query(
-        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0.8, $10, $11, $12, $13, $14, $15)",
+        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id, edition_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0.8, $10, $11, $12, $13, $14, $15, $16)",
     )
     .bind(at_uri)
     .bind(did)
@@ -334,6 +334,7 @@ pub async fn create_article(
     .bind(restricted)
     .bind(category)
     .bind(input.book_id.as_deref())
+    .bind(input.edition_id.as_deref())
     .execute(&mut *tx)
     .await?;
 

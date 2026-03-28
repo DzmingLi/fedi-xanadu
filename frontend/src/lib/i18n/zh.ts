@@ -128,6 +128,8 @@ export default {
   'newArticle.restricted': '限制访问（付费内容，不同步到 PDS）',
   'newArticle.translationOf': '翻译自（可选）',
   'newArticle.originalArticle': '— 原创文章 —',
+  'newArticle.editionLabel': '所读版本',
+  'newArticle.noEdition': '不指定版本',
   'newArticle.formatLabel': '格式',
   'newArticle.contentLabel': '正文',
   'newArticle.tagsLabel': '标签（点击选择）',

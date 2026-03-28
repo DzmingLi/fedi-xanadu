@@ -24,6 +24,7 @@ export interface Article {
   restricted: boolean;
   question_uri: string | null;
   book_id: string | null;
+  edition_id: string | null;
   answer_count: number;
   vote_score: number;
   bookmark_count: number;
@@ -161,6 +162,7 @@ export interface BookEdition {
   year: string | null;
   translators: string[];
   purchase_links: PurchaseLink[];
+  cover_url: string | null;
   created_at: string;
 }
 
@@ -398,6 +400,7 @@ export interface CreateArticle {
   restricted?: boolean;
   category?: string;
   book_id?: string;
+  edition_id?: string;
   tags: string[];
   prereqs: { tag_id: string; prereq_type: string }[];
 }

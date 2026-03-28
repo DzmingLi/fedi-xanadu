@@ -273,7 +273,7 @@ export const createBook = (data: { title: string; authors: string[]; description
   post<Book>('/books', data);
 export const updateBook = (id: string, data: { title?: string; description?: string; cover_url?: string; edit_summary?: string }) =>
   post<Book>('/books/update', { id, ...data });
-export const addBookEdition = (book_id: string, edition: { title: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[] }) =>
+export const addBookEdition = (book_id: string, edition: { title: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
   post<BookEdition>('/books/editions', { book_id, ...edition });
 export const getBookEditHistory = (id: string) =>
   get<any[]>(`/books/history?id=${encodeURIComponent(id)}`);
