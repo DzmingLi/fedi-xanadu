@@ -315,20 +315,40 @@ try {
   }
 
   function convertFootnotesToSidenotes(el: HTMLDivElement) {
-    const fnSection = el.querySelector('section[role="doc-endnotes"], .footnotes');
-    if (!fnSection) return;
-
-    const fnItems = fnSection.querySelectorAll('li[id]');
+    // Collect footnote definitions — pulldown_cmark uses div.footnote-definition,
+    // other renderers use section[role="doc-endnotes"] > li[id]
     const fnMap = new Map<string, string>();
-    fnItems.forEach(li => {
-      const clone = li.cloneNode(true) as HTMLLIElement;
-      const backLink = clone.querySelector('a[role="doc-backlink"]');
-      if (backLink) backLink.remove();
-      fnMap.set(clone.id, clone.innerHTML.trim());
-    });
+    const fnDefs = el.querySelectorAll('div.footnote-definition');
+    const fnSection = el.querySelector('section[role="doc-endnotes"], .footnotes');
 
+    if (fnDefs.length > 0) {
+      // pulldown_cmark format: <div class="footnote-definition" id="1"><sup>1</sup><p>content</p></div>
+      fnDefs.forEach(def => {
+        const id = def.id;
+        if (!id) return;
+        const clone = def.cloneNode(true) as HTMLElement;
+        // Remove the label <sup>
+        const labelSup = clone.querySelector('sup.footnote-definition-label');
+        if (labelSup) labelSup.remove();
+        fnMap.set(id, clone.innerHTML.trim());
+      });
+    } else if (fnSection) {
+      // Standard format: section > ol > li[id]
+      const fnItems = fnSection.querySelectorAll('li[id]');
+      fnItems.forEach(li => {
+        const clone = li.cloneNode(true) as HTMLLIElement;
+        const backLink = clone.querySelector('a[role="doc-backlink"]');
+        if (backLink) backLink.remove();
+        fnMap.set(clone.id, clone.innerHTML.trim());
+      });
+    }
+
+    if (fnMap.size === 0) return;
+
+    // Replace references — pulldown_cmark: sup.footnote-reference > a,
+    // standard: a[role="doc-noteref"]
     let counter = 0;
-    const refs = el.querySelectorAll('a[role="doc-noteref"]');
+    const refs = el.querySelectorAll('sup.footnote-reference > a, a[role="doc-noteref"]');
     refs.forEach(a => {
       const href = (a as HTMLAnchorElement).getAttribute('href');
       if (!href) return;
@@ -347,10 +367,19 @@ try {
       const sidenote = document.createElement('span');
       sidenote.className = 'sidenote';
       sidenote.innerHTML = fnContent;
-      a.replaceWith(label, checkbox, sidenote);
+
+      // For pulldown_cmark, replace the parent <sup>, not just the <a>
+      const parent = a.parentElement;
+      if (parent && parent.tagName === 'SUP' && parent.classList.contains('footnote-reference')) {
+        parent.replaceWith(label, checkbox, sidenote);
+      } else {
+        a.replaceWith(label, checkbox, sidenote);
+      }
     });
 
-    fnSection.remove();
+    // Remove footnote definitions from the bottom
+    fnDefs.forEach(def => def.remove());
+    if (fnSection) fnSection.remove();
   }
 </script>
 
