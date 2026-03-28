@@ -12,7 +12,7 @@
 
   let detail = $state<BookDetail | null>(null);
   let loading = $state(true);
-  let showEditions = $state(false);
+  let showEditions = $state(true);
 
   $effect(() => {
     load();
