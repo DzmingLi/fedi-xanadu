@@ -53,11 +53,7 @@ pub async fn get_article_content(
     let node_id = uri_to_node_id(&uri);
     let repo = state.pijul.repo_path(&node_id);
 
-    let src_ext = match format.as_str() {
-        "markdown" => "md",
-        "html" => "html",
-        _ => "typ",
-    };
+    let src_ext = fx_render::format_extension(&format);
     let src_path = repo.join(format!("content.{src_ext}"));
     let html_path = repo.join("content.html");
 
@@ -97,12 +93,8 @@ async fn is_cached_fresh(cache: &std::path::Path, source: &std::path::Path) -> b
 }
 
 pub(super) fn render_content(format: &str, source: &str, repo_path: &std::path::Path) -> Result<String, AppError> {
-    match format {
-        "markdown" => fx_render::render_markdown_to_html(source)
-            .map_err(|e| { tracing::warn!("render error: {e}"); AppError(fx_core::Error::Render(e.to_string())) }),
-        _ => fx_render::render_typst_to_html_with_images(source, repo_path)
-            .map_err(|e| { tracing::warn!("render error: {e}"); AppError(fx_core::Error::Render(e.to_string())) }),
-    }
+    fx_render::render_to_html(format, source, repo_path)
+        .map_err(|e| { tracing::warn!("render error: {e}"); AppError(fx_core::Error::Render(e.to_string())) })
 }
 
 pub async fn get_article_prereqs(
@@ -135,11 +127,7 @@ pub async fn create_article(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = match input.content_format.as_str() {
-        "markdown" => "md",
-        "html" => "html",
-        _ => "typ",
-    };
+    let src_ext = fx_render::format_extension(&input.content_format);
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
 
     if input.content_format != "html" {
@@ -243,11 +231,7 @@ pub async fn get_article_full(
     let content = if has_access {
         let node_id = uri_to_node_id(&uri);
         let repo = state.pijul.repo_path(&node_id);
-        let src_ext = match article.content_format.as_str() {
-            "markdown" => "md",
-            "html" => "html",
-            _ => "typ",
-        };
+        let src_ext = fx_render::format_extension(&article.content_format);
         let src_path = repo.join(format!("content.{src_ext}"));
         let html_path = repo.join("content.html");
 
@@ -396,8 +380,39 @@ pub async fn fork_article(
     state.pijul.fork(&source_node_id, &fork_node_id)
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
+    // Format conversion on fork
+    let target_format = input.target_format.as_deref().unwrap_or(&source.content_format);
+    if target_format != source.content_format {
+        if let Err(e) = fx_core::validation::validate_content_format(target_format) {
+            return Err(AppError(fx_core::Error::Validation(vec![e])));
+        }
+        let fork_repo = state.pijul.repo_path(&fork_node_id);
+        let old_ext = fx_render::format_extension(&source.content_format);
+        let new_ext = fx_render::format_extension(target_format);
+        let old_path = fork_repo.join(format!("content.{old_ext}"));
+        let src_content = tokio::fs::read_to_string(&old_path).await?;
+        let converted = fx_render::convert_format(&src_content, &source.content_format, target_format)
+            .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?;
+        // Write new format file and remove old one
+        let new_path = fork_repo.join(format!("content.{new_ext}"));
+        tokio::fs::write(&new_path, &converted).await?;
+        if old_ext != new_ext {
+            let _ = tokio::fs::remove_file(&old_path).await;
+        }
+        // Re-render HTML cache
+        if target_format != "html" {
+            let rendered = render_content(target_format, &converted, &fork_repo)?;
+            let _ = tokio::fs::write(fork_repo.join("content.html"), &rendered).await;
+        }
+    }
+
+    let mut source_for_fork = source.clone();
+    if target_format != source_for_fork.content_format {
+        source_for_fork.content_format = target_format.to_string();
+    }
+
     let article = article_service::create_fork_record(
-        &state.pool, &fork_uri, &input.uri, &fork_at_uri, &user.did, &source,
+        &state.pool, &fork_uri, &input.uri, &fork_at_uri, &user.did, &source_for_fork,
         default_visibility(user.phone_verified),
     ).await?;
 
@@ -434,6 +449,36 @@ pub async fn fork_article(
 #[derive(serde::Deserialize)]
 pub struct ForkArticleInput {
     uri: String,
+    /// Target format for format conversion on fork. If omitted, keeps original format.
+    target_format: Option<String>,
+}
+
+// --- Format conversion ---
+
+#[derive(serde::Deserialize)]
+pub struct ConvertInput {
+    content: String,
+    from: String,
+    to: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct ConvertOutput {
+    content: String,
+}
+
+pub async fn convert_content(
+    Json(input): Json<ConvertInput>,
+) -> ApiResult<Json<ConvertOutput>> {
+    if let Err(e) = fx_core::validation::validate_content_format(&input.from) {
+        return Err(AppError(fx_core::Error::Validation(vec![e])));
+    }
+    if let Err(e) = fx_core::validation::validate_content_format(&input.to) {
+        return Err(AppError(fx_core::Error::Validation(vec![e])));
+    }
+    let converted = fx_render::convert_format(&input.content, &input.from, &input.to)
+        .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?;
+    Ok(Json(ConvertOutput { content: converted }))
 }
 
 // --- Image upload ---
@@ -491,7 +536,7 @@ pub async fn upload_image(
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
         .collect();
     let safe_name = safe_name.trim_start_matches('.').to_string();
-    if safe_name.is_empty() || safe_name == "content.typ" || safe_name == "content.md" || safe_name == "content.html" {
+    if safe_name.is_empty() || safe_name == "content.typ" || safe_name == "content.md" || safe_name == "content.html" || safe_name == "content.tex" {
         return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
     }
 
@@ -600,11 +645,7 @@ pub async fn update_article(
 
         let node_id = uri_to_node_id(&input.uri);
         let repo_path = state.pijul.repo_path(&node_id);
-        let src_ext = match format.as_str() {
-            "markdown" => "md",
-            "html" => "html",
-            _ => "typ",
-        };
+        let src_ext = fx_render::format_extension(&format);
         tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
 
         if format != "html" {

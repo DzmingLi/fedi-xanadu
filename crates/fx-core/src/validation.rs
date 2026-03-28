@@ -84,7 +84,7 @@ pub fn validate_tag_id(id: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
-const ALLOWED_FORMATS: &[&str] = &["typst", "markdown", "html"];
+const ALLOWED_FORMATS: &[&str] = &["typst", "markdown", "html", "tex"];
 
 pub fn validate_content_format(format: &str) -> Result<(), ValidationError> {
     if !ALLOWED_FORMATS.contains(&format) {

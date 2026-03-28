@@ -143,7 +143,7 @@
         content = c.source;
         contentFormat = a.content_format;
         lang = a.lang || 'zh';
-        license = a.license || 'CC-BY-NC-SA-4.0';
+        license = a.license || 'CC-BY-SA-4.0';
       });
     } else if (initialDraftId) {
       listDrafts().then(drafts => {
@@ -154,7 +154,7 @@
         content = d.content;
         contentFormat = d.content_format;
         lang = d.lang || 'zh';
-        license = d.license || 'CC-BY-NC-SA-4.0';
+        license = d.license || 'CC-BY-SA-4.0';
         try { selectedTags = JSON.parse(d.tags); } catch { selectedTags = []; }
         try { prereqs = JSON.parse(d.prereqs); } catch { prereqs = []; }
       });
@@ -167,7 +167,7 @@
         contentFormat = a.content_format;
         originalFormat = a.content_format;
         lang = a.lang || 'zh';
-        license = a.license || 'CC-BY-NC-SA-4.0';
+        license = a.license || 'CC-BY-SA-4.0';
         forkSource = forkOf;
       });
     }

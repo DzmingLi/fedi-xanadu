@@ -81,8 +81,14 @@
   </section>
 
   <section>
-    <h2>用 Typst 写作</h2>
-    <p>Fedi-Xanadu 使用 <a href="https://typst.app">Typst</a> 作为内容格式 — 一种现代的排版语言，特别适合数学和学术写作。</p>
+    <h2>内容格式</h2>
+    <p>平台支持四种写作格式，在编辑器的「格式」下拉菜单中选择。上传文件时会根据扩展名自动识别。</p>
+    <p>Fork 文章时可以切换目标格式，系统会自动转换内容。转换可能丢失部分格式特有的语法（如 Typst 定理环境转 Markdown 后变为普通文本），建议转换后检查。</p>
+  </section>
+
+  <section>
+    <h2>Typst（推荐）</h2>
+    <p><a href="https://typst.app">Typst</a> 是现代排版语言，特别适合数学和学术写作。平台默认格式。</p>
 
     <h3>基础语法</h3>
     <pre><code>= 一级标题
@@ -99,6 +105,7 @@
 + 第二项</code></pre>
 
     <h3>数学公式</h3>
+    <p>数学渲染为 MathML，浏览器原生支持，无需额外加载。</p>
     <pre><code>行内公式：$f(x) = x^2 + 1$
 
 独立公式块：
@@ -110,17 +117,23 @@ $ mat(1, 2; 3, 4) $
 求和：
 $ sum_(n=1)^infinity 1/n^2 = pi^2/6 $</code></pre>
 
-    <h3>定理环境</h3>
-    <pre><code>#let theorem = block.with(
-  stroke: luma(200),
-  inset: 12pt,
-  radius: 4pt,
-)
+    <h3>内置定理环境</h3>
+    <p>平台预置了一组学术环境，直接使用即可，自动带样式：</p>
+    <pre><code>#definition(name: "连续")[
+  设 $f: RR -> RR$，若 $lim_(x -> a) f(x) = f(a)$，
+  则称 $f$ 在 $a$ 点连续。
+]
 
-#theorem[
-  *定理 (欧拉公式)* \
-  $e^(i pi) + 1 = 0$
-]</code></pre>
+#theorem[若 $f$ 在 $[a, b]$ 上连续，则 $f$ 可积。]
+
+#proof[显然。]
+
+#lemma[引理内容]
+#corollary[推论内容]
+#proposition[命题内容]
+#remark[注记内容]
+#example[示例内容]
+#solution[解答内容]</code></pre>
 
     <h3>脚注 → 边注</h3>
     <p>Typst 的脚注会自动转换为侧边边注（sidenotes），在宽屏上显示在正文右侧：</p>
@@ -141,8 +154,80 @@ fn main() &lbrace;
   </section>
 
   <section>
-    <h2>用 HTML 写作</h2>
-    <p>除了 Typst 和 Markdown，你也可以直接上传 HTML 内容。</p>
+    <h2>Markdown</h2>
+    <p>支持 CommonMark 扩展语法，适合熟悉 Markdown 的用户。</p>
+
+    <h3>数学公式</h3>
+    <p>使用 KaTeX 语法，服务端渲染：</p>
+    <pre><code>行内公式：$x^2 + y^2 = r^2$
+
+块级公式：
+$$
+\int_a^b f(x)\,dx = F(b) - F(a)
+$$</code></pre>
+
+    <h3>扩展语法</h3>
+    <pre><code># 标题
+
+**加粗** 和 *斜体*
+
+| 列A | 列B |
+|-----|-----|
+| 1   | 2   |
+
+- [x] 任务列表
+- [ ] 未完成
+
+脚注引用[^1]
+
+[^1]: 脚注内容
+
+~~删除线~~</code></pre>
+
+    <h3>图片</h3>
+    <pre><code>![描述](filename.png)</code></pre>
+  </section>
+
+  <section>
+    <h2>LaTeX</h2>
+    <p>适合已有 LaTeX 文档或习惯 LaTeX 语法的用户。通过 pandoc 转换为 HTML，数学渲染为 MathML。</p>
+
+    <h3>基本用法</h3>
+    <p>不需要 <code>\documentclass</code> 和 <code>\begin&lbrace;document&rbrace;</code>，直接写正文内容：</p>
+    <pre><code>\section&lbrace;引言&rbrace;
+
+这是一段文字，包含行内公式 $E = mc^2$ 和块级公式：
+\[
+  \int_a^b f(x)\,dx = F(b) - F(a)
+\]
+
+\subsection&lbrace;列表&rbrace;
+
+\begin&lbrace;enumerate&rbrace;
+\item 第一项
+\item 第二项
+\end&lbrace;enumerate&rbrace;</code></pre>
+
+    <h3>支持的命令</h3>
+    <ul>
+      <li>章节：<code>\section</code>、<code>\subsection</code>、<code>\subsubsection</code></li>
+      <li>格式：<code>\textbf&lbrace;&rbrace;</code>、<code>\textit&lbrace;&rbrace;</code>、<code>\emph&lbrace;&rbrace;</code></li>
+      <li>列表：<code>enumerate</code>、<code>itemize</code></li>
+      <li>数学：<code>$...$</code>、<code>\[...\]</code>、<code>equation</code>、<code>align</code></li>
+      <li>环境：<code>theorem</code>、<code>proof</code>、<code>definition</code> 等</li>
+    </ul>
+
+    <h3>注意事项</h3>
+    <ul>
+      <li>不支持自定义宏包（<code>\usepackage</code>），只处理标准 LaTeX</li>
+      <li>复杂表格和 TikZ 图形可能无法正确转换</li>
+      <li>建议先在本地编译确认效果后再上传</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>HTML</h2>
+    <p>直接提供渲染好的 HTML 内容片段。</p>
 
     <h3>重要：只提交内容片段</h3>
     <p>HTML 文章必须是<strong>内容片段</strong>（fragment），不是完整的 HTML 页面。</p>
@@ -170,7 +255,7 @@ fn main() &lbrace;
 &lt;/html&gt;</code></pre>
       </div>
     </div>
-    <p>具体来说，<strong>不允许</strong>以下标签出现在 HTML 文章中：</p>
+    <p><strong>不允许</strong>以下标签：</p>
     <ul>
       <li><code>&lt;!DOCTYPE&gt;</code>、<code>&lt;html&gt;</code>、<code>&lt;head&gt;</code>、<code>&lt;body&gt;</code> — 页面结构由平台提供</li>
       <li><code>&lt;script&gt;</code> — 出于安全考虑，不允许执行脚本</li>
@@ -178,7 +263,6 @@ fn main() &lbrace;
     </ul>
 
     <h3>嵌入视频</h3>
-    <p>直接使用标准 iframe 嵌入，不需要任何 JavaScript：</p>
     <pre><code>&lt;iframe
   width="640" height="360"
   src="https://www.youtube.com/embed/VIDEO_ID?rel=0"
@@ -186,7 +270,6 @@ fn main() &lbrace;
   allowfullscreen
   style="max-width: 100%;"
 &gt;&lt;/iframe&gt;</code></pre>
-    <p>支持 YouTube、Bilibili 等任何提供 embed 链接的视频平台。</p>
 
     <h3>图片</h3>
     <p>先通过编辑器上传图片，然后使用返回的路径：</p>
@@ -200,7 +283,7 @@ fn main() &lbrace;
       <li>使用 Bluesky 账号登录（Handle + App Password）</li>
       <li>选择感兴趣的领域，首页将按领域推荐文章</li>
       <li>浏览<a href="#/skill-trees">技能树</a>，采用一棵适合你的学习路径</li>
-      <li>点击「Write」<a href="#/new">创建文章</a>，用 Typst 编写内容</li>
+      <li>点击「Write」<a href="#/new">创建文章</a>，选择 Typst / Markdown / LaTeX / HTML 格式</li>
       <li>为文章添加 tag 和前置知识声明</li>
       <li>发布后，文章会同时存储在你的 AT Protocol PDS 上</li>
     </ol>

@@ -60,11 +60,7 @@ pub async fn create_question(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = match input.content_format.as_str() {
-        "markdown" => "md",
-        "html" => "html",
-        _ => "typ",
-    };
+    let src_ext = fx_render::format_extension(&input.content_format);
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
 
     if input.content_format != "html" {
@@ -114,11 +110,7 @@ pub async fn post_answer(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = match input.content_format.as_str() {
-        "markdown" => "md",
-        "html" => "html",
-        _ => "typ",
-    };
+    let src_ext = fx_render::format_extension(&input.content_format);
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
 
     if input.content_format != "html" {

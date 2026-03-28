@@ -89,11 +89,7 @@ pub async fn admin_create_article(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = match input.article.content_format.as_str() {
-        "markdown" => "md",
-        "html" => "html",
-        _ => "typ",
-    };
+    let src_ext = fx_render::format_extension(&input.article.content_format);
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
 
     // Pre-render HTML cache
@@ -225,11 +221,7 @@ pub async fn admin_update_article(
 
         let node_id = uri_to_node_id(&input.uri);
         let repo_path = state.pijul.repo_path(&node_id);
-        let src_ext = match format.as_str() {
-            "markdown" => "md",
-            "html" => "html",
-            _ => "typ",
-        };
+        let src_ext = fx_render::format_extension(&format);
         tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
 
         if format != "html" {
@@ -649,11 +641,7 @@ pub async fn admin_create_question(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = match input.article.content_format.as_str() {
-        "markdown" => "md",
-        "html" => "html",
-        _ => "typ",
-    };
+    let src_ext = fx_render::format_extension(&input.article.content_format);
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
 
     if input.article.content_format != "html" {
@@ -709,11 +697,7 @@ pub async fn admin_post_answer(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = match input.article.content_format.as_str() {
-        "markdown" => "md",
-        "html" => "html",
-        _ => "typ",
-    };
+    let src_ext = fx_render::format_extension(&input.article.content_format);
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
 
     if input.article.content_format != "html" {

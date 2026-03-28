@@ -305,6 +305,7 @@
             sqlx-cli
             nodejs_22
             nodePackages.npm
+            pandoc
           ];
           SQLX_OFFLINE = "true";
         };
