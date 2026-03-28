@@ -264,7 +264,7 @@
           version = "0.1.0";
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = with pkgs; [ pkg-config makeWrapper ];
+          nativeBuildInputs = with pkgs; [ pkg-config ];
           buildInputs = with pkgs; [ openssl postgresql ];
           doCheck = false;
           env.SQLX_OFFLINE = "true";
@@ -272,8 +272,6 @@
 
           postInstall = ''
             rm -f $out/bin/fedi-xanadu
-            wrapProgram $out/bin/fx \
-              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.pandoc ]}
           '';
         };
 
