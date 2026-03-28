@@ -125,6 +125,7 @@ export interface Series {
   id: string;
   title: string;
   description: string | null;
+  long_description: string | null;
   parent_id: string | null;
   order_index: number;
   created_by: string;

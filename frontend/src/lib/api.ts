@@ -112,7 +112,7 @@ export const updateProfileLinks = (links: { label: string; url: string }[]) =>
 // Series
 export const listSeries = () => get<Series[]>('/series');
 export const getSeries = (id: string) => get<SeriesDetail>(`/series/by-id?id=${encodeURIComponent(id)}`);
-export const createSeries = (data: { title: string; description?: string; topics?: string[]; parent_id?: string; category?: string }) =>
+export const createSeries = (data: { title: string; description?: string; long_description?: string; topics?: string[]; parent_id?: string; category?: string }) =>
   post<Series>('/series', data);
 export const addSeriesArticle = (series_id: string, article_uri: string) =>
   post<void>('/series/articles', { series_id, article_uri });

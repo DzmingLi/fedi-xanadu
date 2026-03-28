@@ -123,16 +123,34 @@
               <span class="my-rating-label">{t('books.myRating')}:</span>
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <span class="star-picker" onmouseleave={() => { hoverRating = 0; }}>
-                {#each Array.from({length: 10}, (_, i) => i + 1) as r}
-                  <!-- svelte-ignore a11y_click_events_have_key_events -->
-                  <span
-                    class="half-star"
-                    class:left={r % 2 === 1}
-                    class:right={r % 2 === 0}
-                    class:active={r <= (hoverRating || myRating)}
-                    onmouseenter={() => { hoverRating = r; }}
-                    onclick={() => submitRating(r)}
-                  ></span>
+                {#each [1,2,3,4,5] as star}
+                  {@const activeVal = hoverRating || myRating}
+                  {@const leftActive = activeVal >= star * 2 - 1}
+                  {@const rightActive = activeVal >= star * 2}
+                  <svg class="star-svg" viewBox="0 0 24 24" width="24" height="24">
+                    <!-- Left half (odd value) -->
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <g clip-path="inset(0 50% 0 0)"
+                       onmouseenter={() => { hoverRating = star * 2 - 1; }}
+                       onclick={() => submitRating(star * 2 - 1)}
+                       role="button" tabindex="-1">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                            fill={leftActive ? '#f59e0b' : 'none'}
+                            stroke={leftActive ? '#f59e0b' : '#ccc'}
+                            stroke-width="1.5"/>
+                    </g>
+                    <!-- Right half (even value) -->
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <g clip-path="inset(0 0 0 50%)"
+                       onmouseenter={() => { hoverRating = star * 2; }}
+                       onclick={() => submitRating(star * 2)}
+                       role="button" tabindex="-1">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                            fill={rightActive ? '#f59e0b' : 'none'}
+                            stroke={rightActive ? '#f59e0b' : '#ccc'}
+                            stroke-width="1.5"/>
+                    </g>
+                  </svg>
                 {/each}
               </span>
               {#if myRating > 0}
@@ -341,34 +359,15 @@
   }
   .star-picker {
     display: inline-flex;
+    gap: 2px;
     cursor: pointer;
-    height: 20px;
+    align-items: center;
   }
-  .half-star {
-    width: 10px;
-    height: 20px;
-    position: relative;
+  .star-svg {
+    display: block;
   }
-  .half-star::before {
-    content: '☆';
-    position: absolute;
-    font-size: 18px;
-    color: var(--border-strong, #ccc);
-    overflow: hidden;
-  }
-  .half-star.left::before {
-    left: 0;
-    width: 10px;
-    clip-path: inset(0 50% 0 0);
-  }
-  .half-star.right::before {
-    right: 0;
-    width: 10px;
-    clip-path: inset(0 0 0 50%);
-  }
-  .half-star.active::before {
-    content: '★';
-    color: #f59e0b;
+  .star-svg g {
+    cursor: pointer;
   }
 
   /* Actions */

@@ -188,7 +188,9 @@
 {:else if detail}
   <div class="series-header">
     <h1>{detail.series.title}</h1>
-    {#if detail.series.description}
+    {#if detail.series.long_description}
+      <p class="series-long-desc">{detail.series.long_description}</p>
+    {:else if detail.series.description}
       <p class="series-desc">{detail.series.description}</p>
     {/if}
     <div class="series-meta">
@@ -247,6 +249,13 @@
   }
   .series-header h1 {
     margin: 0 0 8px;
+  }
+  .series-long-desc {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin: 0 0 16px;
+    line-height: 1.6;
+    white-space: pre-line;
   }
   .series-desc {
     font-size: 15px;

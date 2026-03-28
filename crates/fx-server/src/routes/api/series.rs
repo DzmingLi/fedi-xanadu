@@ -14,6 +14,7 @@ use super::{WriteAuth, UriQuery, tid};
 pub(crate) struct CreateSeriesInput {
     title: String,
     description: Option<String>,
+    long_description: Option<String>,
     topics: Option<Vec<String>>,
     parent_id: Option<String>,
     lang: Option<String>,
@@ -71,6 +72,7 @@ pub async fn create_series(
         &id,
         &input.title,
         input.description.as_deref(),
+        input.long_description.as_deref(),
         &topics,
         input.parent_id.as_deref(),
         &user.did,

@@ -9,6 +9,7 @@
 
   let title = $state('');
   let description = $state('');
+  let longDescription = $state('');
   let tagSearch = $state('');
   let selectedTagId = $state('');
   let allTags = $state<Tag[]>([]);
@@ -111,6 +112,7 @@
       const series = await createSeries({
         title,
         description,
+        long_description: longDescription || undefined,
         topics: selectedTagId ? [selectedTagId] : undefined,
         parent_id: selectedParentId || undefined,
         category,
@@ -172,7 +174,12 @@
 
   <label>
     {t('newArticle.descLabel')}
-    <textarea bind:value={description} rows="3" placeholder={t('newSeries.descPlaceholder')}></textarea>
+    <textarea bind:value={description} rows="2" placeholder={t('newSeries.descPlaceholder')}></textarea>
+  </label>
+
+  <label>
+    {t('newSeries.longDescLabel')}
+    <textarea bind:value={longDescription} rows="5" placeholder={t('newSeries.longDescPlaceholder')}></textarea>
   </label>
 
   <label>
