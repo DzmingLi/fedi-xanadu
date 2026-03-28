@@ -127,6 +127,8 @@ export interface Series {
   created_by: string;
   author_handle?: string | null;
   created_at: string;
+  lang: string;
+  translation_group: string | null;
 }
 
 export interface SeriesArticle {
@@ -148,6 +150,7 @@ export interface SeriesDetail {
   articles: SeriesArticle[];
   prereqs: SeriesArticlePrereq[];
   children: Series[];
+  translations: Series[];
 }
 
 export interface SeriesTreeNode {

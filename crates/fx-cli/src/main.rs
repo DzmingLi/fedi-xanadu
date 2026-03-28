@@ -153,6 +153,12 @@ enum AdminCommand {
         /// Parent series ID (for sub-series)
         #[arg(long)]
         parent: Option<String>,
+        /// Language code (default: zh)
+        #[arg(short, long)]
+        lang: Option<String>,
+        /// Source series ID this is a translation of
+        #[arg(long)]
+        translation_of: Option<String>,
     },
     /// Add an article to a series
     #[command(name = "add-to-series")]
@@ -1001,7 +1007,7 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             println!("Merged question into '{into}' ({moved} answers moved)");
         }
 
-        AdminCommand::CreateSeries { r#as: as_handle, title, desc, topics, parent } => {
+        AdminCommand::CreateSeries { r#as: as_handle, title, desc, topics, parent, lang, translation_of } => {
             let topics_vec: Vec<&str> = topics.as_deref().map(|t| t.split(',').collect()).unwrap_or_default();
             let body = serde_json::json!({
                 "as_handle": as_handle,
@@ -1009,6 +1015,8 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "description": desc,
                 "topics": topics_vec,
                 "parent_id": parent,
+                "lang": lang,
+                "translation_of": translation_of,
             });
 
             let resp: serde_json::Value = client()

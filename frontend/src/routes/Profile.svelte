@@ -2,7 +2,7 @@
   import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth';
-  import { tagName, deduplicateByTranslation } from '../lib/display';
+  import { tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -120,7 +120,7 @@
       articles = arts;
       questions = qs;
       answers = ans;
-      allUserSeries = allSeries.filter(s => s.created_by === did);
+      allUserSeries = deduplicateSeriesByTranslation(allSeries.filter(s => s.created_by === did), getLocale());
 
       const saMaps = buildSeriesArticleMaps(seriesArts);
       seriesArticleUris = saMaps.seriesArticleUris;

@@ -201,6 +201,14 @@
       {/if}
       <span class="meta"><a href="#/profile?did={encodeURIComponent(detail.series.created_by)}">{detail.series.created_by}</a></span>
     </div>
+    {#if detail.translations && detail.translations.length > 0}
+      <div class="series-translations">
+        <span class="lang-current">{detail.series.lang}</span>
+        {#each detail.translations as tr (tr.id)}
+          <a href="#/series?id={encodeURIComponent(tr.id)}" class="lang-link">{tr.lang}</a>
+        {/each}
+      </div>
+    {/if}
     {#if detail.series.parent_id}
       <div class="series-parent">
         <a href="#/series?id={encodeURIComponent(detail.series.parent_id)}">{t('series.backToParent')}</a>
@@ -251,6 +259,26 @@
     align-items: center;
     gap: 12px;
     font-size: 13px;
+  }
+  .series-translations {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  .lang-current {
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+  }
+  .lang-link {
+    color: var(--accent);
+    text-decoration: none;
+    text-transform: uppercase;
+  }
+  .lang-link:hover {
+    text-decoration: underline;
   }
 
   .series-articles {

@@ -1,4 +1,4 @@
-import type { Article } from './types';
+import type { Article, Series } from './types';
 import { getLocale } from './i18n';
 
 export function authorName(a: Pick<Article, 'author_handle' | 'did'>): string {
@@ -29,6 +29,35 @@ export function deduplicateByTranslation(articles: Article[], locale: string): A
   for (const [, variants] of groups) {
     const match = variants.find(a => a.lang === locale)
       || variants.find(a => a.lang === 'zh')
+      || variants[0];
+    result.push(match);
+  }
+
+  return result;
+}
+
+/**
+ * Deduplicate series by translation_group, preferring the locale match.
+ */
+export function deduplicateSeriesByTranslation(series: Series[], locale: string): Series[] {
+  const groups = new Map<string, Series[]>();
+  const ungrouped: Series[] = [];
+
+  for (const s of series) {
+    const key = s.translation_group;
+    if (key) {
+      const arr = groups.get(key) || [];
+      arr.push(s);
+      groups.set(key, arr);
+    } else {
+      ungrouped.push(s);
+    }
+  }
+
+  const result: Series[] = [...ungrouped];
+  for (const [, variants] of groups) {
+    const match = variants.find(s => s.lang === locale)
+      || variants.find(s => s.lang === 'zh')
       || variants[0];
     result.push(match);
   }

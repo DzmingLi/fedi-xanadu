@@ -16,6 +16,8 @@ pub(crate) struct CreateSeriesInput {
     description: Option<String>,
     topics: Option<Vec<String>>,
     parent_id: Option<String>,
+    lang: Option<String>,
+    translation_of: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -55,6 +57,13 @@ pub async fn create_series(
         require_owner(Some(&owner), &user.did)?;
     }
 
+    let lang = input.lang.as_deref().unwrap_or("zh");
+    let translation_group = if let Some(ref source_id) = input.translation_of {
+        Some(series_service::resolve_series_translation_group(&state.pool, source_id).await?)
+    } else {
+        None
+    };
+
     let row = series_service::create_series(
         &state.pool,
         &id,
@@ -63,6 +72,8 @@ pub async fn create_series(
         &topics,
         input.parent_id.as_deref(),
         &user.did,
+        lang,
+        translation_group,
     )
     .await?;
 

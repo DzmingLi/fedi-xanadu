@@ -18,7 +18,7 @@
 <script lang="ts">
   import { listArticles, getAllArticleTeaches, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles } from '../lib/api';
   import { getAuth } from '../lib/auth';
-  import { authorName, tagName, deduplicateByTranslation } from '../lib/display';
+  import { authorName, tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -151,9 +151,11 @@
     }
 
     // Add series cards — only top-level series (no parent)
+    // Deduplicate series translations
+    const dedupedSeries = deduplicateSeriesByTranslation(allSeries, locale);
     // Collect all descendant article URIs for each top-level series
     const childSeriesOf = new Map<string, string[]>();
-    for (const s of allSeries) {
+    for (const s of dedupedSeries) {
       if (s.parent_id) {
         const arr = childSeriesOf.get(s.parent_id) || [];
         arr.push(s.id);
@@ -161,7 +163,7 @@
       }
     }
 
-    for (const s of allSeries) {
+    for (const s of dedupedSeries) {
       if (s.parent_id) continue; // skip sub-series
 
       // Gather articles from this series and all descendant sub-series

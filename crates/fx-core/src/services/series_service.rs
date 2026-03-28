@@ -13,6 +13,8 @@ pub struct SeriesRow {
     pub order_index: i32,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
+    pub lang: String,
+    pub translation_group: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -25,6 +27,8 @@ pub struct SeriesListRow {
     pub created_by: String,
     pub author_handle: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub lang: String,
+    pub translation_group: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -49,6 +53,7 @@ pub struct SeriesDetailResponse {
     pub articles: Vec<SeriesArticleRow>,
     pub prereqs: Vec<SeriesPrereqRow>,
     pub children: Vec<SeriesRow>,
+    pub translations: Vec<SeriesRow>,
 }
 
 /// Recursive tree node for full hierarchy display.
@@ -83,7 +88,8 @@ pub struct SeriesNavItem {
 pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, \
-                s.parent_id, s.order_index, s.created_by, pu.handle AS author_handle, s.created_at \
+                s.parent_id, s.order_index, s.created_by, pu.handle AS author_handle, s.created_at, \
+                s.lang, s.translation_group \
          FROM series s \
          LEFT JOIN platform_users pu ON s.created_by = pu.did \
          ORDER BY s.created_at DESC LIMIT $1",
@@ -102,6 +108,8 @@ pub async fn create_series(
     topics: &[String],
     parent_id: Option<&str>,
     created_by: &str,
+    lang: &str,
+    translation_group: Option<String>,
 ) -> crate::Result<SeriesRow> {
     // Auto-assign order_index: append after existing siblings
     let order_index: i32 = if parent_id.is_some() {
@@ -120,8 +128,8 @@ pub async fn create_series(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO series (id, title, description, parent_id, order_index, created_by) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO series (id, title, description, parent_id, order_index, created_by, lang, translation_group) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(id)
     .bind(title)
@@ -129,6 +137,8 @@ pub async fn create_series(
     .bind(parent_id)
     .bind(order_index)
     .bind(created_by)
+    .bind(lang)
+    .bind(&translation_group)
     .execute(&mut *tx)
     .await?;
 
@@ -145,7 +155,7 @@ pub async fn create_series(
     tx.commit().await?;
 
     let row = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, parent_id, order_index, created_by, created_at \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -157,7 +167,7 @@ pub async fn create_series(
 
 pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesDetailResponse> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, parent_id, order_index, created_by, created_at \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -186,19 +196,75 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
     .await?;
 
     let children = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, parent_id, order_index, created_by, created_at \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
          FROM series WHERE parent_id = $1 ORDER BY order_index",
     )
     .bind(id)
     .fetch_all(pool)
     .await?;
 
+    let translations = get_series_translations(pool, id).await?;
+
     Ok(SeriesDetailResponse {
         series,
         articles,
         prereqs,
         children,
+        translations,
     })
+}
+
+pub async fn resolve_series_translation_group(
+    pool: &PgPool,
+    source_id: &str,
+) -> crate::Result<String> {
+    let group: Option<String> = sqlx::query_scalar(
+        "SELECT COALESCE(translation_group, id) FROM series WHERE id = $1",
+    )
+    .bind(source_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| Error::NotFound {
+        entity: "series",
+        id: source_id.to_string(),
+    })?;
+
+    let g = group.unwrap_or_else(|| source_id.to_string());
+
+    sqlx::query(
+        "UPDATE series SET translation_group = $1 WHERE id = $2 AND translation_group IS NULL",
+    )
+    .bind(&g)
+    .bind(source_id)
+    .execute(pool)
+    .await?;
+
+    Ok(g)
+}
+
+pub async fn get_series_translations(pool: &PgPool, id: &str) -> crate::Result<Vec<SeriesRow>> {
+    let group: Option<String> = sqlx::query_scalar(
+        "SELECT COALESCE(translation_group, id) FROM series WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
+    let group = match group {
+        Some(g) => g,
+        None => return Ok(vec![]),
+    };
+
+    let rows = sqlx::query_as::<_, SeriesRow>(
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
+         FROM series WHERE translation_group = $1 AND id != $2 ORDER BY lang",
+    )
+    .bind(&group)
+    .bind(id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
 }
 
 pub async fn add_series_article(
@@ -334,10 +400,10 @@ pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<Seri
     // Fetch all series in the tree in one query using recursive CTE
     let all_series = sqlx::query_as::<_, SeriesRow>(
         "WITH RECURSIVE tree AS ( \
-             SELECT id, title, description, parent_id, order_index, created_by, created_at \
+             SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
              FROM series WHERE id = $1 \
              UNION ALL \
-             SELECT s.id, s.title, s.description, s.parent_id, s.order_index, s.created_by, s.created_at \
+             SELECT s.id, s.title, s.description, s.parent_id, s.order_index, s.created_by, s.created_at, s.lang, s.translation_group \
              FROM series s JOIN tree t ON s.parent_id = t.id \
          ) SELECT * FROM tree",
     )

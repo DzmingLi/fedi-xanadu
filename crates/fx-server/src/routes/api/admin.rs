@@ -136,6 +136,8 @@ pub struct AdminCreateSeriesInput {
     pub description: Option<String>,
     pub topics: Option<Vec<String>>,
     pub parent_id: Option<String>,
+    pub lang: Option<String>,
+    pub translation_of: Option<String>,
 }
 
 pub async fn admin_create_series(
@@ -149,6 +151,13 @@ pub async fn admin_create_series(
     let id = format!("s-{}", tid());
 
     let topics = input.topics.unwrap_or_default();
+    let lang = input.lang.as_deref().unwrap_or("zh");
+    let translation_group = if let Some(ref source_id) = input.translation_of {
+        Some(series_service::resolve_series_translation_group(&state.pool, source_id).await?)
+    } else {
+        None
+    };
+
     let row = series_service::create_series(
         &state.pool,
         &id,
@@ -157,6 +166,8 @@ pub async fn admin_create_series(
         &topics,
         input.parent_id.as_deref(),
         &did,
+        lang,
+        translation_group,
     )
     .await?;
 
