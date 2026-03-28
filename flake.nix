@@ -264,15 +264,16 @@
           version = "0.1.0";
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = with pkgs; [ pkg-config ];
+          nativeBuildInputs = with pkgs; [ pkg-config makeWrapper ];
           buildInputs = with pkgs; [ openssl postgresql ];
           doCheck = false;
           env.SQLX_OFFLINE = "true";
           cargoBuildFlags = [ "--package" "fx-cli" ];
 
           postInstall = ''
-            # Only keep the fx binary
             rm -f $out/bin/fedi-xanadu
+            wrapProgram $out/bin/fx \
+              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.pandoc ]}
           '';
         };
 
@@ -281,7 +282,7 @@
           version = "0.1.0";
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = with pkgs; [ pkg-config ];
+          nativeBuildInputs = with pkgs; [ pkg-config makeWrapper ];
           buildInputs = with pkgs; [ openssl postgresql ];
           doCheck = false;
           env.SQLX_OFFLINE = "true";
@@ -293,6 +294,8 @@
             if [ -d "$src/static" ]; then
               cp -r $src/static $out/share/fedi-xanadu/static
             fi
+            wrapProgram $out/bin/fedi-xanadu \
+              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.pandoc ]}
           '';
         };
 
