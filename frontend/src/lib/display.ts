@@ -1,7 +1,7 @@
 import type { Article, Series } from './types';
-import { getLocale } from './i18n';
-import { getLangPrefs } from './langPrefs';
-import { getBlockedDids } from './blocklist';
+import { getLocale } from './i18n/index.svelte';
+import { getLangPrefs } from './langPrefs.svelte';
+import { getBlockedDids } from './blocklist.svelte';
 
 export function authorName(a: Pick<Article, 'author_handle' | 'did'>): string {
   if (a.author_handle) return `@${a.author_handle}`;

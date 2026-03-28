@@ -1,9 +1,9 @@
 <script lang="ts">
   import { createSeries, listTags, listArticles, listSeries, addSeriesArticle, addSeriesPrereq } from '../lib/api';
-  import { getAuth } from '../lib/auth';
+  import { getAuth } from '../lib/auth.svelte';
   import { tagName } from '../lib/display';
-  import { t } from '../lib/i18n';
-  import type { Tag, Article, Series } from '../lib/types';
+  import { t } from '../lib/i18n/index.svelte';
+  import type { Tag, Article, Series, Category } from '../lib/types';
 
   let { parentId } = $props<{ parentId?: string }>();
 
@@ -17,7 +17,7 @@
   let allSeries = $state<Series[]>([]);
   let selectedParentId = $state(parentId || '');
   let parentSearch = $state('');
-  let category = $state('general');
+  let category = $state<Category>('general');
   let error = $state('');
   let creating = $state(false);
 

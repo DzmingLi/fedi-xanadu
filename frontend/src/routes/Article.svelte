@@ -1,9 +1,9 @@
 <script lang="ts">
   import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport } from '../lib/api';
-  import { getAuth } from '../lib/auth';
+  import { getAuth } from '../lib/auth.svelte';
   import { tagName } from '../lib/display';
-  import { isBlocked, addBlocked } from '../lib/blocklist';
-  import { t, LANG_NAMES } from '../lib/i18n';
+  import { isBlocked, addBlocked } from '../lib/blocklist.svelte';
+  import { t, LANG_NAMES } from '../lib/i18n/index.svelte';
   import CommentThread from '../lib/components/CommentThread.svelte';
   import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, BookmarkWithTitle, VoteSummary, SeriesContextItem, AccessGrant } from '../lib/types';
 

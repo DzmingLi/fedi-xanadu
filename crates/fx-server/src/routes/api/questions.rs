@@ -3,6 +3,7 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
 };
+use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::*;
 use fx_core::region::default_visibility;
 use fx_core::services::{article_service, notification_service};
@@ -10,7 +11,9 @@ use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{WriteAuth, UriQuery, content_hash, tid, uri_to_node_id};
+use crate::auth::WriteAuth;
+use fx_core::util::{content_hash, tid, uri_to_node_id};
+use super::UriQuery;
 
 // --- List questions ---
 
@@ -37,7 +40,7 @@ pub async fn get_question(
     Query(UriQuery { uri }): Query<UriQuery>,
 ) -> ApiResult<Json<QuestionDetail>> {
     let question = article_service::get_article(&state.pool, state.instance_mode, &uri).await?;
-    if question.kind != "question" {
+    if question.kind != ContentKind::Question {
         return Err(AppError(fx_core::Error::NotFound { entity: "question", id: uri }));
     }
     let answers = article_service::list_answers(&state.pool, state.instance_mode, &uri, 100, 0).await?;
@@ -60,11 +63,11 @@ pub async fn create_question(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_render::format_extension(&input.content_format);
+    let src_ext = fx_render::format_extension(input.content_format.as_str());
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
 
-    if input.content_format != "html" {
-        let rendered = super::articles::render_content(&input.content_format, &input.content, &repo_path)?;
+    if input.content_format != ContentFormat::Html {
+        let rendered = super::articles::render_content(input.content_format.as_str(), &input.content, &repo_path)?;
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
 
@@ -76,7 +79,7 @@ pub async fn create_question(
 
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, None,
-        default_visibility(user.phone_verified), "question", None,
+        default_visibility(user.phone_verified), ContentKind::Question, None,
     ).await?;
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
@@ -97,7 +100,7 @@ pub async fn post_answer(
 
     // Verify question exists and is actually a question
     let question = article_service::get_article(&state.pool, state.instance_mode, question_uri).await?;
-    if question.kind != "question" {
+    if question.kind != ContentKind::Question {
         return Err(AppError(fx_core::Error::BadRequest("target is not a question".into())));
     }
 
@@ -110,11 +113,11 @@ pub async fn post_answer(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_render::format_extension(&input.content_format);
+    let src_ext = fx_render::format_extension(input.content_format.as_str());
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
 
-    if input.content_format != "html" {
-        let rendered = super::articles::render_content(&input.content_format, &input.content, &repo_path)?;
+    if input.content_format != ContentFormat::Html {
+        let rendered = super::articles::render_content(input.content_format.as_str(), &input.content, &repo_path)?;
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
 
@@ -126,7 +129,7 @@ pub async fn post_answer(
 
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, None,
-        default_visibility(user.phone_verified), "answer", Some(question_uri),
+        default_visibility(user.phone_verified), ContentKind::Answer, Some(question_uri),
     ).await?;
 
     // Notify question author

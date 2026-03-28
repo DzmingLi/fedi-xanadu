@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 fx-core = { workspace = true }
+fx-client = { workspace = true }
 reqwest = { workspace = true, features = ["json", "multipart"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

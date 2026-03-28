@@ -1,5 +1,5 @@
 import { getKeybindings, setKeybindings } from './api';
-import { getToken } from './auth';
+import { getToken } from './auth.svelte';
 
 export interface KeyAction {
   id: string;
@@ -38,50 +38,44 @@ export const ACTIONS: KeyAction[] = [
 const STORAGE_KEY = 'fx_keybindings';
 
 // State
-let _userBindings: Record<string, string> = {};
-let _listeners: Array<() => void> = [];
-
-// Load from localStorage on init
-const stored = localStorage.getItem(STORAGE_KEY);
-if (stored) {
-  try { _userBindings = JSON.parse(stored); } catch { /* ignore */ }
+let storedBindings: Record<string, string> = {};
+const raw = localStorage.getItem(STORAGE_KEY);
+if (raw) {
+  try { storedBindings = JSON.parse(raw); } catch { /* ignore */ }
 }
 
+let userBindings = $state<Record<string, string>>(storedBindings);
+
 export function getBinding(actionId: string): string {
-  return _userBindings[actionId] ?? ACTIONS.find(a => a.id === actionId)?.defaultKey ?? '';
+  return userBindings[actionId] ?? ACTIONS.find(a => a.id === actionId)?.defaultKey ?? '';
 }
 
 export function getAllBindings(): Record<string, string> {
   const result: Record<string, string> = {};
   for (const action of ACTIONS) {
-    result[action.id] = _userBindings[action.id] ?? action.defaultKey;
+    result[action.id] = userBindings[action.id] ?? action.defaultKey;
   }
   return result;
 }
 
 export function getUserOverrides(): Record<string, string> {
-  return { ..._userBindings };
+  return { ...userBindings };
 }
 
 export function setBinding(actionId: string, key: string) {
+  const next = { ...userBindings };
   if (key === ACTIONS.find(a => a.id === actionId)?.defaultKey) {
-    delete _userBindings[actionId];
+    delete next[actionId];
   } else {
-    _userBindings[actionId] = key;
+    next[actionId] = key;
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(_userBindings));
-  _listeners.forEach(fn => fn());
+  userBindings = next;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(userBindings));
 }
 
 export function resetBindings() {
-  _userBindings = {};
+  userBindings = {};
   localStorage.removeItem(STORAGE_KEY);
-  _listeners.forEach(fn => fn());
-}
-
-export function onBindingsChange(fn: () => void): () => void {
-  _listeners.push(fn);
-  return () => { _listeners = _listeners.filter(f => f !== fn); };
 }
 
 // Sync with server
@@ -90,9 +84,8 @@ export async function loadFromServer() {
   try {
     const data = await getKeybindings();
     if (data.bindings && Object.keys(data.bindings).length > 0) {
-      _userBindings = data.bindings;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(_userBindings));
-      _listeners.forEach(fn => fn());
+      userBindings = data.bindings;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userBindings));
     }
   } catch { /* not logged in or server error */ }
 }
@@ -100,15 +93,12 @@ export async function loadFromServer() {
 export async function saveToServer() {
   if (!getToken()) return;
   try {
-    await setKeybindings(_userBindings);
+    await setKeybindings(userBindings);
   } catch { /* ignore */ }
 }
 
 // Key matching
 export function parseKeyCombo(combo: string): string[][] {
-  // "g h" → [["g"], ["h"]]  (sequence)
-  // "Ctrl+K" → [["ctrl", "k"]]  (chord)
-  // "Shift+u" → [["shift", "u"]]
   return combo.split(' ').map(part => part.toLowerCase().split('+'));
 }
 
@@ -127,7 +117,6 @@ export function matchesKey(event: KeyboardEvent, parts: string[]): boolean {
   const mainKey = parts.filter(p => !['ctrl', 'shift', 'alt', 'meta'].includes(p))[0];
   if (!mainKey) return false;
 
-  // Handle special key names
   if (mainKey === 'enter') return key === 'enter';
   if (mainKey === 'escape') return key === 'escape';
   if (mainKey === ',') return key === ',';
@@ -155,3 +144,8 @@ export const CATEGORY_LABELS: Record<string, { en: string; zh: string }> = {
   article: { en: 'Article', zh: '文章' },
   list: { en: 'List', zh: '列表' },
 };
+
+// Compatibility shim -- no-op, Svelte 5 reactivity handles this.
+export function onBindingsChange(_fn: () => void): () => void {
+  return () => {};
+}

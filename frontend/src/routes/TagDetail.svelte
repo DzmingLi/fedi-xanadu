@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes } from '../lib/api';
   import { authorName, tagName } from '../lib/display';
-  import { t } from '../lib/i18n';
+  import { t } from '../lib/i18n/index.svelte';
   import type { Tag, Article, UserSkill, VoteSummary } from '../lib/types';
 
   let { id } = $props<{ id: string }>();

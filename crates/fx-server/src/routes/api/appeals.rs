@@ -7,7 +7,8 @@ use fx_core::services::appeal_service;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, tid};
+use crate::auth::Auth;
+use fx_core::util::tid;
 
 const MAX_APPEAL_REASON: usize = 2000;
 

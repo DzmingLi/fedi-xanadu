@@ -1,8 +1,8 @@
 <script lang="ts">
   import { listComments, createComment, updateComment, deleteComment, voteComment, getMyCommentVotes } from '../api';
-  import { getAuth } from '../auth';
-  import { t } from '../i18n';
-  import { isBlocked } from '../blocklist';
+  import { getAuth } from '../auth.svelte';
+  import { t } from '../i18n/index.svelte';
+  import { isBlocked } from '../blocklist.svelte';
   import type { Comment } from '../types';
 
   let {

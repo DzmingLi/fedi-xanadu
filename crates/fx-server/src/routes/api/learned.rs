@@ -7,7 +7,8 @@ use fx_core::services::learned_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, WriteAuth, MaybeAuth, UriQuery};
+use crate::auth::{Auth, WriteAuth, MaybeAuth};
+use super::UriQuery;
 
 #[derive(serde::Deserialize)]
 pub struct MarkLearnedInput {

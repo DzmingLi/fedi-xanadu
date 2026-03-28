@@ -3,6 +3,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
 };
+use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::{Article, CreateArticle};
 use fx_core::region::default_visibility;
 use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service};
@@ -10,7 +11,7 @@ use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{content_hash, tid, uri_to_node_id};
+use fx_core::util::{content_hash, tid, uri_to_node_id};
 
 fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
     let secret = state.admin_secret.as_deref()
@@ -89,13 +90,13 @@ pub async fn admin_create_article(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_render::format_extension(&input.article.content_format);
+    let src_ext = fx_render::format_extension(input.article.content_format.as_str());
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
 
     // Pre-render HTML cache
-    if input.article.content_format != "html" {
+    if input.article.content_format != ContentFormat::Html {
         let rendered = super::articles::render_content(
-            &input.article.content_format, &input.article.content, &repo_path,
+            input.article.content_format.as_str(), &input.article.content, &repo_path,
         )?;
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
@@ -114,7 +115,7 @@ pub async fn admin_create_article(
 
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, translation_group,
-        default_visibility(true), "article", None, // admin is always verified
+        default_visibility(true), ContentKind::Article, None, // admin is always verified
     ).await?;
 
     // Auto-bookmark
@@ -277,7 +278,7 @@ pub async fn admin_ban_user(
     moderation_service::ban_user(&state.pool, &input.did, input.reason.as_deref()).await?;
 
     // Send in-app notification to the banned user with the reason
-    let notif_id = super::tid();
+    let notif_id = tid();
     if let Err(e) = notification_service::create_notification(
         &state.pool,
         &notif_id,
@@ -341,7 +342,7 @@ pub async fn admin_delete_article(
         Some(r) => format!("「{}」已被删除: {}。你可以在30天内提交申诉。", article.title, r),
         None => format!("「{}」已被删除。你可以在30天内提交申诉。", article.title),
     };
-    let notif_id = super::tid();
+    let notif_id = tid();
     if let Err(e) = notification_service::create_notification(
         &state.pool,
         &notif_id,
@@ -398,7 +399,7 @@ pub async fn admin_set_visibility(
             },
             _ => unreachable!(),
         };
-        let notif_id = super::tid();
+        let notif_id = tid();
         let _ = notification_service::create_notification(
             &state.pool, &notif_id, &article.did, "system",
             "visibility_changed", Some(&input.uri), Some(&msg),
@@ -485,7 +486,7 @@ pub async fn admin_resolve_appeal(
     }
 
     // Notify the user about the resolution
-    let notif_id = super::tid();
+    let notif_id = tid();
     let notif_text = match (&input.status.as_str(), &input.response) {
         (&"approved", Some(r)) => format!("你的申诉已通过: {r}"),
         (&"approved", None) => "你的申诉已通过".to_string(),
@@ -641,12 +642,12 @@ pub async fn admin_create_question(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_render::format_extension(&input.article.content_format);
+    let src_ext = fx_render::format_extension(input.article.content_format.as_str());
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
 
-    if input.article.content_format != "html" {
+    if input.article.content_format != ContentFormat::Html {
         let rendered = super::articles::render_content(
-            &input.article.content_format, &input.article.content, &repo_path,
+            input.article.content_format.as_str(), &input.article.content, &repo_path,
         )?;
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
@@ -659,7 +660,7 @@ pub async fn admin_create_question(
 
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, None,
-        default_visibility(true), "question", None,
+        default_visibility(true), ContentKind::Question, None,
     ).await?;
 
     let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
@@ -685,7 +686,7 @@ pub async fn admin_post_answer(
 
     // Verify question exists
     let question = article_service::get_article_any_visibility(&state.pool, &input.question_uri).await?;
-    if question.kind != "question" {
+    if question.kind != ContentKind::Question {
         return Err(AppError(fx_core::Error::BadRequest("target is not a question".into())));
     }
 
@@ -697,12 +698,12 @@ pub async fn admin_post_answer(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_render::format_extension(&input.article.content_format);
+    let src_ext = fx_render::format_extension(input.article.content_format.as_str());
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
 
-    if input.article.content_format != "html" {
+    if input.article.content_format != ContentFormat::Html {
         let rendered = super::articles::render_content(
-            &input.article.content_format, &input.article.content, &repo_path,
+            input.article.content_format.as_str(), &input.article.content, &repo_path,
         )?;
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
@@ -715,7 +716,7 @@ pub async fn admin_post_answer(
 
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, None,
-        default_visibility(true), "answer", Some(&input.question_uri),
+        default_visibility(true), ContentKind::Answer, Some(&input.question_uri),
     ).await?;
 
     // Notify question author
@@ -728,4 +729,57 @@ pub async fn admin_post_answer(
     }
 
     Ok((StatusCode::CREATED, Json(article)))
+}
+
+// --- Revert book edit ---
+
+#[derive(serde::Deserialize)]
+pub struct RevertBookEditInput {
+    pub edit_id: String,
+}
+
+pub async fn admin_revert_book_edit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<RevertBookEditInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    require_admin(&state, &headers)?;
+
+    let log: super::books::BookEditLog = sqlx::query_as(
+        "SELECT l.id, l.book_id, l.editor_did, p.handle AS editor_handle, \
+                l.old_data, l.new_data, l.summary, l.created_at \
+         FROM book_edit_log l \
+         LEFT JOIN profiles p ON l.editor_did = p.did \
+         WHERE l.id = $1",
+    )
+    .bind(&input.edit_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(AppError(fx_core::Error::NotFound { entity: "edit_log", id: input.edit_id.clone() }))?;
+
+    // Apply old_data back to the book
+    let old = &log.old_data;
+    fx_core::services::book_service::update_book(
+        &state.pool,
+        &log.book_id,
+        old.get("title").and_then(|v| v.as_str()),
+        old.get("description").and_then(|v| v.as_str()),
+        old.get("cover_url").and_then(|v| v.as_str()),
+    ).await?;
+
+    // Record revert as a new edit log entry
+    let revert_id = tid();
+    sqlx::query(
+        "INSERT INTO book_edit_log (id, book_id, editor_did, old_data, new_data, summary) \
+         VALUES ($1, $2, 'admin', $3, $4, $5)",
+    )
+    .bind(&revert_id)
+    .bind(&log.book_id)
+    .bind(&log.new_data)
+    .bind(&log.old_data)
+    .bind(format!("Reverted edit by {}", log.editor_handle.as_deref().unwrap_or(&log.editor_did)))
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "reverted": input.edit_id, "book_id": log.book_id })))
 }

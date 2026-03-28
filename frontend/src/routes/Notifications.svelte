@@ -1,6 +1,6 @@
 <script lang="ts">
   import { listNotifications, markNotificationRead, markAllNotificationsRead } from '../lib/api';
-  import { t } from '../lib/i18n';
+  import { t } from '../lib/i18n/index.svelte';
   import type { Notification } from '../lib/types';
 
   let notifications = $state<Notification[]>([]);

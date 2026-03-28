@@ -1,30 +1,23 @@
 import type { UserSettings } from './types';
 import { getSettings } from './api';
-import { setLocale, getLocale } from './i18n';
-import type { Locale } from './i18n';
-
-let _settings: UserSettings | null = null;
-let _listeners: Array<() => void> = [];
-let _loaded = false;
+import { setLocale, getLocale } from './i18n/index.svelte';
+import type { Locale } from './i18n/index.svelte';
 
 const LOCALES_SET = new Set(['zh', 'en', 'fr']);
 
+let settings = $state<UserSettings | null>(null);
+let loaded = $state(false);
+
 export function getLangPrefs(): UserSettings | null {
-  return _settings;
+  return settings;
 }
 
 export function isLoaded(): boolean {
-  return _loaded;
+  return loaded;
 }
 
 export function setLangPrefs(s: UserSettings) {
-  _settings = s;
-  _listeners.forEach(fn => fn());
-}
-
-export function onLangPrefsChange(fn: () => void): () => void {
-  _listeners.push(fn);
-  return () => { _listeners = _listeners.filter(f => f !== fn); };
+  settings = s;
 }
 
 /**
@@ -34,22 +27,25 @@ export function onLangPrefsChange(fn: () => void): () => void {
 export async function loadLangPrefs(): Promise<UserSettings | null> {
   try {
     const s = await getSettings();
-    _settings = s;
-    _loaded = true;
+    settings = s;
+    loaded = true;
     // Sync UI locale to native_lang if it's a supported locale
     if (LOCALES_SET.has(s.native_lang) && s.native_lang !== getLocale()) {
       setLocale(s.native_lang as Locale);
     }
-    _listeners.forEach(fn => fn());
     return s;
   } catch {
-    _loaded = true;
+    loaded = true;
     return null;
   }
 }
 
 export function clearLangPrefs() {
-  _settings = null;
-  _loaded = false;
-  _listeners.forEach(fn => fn());
+  settings = null;
+  loaded = false;
+}
+
+// Compatibility shim — no-op, Svelte 5 reactivity handles this.
+export function onLangPrefsChange(_fn: () => void): () => void {
+  return () => {};
 }

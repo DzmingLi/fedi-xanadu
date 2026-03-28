@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress } from '../lib/api';
-  import { getAuth } from '../lib/auth';
-  import { t, getLocale, onLocaleChange } from '../lib/i18n';
+  import { getAuth } from '../lib/auth.svelte';
+  import { t, getLocale, onLocaleChange } from '../lib/i18n/index.svelte';
   import PostCard from '../lib/components/PostCard.svelte';
   import type { BookDetail, BookEdition, BookChapter } from '../lib/types';
 

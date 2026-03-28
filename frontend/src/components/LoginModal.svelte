@@ -1,7 +1,7 @@
 <script lang="ts">
   import { login as apiLogin } from '../lib/api';
-  import { setAuth } from '../lib/auth';
-  import { t } from '../lib/i18n';
+  import { setAuth } from '../lib/auth.svelte';
+  import { t } from '../lib/i18n/index.svelte';
 
   let { open = $bindable(false) } = $props();
 

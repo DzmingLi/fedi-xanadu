@@ -3,7 +3,7 @@ use fx_core::services::report_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::WriteAuth;
+use crate::auth::WriteAuth;
 
 #[derive(serde::Deserialize)]
 pub struct CreateReportInput {
@@ -18,7 +18,7 @@ pub async fn create_report(
     WriteAuth(user): WriteAuth,
     Json(input): Json<CreateReportInput>,
 ) -> ApiResult<Json<report_service::Report>> {
-    let id = super::tid();
+    let id = fx_core::util::tid();
     let report = report_service::create_report(
         &state.pool,
         &id,

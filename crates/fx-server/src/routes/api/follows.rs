@@ -7,7 +7,9 @@ use fx_core::services::{social_service, notification_service};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, WriteAuth, DidQuery, tid};
+use crate::auth::{Auth, WriteAuth};
+use fx_core::util::tid;
+use super::DidQuery;
 
 #[derive(serde::Deserialize)]
 pub struct FollowInput {

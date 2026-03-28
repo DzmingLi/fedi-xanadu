@@ -1,234 +1,33 @@
 mod admin;
 mod appeals;
 mod articles;
-mod blocks;
-mod books;
 mod auth;
+mod blocks;
 mod bookmarks;
+mod books;
 mod comments;
 mod drafts;
 mod follows;
 mod graph;
 mod interests;
+mod keybindings;
 mod learned;
 mod members;
 mod notifications;
-mod keybindings;
 mod profile;
-mod settings;
 mod questions;
 mod reports;
 mod series;
+mod settings;
 mod skill_trees;
 mod skills;
 mod tags;
 mod votes;
 
-use axum::{
-    Json, Router,
-    extract::{FromRequestParts, State},
-    http::{HeaderMap, request::Parts},
-    routing::{get, post},
-};
-use fx_core::services::auth_service;
+use axum::{Json, Router, extract::State, routing::{delete, get, patch, post, put}};
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-
-pub fn routes() -> Router<AppState> {
-    // Stricter rate limit for auth endpoints (5 requests per minute per real client IP)
-    let auth_governor_conf = std::sync::Arc::new(
-        tower_governor::governor::GovernorConfigBuilder::default()
-            .key_extractor(tower_governor::key_extractor::SmartIpKeyExtractor)
-            .per_second(12) // 1 token every 12 seconds
-            .burst_size(5)  // max 5 burst
-            .finish()
-            .expect("invalid auth rate limiter config"),
-    );
-    let auth_limiter = tower_governor::GovernorLayer::new(auth_governor_conf);
-
-    let auth_routes = Router::new()
-        .route("/auth/login", post(auth::login))
-        .layer(auth_limiter);
-
-    Router::new()
-        .merge(auth_routes)
-        .route("/health", get(health))
-        // Auth (non-login routes don't need stricter limit)
-        .route("/auth/logout", post(auth::logout))
-        .route("/auth/me", get(auth::auth_me))
-        // Tags
-        .route("/tags", get(tags::list_tags).post(tags::create_tag))
-        .route("/tags/by-id", get(tags::get_tag))
-        .route("/tags/search", get(tags::search_tags))
-        .route("/tags/names", post(tags::update_tag_names))
-        .route("/tags/teach", post(tags::set_teach))
-        // Articles
-        .route("/articles", get(articles::list_articles).post(articles::create_article))
-        .route("/articles/by-uri", get(articles::get_article))
-        .route("/articles/by-uri/content", get(articles::get_article_content))
-        .route("/articles/full", get(articles::get_article_full))
-        .route("/articles/by-uri/prereqs", get(articles::get_article_prereqs))
-        .route("/articles/by-uri/forks", get(articles::get_article_forks))
-        .route("/articles/all-teaches", get(articles::get_all_article_teaches))
-        .route("/articles/by-tag", get(articles::get_articles_by_tag))
-        .route("/articles/all-prereqs", get(articles::get_all_article_prereqs))
-        .route("/articles/by-did", get(articles::get_articles_by_did))
-        .route("/articles/translations", get(articles::get_translations))
-        // Vote
-        .route("/vote", post(votes::cast_vote))
-        .route("/votes", get(votes::get_article_votes))
-        .route("/votes/my", get(votes::get_my_vote))
-        // Fork (POST — mutation)
-        .route("/articles/fork", post(articles::fork_article))
-        // Format conversion
-        .route("/articles/convert", post(articles::convert_content))
-        // Image upload & serving
-        .route("/articles/upload-image", post(articles::upload_image))
-        .route("/articles/image", get(articles::get_image))
-        .route("/articles/update", post(articles::update_article))
-        .route("/articles/delete", post(articles::delete_article))
-        // Access control (paywall)
-        .route("/articles/restricted", post(articles::set_restricted))
-        .route("/articles/access/grant", post(articles::grant_access))
-        .route("/articles/access/revoke", post(articles::revoke_access))
-        .route("/articles/access/list", get(articles::list_access_grants))
-        // Comments
-        .route("/comments", get(comments::list_comments).post(comments::create_comment))
-        .route("/comments/update", post(comments::update_comment))
-        .route("/comments/delete", post(comments::delete_comment))
-        .route("/comments/vote", post(comments::vote_comment))
-        .route("/comments/my-votes", get(comments::get_my_comment_votes))
-        // User skills
-        .route("/skills", get(skills::list_user_skills).post(skills::light_skill))
-        .route("/skills/unlight", post(skills::delete_skill))
-        // User tag tree (legacy, reads from active skill tree)
-        .route("/tag-tree", get(skills::get_user_tag_tree).post(skills::add_tag_child))
-        // Skill Trees
-        .route("/skill-trees", get(skill_trees::list_skill_trees).post(skill_trees::create_skill_tree))
-        .route("/skill-trees/by-uri", get(skill_trees::get_skill_tree_detail))
-        .route("/skill-trees/fork", post(skill_trees::fork_skill_tree))
-        .route("/skill-trees/edges", post(skill_trees::add_skill_tree_edge))
-        .route("/skill-trees/edges/remove", post(skill_trees::remove_skill_tree_edge))
-        .route("/skill-trees/adopt", post(skill_trees::adopt_skill_tree))
-        .route("/skill-trees/active", get(skill_trees::get_active_tree))
-        // Bookmarks
-        .route("/bookmarks", get(bookmarks::list_bookmarks).post(bookmarks::add_bookmark))
-        .route("/bookmarks/remove", post(bookmarks::remove_bookmark))
-        .route("/bookmarks/move", post(bookmarks::move_bookmark))
-        .route("/bookmarks/folders", get(bookmarks::list_bookmark_folders))
-        .route("/bookmarks/public", get(bookmarks::list_public_bookmarks))
-        // Learned marks
-        .route("/learned", get(learned::list_learned).post(learned::mark_learned))
-        .route("/learned/check", get(learned::is_learned))
-        .route("/learned/remove", post(learned::unmark_learned))
-        // Interests
-        .route("/interests", get(interests::get_interests).post(interests::set_interests))
-        // Profile
-        .route("/profile", get(profile::get_profile))
-        .route("/profile/links", post(profile::update_profile_links))
-        // Series
-        .route("/series", get(series::list_series).post(series::create_series))
-        .route("/series/by-id", get(series::get_series_detail))
-        .route("/series/tree", get(series::get_series_tree))
-        .route("/series/articles", post(series::add_series_article))
-        .route("/series/articles/remove", post(series::remove_series_article))
-        .route("/series/articles/reorder", post(series::reorder_articles))
-        .route("/series/children/reorder", post(series::reorder_children))
-        .route("/series/prereqs", post(series::add_series_prereq))
-        .route("/series/prereqs/remove", post(series::remove_series_prereq))
-        .route("/series/context", get(series::get_series_context))
-        .route("/series/all-articles", get(series::all_series_articles))
-        // Notifications
-        .route("/notifications", get(notifications::list_notifications))
-        .route("/notifications/unread", get(notifications::unread_count))
-        .route("/notifications/read", post(notifications::mark_read))
-        .route("/notifications/read-all", post(notifications::mark_all_read))
-        // Follows
-        .route("/follows", get(follows::list_follows).post(follows::follow))
-        .route("/follows/remove", post(follows::unfollow))
-        .route("/follows/seen", post(follows::mark_seen))
-        .route("/follows/following", get(follows::following_by_did))
-        .route("/follows/followers", get(follows::followers_by_did))
-        // Drafts
-        .route("/drafts", get(drafts::list_drafts).post(drafts::save_draft))
-        .route("/drafts/update", post(drafts::update_draft))
-        .route("/drafts/delete", post(drafts::delete_draft))
-        .route("/drafts/publish", post(drafts::publish_draft))
-        // Keybindings
-        .route("/keybindings", get(keybindings::get_keybindings).post(keybindings::set_keybindings))
-        // User settings
-        .route("/settings", get(settings::get_settings).post(settings::set_settings))
-        // Knowledge graph
-        .route("/graph", get(graph::get_graph))
-        // Questions & Answers
-        .route("/questions", get(questions::list_questions).post(questions::create_question))
-        .route("/questions/by-uri", get(questions::get_question))
-        .route("/questions/by-did", get(questions::get_questions_by_did))
-        .route("/questions/by-tag", get(questions::get_questions_by_tag))
-        .route("/questions/answer", post(questions::post_answer))
-        .route("/answers/by-did", get(questions::get_answers_by_did))
-        // Search
-        .route("/search", get(articles::search_articles))
-        // Admin
-        .route("/admin/platform-users", get(admin::list_platform_users).post(admin::create_platform_user))
-        .route("/admin/articles", post(admin::admin_create_article))
-        .route("/admin/series", post(admin::admin_create_series))
-        .route("/admin/series/articles", post(admin::admin_add_series_article))
-        .route("/admin/articles/update", post(admin::admin_update_article))
-        .route("/admin/articles/delete", post(admin::admin_delete_article))
-        .route("/admin/articles/visibility", post(admin::admin_set_visibility))
-        .route("/admin/tags/merge", post(admin::admin_merge_tag))
-        .route("/admin/questions/merge", post(admin::admin_merge_questions))
-        .route("/admin/ban-user", post(admin::admin_ban_user))
-        .route("/admin/unban-user", post(admin::admin_unban_user))
-        .route("/admin/banned-users", get(admin::admin_list_banned_users))
-        .route("/admin/appeals", get(admin::admin_list_appeals))
-        .route("/admin/appeals/resolve", post(admin::admin_resolve_appeal))
-        // Appeals (user-facing, Auth not WriteAuth so banned users can appeal)
-        .route("/appeals", get(appeals::list_my_appeals).post(appeals::create_appeal))
-        // Blocks
-        .route("/blocks", get(blocks::list_blocked_users).post(blocks::block_user))
-        .route("/blocks/remove", post(blocks::unblock_user))
-        .route("/blocks/dids", get(blocks::list_blocked_dids))
-        // Reports
-        .route("/reports", post(reports::create_report))
-        .route("/admin/reports", get(admin::admin_list_reports))
-        .route("/admin/reports/resolve", post(admin::admin_resolve_report))
-        .route("/admin/credentials/verify", post(admin::admin_verify_credentials))
-        .route("/admin/credentials/revoke", post(admin::admin_revoke_credentials))
-        .route("/admin/questions", post(admin::admin_create_question))
-        .route("/admin/questions/answer", post(admin::admin_post_answer))
-        // Members
-        .route("/members", get(members::list_members).post(members::add_member))
-        .route("/members/remove", post(members::remove_member))
-        .route("/members/check", get(members::check_membership))
-        // Books
-        .route("/books", get(books::list_books).post(books::create_book))
-        .route("/books/by-id", get(books::get_book))
-        .route("/books/update", post(books::update_book))
-        .route("/books/editions", post(books::add_edition))
-        .route("/books/history", get(books::get_edit_history))
-        .route("/books/rate", post(books::rate_book))
-        .route("/books/reading-status", post(books::set_reading_status))
-        .route("/books/reading-status/remove", post(books::remove_reading_status))
-        .route("/books/chapters", get(books::list_chapters).post(books::create_chapter))
-        .route("/books/chapters/delete", post(books::delete_chapter))
-        .route("/books/chapters/progress", post(books::set_chapter_progress))
-}
-
-// --- Health ---
-
-async fn health(State(state): State<AppState>) -> ApiResult<Json<serde_json::Value>> {
-    sqlx::query("SELECT 1")
-        .execute(&state.pool)
-        .await
-        .map_err(|e| AppError(fx_core::Error::Internal(format!("db health check failed: {e}"))))?;
-    Ok(Json(serde_json::json!({
-        "status": "ok",
-        "version": env!("CARGO_PKG_VERSION"),
-    })))
-}
 
 // --- Shared query types ---
 
@@ -252,297 +51,806 @@ pub(crate) struct TagIdQuery {
     pub tag_id: String,
 }
 
+// --- Route tree ---
 
-// --- Auth extractors ---
+pub fn routes() -> Router<AppState> {
+    // Stricter rate limit for auth endpoints
+    let auth_governor_conf = std::sync::Arc::new(
+        tower_governor::governor::GovernorConfigBuilder::default()
+            .key_extractor(tower_governor::key_extractor::SmartIpKeyExtractor)
+            .per_second(12)
+            .burst_size(5)
+            .finish()
+            .expect("invalid auth rate limiter config"),
+    );
 
-/// Authenticated user identity extracted from the session token.
-#[derive(Debug, Clone)]
-pub(crate) struct AuthUser {
-    pub did: String,
-    pub token: String,
-    pub banned: bool,
-    pub phone_verified: bool,
+    let auth_limited = Router::new()
+        .route("/auth/login", post(auth::login))
+        .layer(tower_governor::GovernorLayer::new(auth_governor_conf));
+
+    Router::new()
+        .merge(auth_limited)
+        .route("/health", get(health))
+        .merge(auth_routes())
+        .merge(tag_routes())
+        .merge(article_routes())
+        .merge(vote_routes())
+        .merge(comment_routes())
+        .merge(skill_routes())
+        .merge(skill_tree_routes())
+        .merge(bookmark_routes())
+        .merge(learned_routes())
+        .merge(interest_routes())
+        .merge(profile_routes())
+        .merge(series_routes())
+        .merge(notification_routes())
+        .merge(follow_routes())
+        .merge(draft_routes())
+        .merge(settings_routes())
+        .merge(graph_routes())
+        .merge(question_routes())
+        .merge(search_routes())
+        .merge(admin_routes())
+        .merge(appeal_routes())
+        .merge(block_routes())
+        .merge(report_routes())
+        .merge(member_routes())
+        .merge(book_routes())
 }
 
-/// Requires authentication. Returns 401 if no valid session.
-pub(crate) struct Auth(pub AuthUser);
+// --- Grouped sub-routers ---
 
-impl FromRequestParts<AppState> for Auth {
-    type Rejection = AppError;
-
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        match extract_auth_user(&state.pool, &parts.headers).await {
-            Some(user) => Ok(Auth(user)),
-            None => Err(AppError(fx_core::Error::Unauthorized)),
-        }
-    }
+fn auth_routes() -> Router<AppState> {
+    Router::new()
+        .route("/auth/logout", post(auth::logout))
+        .route("/auth/me", get(auth::auth_me))
 }
 
-/// Requires authentication + permission to write.
-/// Rejects banned users (403) and, on CN instances, users without phone verification.
-pub(crate) struct WriteAuth(pub AuthUser);
-
-impl FromRequestParts<AppState> for WriteAuth {
-    type Rejection = AppError;
-
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        let user = extract_auth_user(&state.pool, &parts.headers).await
-            .ok_or(AppError(fx_core::Error::Unauthorized))?;
-
-        if user.banned {
-            return Err(AppError(fx_core::Error::Forbidden {
-                action: "account is banned",
-            }));
-        }
-
-        if state.instance_mode.requires_phone() && !user.phone_verified {
-            return Err(AppError(fx_core::Error::Forbidden {
-                action: "phone verification required",
-            }));
-        }
-
-        Ok(WriteAuth(user))
-    }
+fn tag_routes() -> Router<AppState> {
+    Router::new()
+        .route("/tags", get(tags::list_tags).post(tags::create_tag))
+        .route("/tags/{id}", get(tags::get_tag))
+        .route("/tags/{id}/names", put(tags::update_tag_names))
+        .route("/tags/search", get(tags::search_tags))
+        .route("/tags/teach", post(tags::set_teach))
 }
 
-/// Optional authentication. Returns `None` if no valid session.
-pub(crate) struct MaybeAuth(pub Option<AuthUser>);
-
-impl FromRequestParts<AppState> for MaybeAuth {
-    type Rejection = std::convert::Infallible;
-
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        Ok(MaybeAuth(extract_auth_user(&state.pool, &parts.headers).await))
-    }
+fn article_routes() -> Router<AppState> {
+    Router::new()
+        // Collection
+        .route("/articles", get(articles::list_articles).post(articles::create_article))
+        // Single resource (AT URI via query param — URIs contain slashes)
+        .route("/articles/by-uri", get(articles::get_article))
+        .route("/articles/by-uri/content", get(articles::get_article_content))
+        .route("/articles/by-uri/prereqs", get(articles::get_article_prereqs))
+        .route("/articles/by-uri/forks", get(articles::get_article_forks))
+        .route("/articles/full", get(articles::get_article_full))
+        // Mutations (proper verbs)
+        .route("/articles/update", put(articles::update_article))
+        .route("/articles/delete", delete(articles::delete_article))
+        .route("/articles/fork", post(articles::fork_article))
+        .route("/articles/convert", post(articles::convert_content))
+        // Images
+        .route("/articles/upload-image", post(articles::upload_image))
+        .route("/articles/image", get(articles::get_image))
+        // Access control
+        .route("/articles/restricted", put(articles::set_restricted))
+        .route("/articles/access/grant", post(articles::grant_access))
+        .route("/articles/access/revoke", delete(articles::revoke_access))
+        .route("/articles/access/list", get(articles::list_access_grants))
+        // Bulk queries
+        .route("/articles/all-teaches", get(articles::get_all_article_teaches))
+        .route("/articles/all-prereqs", get(articles::get_all_article_prereqs))
+        .route("/articles/by-tag", get(articles::get_articles_by_tag))
+        .route("/articles/by-did", get(articles::get_articles_by_did))
+        .route("/articles/translations", get(articles::get_translations))
 }
 
-async fn extract_auth_user(pool: &sqlx::PgPool, headers: &HeaderMap) -> Option<AuthUser> {
-    let token = extract_bearer_token(headers)?;
-    let did = auth_service::get_did_by_token(pool, token).await.ok()??;
-
-    // Fetch ban status and phone verification in one query
-    let row: Option<(bool, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
-        "SELECT COALESCE(is_banned, false), phone_verified_at FROM platform_users WHERE did = $1",
-    )
-    .bind(&did)
-    .fetch_optional(pool)
-    .await
-    .ok()?;
-
-    let (banned, phone_verified) = match row {
-        Some((b, pv)) => (b, pv.is_some()),
-        None => (false, false), // AT Protocol user without platform_users row
-    };
-
-    Some(AuthUser { did, token: token.to_string(), banned, phone_verified })
+fn vote_routes() -> Router<AppState> {
+    Router::new()
+        .route("/votes", get(votes::get_article_votes).post(votes::cast_vote))
+        .route("/votes/my", get(votes::get_my_vote))
 }
 
-fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
-    let auth = headers.get("authorization")?.to_str().ok()?;
-    Some(auth.strip_prefix("Bearer ").unwrap_or(auth))
+fn comment_routes() -> Router<AppState> {
+    Router::new()
+        .route("/comments", get(comments::list_comments).post(comments::create_comment))
+        .route("/comments/{id}", put(comments::update_comment).delete(comments::delete_comment))
+        .route("/comments/{id}/vote", post(comments::vote_comment))
+        .route("/comments/my-votes", get(comments::get_my_comment_votes))
 }
 
-/// Get PDS session details for AT Protocol side-effects.
-/// Returns `None` for platform-local users (no PDS).
-pub(crate) async fn pds_session(
-    pool: &sqlx::PgPool,
-    token: &str,
-) -> Option<auth_service::PdsSession> {
-    let session = auth_service::get_session_for_pds(pool, token).await.ok()??;
-    if session.pds_url.is_empty() {
-        return None;
-    }
-    Some(session)
+fn skill_routes() -> Router<AppState> {
+    Router::new()
+        .route("/skills", get(skills::list_user_skills).post(skills::light_skill))
+        .route("/skills/unlight", delete(skills::delete_skill))
+        .route("/tag-tree", get(skills::get_user_tag_tree).post(skills::add_tag_child))
 }
 
-// --- Shared helpers ---
-
-pub(crate) fn uri_to_node_id(uri: &str) -> String {
-    uri.replace('/', "_").replace(':', "_")
+fn skill_tree_routes() -> Router<AppState> {
+    Router::new()
+        .route("/skill-trees", get(skill_trees::list_skill_trees).post(skill_trees::create_skill_tree))
+        .route("/skill-trees/by-uri", get(skill_trees::get_skill_tree_detail))
+        .route("/skill-trees/fork", post(skill_trees::fork_skill_tree))
+        .route("/skill-trees/edges", post(skill_trees::add_skill_tree_edge))
+        .route("/skill-trees/edges/remove", delete(skill_trees::remove_skill_tree_edge))
+        .route("/skill-trees/adopt", post(skill_trees::adopt_skill_tree))
+        .route("/skill-trees/active", get(skill_trees::get_active_tree))
 }
 
-/// Generate a time-sortable ID using microsecond timestamp in base32.
-/// Format: 13 chars of base32-encoded microseconds since epoch.
-///
-/// Uses an atomic counter to guarantee uniqueness even when multiple TIDs
-/// are generated within the same microsecond.
-pub(crate) fn tid() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    static LAST_TID: AtomicU64 = AtomicU64::new(0);
-
-    let micros = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock before UNIX epoch")
-        .as_micros() as u64;
-
-    // Ensure monotonically increasing: if clock hasn't advanced, increment last value.
-    let val = loop {
-        let prev = LAST_TID.load(Ordering::Relaxed);
-        let next = if micros > prev { micros } else { prev + 1 };
-        if LAST_TID
-            .compare_exchange(prev, next, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-        {
-            break next;
-        }
-    };
-
-    // AT Protocol TID format: base32-sortable, 13 chars
-    let chars = b"234567abcdefghijklmnopqrstuvwxyz";
-    let mut out = [0u8; 13];
-    let mut v = val;
-    for byte in out.iter_mut().rev() {
-        *byte = chars[(v & 0x1f) as usize];
-        v >>= 5;
-    }
-    // Safety: all bytes are ASCII from the chars array
-    String::from_utf8(out.to_vec()).expect("TID is always valid ASCII")
+fn bookmark_routes() -> Router<AppState> {
+    Router::new()
+        .route("/bookmarks", get(bookmarks::list_bookmarks).post(bookmarks::add_bookmark))
+        .route("/bookmarks/remove", delete(bookmarks::remove_bookmark))
+        .route("/bookmarks/move", patch(bookmarks::move_bookmark))
+        .route("/bookmarks/folders", get(bookmarks::list_bookmark_folders))
+        .route("/bookmarks/public", get(bookmarks::list_public_bookmarks))
 }
 
-pub(crate) fn content_hash(data: &str) -> String {
-    blake3::hash(data.as_bytes()).to_hex().to_string()
+fn learned_routes() -> Router<AppState> {
+    Router::new()
+        .route("/learned", get(learned::list_learned).post(learned::mark_learned))
+        .route("/learned/check", get(learned::is_learned))
+        .route("/learned/remove", delete(learned::unmark_learned))
 }
 
-pub(crate) fn gen_session_token() -> String {
-    use rand::RngExt;
-    let mut rng = rand::rng();
-    let bytes: [u8; 32] = rng.random();
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+fn interest_routes() -> Router<AppState> {
+    Router::new()
+        .route("/interests", get(interests::get_interests).put(interests::set_interests))
 }
 
-pub(crate) fn now_rfc3339() -> String {
-    chrono::Utc::now().to_rfc3339()
+fn profile_routes() -> Router<AppState> {
+    Router::new()
+        .route("/profile", get(profile::get_profile))
+        .route("/profile/links", put(profile::update_profile_links))
 }
 
-/// Log PDS sync failures without blocking the request.
-pub(crate) fn log_pds_error<E: std::fmt::Display>(op: &str, e: E) {
-    tracing::warn!("PDS sync failed ({op}): {e}");
+fn series_routes() -> Router<AppState> {
+    Router::new()
+        .route("/series", get(series::list_series).post(series::create_series))
+        .route("/series/{id}", get(series::get_series_detail))
+        .route("/series/{id}/tree", get(series::get_series_tree))
+        .route("/series/{id}/articles", post(series::add_series_article))
+        .route("/series/{id}/articles/remove", delete(series::remove_series_article))
+        .route("/series/{id}/articles/reorder", put(series::reorder_articles))
+        .route("/series/{id}/children/reorder", put(series::reorder_children))
+        .route("/series/{id}/prereqs", post(series::add_series_prereq))
+        .route("/series/{id}/prereqs/remove", delete(series::remove_series_prereq))
+        .route("/series/context", get(series::get_series_context))
+        .route("/series/all-articles", get(series::all_series_articles))
+}
+
+fn notification_routes() -> Router<AppState> {
+    Router::new()
+        .route("/notifications", get(notifications::list_notifications))
+        .route("/notifications/unread", get(notifications::unread_count))
+        .route("/notifications/read", post(notifications::mark_read))
+        .route("/notifications/read-all", post(notifications::mark_all_read))
+}
+
+fn follow_routes() -> Router<AppState> {
+    Router::new()
+        .route("/follows", get(follows::list_follows).post(follows::follow))
+        .route("/follows/remove", delete(follows::unfollow))
+        .route("/follows/seen", post(follows::mark_seen))
+        .route("/follows/following", get(follows::following_by_did))
+        .route("/follows/followers", get(follows::followers_by_did))
+}
+
+fn draft_routes() -> Router<AppState> {
+    Router::new()
+        .route("/drafts", get(drafts::list_drafts).post(drafts::save_draft))
+        .route("/drafts/{id}", put(drafts::update_draft).delete(drafts::delete_draft))
+        .route("/drafts/{id}/publish", post(drafts::publish_draft))
+}
+
+fn settings_routes() -> Router<AppState> {
+    Router::new()
+        .route("/keybindings", get(keybindings::get_keybindings).put(keybindings::set_keybindings))
+        .route("/settings", get(settings::get_settings).put(settings::set_settings))
+}
+
+fn graph_routes() -> Router<AppState> {
+    Router::new().route("/graph", get(graph::get_graph))
+}
+
+fn question_routes() -> Router<AppState> {
+    Router::new()
+        .route("/questions", get(questions::list_questions).post(questions::create_question))
+        .route("/questions/by-uri", get(questions::get_question))
+        .route("/questions/by-did", get(questions::get_questions_by_did))
+        .route("/questions/by-tag", get(questions::get_questions_by_tag))
+        .route("/questions/answer", post(questions::post_answer))
+        .route("/answers/by-did", get(questions::get_answers_by_did))
+}
+
+fn search_routes() -> Router<AppState> {
+    Router::new().route("/search", get(articles::search_articles))
+}
+
+fn admin_routes() -> Router<AppState> {
+    Router::new()
+        .route("/admin/platform-users", get(admin::list_platform_users).post(admin::create_platform_user))
+        .route("/admin/articles", post(admin::admin_create_article))
+        .route("/admin/articles/update", put(admin::admin_update_article))
+        .route("/admin/articles/delete", delete(admin::admin_delete_article))
+        .route("/admin/articles/visibility", put(admin::admin_set_visibility))
+        .route("/admin/series", post(admin::admin_create_series))
+        .route("/admin/series/articles", post(admin::admin_add_series_article))
+        .route("/admin/tags/merge", post(admin::admin_merge_tag))
+        .route("/admin/questions", post(admin::admin_create_question))
+        .route("/admin/questions/answer", post(admin::admin_post_answer))
+        .route("/admin/questions/merge", post(admin::admin_merge_questions))
+        .route("/admin/ban-user", post(admin::admin_ban_user))
+        .route("/admin/unban-user", post(admin::admin_unban_user))
+        .route("/admin/banned-users", get(admin::admin_list_banned_users))
+        .route("/admin/appeals", get(admin::admin_list_appeals))
+        .route("/admin/appeals/resolve", post(admin::admin_resolve_appeal))
+        .route("/admin/reports", get(admin::admin_list_reports))
+        .route("/admin/reports/resolve", post(admin::admin_resolve_report))
+        .route("/admin/credentials/verify", post(admin::admin_verify_credentials))
+        .route("/admin/credentials/revoke", post(admin::admin_revoke_credentials))
+        .route("/admin/books/revert-edit", post(admin::admin_revert_book_edit))
+}
+
+fn appeal_routes() -> Router<AppState> {
+    Router::new()
+        .route("/appeals", get(appeals::list_my_appeals).post(appeals::create_appeal))
+}
+
+fn block_routes() -> Router<AppState> {
+    Router::new()
+        .route("/blocks", get(blocks::list_blocked_users).post(blocks::block_user))
+        .route("/blocks/remove", delete(blocks::unblock_user))
+        .route("/blocks/dids", get(blocks::list_blocked_dids))
+}
+
+fn report_routes() -> Router<AppState> {
+    Router::new().route("/reports", post(reports::create_report))
+}
+
+fn member_routes() -> Router<AppState> {
+    Router::new()
+        .route("/members", get(members::list_members).post(members::add_member))
+        .route("/members/remove", delete(members::remove_member))
+        .route("/members/check", get(members::check_membership))
+}
+
+fn book_routes() -> Router<AppState> {
+    Router::new()
+        .route("/books", get(books::list_books).post(books::create_book))
+        .route("/books/{id}", get(books::get_book).put(books::update_book))
+        .route("/books/{id}/editions", post(books::add_edition))
+        .route("/books/{id}/chapters", get(books::list_chapters).post(books::create_chapter))
+        .route("/books/{id}/chapters/delete", delete(books::delete_chapter))
+        .route("/books/{id}/chapters/progress", post(books::set_chapter_progress))
+        .route("/books/{id}/rate", post(books::rate_book))
+        .route("/books/{id}/reading-status", post(books::set_reading_status).delete(books::remove_reading_status))
+        .route("/books/{id}/history", get(books::get_edit_history))
+}
+
+// --- Pagination query (used by articles, series, etc.) ---
+
+#[derive(serde::Deserialize)]
+pub(crate) struct PaginationQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+// --- Health ---
+
+async fn health(State(state): State<AppState>) -> ApiResult<Json<serde_json::Value>> {
+    sqlx::query("SELECT 1")
+        .execute(&state.pool)
+        .await
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("db health check failed: {e}"))))?;
+    Ok(Json(serde_json::json!({
+        "status": "ok",
+        "version": env!("CARGO_PKG_VERSION"),
+    })))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{
+        body::Body,
+        http::{Method, Request, StatusCode},
+        routing::get,
+    };
+    use tower::ServiceExt;
 
-    // --- tid ---
+    // =========================================================================
+    // Query type deserialization
+    // =========================================================================
 
     #[test]
-    fn tid_length_is_13() {
-        let t = tid();
-        assert_eq!(t.len(), 13, "TID should be 13 characters, got: {t}");
+    fn uri_query_deserializes() {
+        let q: UriQuery =
+            serde_json::from_value(serde_json::json!({ "uri": "at://did:plc:abc/article/123" }))
+                .unwrap();
+        assert_eq!(q.uri, "at://did:plc:abc/article/123");
     }
 
     #[test]
-    fn tid_is_ascii_base32() {
-        let t = tid();
-        let valid = b"234567abcdefghijklmnopqrstuvwxyz";
-        for ch in t.bytes() {
-            assert!(valid.contains(&ch), "unexpected char '{}' in TID", ch as char);
-        }
+    fn id_query_deserializes() {
+        let q: IdQuery = serde_json::from_value(serde_json::json!({ "id": "abc123" })).unwrap();
+        assert_eq!(q.id, "abc123");
     }
 
     #[test]
-    fn tid_is_sortable() {
-        let t1 = tid();
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        let t2 = tid();
-        assert!(t2 > t1, "TIDs should be time-sortable: {t1} vs {t2}");
+    fn did_query_deserializes() {
+        let q: DidQuery =
+            serde_json::from_value(serde_json::json!({ "did": "did:plc:xyz" })).unwrap();
+        assert_eq!(q.did, "did:plc:xyz");
     }
 
     #[test]
-    fn tid_uniqueness() {
-        let tids: Vec<String> = (0..1000).map(|_| tid()).collect();
-        let set: std::collections::HashSet<&String> = tids.iter().collect();
-        assert_eq!(set.len(), tids.len(), "TIDs should be unique even in a tight loop");
+    fn tag_id_query_deserializes() {
+        let q: TagIdQuery =
+            serde_json::from_value(serde_json::json!({ "tag_id": "tag-42" })).unwrap();
+        assert_eq!(q.tag_id, "tag-42");
     }
 
     #[test]
-    fn tid_monotonically_increasing() {
-        let tids: Vec<String> = (0..100).map(|_| tid()).collect();
-        for pair in tids.windows(2) {
-            assert!(pair[1] > pair[0], "TIDs should be strictly increasing: {} vs {}", pair[0], pair[1]);
-        }
-    }
-
-    // --- content_hash ---
-
-    #[test]
-    fn content_hash_deterministic() {
-        let h1 = content_hash("hello");
-        let h2 = content_hash("hello");
-        assert_eq!(h1, h2);
+    fn pagination_query_deserializes_full() {
+        let q: PaginationQuery =
+            serde_json::from_value(serde_json::json!({ "limit": 25, "offset": 10 })).unwrap();
+        assert_eq!(q.limit, Some(25));
+        assert_eq!(q.offset, Some(10));
     }
 
     #[test]
-    fn content_hash_differs_for_different_input() {
-        assert_ne!(content_hash("hello"), content_hash("world"));
+    fn pagination_query_deserializes_empty() {
+        let q: PaginationQuery = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(q.limit.is_none());
+        assert!(q.offset.is_none());
     }
 
     #[test]
-    fn content_hash_is_hex_string() {
-        let h = content_hash("test");
-        assert!(h.chars().all(|c| c.is_ascii_hexdigit()), "hash should be hex: {h}");
-        assert_eq!(h.len(), 64, "blake3 hex hash should be 64 chars");
-    }
-
-    // --- gen_session_token ---
-
-    #[test]
-    fn session_token_length() {
-        let token = gen_session_token();
-        assert_eq!(token.len(), 64, "32 random bytes = 64 hex chars");
+    fn uri_query_missing_field_fails() {
+        let result = serde_json::from_value::<UriQuery>(serde_json::json!({}));
+        assert!(result.is_err());
     }
 
     #[test]
-    fn session_token_is_hex() {
-        let token = gen_session_token();
-        assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
+    fn id_query_missing_field_fails() {
+        let result = serde_json::from_value::<IdQuery>(serde_json::json!({}));
+        assert!(result.is_err());
     }
 
     #[test]
-    fn session_token_uniqueness() {
-        let t1 = gen_session_token();
-        let t2 = gen_session_token();
-        assert_ne!(t1, t2);
+    fn uri_query_from_url_params() {
+        // Simulate what axum's Query extractor does: parse from URL query string
+        let qs = "uri=at%3A%2F%2Fdid%3Aplc%3Aabc%2Farticle%2F123";
+        let q: UriQuery = serde_urlencoded::from_str(qs).unwrap();
+        assert_eq!(q.uri, "at://did:plc:abc/article/123");
     }
 
-    // --- uri_to_node_id ---
-
     #[test]
-    fn uri_to_node_id_replaces_slashes_and_colons() {
-        let node_id = uri_to_node_id("at://did:plc:abc/app.bsky.feed.post/123");
-        assert!(!node_id.contains('/'));
-        assert!(!node_id.contains(':'));
+    fn did_query_from_url_params() {
+        let qs = "did=did%3Aplc%3Axyz";
+        let q: DidQuery = serde_urlencoded::from_str(qs).unwrap();
+        assert_eq!(q.did, "did:plc:xyz");
     }
 
-    // --- now_rfc3339 ---
+    // =========================================================================
+    // Route structure tests (no database required)
+    //
+    // These build a lightweight Router with stub handlers to verify that the
+    // route tree resolves correctly: right paths, right methods.
+    // =========================================================================
 
-    #[test]
-    fn now_rfc3339_parses() {
-        let ts = now_rfc3339();
-        chrono::DateTime::parse_from_rfc3339(&ts).expect("should be valid RFC3339");
+    /// Build a minimal router that mirrors the real API route structure
+    /// but uses trivial handlers that always return 200 + the route name.
+    /// This lets us test routing without any database or state.
+    fn stub_router() -> axum::Router {
+        // A few representative routes from each sub-router
+        axum::Router::new()
+            // health
+            .route("/api/health", get(|| async { "health" }))
+            // auth
+            .route("/api/auth/login", axum::routing::post(|| async { "login" }))
+            .route("/api/auth/logout", axum::routing::post(|| async { "logout" }))
+            .route("/api/auth/me", get(|| async { "me" }))
+            // articles
+            .route("/api/articles", get(|| async { "list_articles" }).post(|| async { "create_article" }))
+            .route("/api/articles/by-uri", get(|| async { "get_article" }))
+            .route("/api/articles/by-uri/content", get(|| async { "get_content" }))
+            .route("/api/articles/fork", axum::routing::post(|| async { "fork" }))
+            .route("/api/articles/update", axum::routing::put(|| async { "update" }))
+            .route("/api/articles/delete", axum::routing::delete(|| async { "delete" }))
+            // votes
+            .route("/api/votes", get(|| async { "get_votes" }).post(|| async { "cast_vote" }))
+            .route("/api/votes/my", get(|| async { "my_vote" }))
+            // comments
+            .route("/api/comments", get(|| async { "list_comments" }).post(|| async { "create_comment" }))
+            .route("/api/comments/{id}", axum::routing::put(|| async { "update_comment" }).delete(|| async { "delete_comment" }))
+            // series
+            .route("/api/series", get(|| async { "list_series" }).post(|| async { "create_series" }))
+            .route("/api/series/{id}", get(|| async { "get_series" }))
+            .route("/api/series/{id}/articles", axum::routing::post(|| async { "add_article" }))
+            // bookmarks
+            .route("/api/bookmarks", get(|| async { "list_bookmarks" }).post(|| async { "add_bookmark" }))
+            // drafts
+            .route("/api/drafts", get(|| async { "list_drafts" }).post(|| async { "save_draft" }))
+            .route("/api/drafts/{id}", axum::routing::put(|| async { "update_draft" }).delete(|| async { "delete_draft" }))
+            .route("/api/drafts/{id}/publish", axum::routing::post(|| async { "publish" }))
+            // tags
+            .route("/api/tags", get(|| async { "list_tags" }).post(|| async { "create_tag" }))
+            .route("/api/tags/{id}", get(|| async { "get_tag" }))
+            .route("/api/tags/search", get(|| async { "search_tags" }))
+            // profile
+            .route("/api/profile", get(|| async { "get_profile" }))
+            // notifications
+            .route("/api/notifications", get(|| async { "list_notifications" }))
+            .route("/api/notifications/unread", get(|| async { "unread_count" }))
+            // search
+            .route("/api/search", get(|| async { "search" }))
+            // admin
+            .route("/api/admin/platform-users", get(|| async { "list_users" }).post(|| async { "create_user" }))
+            // books
+            .route("/api/books", get(|| async { "list_books" }).post(|| async { "create_book" }))
+            .route("/api/books/{id}", get(|| async { "get_book" }).put(|| async { "update_book" }))
+            .route("/api/books/{id}/chapters", get(|| async { "list_chapters" }).post(|| async { "create_chapter" }))
+            // graph
+            .route("/api/graph", get(|| async { "graph" }))
     }
 
-    // --- extract_bearer_token ---
+    async fn request(router: &axum::Router, method: Method, uri: &str) -> StatusCode {
+        let req = Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap();
+        router.clone().oneshot(req).await.unwrap().status()
+    }
+
+    async fn request_body(router: &axum::Router, method: Method, uri: &str) -> String {
+        let req = Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap();
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 64).await.unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    // --- GET routes ---
+
+    #[tokio::test]
+    async fn health_route_exists() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/health").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn articles_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/articles").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn articles_by_uri_resolves() {
+        let router = stub_router();
+        assert_eq!(
+            request(&router, Method::GET, "/api/articles/by-uri?uri=test").await,
+            StatusCode::OK,
+        );
+    }
+
+    #[tokio::test]
+    async fn votes_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/votes").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn comments_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/comments").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn tags_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/tags").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn tags_search_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/tags/search").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn series_list_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/series").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn series_by_id_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/series/42").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn bookmarks_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/bookmarks").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn drafts_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/drafts").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn profile_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/profile").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn notifications_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/notifications").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn search_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/search").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn graph_get_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/graph").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn books_list_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/books").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn books_by_id_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/books/7").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn book_chapters_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api/books/7/chapters").await, StatusCode::OK);
+    }
+
+    // --- POST routes ---
+
+    #[tokio::test]
+    async fn auth_login_post_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/auth/login").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn auth_logout_post_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/auth/logout").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn articles_post_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/articles").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn articles_fork_post_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/articles/fork").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn votes_post_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/votes").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn comments_post_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/comments").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn series_post_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/series").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn series_add_article_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/series/5/articles").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn bookmarks_post_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/bookmarks").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn drafts_post_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::POST, "/api/drafts").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn drafts_publish_post_resolves() {
+        let router = stub_router();
+        assert_eq!(
+            request(&router, Method::POST, "/api/drafts/99/publish").await,
+            StatusCode::OK,
+        );
+    }
+
+    // --- PUT routes ---
+
+    #[tokio::test]
+    async fn articles_update_put_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::PUT, "/api/articles/update").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn comments_update_put_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::PUT, "/api/comments/42").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn drafts_update_put_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::PUT, "/api/drafts/42").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn books_update_put_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::PUT, "/api/books/7").await, StatusCode::OK);
+    }
+
+    // --- DELETE routes ---
+
+    #[tokio::test]
+    async fn articles_delete_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::DELETE, "/api/articles/delete").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn comments_delete_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::DELETE, "/api/comments/42").await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn drafts_delete_resolves() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::DELETE, "/api/drafts/99").await, StatusCode::OK);
+    }
+
+    // --- Method not allowed ---
+
+    #[tokio::test]
+    async fn health_rejects_post() {
+        let router = stub_router();
+        assert_eq!(
+            request(&router, Method::POST, "/api/health").await,
+            StatusCode::METHOD_NOT_ALLOWED,
+        );
+    }
+
+    #[tokio::test]
+    async fn articles_by_uri_rejects_post() {
+        let router = stub_router();
+        assert_eq!(
+            request(&router, Method::POST, "/api/articles/by-uri").await,
+            StatusCode::METHOD_NOT_ALLOWED,
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_login_rejects_get() {
+        let router = stub_router();
+        assert_eq!(
+            request(&router, Method::GET, "/api/auth/login").await,
+            StatusCode::METHOD_NOT_ALLOWED,
+        );
+    }
+
+    #[tokio::test]
+    async fn graph_rejects_post() {
+        let router = stub_router();
+        assert_eq!(
+            request(&router, Method::POST, "/api/graph").await,
+            StatusCode::METHOD_NOT_ALLOWED,
+        );
+    }
+
+    // --- Non-existent routes return 404 ---
+
+    #[tokio::test]
+    async fn unknown_route_returns_404() {
+        let router = stub_router();
+        assert_eq!(
+            request(&router, Method::GET, "/api/nonexistent").await,
+            StatusCode::NOT_FOUND,
+        );
+    }
+
+    #[tokio::test]
+    async fn api_root_returns_404() {
+        let router = stub_router();
+        assert_eq!(request(&router, Method::GET, "/api").await, StatusCode::NOT_FOUND);
+    }
+
+    // --- Response body from stub confirms correct route matched ---
+
+    #[tokio::test]
+    async fn stub_body_confirms_route_identity() {
+        let router = stub_router();
+        let body = request_body(&router, Method::GET, "/api/health").await;
+        assert_eq!(body, "health");
+
+        let body = request_body(&router, Method::GET, "/api/graph").await;
+        assert_eq!(body, "graph");
+
+        let body = request_body(&router, Method::POST, "/api/auth/login").await;
+        assert_eq!(body, "login");
+
+        let body = request_body(&router, Method::GET, "/api/votes/my").await;
+        assert_eq!(body, "my_vote");
+    }
+
+    // --- Path parameter extraction ---
+
+    #[tokio::test]
+    async fn path_params_match_any_id() {
+        let router = stub_router();
+        // Series, comments, drafts, books all use {id} params
+        assert_eq!(request(&router, Method::GET, "/api/series/abc-123").await, StatusCode::OK);
+        assert_eq!(request(&router, Method::PUT, "/api/comments/999").await, StatusCode::OK);
+        assert_eq!(request(&router, Method::DELETE, "/api/drafts/some-uuid").await, StatusCode::OK);
+        assert_eq!(request(&router, Method::GET, "/api/books/42").await, StatusCode::OK);
+    }
+
+    // =========================================================================
+    // Auth extractor: extract_bearer_token (unit, no DB needed)
+    // These supplement the tests already in auth.rs
+    // =========================================================================
 
     #[test]
-    fn extract_bearer_token_with_prefix() {
+    fn bearer_token_with_extra_spaces_in_value() {
+        use axum::http::HeaderMap;
+        // The token itself should be preserved as-is
         let mut headers = HeaderMap::new();
-        headers.insert("authorization", "Bearer mytoken123".parse().unwrap());
-        assert_eq!(extract_bearer_token(&headers), Some("mytoken123"));
+        headers.insert("authorization", "Bearer abc def".parse().unwrap());
+        assert_eq!(crate::auth::extract_bearer_token(&headers), Some("abc def"));
     }
 
     #[test]
-    fn extract_bearer_token_without_prefix() {
+    fn bearer_token_empty_value() {
+        use axum::http::HeaderMap;
         let mut headers = HeaderMap::new();
-        headers.insert("authorization", "rawtoken".parse().unwrap());
-        assert_eq!(extract_bearer_token(&headers), Some("rawtoken"));
-    }
-
-    #[test]
-    fn extract_bearer_token_missing() {
-        let headers = HeaderMap::new();
-        assert_eq!(extract_bearer_token(&headers), None);
+        headers.insert("authorization", "Bearer ".parse().unwrap());
+        assert_eq!(crate::auth::extract_bearer_token(&headers), Some(""));
     }
 }

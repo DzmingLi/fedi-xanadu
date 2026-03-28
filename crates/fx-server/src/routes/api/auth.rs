@@ -7,7 +7,8 @@ use fx_core::services::{auth_service, platform_user_service};
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, extract_bearer_token, gen_session_token};
+use crate::auth::{Auth, extract_bearer_token};
+use fx_core::util::gen_session_token;
 
 #[derive(serde::Deserialize)]
 pub struct LoginInput {

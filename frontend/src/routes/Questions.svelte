@@ -1,9 +1,9 @@
 <script lang="ts">
   import { listQuestions, getAllArticleTeaches } from '../lib/api';
   import { tagName, authorName } from '../lib/display';
-  import { t, onLocaleChange, getLocale } from '../lib/i18n';
+  import { t, onLocaleChange, getLocale } from '../lib/i18n/index.svelte';
   import { buildArticleRowMap } from '../lib/series';
-  import { getAuth } from '../lib/auth';
+  import { getAuth } from '../lib/auth.svelte';
   import type { Article, ContentTeachRow } from '../lib/types';
 
   let locale = $state(getLocale());

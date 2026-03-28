@@ -11,7 +11,8 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{WriteAuth, IdQuery};
+use crate::auth::WriteAuth;
+use super::IdQuery;
 
 #[derive(serde::Deserialize)]
 pub struct SearchTagsQuery {
@@ -108,7 +109,7 @@ pub struct SetTeachInput {
 
 pub async fn set_teach(
     State(state): State<AppState>,
-    super::Auth(_user): super::Auth,
+    crate::auth::Auth(_user): crate::auth::Auth,
     Json(input): Json<SetTeachInput>,
 ) -> ApiResult<StatusCode> {
     // Ensure tag exists

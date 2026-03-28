@@ -1,5 +1,6 @@
 use sqlx::PgPool;
 
+use crate::content::ContentKind;
 use crate::models::*;
 use crate::region::{InstanceMode, visibility_filter};
 
@@ -302,7 +303,7 @@ pub async fn create_article(
     content_hash: &str,
     translation_group: Option<String>,
     visibility: &str,
-    kind: &str,
+    kind: ContentKind,
     question_uri: Option<&str>,
 ) -> crate::Result<Article> {
     let lang = input.lang.as_deref().unwrap_or("zh");
@@ -313,7 +314,7 @@ pub async fn create_article(
 
     let mut tx = pool.begin().await?;
 
-    let category = input.category.as_deref().unwrap_or("general");
+    let category = input.category.unwrap_or_default();
 
     sqlx::query(
         "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id, edition_id) \
@@ -324,15 +325,15 @@ pub async fn create_article(
     .bind(&input.title)
     .bind(input.description.as_deref().unwrap_or(""))
     .bind(content_hash)
-    .bind(&input.content_format)
+    .bind(input.content_format.as_str())
     .bind(lang)
     .bind(&translation_group)
     .bind(license)
     .bind(visibility)
-    .bind(kind)
+    .bind(kind.as_str())
     .bind(question_uri)
     .bind(restricted)
-    .bind(category)
+    .bind(category.as_str())
     .bind(input.book_id.as_deref())
     .bind(input.edition_id.as_deref())
     .execute(&mut *tx)
@@ -386,7 +387,7 @@ pub async fn create_fork_record(
     )
     .bind(forked_uri).bind(did)
     .bind(format!("Fork: {}", source.title))
-    .bind(&source.content_hash).bind(&source.content_format)
+    .bind(&source.content_hash).bind(source.content_format.as_str())
     .bind(source.prereq_threshold).bind(visibility)
     .execute(pool).await?;
 

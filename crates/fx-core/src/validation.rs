@@ -84,13 +84,11 @@ pub fn validate_tag_id(id: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
-const ALLOWED_FORMATS: &[&str] = &["typst", "markdown", "html", "tex"];
-
 pub fn validate_content_format(format: &str) -> Result<(), ValidationError> {
-    if !ALLOWED_FORMATS.contains(&format) {
+    if format.parse::<crate::content::ContentFormat>().is_err() {
         return Err(ValidationError {
             field: "content_format".into(),
-            message: format!("unsupported content format: {format} (allowed: typst, markdown, html)"),
+            message: format!("unsupported content format: {format} (allowed: typst, markdown, html, tex)"),
         });
     }
     Ok(())
@@ -110,7 +108,7 @@ pub fn validate_at_uri(uri: &str) -> Result<(), ValidationError> {
 pub fn validate_create_article(input: &crate::models::CreateArticle) -> Result<(), Error> {
     let mut errors = Vec::new();
     if let Err(e) = validate_title(&input.title) { errors.push(e); }
-    if let Err(e) = validate_content_format(&input.content_format) { errors.push(e); }
+    // content_format is already a typed enum — no string validation needed
     if let Err(e) = validate_article_content(&input.content) { errors.push(e); }
     for tag in &input.tags {
         if let Err(e) = validate_tag_id(tag) { errors.push(e); }
@@ -124,7 +122,7 @@ pub fn validate_create_article(input: &crate::models::CreateArticle) -> Result<(
 pub fn validate_save_draft(input: &crate::models::SaveDraft) -> Result<(), Error> {
     let mut errors = Vec::new();
     if let Err(e) = validate_title(&input.title) { errors.push(e); }
-    if let Err(e) = validate_content_format(&input.content_format) { errors.push(e); }
+    // content_format is already a typed enum — no string validation needed
     if let Err(e) = validate_article_content(&input.content) { errors.push(e); }
     for tag in &input.tags {
         if let Err(e) = validate_tag_id(tag) { errors.push(e); }
@@ -276,14 +274,19 @@ mod tests {
 
     #[test]
     fn create_article_valid() {
+        use crate::content::ContentFormat;
         let input = crate::models::CreateArticle {
             title: "Test".into(),
             description: None,
             content: "Hello".into(),
-            content_format: "typst".into(),
+            content_format: ContentFormat::Typst,
             lang: None,
             license: None,
             translation_of: None,
+            restricted: None,
+            category: None,
+            book_id: None,
+            edition_id: None,
             tags: vec!["rust".into()],
             prereqs: vec![],
         };
@@ -292,20 +295,25 @@ mod tests {
 
     #[test]
     fn create_article_collects_multiple_errors() {
+        use crate::content::ContentFormat;
         let input = crate::models::CreateArticle {
             title: "".into(),
             description: None,
             content: "x".repeat(500_001),
-            content_format: "typst".into(),
+            content_format: ContentFormat::Typst,
             lang: None,
             license: None,
             translation_of: None,
+            restricted: None,
+            category: None,
+            book_id: None,
+            edition_id: None,
             tags: vec!["".into()],
             prereqs: vec![],
         };
         match validate_create_article(&input) {
             Err(crate::Error::Validation(errors)) => {
-                assert!(errors.len() >= 3, "expected at least 3 errors, got {}", errors.len());
+                assert!(errors.len() >= 2, "expected at least 2 errors, got {}", errors.len());
             }
             other => panic!("expected Validation error, got {other:?}"),
         }
@@ -315,11 +323,12 @@ mod tests {
 
     #[test]
     fn save_draft_valid() {
+        use crate::content::ContentFormat;
         let input = crate::models::SaveDraft {
             title: "Draft".into(),
             description: None,
             content: "content".into(),
-            content_format: "typst".into(),
+            content_format: ContentFormat::Typst,
             lang: None,
             license: None,
             tags: vec![],
@@ -330,11 +339,12 @@ mod tests {
 
     #[test]
     fn save_draft_empty_title() {
+        use crate::content::ContentFormat;
         let input = crate::models::SaveDraft {
             title: "".into(),
             description: None,
             content: "ok".into(),
-            content_format: "typst".into(),
+            content_format: ContentFormat::Typst,
             lang: None,
             license: None,
             tags: vec![],

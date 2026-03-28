@@ -1,7 +1,9 @@
 use axum::{extract::State, http::StatusCode, Json};
 use fx_core::services::member_service;
 
-use super::{ApiResult, AppState, Auth};
+use crate::auth::Auth;
+use crate::error::ApiResult;
+use crate::state::AppState;
 
 #[derive(serde::Deserialize)]
 pub struct MemberInput {

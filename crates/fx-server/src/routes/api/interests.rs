@@ -6,7 +6,7 @@ use axum::{
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, WriteAuth};
+use crate::auth::{Auth, WriteAuth};
 
 const MAX_INTERESTS: usize = 100;
 

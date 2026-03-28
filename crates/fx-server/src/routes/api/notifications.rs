@@ -7,7 +7,7 @@ use fx_core::services::notification_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::Auth;
+use crate::auth::Auth;
 
 #[derive(serde::Deserialize)]
 pub struct ListNotificationsQuery {

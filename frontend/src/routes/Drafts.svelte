@@ -1,6 +1,6 @@
 <script lang="ts">
   import { listDrafts, deleteDraft, publishDraft } from '../lib/api';
-  import { t, getLocale, onLocaleChange } from '../lib/i18n';
+  import { t, getLocale, onLocaleChange } from '../lib/i18n/index.svelte';
   import type { Draft } from '../lib/types';
 
   let locale = $state(getLocale());

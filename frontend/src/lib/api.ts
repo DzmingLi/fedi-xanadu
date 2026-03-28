@@ -6,7 +6,7 @@ import type {
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
   BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter,
 } from './types';
-import { getToken } from './auth';
+import { getToken } from './auth.svelte';
 
 const BASE = '/api';
 
@@ -42,6 +42,38 @@ async function post<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
   return res.json();
 }
 
+async function put<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: body ? JSON.stringify(body) : undefined,
+    signal,
+  });
+  if (!res.ok) {
+    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
+    const text = await res.text();
+    throw new Error(text || `${res.status} ${res.statusText}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+async function del<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: body ? JSON.stringify(body) : undefined,
+    signal,
+  });
+  if (!res.ok) {
+    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
+    const text = await res.text();
+    throw new Error(text || `${res.status} ${res.statusText}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
 // Auth
 export const login = (identifier: string, password: string) =>
   post<AuthUser>('/auth/login', { identifier, password });
@@ -50,7 +82,7 @@ export const authMe = () => get<AuthUser>('/auth/me');
 
 // Tags
 export const listTags = () => get<Tag[]>('/tags');
-export const getTag = (id: string) => get<Tag>(`/tags/by-id?id=${encodeURIComponent(id)}`);
+export const getTag = (id: string) => get<Tag>(`/tags/${encodeURIComponent(id)}`);
 
 // Articles
 export const listArticles = () => get<Article[]>('/articles');
@@ -77,7 +109,7 @@ export const getQuestionsByTag = (tagId: string, limit = 50) => get<Article[]>(`
 
 // Votes
 export const castVote = (target_uri: string, value: number) =>
-  post<VoteSummary>('/vote', { target_uri, value });
+  post<VoteSummary>('/votes', { target_uri, value });
 export const getArticleVotes = (uri: string) => get<VoteSummary>(`/votes?uri=${encodeURIComponent(uri)}`);
 export const getMyVote = (uri: string) => get<{ value: number }>(`/votes/my?uri=${encodeURIComponent(uri)}`);
 
@@ -94,7 +126,7 @@ export const getTagTree = () => get<TagTreeEntry[]>('/tag-tree');
 export const listBookmarks = () => get<BookmarkWithTitle[]>('/bookmarks');
 export const addBookmark = (article_uri: string, folder_path?: string) =>
   post<void>('/bookmarks', { article_uri, folder_path });
-export const removeBookmark = (uri: string) => post<void>('/bookmarks/remove', { uri });
+export const removeBookmark = (uri: string) => del<void>('/bookmarks/remove', { uri });
 export const moveBookmark = (article_uri: string, folder_path: string) =>
   post<void>('/bookmarks/move', { article_uri, folder_path });
 export const listBookmarkFolders = () => get<string[]>('/bookmarks/folders');
@@ -102,7 +134,7 @@ export const listPublicBookmarks = (did: string) => get<BookmarkWithTitle[]>(`/b
 
 // Interests
 export const getInterests = () => get<string[]>('/interests');
-export const setInterests = (tag_ids: string[]) => post<void>('/interests', { tag_ids });
+export const setInterests = (tag_ids: string[]) => put<void>('/interests', { tag_ids });
 
 // Profile
 export const getProfile = (did: string) => get<ProfileData>(`/profile?did=${encodeURIComponent(did)}`);
@@ -111,7 +143,7 @@ export const updateProfileLinks = (links: { label: string; url: string }[]) =>
 
 // Series
 export const listSeries = () => get<Series[]>('/series');
-export const getSeries = (id: string) => get<SeriesDetail>(`/series/by-id?id=${encodeURIComponent(id)}`);
+export const getSeries = (id: string) => get<SeriesDetail>(`/series/${encodeURIComponent(id)}`);
 export const createSeries = (data: { title: string; description?: string; long_description?: string; topics?: string[]; parent_id?: string; category?: string }) =>
   post<Series>('/series', data);
 export const addSeriesArticle = (series_id: string, article_uri: string) =>
@@ -169,11 +201,11 @@ export const markFollowSeen = (did: string) => post<void>('/follows/seen', { did
 // Keybindings
 export const getKeybindings = () => get<{ bindings: Record<string, string> }>('/keybindings');
 export const setKeybindings = (bindings: Record<string, string>) =>
-  post<{ bindings: Record<string, string> }>('/keybindings', { bindings });
+  put<{ bindings: Record<string, string> }>('/keybindings', { bindings });
 
 // Settings
 export const getSettings = () => get<UserSettings>('/settings');
-export const setSettings = (settings: UserSettings) => post<UserSettings>('/settings', settings);
+export const setSettings = (settings: UserSettings) => put<UserSettings>('/settings', settings);
 
 // Blocks
 export const blockUser = (did: string) => post<void>('/blocks', { did });
@@ -215,9 +247,9 @@ export const listComments = (uri: string) => get<Comment[]>(`/comments?uri=${enc
 export const createComment = (content_uri: string, body: string, parent_id?: string, quote_text?: string) =>
   post<Comment>('/comments', { content_uri, body, parent_id, quote_text });
 export const updateComment = (id: string, body: string) =>
-  post<Comment>('/comments/update', { id, body });
+  put<Comment>(`/comments/${encodeURIComponent(id)}`, { body });
 export const deleteComment = (id: string) =>
-  post<void>('/comments/delete', { id });
+  del<void>(`/comments/${encodeURIComponent(id)}`);
 export const voteComment = (comment_id: string, value: number) =>
   post<CommentVoteResult>('/comments/vote', { comment_id, value });
 export const getMyCommentVotes = (uri: string) =>
@@ -225,9 +257,9 @@ export const getMyCommentVotes = (uri: string) =>
 
 // Article edit/delete
 export const updateArticle = (uri: string, data: { title?: string; description?: string; content?: string }) =>
-  post<Article>('/articles/update', { uri, ...data });
+  put<Article>('/articles/update', { uri, ...data });
 export const deleteArticle = (uri: string) =>
-  post<void>('/articles/delete', { uri });
+  del<void>('/articles/delete', { uri });
 
 // Access control (paywall)
 export const setRestricted = (uri: string, restricted: boolean) =>
@@ -243,9 +275,9 @@ export const listAccessGrants = (uri: string) =>
 export const listDrafts = () => get<Draft[]>('/drafts');
 export const saveDraft = (data: CreateArticle) => post<Draft>('/drafts', data);
 export const updateDraft = (id: string, data: Partial<CreateArticle>) =>
-  post<Draft>('/drafts/update', { id, ...data });
-export const deleteDraft = (id: string) => post<void>('/drafts/delete', { id });
-export const publishDraft = (id: string) => post<Article>('/drafts/publish', { id });
+  put<Draft>(`/drafts/${encodeURIComponent(id)}`, data);
+export const deleteDraft = (id: string) => del<void>(`/drafts/${encodeURIComponent(id)}`);
+export const publishDraft = (id: string) => post<Article>(`/drafts/${encodeURIComponent(id)}/publish`);
 
 // Learned marks
 export const markLearned = (article_uri: string) => post<void>('/learned', { article_uri });
@@ -272,7 +304,7 @@ export const getGraph = () => get<GraphData>('/graph');
 export const listBooks = (limit = 50, offset = 0) =>
   get<Book[]>(`/books?limit=${limit}&offset=${offset}`);
 export const getBook = (id: string) =>
-  get<BookDetail>(`/books/by-id?id=${encodeURIComponent(id)}`);
+  get<BookDetail>(`/books/${encodeURIComponent(id)}`);
 export const createBook = (data: { title: string; authors: string[]; description?: string; cover_url?: string; tags: string[]; prereqs?: string[] }) =>
   post<Book>('/books', data);
 export const updateBook = (id: string, data: { title?: string; description?: string; cover_url?: string; edit_summary?: string }) =>
@@ -294,7 +326,7 @@ export const listChapters = (book_id: string) =>
 export const createChapter = (book_id: string, chapter: { title: string; parent_id?: string; order_index: number; article_uri?: string }) =>
   post<BookChapter>('/books/chapters', { book_id, chapter });
 export const deleteChapter = (id: string) =>
-  post<void>('/books/chapters/delete', { id });
+  del<void>(`/books/chapters/${encodeURIComponent(id)}`);
 export const setChapterProgress = (book_id: string, chapter_id: string, completed: boolean) =>
   post<void>('/books/chapters/progress', { book_id, chapter_id, completed });
 

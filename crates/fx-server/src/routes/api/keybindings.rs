@@ -5,7 +5,8 @@ use axum::{
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, WriteAuth, pds_session, now_rfc3339, log_pds_error};
+use crate::auth::{Auth, WriteAuth, pds_session, log_pds_error};
+use fx_core::util::now_rfc3339;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct KeybindingsData {

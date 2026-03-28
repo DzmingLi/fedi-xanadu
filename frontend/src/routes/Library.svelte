@@ -1,7 +1,7 @@
 <script lang="ts">
   import { listBookmarks, moveBookmark, removeBookmark, getArticlesByDid, listSeries, getAllSeriesArticles } from '../lib/api';
-  import { getAuth } from '../lib/auth';
-  import { t } from '../lib/i18n';
+  import { getAuth } from '../lib/auth.svelte';
+  import { t } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps } from '../lib/series';
   import type { BookmarkWithTitle, Article, Series } from '../lib/types';
 

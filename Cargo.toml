@@ -7,6 +7,7 @@ members = [
     "crates/fx-search",
     "crates/fx-render",
     "crates/fx-cli",
+    "crates/fx-client",
     "vendor/pijul-core",
     "vendor/pijul-repository",
     "vendor/pijul-config",
@@ -26,6 +27,7 @@ fx-pijul = { path = "crates/fx-pijul" }
 fx-atproto = { path = "crates/fx-atproto" }
 fx-search = { path = "crates/fx-search" }
 fx-render = { path = "crates/fx-render" }
+fx-client = { path = "crates/fx-client" }
 
 # Web
 axum = { version = "0.8", features = ["macros", "multipart"] }

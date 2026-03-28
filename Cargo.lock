@@ -1535,6 +1535,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs-next",
+ "fx-client",
  "fx-core",
  "reqwest",
  "serde",
@@ -1544,12 +1545,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "fx-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "fx-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "fx-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "argon2",
+ "blake3",
  "chrono",
+ "rand 0.10.0",
  "serde",
  "serde_json",
  "sqlx",
@@ -1566,6 +1583,7 @@ dependencies = [
  "pijul-core",
  "pijul-repository",
  "rand 0.10.0",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -1612,6 +1630,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sqlx",
  "tokio",
  "tower",

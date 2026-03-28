@@ -5,7 +5,7 @@ use axum::{
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, WriteAuth};
+use crate::auth::{Auth, WriteAuth};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct UserSettings {

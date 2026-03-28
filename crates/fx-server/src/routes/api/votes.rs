@@ -6,7 +6,9 @@ use fx_core::services::vote_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{WriteAuth, MaybeAuth, UriQuery, pds_session, tid, now_rfc3339, log_pds_error};
+use crate::auth::{WriteAuth, MaybeAuth, pds_session, log_pds_error};
+use fx_core::util::{tid, now_rfc3339};
+use super::UriQuery;
 
 #[derive(serde::Deserialize)]
 pub struct CastVoteInput {

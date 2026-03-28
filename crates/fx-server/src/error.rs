@@ -140,11 +140,21 @@ pub fn require_owner(owner: Option<&str>, did: &str) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::to_bytes;
     use axum::response::IntoResponse;
 
     fn status_of(err: fx_core::Error) -> StatusCode {
         AppError(err).into_response().status()
     }
+
+    /// Helper: convert an error to its JSON response body.
+    async fn json_body(err: fx_core::Error) -> serde_json::Value {
+        let resp = AppError(err).into_response();
+        let bytes = to_bytes(resp.into_body(), 1024 * 64).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    // --- Status code mapping ---
 
     #[test]
     fn not_found_maps_to_404() {
@@ -204,6 +214,149 @@ mod tests {
         assert_eq!(
             status_of(fx_core::Error::Render("bad typst".into())),
             StatusCode::BAD_REQUEST,
+        );
+    }
+
+    #[test]
+    fn pijul_maps_to_500() {
+        assert_eq!(
+            status_of(fx_core::Error::Pijul("broken repo".into())),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    #[test]
+    fn atproto_maps_to_500() {
+        assert_eq!(
+            status_of(fx_core::Error::AtProto("network fail".into())),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    // --- JSON body content ---
+
+    #[tokio::test]
+    async fn not_found_json_body_contains_entity() {
+        let body = json_body(fx_core::Error::NotFound {
+            entity: "article",
+            id: "at://did:plc:abc/article/123".into(),
+        })
+        .await;
+        let error_msg = body["error"].as_str().unwrap();
+        assert!(error_msg.contains("article"), "error should mention entity");
+        assert!(error_msg.contains("at://did:plc:abc/article/123"), "error should mention id");
+    }
+
+    #[tokio::test]
+    async fn unauthorized_json_body() {
+        let body = json_body(fx_core::Error::Unauthorized).await;
+        assert_eq!(body["error"], "unauthorized");
+    }
+
+    #[tokio::test]
+    async fn forbidden_json_body() {
+        let body = json_body(fx_core::Error::Forbidden { action: "delete article" }).await;
+        assert_eq!(body["error"], "forbidden");
+    }
+
+    #[tokio::test]
+    async fn bad_request_json_body_preserves_message() {
+        let body = json_body(fx_core::Error::BadRequest("missing field title".into())).await;
+        assert_eq!(body["error"], "missing field title");
+    }
+
+    #[tokio::test]
+    async fn conflict_json_body_preserves_message() {
+        let body = json_body(fx_core::Error::Conflict {
+            message: "handle already taken".into(),
+        })
+        .await;
+        assert_eq!(body["error"], "handle already taken");
+    }
+
+    #[tokio::test]
+    async fn validation_json_body_has_details_array() {
+        let errors = vec![
+            fx_core::validation::ValidationError {
+                field: "title".into(),
+                message: "too short".into(),
+            },
+            fx_core::validation::ValidationError {
+                field: "body".into(),
+                message: "required".into(),
+            },
+        ];
+        let body = json_body(fx_core::Error::Validation(errors)).await;
+        assert_eq!(body["error"], "validation_failed");
+        let details = body["details"].as_array().unwrap();
+        assert_eq!(details.len(), 2);
+        assert_eq!(details[0]["field"], "title");
+        assert_eq!(details[0]["message"], "too short");
+        assert_eq!(details[1]["field"], "body");
+        assert_eq!(details[1]["message"], "required");
+    }
+
+    #[tokio::test]
+    async fn internal_error_body_hides_nothing_extra() {
+        let body = json_body(fx_core::Error::Internal("secret details".into())).await;
+        // Internal errors do include the message (for debugging in dev).
+        assert!(body.get("error").is_some());
+    }
+
+    #[tokio::test]
+    async fn pijul_error_returns_generic_message() {
+        let body = json_body(fx_core::Error::Pijul("broken repo".into())).await;
+        assert_eq!(body["error"], "version control error");
+    }
+
+    #[tokio::test]
+    async fn atproto_error_returns_generic_message() {
+        let body = json_body(fx_core::Error::AtProto("network fail".into())).await;
+        assert_eq!(body["error"], "federation error");
+    }
+
+    #[tokio::test]
+    async fn render_error_preserves_message() {
+        let body = json_body(fx_core::Error::Render("invalid typst syntax".into())).await;
+        assert_eq!(body["error"], "invalid typst syntax");
+    }
+
+    #[tokio::test]
+    async fn error_responses_have_json_content_type() {
+        let resp = AppError(fx_core::Error::Unauthorized).into_response();
+        let ct = resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(ct.contains("application/json"), "content-type should be JSON, got: {ct}");
+    }
+
+    // --- From impls ---
+
+    #[test]
+    fn from_fx_core_error() {
+        let core_err = fx_core::Error::Unauthorized;
+        let app_err: AppError = core_err.into();
+        assert_eq!(app_err.into_response().status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn from_serde_json_error() {
+        let json_err: serde_json::Error =
+            serde_json::from_str::<String>("not json").unwrap_err();
+        let app_err: AppError = json_err.into();
+        assert_eq!(app_err.into_response().status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn from_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file missing");
+        let app_err: AppError = io_err.into();
+        assert_eq!(
+            app_err.into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
 

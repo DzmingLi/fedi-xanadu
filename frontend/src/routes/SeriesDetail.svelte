@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getSeries, getSeriesTree, getArticleVotes, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
-  import { getAuth } from '../lib/auth';
-  import { t } from '../lib/i18n';
+  import { getAuth } from '../lib/auth.svelte';
+  import { t } from '../lib/i18n/index.svelte';
   import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, SeriesTreeNode, VoteSummary, BookmarkWithTitle } from '../lib/types';
 
   let { id } = $props<{ id: string }>();

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { getSkillTree, forkSkillTree, adoptSkillTree, addSkillTreeEdge, removeSkillTreeEdge, castVote, listTags } from '../lib/api';
-  import { getAuth } from '../lib/auth';
+  import { getAuth } from '../lib/auth.svelte';
   import { tagName as resolveTagName } from '../lib/display';
-  import { t, getLocale } from '../lib/i18n';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import type { SkillTreeDetail, SkillTreeEdge, Tag } from '../lib/types';
 
   let { uri } = $props<{ uri: string }>();

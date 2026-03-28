@@ -2,8 +2,8 @@
   import {
     ACTIONS, getAllBindings, parseKeyCombo, matchesKey, formatKeyDisplay,
     CATEGORY_LABELS, onBindingsChange, loadFromServer,
-  } from '../lib/keybindings';
-  import { onAuthChange } from '../lib/auth';
+  } from '../lib/keybindings.svelte';
+  import { onAuthChange } from '../lib/auth.svelte';
 
   let helpOpen = $state(false);
   let settingsOpen = $state(false);

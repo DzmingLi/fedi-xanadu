@@ -6,28 +6,7 @@
   import RightSidebar from './components/RightSidebar.svelte';
   import KeyboardShortcuts from './components/KeyboardShortcuts.svelte';
   import Home from './routes/Home.svelte';
-  import ArticlePage from './routes/Article.svelte';
-  import NewArticle from './routes/NewArticle.svelte';
-  import Skills from './routes/Skills.svelte';
-  import About from './routes/About.svelte';
-  import TagDetail from './routes/TagDetail.svelte';
-  import Library from './routes/Library.svelte';
-  import SeriesDetail from './routes/SeriesDetail.svelte';
-  import NewSeries from './routes/NewSeries.svelte';
-  import Profile from './routes/Profile.svelte';
-  import SkillTreeView from './routes/SkillTreeView.svelte';
-  import NewSkillTree from './routes/NewSkillTree.svelte';
-  import Guide from './routes/Guide.svelte';
-  import Roadmap from './routes/Roadmap.svelte';
-  import Forks from './routes/Forks.svelte';
-  import Drafts from './routes/Drafts.svelte';
-  import Notifications from './routes/Notifications.svelte';
-  import Questions from './routes/Questions.svelte';
-  import QuestionDetail from './routes/QuestionDetail.svelte';
-  import NewQuestion from './routes/NewQuestion.svelte';
-  import Settings from './routes/Settings.svelte';
-  import BookList from './routes/BookList.svelte';
-  import BookDetailPage from './routes/BookDetail.svelte';
+  import { matchRoute } from './lib/router';
 
   let hash = $state(window.location.hash || '#/');
 
@@ -40,47 +19,32 @@
     return () => window.removeEventListener('hashchange', onHashChange);
   });
 
-  function getRoute(h: string): { page: string; params: Record<string, string> } {
-    const path = h.slice(1) || '/'; // remove '#'
-    const [base, query] = path.split('?');
-    const params: Record<string, string> = {};
-    if (query) {
-      for (const part of query.split('&')) {
-        const [k, v] = part.split('=');
-        params[decodeURIComponent(k)] = decodeURIComponent(v || '');
-      }
-    }
-    if (base === '/' || base === '') return { page: 'home', params };
-    if (base === '/tags') return { page: 'skills', params };
-    if (base === '/article') return { page: 'article', params };
-    if (base === '/new') return { page: 'new', params };
-    if (base === '/skills') return { page: 'skills', params };
-    if (base === '/graph') return { page: 'skills', params };
-    if (base === '/tag') return { page: 'tag', params };
-    if (base === '/about') return { page: 'about', params };
-    if (base === '/roadmap') return { page: 'roadmap', params };
-    if (base === '/guide') return { page: 'guide', params };
-    if (base === '/library') return { page: 'library', params };
-    if (base === '/series') return { page: 'series', params };
-    if (base === '/new-series') return { page: 'new-series', params };
-    if (base === '/profile') return { page: 'profile', params };
-    if (base === '/skill-trees') return { page: 'skills', params };
-    if (base === '/skill-tree/new') return { page: 'skill-tree-new', params };
-    if (base === '/skill-tree') return { page: 'skill-tree', params };
-    if (base === '/forks') return { page: 'forks', params };
-    if (base === '/drafts') return { page: 'drafts', params };
-    if (base === '/notifications') return { page: 'notifications', params };
-    if (base === '/questions') return { page: 'questions', params };
-    if (base === '/question') return { page: 'question', params };
-    if (base === '/new-question') return { page: 'new-question', params };
-    if (base === '/settings') return { page: 'settings', params };
-    if (base === '/books') return { page: 'books', params };
-    if (base === '/book') return { page: 'book', params };
-    return { page: 'home', params };
-  }
-
-  let route = $derived(getRoute(hash));
+  let route = $derived(matchRoute(hash));
   let kbShortcuts: KeyboardShortcuts;
+
+  // Lazy-load route components (not on the home page)
+  const lazyArticle = () => import('./routes/Article.svelte');
+  const lazyNewArticle = () => import('./routes/NewArticle.svelte');
+  const lazySkills = () => import('./routes/Skills.svelte');
+  const lazyAbout = () => import('./routes/About.svelte');
+  const lazyTagDetail = () => import('./routes/TagDetail.svelte');
+  const lazyLibrary = () => import('./routes/Library.svelte');
+  const lazySeriesDetail = () => import('./routes/SeriesDetail.svelte');
+  const lazyNewSeries = () => import('./routes/NewSeries.svelte');
+  const lazyProfile = () => import('./routes/Profile.svelte');
+  const lazySkillTreeView = () => import('./routes/SkillTreeView.svelte');
+  const lazyNewSkillTree = () => import('./routes/NewSkillTree.svelte');
+  const lazyGuide = () => import('./routes/Guide.svelte');
+  const lazyRoadmap = () => import('./routes/Roadmap.svelte');
+  const lazyForks = () => import('./routes/Forks.svelte');
+  const lazyDrafts = () => import('./routes/Drafts.svelte');
+  const lazyNotifications = () => import('./routes/Notifications.svelte');
+  const lazyQuestions = () => import('./routes/Questions.svelte');
+  const lazyQuestionDetail = () => import('./routes/QuestionDetail.svelte');
+  const lazyNewQuestion = () => import('./routes/NewQuestion.svelte');
+  const lazySettings = () => import('./routes/Settings.svelte');
+  const lazyBookList = () => import('./routes/BookList.svelte');
+  const lazyBookDetail = () => import('./routes/BookDetail.svelte');
 </script>
 
 <Toast />
@@ -90,18 +54,24 @@
   <div class="fullwidth-nav">
     <NavBar />
   </div>
-  <Library />
+  {#await lazyLibrary() then mod}
+    <mod.default />
+  {/await}
 {:else if route.page === 'skills'}
   <div class="fullwidth-nav">
     <NavBar />
   </div>
-  <Skills />
+  {#await lazySkills() then mod}
+    <mod.default />
+  {/await}
 {:else if route.page === 'article'}
   <div class="top-nav">
     <NavBar />
   </div>
   <div class="container article-view">
-    <ArticlePage uri={route.params.uri || ''} />
+    {#await lazyArticle() then mod}
+      <mod.default uri={route.params.uri || ''} />
+    {/await}
   </div>
 {:else if route.page === 'home'}
   <div class="layout-wide">
@@ -120,41 +90,77 @@
   </div>
   <div class="container">
     {#if route.page === 'tag'}
-      <TagDetail id={route.params.id || ''} />
+      {#await lazyTagDetail() then mod}
+        <mod.default id={route.params.id || ''} />
+      {/await}
     {:else if route.page === 'new'}
-      <NewArticle forkOf={route.params.fork_of || ''} editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} />
+      {#await lazyNewArticle() then mod}
+        <mod.default forkOf={route.params.fork_of || ''} editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} />
+      {/await}
     {:else if route.page === 'about'}
-      <About />
+      {#await lazyAbout() then mod}
+        <mod.default />
+      {/await}
     {:else if route.page === 'roadmap'}
-      <Roadmap />
+      {#await lazyRoadmap() then mod}
+        <mod.default />
+      {/await}
     {:else if route.page === 'guide'}
-      <Guide />
+      {#await lazyGuide() then mod}
+        <mod.default />
+      {/await}
     {:else if route.page === 'series'}
-      <SeriesDetail id={route.params.id || ''} />
+      {#await lazySeriesDetail() then mod}
+        <mod.default id={route.params.id || ''} />
+      {/await}
     {:else if route.page === 'new-series'}
-      <NewSeries parentId={route.params.parent_id} />
+      {#await lazyNewSeries() then mod}
+        <mod.default parentId={route.params.parent_id} />
+      {/await}
     {:else if route.page === 'profile'}
-      <Profile did={route.params.did || ''} />
+      {#await lazyProfile() then mod}
+        <mod.default did={route.params.did || ''} />
+      {/await}
     {:else if route.page === 'skill-tree'}
-      <SkillTreeView uri={route.params.uri || ''} />
+      {#await lazySkillTreeView() then mod}
+        <mod.default uri={route.params.uri || ''} />
+      {/await}
     {:else if route.page === 'skill-tree-new'}
-      <NewSkillTree />
+      {#await lazyNewSkillTree() then mod}
+        <mod.default />
+      {/await}
     {:else if route.page === 'forks'}
-      <Forks uri={route.params.uri || ''} />
+      {#await lazyForks() then mod}
+        <mod.default uri={route.params.uri || ''} />
+      {/await}
     {:else if route.page === 'drafts'}
-      <Drafts />
+      {#await lazyDrafts() then mod}
+        <mod.default />
+      {/await}
     {:else if route.page === 'notifications'}
-      <Notifications />
+      {#await lazyNotifications() then mod}
+        <mod.default />
+      {/await}
     {:else if route.page === 'questions'}
-      <Questions />
+      {#await lazyQuestions() then mod}
+        <mod.default />
+      {/await}
     {:else if route.page === 'question'}
-      <QuestionDetail uri={route.params.uri || ''} />
+      {#await lazyQuestionDetail() then mod}
+        <mod.default uri={route.params.uri || ''} />
+      {/await}
     {:else if route.page === 'new-question'}
-      <NewQuestion />
+      {#await lazyNewQuestion() then mod}
+        <mod.default />
+      {/await}
     {:else if route.page === 'settings'}
-      <Settings />
+      {#await lazySettings() then mod}
+        <mod.default />
+      {/await}
     {:else if route.page === 'books'}
-      <BookList />
+      {#await lazyBookList() then mod}
+        <mod.default />
+      {/await}
     {/if}
   </div>
 {/if}
@@ -164,7 +170,9 @@
     <NavBar />
   </div>
   <div class="container-wide">
-    <BookDetailPage id={route.params.id || ''} />
+    {#await lazyBookDetail() then mod}
+      <mod.default id={route.params.id || ''} />
+    {/await}
   </div>
 {/if}
 

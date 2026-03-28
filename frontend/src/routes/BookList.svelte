@@ -1,7 +1,7 @@
 <script lang="ts">
   import { listBooks } from '../lib/api';
-  import { t, getLocale, onLocaleChange } from '../lib/i18n';
-  import { getAuth } from '../lib/auth';
+  import { t, getLocale, onLocaleChange } from '../lib/i18n/index.svelte';
+  import { getAuth } from '../lib/auth.svelte';
   import type { Book } from '../lib/types';
 
   let locale = $state(getLocale());

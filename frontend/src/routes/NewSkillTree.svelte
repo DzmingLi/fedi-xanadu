@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createSkillTree, listTags, searchTags } from '../lib/api';
-  import { getAuth } from '../lib/auth';
-  import { t } from '../lib/i18n';
+  import { getAuth } from '../lib/auth.svelte';
+  import { t } from '../lib/i18n/index.svelte';
   import type { Tag, SkillTreeEdge } from '../lib/types';
 
   let title = $state('');

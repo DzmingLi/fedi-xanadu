@@ -1,17 +1,17 @@
 <script lang="ts">
   import { getSettings, setSettings, getKeybindings, listBlockedUsers, unblockUser as apiUnblockUser, listBookmarkFolders, listMembers, addMember, removeMember } from '../lib/api';
-  import { getAuth } from '../lib/auth';
-  import { t, getLocale, setLocale, onLocaleChange, LOCALES } from '../lib/i18n';
-  import type { Locale } from '../lib/i18n';
-  import { LANG_NAMES } from '../lib/i18n';
-  import { setLangPrefs } from '../lib/langPrefs';
+  import { getAuth } from '../lib/auth.svelte';
+  import { t, getLocale, setLocale, onLocaleChange, LOCALES } from '../lib/i18n/index.svelte';
+  import type { Locale } from '../lib/i18n/index.svelte';
+  import { LANG_NAMES } from '../lib/i18n/index.svelte';
+  import { setLangPrefs } from '../lib/langPrefs.svelte';
   import {
     ACTIONS, getAllBindings, formatKeyDisplay, CATEGORY_LABELS,
     setBinding, resetBindings, saveToServer,
-  } from '../lib/keybindings';
+  } from '../lib/keybindings.svelte';
   import { toast } from '../lib/components/Toast.svelte';
-  import { removeBlocked } from '../lib/blocklist';
-  import type { UserSettings, BlockedUser } from '../lib/types';
+  import { removeBlocked } from '../lib/blocklist.svelte';
+  import type { UserSettings, BlockedUser, ContentFormat } from '../lib/types';
 
   let locale = $state(getLocale());
   $effect(() => onLocaleChange(() => { locale = getLocale(); }));
@@ -24,7 +24,7 @@
   let knownLangs = $state<string[]>(['zh']);
   let preferNative = $state(true);
   let hideUnknown = $state(false);
-  let defaultFormat = $state('typst');
+  let defaultFormat = $state<ContentFormat>('typst');
   let email = $state('');
   let bookmarksPublic = $state(false);
   let publicFolders = $state<string[]>([]);

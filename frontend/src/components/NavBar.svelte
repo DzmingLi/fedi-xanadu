@@ -1,10 +1,10 @@
 <script lang="ts">
   import { listArticles, logout as apiLogout, getUnreadCount } from '../lib/api';
-  import { getAuth, setAuth, onAuthChange } from '../lib/auth';
-  import { t, getLocale, setLocale, onLocaleChange, LOCALES } from '../lib/i18n';
-  import { loadLangPrefs, clearLangPrefs } from '../lib/langPrefs';
-  import { loadBlocklist, clearBlocklist } from '../lib/blocklist';
-  import type { Locale } from '../lib/i18n';
+  import { getAuth, setAuth, onAuthChange } from '../lib/auth.svelte';
+  import { t, getLocale, setLocale, onLocaleChange, LOCALES } from '../lib/i18n/index.svelte';
+  import { loadLangPrefs, clearLangPrefs } from '../lib/langPrefs.svelte';
+  import { loadBlocklist, clearBlocklist } from '../lib/blocklist.svelte';
+  import type { Locale } from '../lib/i18n/index.svelte';
   import type { Article, AuthUser } from '../lib/types';
   import LoginModal from './LoginModal.svelte';
 

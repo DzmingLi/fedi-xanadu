@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tagName } from '../display';
   import { authorName } from '../display';
-  import { t } from '../i18n';
+  import { t } from '../i18n/index.svelte';
   import type { Article, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
 
   type CardVariant = 'home' | 'profile';

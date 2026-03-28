@@ -1,10 +1,10 @@
 <script lang="ts">
   import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
-  import { getAuth } from '../lib/auth';
-  import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist';
+  import { getAuth } from '../lib/auth.svelte';
+  import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
   import { tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
-  import { t, onLocaleChange, getLocale } from '../lib/i18n';
+  import { t, onLocaleChange, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
   import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink, BookmarkWithTitle, EducationEntry } from '../lib/types';

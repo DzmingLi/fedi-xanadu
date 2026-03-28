@@ -1,3 +1,3 @@
 pub mod store;
 
-pub use store::PijulStore;
+pub use store::{DiffHunk, DiffResult, PijulStore, TrackedFile};

@@ -3,6 +3,7 @@ use axum::{
     extract::{Multipart, Query, State},
     http::StatusCode,
 };
+use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::*;
 use fx_core::region::default_visibility;
 use fx_core::services::{article_service, notification_service};
@@ -10,7 +11,9 @@ use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use super::{WriteAuth, UriQuery, content_hash, tid, uri_to_node_id, pds_session, now_rfc3339, log_pds_error};
+use crate::auth::{WriteAuth, pds_session, log_pds_error};
+use fx_core::util::{content_hash, tid, uri_to_node_id, now_rfc3339};
+use super::UriQuery;
 
 #[derive(serde::Deserialize)]
 pub struct ListArticlesQuery {
@@ -38,7 +41,7 @@ pub async fn get_article(
 
 pub async fn get_article_content(
     State(state): State<AppState>,
-    super::MaybeAuth(user): super::MaybeAuth,
+    crate::auth::MaybeAuth(user): crate::auth::MaybeAuth,
     Query(UriQuery { uri }): Query<UriQuery>,
 ) -> ApiResult<Json<ArticleContent>> {
     let has_access = article_service::check_content_access(
@@ -127,11 +130,11 @@ pub async fn create_article(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_render::format_extension(&input.content_format);
+    let src_ext = fx_render::format_extension(input.content_format.as_str());
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
 
-    if input.content_format != "html" {
-        let rendered_html = render_content(&input.content_format, &input.content, &repo_path)?;
+    if input.content_format != ContentFormat::Html {
+        let rendered_html = render_content(input.content_format.as_str(), &input.content, &repo_path)?;
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
     }
 
@@ -149,7 +152,7 @@ pub async fn create_article(
 
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, translation_group,
-        default_visibility(user.phone_verified), "article", None,
+        default_visibility(user.phone_verified), ContentKind::Article, None,
     ).await?;
 
     // Skip PDS sync for restricted articles — content stays server-local only
@@ -208,7 +211,7 @@ struct ArticleVoteSummary {
 
 pub async fn get_article_full(
     State(state): State<AppState>,
-    super::MaybeAuth(user): super::MaybeAuth,
+    crate::auth::MaybeAuth(user): crate::auth::MaybeAuth,
     Query(UriQuery { uri }): Query<UriQuery>,
 ) -> ApiResult<Json<ArticleFullResponse>> {
     use fx_core::services::{vote_service, bookmark_service, series_service, learned_service};
@@ -231,7 +234,7 @@ pub async fn get_article_full(
     let content = if has_access {
         let node_id = uri_to_node_id(&uri);
         let repo = state.pijul.repo_path(&node_id);
-        let src_ext = fx_render::format_extension(&article.content_format);
+        let src_ext = fx_render::format_extension(article.content_format.as_str());
         let src_path = repo.join(format!("content.{src_ext}"));
         let html_path = repo.join("content.html");
 
@@ -241,12 +244,12 @@ pub async fn get_article_full(
                 .await
                 .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?,
         };
-        let html = if article.content_format == "html" {
+        let html = if article.content_format == ContentFormat::Html {
             source.clone()
         } else if is_cached_fresh(&html_path, &src_path).await {
             tokio::fs::read_to_string(&html_path).await?
         } else {
-            let rendered = render_content(&article.content_format, &source, &repo)?;
+            let rendered = render_content(article.content_format.as_str(), &source, &repo)?;
             let _ = tokio::fs::write(&html_path, &rendered).await;
             rendered
         };
@@ -381,17 +384,17 @@ pub async fn fork_article(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     // Format conversion on fork
-    let target_format = input.target_format.as_deref().unwrap_or(&source.content_format);
-    if target_format != source.content_format {
+    let target_format = input.target_format.as_deref().unwrap_or(source.content_format.as_str());
+    if target_format != source.content_format.as_str() {
         if let Err(e) = fx_core::validation::validate_content_format(target_format) {
             return Err(AppError(fx_core::Error::Validation(vec![e])));
         }
         let fork_repo = state.pijul.repo_path(&fork_node_id);
-        let old_ext = fx_render::format_extension(&source.content_format);
+        let old_ext = fx_render::format_extension(source.content_format.as_str());
         let new_ext = fx_render::format_extension(target_format);
         let old_path = fork_repo.join(format!("content.{old_ext}"));
         let src_content = tokio::fs::read_to_string(&old_path).await?;
-        let converted = fx_render::convert_format(&src_content, &source.content_format, target_format)
+        let converted = fx_render::convert_format(&src_content, source.content_format.as_str(), target_format)
             .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?;
         // Write new format file and remove old one
         let new_path = fork_repo.join(format!("content.{new_ext}"));
@@ -407,8 +410,9 @@ pub async fn fork_article(
     }
 
     let mut source_for_fork = source.clone();
-    if target_format != source_for_fork.content_format {
-        source_for_fork.content_format = target_format.to_string();
+    if target_format != source_for_fork.content_format.as_str() {
+        source_for_fork.content_format = target_format.parse::<ContentFormat>()
+            .map_err(|e| AppError(fx_core::Error::BadRequest(e)))?;
     }
 
     let article = article_service::create_fork_record(

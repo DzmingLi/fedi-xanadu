@@ -12,3 +12,6 @@ pijul-core.workspace = true
 pijul-repository.workspace = true
 pijul-config.workspace = true
 rand.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

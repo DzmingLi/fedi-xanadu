@@ -1,7 +1,7 @@
 <script lang="ts">
   import { listSkills, listTags, getAllArticlePrereqs, getAllArticleTeaches } from '../lib/api';
   import { tagName as resolveTagName } from '../lib/display';
-  import { t } from '../lib/i18n';
+  import { t } from '../lib/i18n/index.svelte';
   import type { UserSkill, Tag, ContentPrereqBulkRow, ContentTeachRow } from '../lib/types';
 
   let skills = $state<UserSkill[]>([]);

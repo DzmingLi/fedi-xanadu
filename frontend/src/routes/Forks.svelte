@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getArticle, getArticleForks, castVote } from '../lib/api';
-  import { getAuth } from '../lib/auth';
-  import { t } from '../lib/i18n';
+  import { getAuth } from '../lib/auth.svelte';
+  import { t } from '../lib/i18n/index.svelte';
   import type { Article, ForkWithTitle } from '../lib/types';
 
   let { uri } = $props<{ uri: string }>();

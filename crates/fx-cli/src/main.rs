@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
+use fx_core::content::{Category, ContentFormat};
 use fx_core::models::CreateArticle;
 use serde::{Deserialize, Serialize};
 
@@ -320,6 +321,18 @@ enum AdminCommand {
     RevokeCredentials {
         /// DID or handle
         did_or_handle: String,
+    },
+    /// Revert a book edit by edit log ID
+    #[command(name = "revert-book-edit")]
+    RevertBookEdit {
+        /// Edit log ID to revert
+        edit_id: String,
+    },
+    /// Show edit history for a book
+    #[command(name = "book-history")]
+    BookHistory {
+        /// Book ID
+        book_id: String,
     },
     /// Publish an article as a platform user
     Publish {
@@ -673,13 +686,14 @@ async fn main() -> Result<()> {
 
             let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("");
             let content_format = match ext {
-                "md" | "markdown" => "markdown",
-                "typ" | "typst" => "typst",
-                "html" | "htm" => "html",
-                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
+                "md" | "markdown" => ContentFormat::Markdown,
+                "typ" | "typst" => ContentFormat::Typst,
+                "html" | "htm" => ContentFormat::Html,
+                "tex" | "latex" => ContentFormat::Tex,
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, .html, or .tex)"),
             };
 
-            if content_format == "html" {
+            if content_format == ContentFormat::Html {
                 validate_html_fragment(&content)?;
             }
 
@@ -690,11 +704,14 @@ async fn main() -> Result<()> {
                     .to_string()
             });
 
+            let category: Category = category.parse()
+                .map_err(|e: String| anyhow::anyhow!(e))?;
+
             let body = CreateArticle {
                 title: title.clone(),
                 description: Some(desc.unwrap_or_default()),
                 content,
-                content_format: content_format.to_string(),
+                content_format,
                 lang: Some(lang),
                 license: Some(license),
                 translation_of: None,
@@ -1567,7 +1584,8 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "md" | "markdown" => "markdown",
                 "typ" | "typst" => "typst",
                 "html" | "htm" => "html",
-                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
+                "tex" | "latex" => "tex",
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, .html, or .tex)"),
             };
 
             let title = title.unwrap_or_else(|| {
@@ -1610,7 +1628,8 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "md" | "markdown" => "markdown",
                 "typ" | "typst" => "typst",
                 "html" | "htm" => "html",
-                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
+                "tex" | "latex" => "tex",
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, .html, or .tex)"),
             };
 
             let title = title.unwrap_or_else(|| {
@@ -1688,7 +1707,8 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "md" | "markdown" => "markdown",
                 "typ" | "typst" => "typst",
                 "html" | "htm" => "html",
-                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
+                "tex" | "latex" => "tex",
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, .html, or .tex)"),
             };
 
             if content_format == "html" {
@@ -1728,6 +1748,42 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             let uri = resp["at_uri"].as_str().unwrap_or("?");
             println!("Published as {as_handle}: {title}");
             println!("URI: {uri}");
+        }
+
+        AdminCommand::BookHistory { book_id } => {
+            let resp: Vec<serde_json::Value> = client()
+                .get(format!("{base}/books/history"))
+                .query(&[("id", &book_id)])
+                .header("x-admin-secret", &secret)
+                .send().await?
+                .error_for_status().context("Failed to get book history")?
+                .json().await?;
+
+            if resp.is_empty() {
+                println!("No edit history for {book_id}");
+            } else {
+                for entry in &resp {
+                    let id = entry["id"].as_str().unwrap_or("?");
+                    let editor = entry["editor_handle"].as_str()
+                        .unwrap_or(entry["editor_did"].as_str().unwrap_or("?"));
+                    let summary = entry["summary"].as_str().unwrap_or("");
+                    let time = entry["created_at"].as_str().unwrap_or("?");
+                    println!("[{id}] {editor}: {summary} ({time})");
+                }
+            }
+        }
+
+        AdminCommand::RevertBookEdit { edit_id } => {
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/books/revert-edit"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "edit_id": edit_id }))
+                .send().await?
+                .error_for_status().context("Revert failed")?
+                .json().await?;
+
+            let book_id = resp["book_id"].as_str().unwrap_or("?");
+            println!("Reverted edit {edit_id} on book {book_id}");
         }
     }
 

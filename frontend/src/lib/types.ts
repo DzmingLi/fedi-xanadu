@@ -1,3 +1,8 @@
+export type ContentFormat = 'typst' | 'markdown' | 'html' | 'tex';
+export type ContentKind = 'article' | 'question' | 'answer';
+export type Category = 'general' | 'lecture' | 'paper' | 'review';
+export type PrereqType = 'required' | 'recommended' | 'suggested';
+
 export interface Tag {
   id: string;
   name: string;
@@ -11,16 +16,16 @@ export interface Article {
   at_uri: string;
   did: string;
   author_handle: string | null;
-  kind: string;
+  kind: ContentKind;
   title: string;
   description: string;
   content_hash: string | null;
-  content_format: string;
+  content_format: ContentFormat;
   lang: string;
   translation_group: string | null;
   license: string;
   prereq_threshold: number;
-  category: string;
+  category: Category;
   restricted: boolean;
   question_uri: string | null;
   book_id: string | null;
@@ -39,7 +44,7 @@ export interface ArticleContent {
 
 export interface ArticlePrereqRow {
   tag_id: string;
-  prereq_type: string;
+  prereq_type: PrereqType;
   tag_name: string;
   tag_names: Record<string, string>;
 }
@@ -94,7 +99,7 @@ export interface ContentTeachRow {
 export interface ContentPrereqBulkRow {
   content_uri: string;
   tag_id: string;
-  prereq_type: string;
+  prereq_type: PrereqType;
   tag_name: string;
   tag_names: Record<string, string>;
 }
@@ -134,7 +139,7 @@ export interface Series {
   created_at: string;
   lang: string;
   translation_group: string | null;
-  category: string;
+  category: Category;
 }
 
 export interface Book {
@@ -323,7 +328,7 @@ export interface UserSettings {
   known_langs: string[];
   prefer_native: boolean;
   hide_unknown: boolean;
-  default_format: string;
+  default_format: ContentFormat;
   email: string | null;
   bookmarks_public: boolean;
   public_folders: string[];
@@ -359,7 +364,7 @@ export interface Draft {
   title: string;
   description: string;
   content: string;
-  content_format: string;
+  content_format: ContentFormat;
   lang: string;
   license: string;
   tags: string;
@@ -412,14 +417,14 @@ export interface CreateArticle {
   title: string;
   description?: string;
   content: string;
-  content_format: string;
+  content_format: ContentFormat;
   lang?: string;
   license?: string;
   translation_of?: string;
   restricted?: boolean;
-  category?: string;
+  category?: Category;
   book_id?: string;
   edition_id?: string;
   tags: string[];
-  prereqs: { tag_id: string; prereq_type: string }[];
+  prereqs: { tag_id: string; prereq_type: PrereqType }[];
 }

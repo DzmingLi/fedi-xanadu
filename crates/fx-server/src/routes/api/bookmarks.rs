@@ -8,7 +8,8 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, WriteAuth, DidQuery};
+use crate::auth::{Auth, WriteAuth};
+use super::DidQuery;
 
 #[derive(serde::Deserialize)]
 pub struct AddBookmarkInput {

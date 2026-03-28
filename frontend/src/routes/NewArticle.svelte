@@ -1,8 +1,8 @@
 <script lang="ts">
   import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook } from '../lib/api';
-  import { t, getLocale } from '../lib/i18n';
-  import { getLangPrefs } from '../lib/langPrefs';
-  import type { Tag, Article, BookEdition } from '../lib/types';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
+  import { getLangPrefs } from '../lib/langPrefs.svelte';
+  import type { Tag, Article, BookEdition, ContentFormat, Category, PrereqType } from '../lib/types';
 
   let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
   let isEditing = $state(false);
@@ -16,17 +16,17 @@
   let title = $state('');
   let description = $state('');
   let content = $state('');
-  let contentFormat = $state(getLangPrefs()?.default_format || 'typst');
+  let contentFormat = $state<ContentFormat>(getLangPrefs()?.default_format || 'typst');
   let lang = $state(getLangPrefs()?.native_lang || getLocale());
   let license = $state('CC-BY-SA-4.0');
   let restricted = $state(false);
   let translationOf = $state('');
-  let category = $state(initialCategory || 'general');
+  let category = $state<Category>((initialCategory || 'general') as Category);
   let bookId = $state(initialBookId || '');
   let editionId = $state('');
   let bookEditions = $state<BookEdition[]>([]);
   let selectedTags = $state<string[]>([]);
-  let prereqs = $state<Array<{ tag_id: string; prereq_type: string }>>([]);
+  let prereqs = $state<Array<{ tag_id: string; prereq_type: PrereqType }>>([]);
   let submitting = $state(false);
   let error = $state('');
   let forkSource = $state('');
@@ -36,9 +36,9 @@
   let originalContent = $state(''); // Original content for fork diff
   let loadingFile = $state(false);
   let converting = $state(false);
-  let originalFormat = $state(''); // Track source format for fork conversion
+  let originalFormat = $state<ContentFormat | ''>(''); // Track source format for fork conversion
 
-  async function handleFormatChange(newFormat: string) {
+  async function handleFormatChange(newFormat: ContentFormat) {
     const oldFormat = contentFormat;
     contentFormat = newFormat;
     if (!forkSource || !content.trim() || oldFormat === newFormat) return;
@@ -59,7 +59,7 @@
   interface LangVersion {
     lang: string;
     content: string;
-    contentFormat: string;
+    contentFormat: ContentFormat;
   }
   let extraLangs = $state<LangVersion[]>([]);
   let showAddLang = $state(false);
@@ -126,7 +126,7 @@
 
   // For prereq adding
   let prereqTagId = $state('');
-  let prereqType = $state('required');
+  let prereqType = $state<PrereqType>('required');
 
   $effect(() => {
     listTags().then(data => { tags = data; });
@@ -540,7 +540,7 @@
 <div class="form-row">
   <div class="form-group" style="flex:1">
     <label for="format">{t('newArticle.formatLabel')}</label>
-    <select id="format" value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value)} disabled={converting}>
+    <select id="format" value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
       <option value="typst">Typst</option>
       <option value="markdown">Markdown + KaTeX</option>
       <option value="tex">LaTeX</option>

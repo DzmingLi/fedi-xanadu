@@ -1,0 +1,49 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Vote {
+    pub at_uri: String,
+    pub target_uri: String,
+    pub did: String,
+    pub value: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Fork {
+    pub fork_uri: String,
+    pub source_uri: String,
+    pub forked_uri: String,
+    pub pijul_patch_hash: Option<String>,
+    pub vote_score: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserSkill {
+    pub did: String,
+    pub tag_id: String,
+    pub status: String,
+    pub lit_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserBookmark {
+    pub did: String,
+    pub article_uri: String,
+    pub folder_path: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Comment {
+    pub id: String,
+    pub content_uri: String,
+    pub did: String,
+    pub author_handle: Option<String>,
+    pub parent_id: Option<String>,
+    pub body: String,
+    pub quote_text: Option<String>,
+    pub vote_score: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

@@ -2,8 +2,8 @@
   import {
     ACTIONS, getAllBindings, setBinding, resetBindings, saveToServer,
     formatKeyDisplay, CATEGORY_LABELS,
-  } from '../lib/keybindings';
-  import { getToken } from '../lib/auth';
+  } from '../lib/keybindings.svelte';
+  import { getToken } from '../lib/auth.svelte';
 
   let { onclose }: { onclose: () => void } = $props();
 

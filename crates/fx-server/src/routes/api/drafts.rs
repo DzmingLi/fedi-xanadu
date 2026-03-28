@@ -3,6 +3,7 @@ use axum::{
     extract::State,
     http::StatusCode,
 };
+use fx_core::content::ContentFormat;
 use fx_core::models::*;
 use fx_core::region::default_visibility;
 use fx_core::services::{article_service, draft_service};
@@ -10,7 +11,8 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use super::{Auth, WriteAuth, tid, content_hash, uri_to_node_id, pds_session, now_rfc3339, log_pds_error};
+use crate::auth::{Auth, WriteAuth, pds_session, log_pds_error};
+use fx_core::util::{tid, content_hash, uri_to_node_id, now_rfc3339};
 
 pub async fn list_drafts(
     State(state): State<AppState>,
@@ -129,7 +131,7 @@ pub async fn publish_draft(
         .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
     let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = if draft.content_format == "markdown" { "md" } else { "typ" };
+    let src_ext = if draft.content_format == ContentFormat::Markdown { "md" } else { "typ" };
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &draft.content).await?;
 
     let rendered_html = match draft.content_format.as_str() {

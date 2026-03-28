@@ -13,3 +13,5 @@ thiserror.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 argon2.workspace = true
+blake3.workspace = true
+rand.workspace = true

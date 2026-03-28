@@ -9,7 +9,8 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{WriteAuth, MaybeAuth, TagIdQuery};
+use crate::auth::{WriteAuth, MaybeAuth};
+use super::TagIdQuery;
 
 pub async fn list_user_skills(
     State(state): State<AppState>,

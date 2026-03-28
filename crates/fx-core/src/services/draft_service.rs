@@ -50,7 +50,7 @@ pub async fn save_draft(
     .bind(&input.title)
     .bind(input.description.as_deref().unwrap_or(""))
     .bind(&input.content)
-    .bind(&input.content_format)
+    .bind(input.content_format.as_str())
     .bind(lang)
     .bind(license)
     .bind(&tags_json)
@@ -92,9 +92,9 @@ pub async fn update_draft(pool: &PgPool, did: &str, input: &UpdateDraft) -> Resu
             .execute(&mut *tx)
             .await?;
     }
-    if let Some(ref fmt) = input.content_format {
+    if let Some(fmt) = input.content_format {
         sqlx::query("UPDATE drafts SET content_format = $1, updated_at = NOW() WHERE id = $2")
-            .bind(fmt)
+            .bind(fmt.as_str())
             .bind(&input.id)
             .execute(&mut *tx)
             .await?;
@@ -186,7 +186,7 @@ pub async fn publish_to_article(
     .bind(&draft.title)
     .bind(&draft.description)
     .bind(content_hash)
-    .bind(&draft.content_format)
+    .bind(draft.content_format.as_str())
     .bind(&draft.lang)
     .bind(&draft.license)
     .bind(default_visibility)

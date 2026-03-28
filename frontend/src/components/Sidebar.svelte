@@ -1,7 +1,7 @@
 <script lang="ts">
   import { listFollows, markFollowSeen, type FollowedUser } from '../lib/api';
-  import { getAuth, onAuthChange } from '../lib/auth';
-  import { t, onLocaleChange, getLocale } from '../lib/i18n';
+  import { getAuth, onAuthChange } from '../lib/auth.svelte';
+  import { t, onLocaleChange, getLocale } from '../lib/i18n/index.svelte';
 
   let locale = $state(getLocale());
   let follows = $state<FollowedUser[]>([]);

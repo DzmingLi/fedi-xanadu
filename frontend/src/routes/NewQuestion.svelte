@@ -1,9 +1,9 @@
 <script lang="ts">
   import { createQuestion, searchTags } from '../lib/api';
-  import { t, onLocaleChange, getLocale } from '../lib/i18n';
-  import { getAuth } from '../lib/auth';
+  import { t, onLocaleChange, getLocale } from '../lib/i18n/index.svelte';
+  import { getAuth } from '../lib/auth.svelte';
   import { toast } from '../lib/components/Toast.svelte';
-  import type { Tag } from '../lib/types';
+  import type { Tag, ContentFormat } from '../lib/types';
 
   let locale = $state(getLocale());
   $effect(() => onLocaleChange(() => { locale = getLocale(); }));
@@ -11,7 +11,7 @@
   let title = $state('');
   let description = $state('');
   let content = $state('');
-  let contentFormat = $state('markdown');
+  let contentFormat = $state<ContentFormat>('markdown');
   let lang = $state('zh');
   let tags = $state<string[]>([]);
   let tagQuery = $state('');

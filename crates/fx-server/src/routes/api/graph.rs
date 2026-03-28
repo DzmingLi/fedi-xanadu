@@ -6,7 +6,7 @@ use fx_core::services::graph_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::MaybeAuth;
+use crate::auth::MaybeAuth;
 
 pub async fn get_graph(
     State(state): State<AppState>,

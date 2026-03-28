@@ -7,7 +7,8 @@ use fx_core::services::social_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{WriteAuth, DidQuery};
+use crate::auth::WriteAuth;
+use super::DidQuery;
 
 #[derive(serde::Deserialize)]
 pub(crate) struct UpdateProfileLinksInput {

@@ -3,7 +3,7 @@ use fx_core::services::block_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use super::{Auth, WriteAuth};
+use crate::auth::{Auth, WriteAuth};
 
 #[derive(serde::Deserialize)]
 pub struct BlockInput {

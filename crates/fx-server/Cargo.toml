@@ -31,3 +31,7 @@ reqwest.workspace = true
 blake3.workspace = true
 rand.workspace = true
 chrono.workspace = true
+
+[dev-dependencies]
+tower = { workspace = true, features = ["util"] }
+serde_urlencoded = "0.7"

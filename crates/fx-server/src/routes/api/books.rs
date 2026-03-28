@@ -7,7 +7,8 @@ use fx_core::services::{book_service, skill_service};
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, MaybeAuth, WriteAuth, tid};
+use crate::auth::{Auth, MaybeAuth, WriteAuth};
+use fx_core::util::tid;
 
 // --- List books ---
 

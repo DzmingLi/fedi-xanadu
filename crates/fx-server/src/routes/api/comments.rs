@@ -9,7 +9,9 @@ use fx_core::validation::validate_comment_body;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{WriteAuth, MaybeAuth, UriQuery, tid};
+use crate::auth::{WriteAuth, MaybeAuth};
+use fx_core::util::tid;
+use super::UriQuery;
 
 #[derive(serde::Deserialize)]
 pub struct ListCommentsQuery {

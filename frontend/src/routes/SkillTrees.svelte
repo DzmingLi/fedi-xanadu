@@ -1,7 +1,7 @@
 <script lang="ts">
   import { listSkillTrees, adoptSkillTree, castVote, getMyVote } from '../lib/api';
-  import { getAuth } from '../lib/auth';
-  import { t } from '../lib/i18n';
+  import { getAuth } from '../lib/auth.svelte';
+  import { t } from '../lib/i18n/index.svelte';
   import { tagName } from '../lib/display';
   import type { SkillTree } from '../lib/types';
 

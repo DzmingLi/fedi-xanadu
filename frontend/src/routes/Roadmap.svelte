@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { t, getLocale, onLocaleChange } from '../lib/i18n';
+  import { t, getLocale, onLocaleChange } from '../lib/i18n/index.svelte';
 
   let locale = $state(getLocale());
   $effect(() => onLocaleChange(() => { locale = getLocale(); }));

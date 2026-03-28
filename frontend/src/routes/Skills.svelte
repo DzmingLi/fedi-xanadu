@@ -3,8 +3,8 @@
   // @ts-ignore
   import dagre from 'cytoscape-dagre';
   import { getGraph, getTagTree, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote } from '../lib/api';
-  import { getAuth } from '../lib/auth';
-  import { t } from '../lib/i18n';
+  import { getAuth } from '../lib/auth.svelte';
+  import { t } from '../lib/i18n/index.svelte';
   import { authorName, tagName as resolveTagName } from '../lib/display';
   import type { GraphNode, GraphEdge, TagTreeEntry, Tag, SkillTree, SkillTreeEdge } from '../lib/types';
 
