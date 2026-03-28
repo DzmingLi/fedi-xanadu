@@ -63,6 +63,15 @@ pub async fn create_book(
 ) -> crate::Result<Book> {
     let mut tx = pool.begin().await?;
 
+    // Insert into content table so content_teaches FK works
+    let content_uri = format!("book:{id}");
+    sqlx::query(
+        "INSERT INTO content (uri, content_type) VALUES ($1, 'book') ON CONFLICT DO NOTHING",
+    )
+    .bind(&content_uri)
+    .execute(&mut *tx)
+    .await?;
+
     sqlx::query(
         "INSERT INTO books (id, title, authors, description, cover_url, created_by) \
          VALUES ($1, $2, $3, $4, $5, $6)",
@@ -77,7 +86,6 @@ pub async fn create_book(
     .await?;
 
     // Tags via content_teaches with uri = book:<id>
-    let content_uri = format!("book:{id}");
     for tag_id in &input.tags {
         sqlx::query(
             "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
