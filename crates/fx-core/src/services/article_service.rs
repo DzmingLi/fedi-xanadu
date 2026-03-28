@@ -7,7 +7,7 @@ use crate::region::{InstanceMode, visibility_filter};
 const ARTICLE_BASE: &str = "\
     SELECT a.at_uri, a.did, p.handle AS author_handle, a.kind, a.title, a.description, \
     a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
-    a.question_uri, a.answer_count, a.restricted, \
+    a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, \
     COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
     COALESCE((SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = a.at_uri), 0) AS bookmark_count, \
     a.created_at, a.updated_at \

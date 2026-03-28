@@ -223,11 +223,16 @@ pub async fn get_book_reviews(
     offset: i64,
 ) -> crate::Result<Vec<crate::models::Article>> {
     let rows = sqlx::query_as::<_, crate::models::Article>(
-        "SELECT a.*, p.handle AS author_handle \
+        "SELECT a.at_uri, a.did, p.handle AS author_handle, a.kind, a.title, a.description, \
+         a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
+         a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, \
+         COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
+         COALESCE((SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = a.at_uri), 0) AS bookmark_count, \
+         a.created_at, a.updated_at \
          FROM articles a \
          LEFT JOIN profiles p ON a.did = p.did \
          WHERE a.book_id = $1 AND a.category = 'review' AND a.visibility = 'public' \
-         ORDER BY a.vote_score DESC, a.created_at DESC \
+         ORDER BY vote_score DESC, a.created_at DESC \
          LIMIT $2 OFFSET $3",
     )
     .bind(book_id)
