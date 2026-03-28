@@ -4,7 +4,7 @@ import type {
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
-  BlockedUser, Report, Book, BookDetail, BookEdition,
+  BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter,
 } from './types';
 import { getToken } from './auth';
 
@@ -283,3 +283,23 @@ export const setReadingStatus = (book_id: string, status: string, progress: numb
   post<void>('/books/reading-status', { book_id, status, progress });
 export const removeReadingStatus = (book_id: string) =>
   post<void>('/books/reading-status/remove', { book_id });
+
+// Book chapters
+export const listChapters = (book_id: string) =>
+  get<BookChapter[]>(`/books/chapters?book_id=${encodeURIComponent(book_id)}`);
+export const createChapter = (book_id: string, chapter: { title: string; parent_id?: string; order_index: number; article_uri?: string }) =>
+  post<BookChapter>('/books/chapters', { book_id, chapter });
+export const deleteChapter = (id: string) =>
+  post<void>('/books/chapters/delete', { id });
+export const setChapterProgress = (book_id: string, chapter_id: string, completed: boolean) =>
+  post<void>('/books/chapters/progress', { book_id, chapter_id, completed });
+
+// Members
+export const listMembers = () =>
+  get<{ author_did: string; member_did: string; created_at: string }[]>('/members');
+export const addMember = (member_did: string) =>
+  post<void>('/members', { member_did });
+export const removeMember = (member_did: string) =>
+  post<void>('/members/remove', { member_did });
+export const checkMembership = (author_did: string) =>
+  get<{ is_member: boolean }>(`/members/check?author_did=${encodeURIComponent(author_did)}`);

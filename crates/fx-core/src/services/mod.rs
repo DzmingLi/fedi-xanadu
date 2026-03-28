@@ -18,3 +18,4 @@ pub mod block_service;
 pub mod report_service;
 pub mod vote_service;
 pub mod book_service;
+pub mod member_service;

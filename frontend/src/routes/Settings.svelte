@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getSettings, setSettings, getKeybindings, listBlockedUsers, unblockUser as apiUnblockUser, listBookmarkFolders } from '../lib/api';
+  import { getSettings, setSettings, getKeybindings, listBlockedUsers, unblockUser as apiUnblockUser, listBookmarkFolders, listMembers, addMember, removeMember } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { t, getLocale, setLocale, onLocaleChange, LOCALES } from '../lib/i18n';
   import type { Locale } from '../lib/i18n';
@@ -32,6 +32,10 @@
 
   // Blocked users
   let blockedUsers = $state<BlockedUser[]>([]);
+
+  // Members
+  let members = $state<{ author_did: string; member_did: string; created_at: string }[]>([]);
+  let newMemberDid = $state('');
 
   // Keybindings
   let bindings = $state<Record<string, string>>({});
@@ -76,7 +80,29 @@
       blockedUsers = await listBlockedUsers();
     } catch { /* */ }
 
+    try {
+      members = await listMembers();
+    } catch { /* */ }
+
     loading = false;
+  }
+
+  async function doAddMember() {
+    if (!newMemberDid.trim()) return;
+    try {
+      await addMember(newMemberDid.trim());
+      members = await listMembers();
+      newMemberDid = '';
+    } catch (err: any) {
+      toast(err.message || 'Failed to add member');
+    }
+  }
+
+  async function doRemoveMember(did: string) {
+    try {
+      await removeMember(did);
+      members = members.filter(m => m.member_did !== did);
+    } catch { /* */ }
   }
 
   async function save() {
@@ -327,6 +353,26 @@
       {/if}
     </div>
 
+    <!-- Members (restricted content access) -->
+    <div class="settings-section">
+      <h2>{t('books.members')}</h2>
+      <p class="hint">{t('settings.membersHint')}</p>
+      <div class="member-add-row">
+        <input type="text" bind:value={newMemberDid} placeholder="DID or handle" class="member-input" />
+        <button class="btn" onclick={doAddMember}>{t('books.addMember')}</button>
+      </div>
+      {#if members.length === 0}
+        <p class="hint">{t('settings.noMembers')}</p>
+      {:else}
+        {#each members as m}
+          <div class="blocked-row">
+            <a href="#/profile?did={encodeURIComponent(m.member_did)}" class="blocked-name">{m.member_did.slice(0, 24)}…</a>
+            <button class="unblock-btn" onclick={() => doRemoveMember(m.member_did)}>{t('books.removeMember')}</button>
+          </div>
+        {/each}
+      {/if}
+    </div>
+
     <!-- Keybindings section -->
     <div class="settings-section keybindings-section">
       <h2>{t('settings.keybindings')}</h2>
@@ -474,6 +520,18 @@
   }
 
   /* Blocked users */
+  .member-add-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .member-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 13px;
+  }
   .blocked-row {
     display: flex;
     align-items: center;

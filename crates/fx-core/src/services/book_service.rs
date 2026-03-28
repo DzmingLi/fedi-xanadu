@@ -322,3 +322,115 @@ pub async fn remove_reading_status(pool: &PgPool, book_id: &str, user_did: &str)
         .execute(pool).await?;
     Ok(())
 }
+
+// ---- Chapters ----
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct BookChapter {
+    pub id: String,
+    pub book_id: String,
+    pub parent_id: Option<String>,
+    pub title: String,
+    pub order_index: i32,
+    pub article_uri: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateChapter {
+    pub title: String,
+    pub parent_id: Option<String>,
+    pub order_index: i32,
+    pub article_uri: Option<String>,
+}
+
+pub async fn list_chapters(pool: &PgPool, book_id: &str) -> crate::Result<Vec<BookChapter>> {
+    let rows = sqlx::query_as::<_, BookChapter>(
+        "SELECT * FROM book_chapters WHERE book_id = $1 ORDER BY order_index",
+    )
+    .bind(book_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn create_chapter(
+    pool: &PgPool,
+    id: &str,
+    book_id: &str,
+    input: &CreateChapter,
+) -> crate::Result<BookChapter> {
+    sqlx::query(
+        "INSERT INTO book_chapters (id, book_id, parent_id, title, order_index, article_uri) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(id)
+    .bind(book_id)
+    .bind(&input.parent_id)
+    .bind(&input.title)
+    .bind(input.order_index)
+    .bind(&input.article_uri)
+    .execute(pool)
+    .await?;
+
+    let ch = sqlx::query_as::<_, BookChapter>("SELECT * FROM book_chapters WHERE id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+    Ok(ch)
+}
+
+pub async fn delete_chapter(pool: &PgPool, id: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM book_chapters WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+// ---- Chapter progress ----
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ChapterProgress {
+    pub book_id: String,
+    pub chapter_id: String,
+    pub user_did: String,
+    pub completed: bool,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+pub async fn set_chapter_progress(
+    pool: &PgPool,
+    book_id: &str,
+    chapter_id: &str,
+    user_did: &str,
+    completed: bool,
+) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO book_chapter_progress (book_id, chapter_id, user_did, completed, completed_at) \
+         VALUES ($1, $2, $3, $4, CASE WHEN $4 THEN NOW() ELSE NULL END) \
+         ON CONFLICT (chapter_id, user_did) DO UPDATE SET completed = $4, \
+         completed_at = CASE WHEN $4 THEN COALESCE(book_chapter_progress.completed_at, NOW()) ELSE NULL END",
+    )
+    .bind(book_id)
+    .bind(chapter_id)
+    .bind(user_did)
+    .bind(completed)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn list_chapter_progress(
+    pool: &PgPool,
+    book_id: &str,
+    user_did: &str,
+) -> crate::Result<Vec<ChapterProgress>> {
+    let rows = sqlx::query_as::<_, ChapterProgress>(
+        "SELECT * FROM book_chapter_progress WHERE book_id = $1 AND user_did = $2",
+    )
+    .bind(book_id)
+    .bind(user_did)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}

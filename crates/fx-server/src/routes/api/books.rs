@@ -38,11 +38,13 @@ pub struct BookIdQuery {
 pub struct BookDetail {
     pub book: book_service::Book,
     pub editions: Vec<book_service::BookEdition>,
+    pub chapters: Vec<book_service::BookChapter>,
     pub reviews: Vec<fx_core::models::Article>,
     pub review_count: usize,
     pub rating: book_service::BookRatingStats,
     pub my_rating: Option<i16>,
     pub my_reading_status: Option<book_service::ReadingStatus>,
+    pub my_chapter_progress: Vec<book_service::ChapterProgress>,
 }
 
 pub async fn get_book(
@@ -52,17 +54,19 @@ pub async fn get_book(
 ) -> ApiResult<Json<BookDetail>> {
     let book = book_service::get_book(&state.pool, &q.id).await?;
     let editions = book_service::list_editions(&state.pool, &q.id).await?;
+    let chapters = book_service::list_chapters(&state.pool, &q.id).await?;
     let reviews = book_service::get_book_reviews(&state.pool, &q.id, 100, 0).await?;
     let review_count = reviews.len();
     let rating = book_service::get_rating_stats(&state.pool, &q.id).await?;
-    let (my_rating, my_reading_status) = if let Some(ref u) = user {
+    let (my_rating, my_reading_status, my_chapter_progress) = if let Some(ref u) = user {
         let r = book_service::get_user_rating(&state.pool, &q.id, &u.did).await?;
         let s = book_service::get_reading_status(&state.pool, &q.id, &u.did).await?;
-        (r, s)
+        let cp = book_service::list_chapter_progress(&state.pool, &q.id, &u.did).await?;
+        (r, s, cp)
     } else {
-        (None, None)
+        (None, None, vec![])
     };
-    Ok(Json(BookDetail { book, editions, reviews, review_count, rating, my_rating, my_reading_status }))
+    Ok(Json(BookDetail { book, editions, chapters, reviews, review_count, rating, my_rating, my_reading_status, my_chapter_progress }))
 }
 
 // --- Create book ---
@@ -226,9 +230,9 @@ pub async fn set_reading_status(
     Auth(user): Auth,
     Json(input): Json<SetReadingStatusInput>,
 ) -> ApiResult<StatusCode> {
-    let valid = ["want_to_read", "reading", "finished"];
+    let valid = ["want_to_read", "reading", "finished", "dropped"];
     if !valid.contains(&input.status.as_str()) {
-        return Err(AppError(fx_core::Error::BadRequest("status must be want_to_read, reading, or finished".into())));
+        return Err(AppError(fx_core::Error::BadRequest("status must be want_to_read, reading, finished, or dropped".into())));
     }
     let progress = input.progress.clamp(0, 100);
     let _ = book_service::get_book(&state.pool, &input.book_id).await?;
@@ -249,5 +253,66 @@ pub async fn remove_reading_status(
     Json(input): Json<RemoveReadingStatusInput>,
 ) -> ApiResult<StatusCode> {
     book_service::remove_reading_status(&state.pool, &input.book_id, &user.did).await?;
+    Ok(StatusCode::OK)
+}
+
+// ---- Chapters ----
+
+#[derive(serde::Deserialize)]
+pub struct ChaptersQuery {
+    pub book_id: String,
+}
+
+pub async fn list_chapters(
+    State(state): State<AppState>,
+    Query(q): Query<ChaptersQuery>,
+) -> ApiResult<Json<Vec<book_service::BookChapter>>> {
+    let chapters = book_service::list_chapters(&state.pool, &q.book_id).await?;
+    Ok(Json(chapters))
+}
+
+#[derive(serde::Deserialize)]
+pub struct CreateChapterInput {
+    pub book_id: String,
+    pub chapter: book_service::CreateChapter,
+}
+
+pub async fn create_chapter(
+    State(state): State<AppState>,
+    Auth(_user): Auth,
+    Json(input): Json<CreateChapterInput>,
+) -> ApiResult<Json<book_service::BookChapter>> {
+    let id = format!("ch-{}", tid());
+    let ch = book_service::create_chapter(&state.pool, &id, &input.book_id, &input.chapter).await?;
+    Ok(Json(ch))
+}
+
+#[derive(serde::Deserialize)]
+pub struct DeleteChapterInput {
+    pub id: String,
+}
+
+pub async fn delete_chapter(
+    State(state): State<AppState>,
+    Auth(_user): Auth,
+    Json(input): Json<DeleteChapterInput>,
+) -> ApiResult<StatusCode> {
+    book_service::delete_chapter(&state.pool, &input.id).await?;
+    Ok(StatusCode::OK)
+}
+
+#[derive(serde::Deserialize)]
+pub struct ChapterProgressInput {
+    pub book_id: String,
+    pub chapter_id: String,
+    pub completed: bool,
+}
+
+pub async fn set_chapter_progress(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Json(input): Json<ChapterProgressInput>,
+) -> ApiResult<StatusCode> {
+    book_service::set_chapter_progress(&state.pool, &input.book_id, &input.chapter_id, &user.did, input.completed).await?;
     Ok(StatusCode::OK)
 }

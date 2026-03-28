@@ -589,10 +589,15 @@ pub async fn check_content_access(pool: &PgPool, uri: &str, viewer_did: Option<&
         return Ok(true);
     }
 
+    // Check per-article grant OR user-level membership
     let granted: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM article_access_grants WHERE article_uri = $1 AND grantee_did = $2)",
+        "SELECT EXISTS(\
+            SELECT 1 FROM article_access_grants WHERE article_uri = $1 AND grantee_did = $2 \
+            UNION ALL \
+            SELECT 1 FROM user_members WHERE author_did = $3 AND member_did = $2 \
+        )",
     )
-    .bind(uri).bind(viewer)
+    .bind(uri).bind(viewer).bind(&owner_did)
     .fetch_one(pool)
     .await?;
 

@@ -11,6 +11,7 @@ mod follows;
 mod graph;
 mod interests;
 mod learned;
+mod members;
 mod notifications;
 mod keybindings;
 mod profile;
@@ -195,6 +196,10 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/credentials/revoke", post(admin::admin_revoke_credentials))
         .route("/admin/questions", post(admin::admin_create_question))
         .route("/admin/questions/answer", post(admin::admin_post_answer))
+        // Members
+        .route("/members", get(members::list_members).post(members::add_member))
+        .route("/members/remove", post(members::remove_member))
+        .route("/members/check", get(members::check_membership))
         // Books
         .route("/books", get(books::list_books).post(books::create_book))
         .route("/books/by-id", get(books::get_book))
@@ -204,6 +209,9 @@ pub fn routes() -> Router<AppState> {
         .route("/books/rate", post(books::rate_book))
         .route("/books/reading-status", post(books::set_reading_status))
         .route("/books/reading-status/remove", post(books::remove_reading_status))
+        .route("/books/chapters", get(books::list_chapters).post(books::create_chapter))
+        .route("/books/chapters/delete", post(books::delete_chapter))
+        .route("/books/chapters/progress", post(books::set_chapter_progress))
 }
 
 // --- Health ---

@@ -174,19 +174,38 @@ export interface BookRatingStats {
 export interface ReadingStatus {
   book_id: string;
   user_did: string;
-  status: 'want_to_read' | 'reading' | 'finished';
+  status: 'want_to_read' | 'reading' | 'finished' | 'dropped';
   progress: number;
   updated_at: string;
+}
+
+export interface BookChapter {
+  id: string;
+  book_id: string;
+  parent_id: string | null;
+  title: string;
+  order_index: number;
+  article_uri: string | null;
+}
+
+export interface ChapterProgress {
+  book_id: string;
+  chapter_id: string;
+  user_did: string;
+  completed: boolean;
+  completed_at: string | null;
 }
 
 export interface BookDetail {
   book: Book;
   editions: BookEdition[];
+  chapters: BookChapter[];
   reviews: Article[];
   review_count: number;
   rating: BookRatingStats;
   my_rating: number | null;
   my_reading_status: ReadingStatus | null;
+  my_chapter_progress: ChapterProgress[];
 }
 
 export interface SeriesArticle {

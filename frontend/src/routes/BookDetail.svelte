@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { getBook, rateBook, setReadingStatus, removeReadingStatus } from '../lib/api';
+  import { getBook, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { t, getLocale, onLocaleChange } from '../lib/i18n';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { BookDetail, BookEdition } from '../lib/types';
+  import type { BookDetail, BookEdition, BookChapter } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
@@ -185,6 +185,9 @@
               <button class="action-btn" class:active={readingStatus === 'finished'} onclick={() => setStatus('finished')}>
                 {t('books.finished')}
               </button>
+              <button class="action-btn" class:active={readingStatus === 'dropped'} onclick={() => setStatus('dropped')}>
+                {t('books.dropped')}
+              </button>
             {/if}
             {#if getAuth()}
               <a href="#/new?category=review&book_id={encodeURIComponent(id)}" class="action-btn primary">
@@ -207,6 +210,54 @@
           {/if}
         </div>
       </div>
+
+      <!-- Chapters / Table of Contents -->
+      {#if detail.chapters.length > 0}
+        {@const progressMap = new Map(detail.my_chapter_progress.map(p => [p.chapter_id, p.completed]))}
+        {@const rootChapters = detail.chapters.filter(c => !c.parent_id)}
+        <div class="chapters-section">
+          <h2>{t('books.tableOfContents')}</h2>
+          {#each rootChapters as ch}
+            {@const children = detail.chapters.filter(c => c.parent_id === ch.id)}
+            <div class="chapter-item">
+              <div class="chapter-row">
+                {#if getAuth()}
+                  <input type="checkbox" checked={progressMap.get(ch.id) || false}
+                    onchange={(e: Event) => {
+                      const checked = (e.target as HTMLInputElement).checked;
+                      setChapterProgress(id, ch.id, checked);
+                    }} />
+                {/if}
+                {#if ch.article_uri}
+                  <a href="#/article?uri={encodeURIComponent(ch.article_uri)}" class="chapter-title">{ch.title}</a>
+                {:else}
+                  <span class="chapter-title">{ch.title}</span>
+                {/if}
+              </div>
+              {#if children.length > 0}
+                <div class="chapter-children">
+                  {#each children as sub}
+                    <div class="chapter-row sub">
+                      {#if getAuth()}
+                        <input type="checkbox" checked={progressMap.get(sub.id) || false}
+                          onchange={(e: Event) => {
+                            const checked = (e.target as HTMLInputElement).checked;
+                            setChapterProgress(id, sub.id, checked);
+                          }} />
+                      {/if}
+                      {#if sub.article_uri}
+                        <a href="#/article?uri={encodeURIComponent(sub.article_uri)}" class="chapter-title">{sub.title}</a>
+                      {:else}
+                        <span class="chapter-title">{sub.title}</span>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       <!-- Reviews -->
       <div class="reviews-section">
@@ -516,6 +567,44 @@
     margin-top: 12px;
     font-size: 12px;
     color: var(--text-hint);
+  }
+
+  /* Chapters */
+  .chapters-section {
+    margin-bottom: 2rem;
+  }
+  .chapters-section h2 {
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    font-weight: 400;
+    margin: 0 0 12px;
+  }
+  .chapter-item {
+    border-bottom: 1px solid var(--border);
+    padding: 4px 0;
+  }
+  .chapter-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 14px;
+  }
+  .chapter-row.sub {
+    padding-left: 24px;
+    font-size: 13px;
+  }
+  .chapter-title {
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+  a.chapter-title:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .chapter-children {
+    border-left: 2px solid var(--border);
+    margin-left: 8px;
   }
 
   /* Reviews */
