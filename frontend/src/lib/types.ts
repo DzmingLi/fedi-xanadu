@@ -163,11 +163,27 @@ export interface BookEdition {
   created_at: string;
 }
 
+export interface BookRatingStats {
+  avg_rating: number;
+  rating_count: number;
+}
+
+export interface ReadingStatus {
+  book_id: string;
+  user_did: string;
+  status: 'want_to_read' | 'reading' | 'finished';
+  progress: number;
+  updated_at: string;
+}
+
 export interface BookDetail {
   book: Book;
   editions: BookEdition[];
   reviews: Article[];
   review_count: number;
+  rating: BookRatingStats;
+  my_rating: number | null;
+  my_reading_status: ReadingStatus | null;
 }
 
 export interface SeriesArticle {

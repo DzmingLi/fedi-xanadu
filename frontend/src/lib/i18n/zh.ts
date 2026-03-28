@@ -386,6 +386,11 @@ export default {
   'books.hideEditions': '收起版本',
   'books.translators': '译者',
   'books.addEdition': '添加版本',
+  'books.myRating': '我的评分',
+  'books.wantToRead': '想读',
+  'books.reading': '在读',
+  'books.finished': '已读',
+  'books.progress': '进度',
 
   // Profile tabs
   'profile.tabArticles': '文章',

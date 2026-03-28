@@ -201,6 +201,9 @@ pub fn routes() -> Router<AppState> {
         .route("/books/update", post(books::update_book))
         .route("/books/editions", post(books::add_edition))
         .route("/books/history", get(books::get_edit_history))
+        .route("/books/rate", post(books::rate_book))
+        .route("/books/reading-status", post(books::set_reading_status))
+        .route("/books/reading-status/remove", post(books::remove_reading_status))
 }
 
 // --- Health ---

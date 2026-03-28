@@ -114,7 +114,7 @@
       <RightSidebar />
     </div>
   </div>
-{:else}
+{:else if route.page !== 'book'}
   <div class="top-nav">
     <NavBar />
   </div>
@@ -155,9 +155,16 @@
       <Settings />
     {:else if route.page === 'books'}
       <BookList />
-    {:else if route.page === 'book'}
-      <BookDetailPage id={route.params.id || ''} />
     {/if}
+  </div>
+{/if}
+
+{#if route.page === 'book'}
+  <div class="top-nav-wide">
+    <NavBar />
+  </div>
+  <div class="container-wide">
+    <BookDetailPage id={route.params.id || ''} />
   </div>
 {/if}
 
@@ -172,6 +179,16 @@
   }
   .layout-wide {
     max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+  .top-nav-wide {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+  .container-wide {
+    max-width: 1080px;
     margin: 0 auto;
     padding: 0 1rem;
   }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, createArticle } from '../lib/api';
+  import { getBook, rateBook, setReadingStatus, removeReadingStatus } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { t, getLocale, onLocaleChange } from '../lib/i18n';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -12,7 +12,16 @@
 
   let detail = $state<BookDetail | null>(null);
   let loading = $state(true);
-  let showEditions = $state(true);
+
+  // Rating state
+  let hoverRating = $state(0);
+  let myRating = $state(0);
+  let avgRating = $state(0);
+  let ratingCount = $state(0);
+
+  // Reading status state
+  let readingStatus = $state('');
+  let readingProgress = $state(0);
 
   $effect(() => {
     load();
@@ -22,6 +31,11 @@
     loading = true;
     try {
       detail = await getBook(id);
+      avgRating = detail.rating.avg_rating;
+      ratingCount = detail.rating.rating_count;
+      myRating = detail.my_rating || 0;
+      readingStatus = detail.my_reading_status?.status || '';
+      readingProgress = detail.my_reading_status?.progress || 0;
     } catch { /* */ }
     loading = false;
   }
@@ -33,49 +47,151 @@
     };
     return map[lang] || lang;
   }
+
+  function formatRating(val: number): string {
+    return (val / 2).toFixed(1);
+  }
+
+  async function submitRating(r: number) {
+    if (!getAuth()) return;
+    myRating = r;
+    try {
+      const stats = await rateBook(id, r);
+      avgRating = stats.avg_rating;
+      ratingCount = stats.rating_count;
+    } catch { /* */ }
+  }
+
+  async function setStatus(status: string) {
+    if (!getAuth()) return;
+    if (readingStatus === status) {
+      // Toggle off
+      readingStatus = '';
+      readingProgress = 0;
+      try { await removeReadingStatus(id); } catch { /* */ }
+    } else {
+      readingStatus = status;
+      if (status === 'finished') readingProgress = 100;
+      else if (status === 'want_to_read') readingProgress = 0;
+      try { await setReadingStatus(id, status, readingProgress); } catch { /* */ }
+    }
+  }
+
+  async function updateProgress() {
+    if (!getAuth() || readingStatus !== 'reading') return;
+    try { await setReadingStatus(id, 'reading', readingProgress); } catch { /* */ }
+  }
 </script>
 
 {#if loading}
   <p class="meta">Loading...</p>
 {:else if detail}
-  <div class="book-header">
-    {#if detail.book.cover_url}
-      <img src={detail.book.cover_url} alt={detail.book.title} class="cover" />
-    {:else}
-      <div class="cover placeholder">
-        <span>{detail.book.title.charAt(0)}</span>
-      </div>
-    {/if}
-    <div class="book-meta">
-      <h1>{detail.book.title}</h1>
-      <p class="authors">{detail.book.authors.join(', ')}</p>
-      {#if detail.book.description}
-        <p class="description">{detail.book.description}</p>
-      {/if}
-      <div class="stats">
-        <span>{detail.editions.length} {t('books.editionCount')}</span>
-        <span>{detail.review_count} {t('books.reviewCount')}</span>
-      </div>
-      <div class="actions">
-        {#if getAuth()}
-          <a href="#/new?category=review&book_id={encodeURIComponent(id)}" class="action-btn primary">
-            {t('books.writeReview')}
-          </a>
+  <div class="book-layout">
+    <div class="book-main">
+      <!-- Header -->
+      <div class="book-header">
+        {#if detail.book.cover_url}
+          <img src={detail.book.cover_url} alt={detail.book.title} class="cover" />
+        {:else}
+          <div class="cover placeholder">
+            <span>{detail.book.title.charAt(0)}</span>
+          </div>
         {/if}
-        <a href="#/book-edit?id={encodeURIComponent(id)}" class="action-btn">
-          {t('books.editInfo')}
-        </a>
-        <button class="action-btn" onclick={() => { showEditions = !showEditions; }}>
-          {showEditions ? t('books.hideEditions') : t('books.showEditions')}
-        </button>
+        <div class="book-meta">
+          <h1>{detail.book.title}</h1>
+          <p class="authors">{detail.book.authors.join(', ')}</p>
+          {#if detail.book.description}
+            <p class="description">{detail.book.description}</p>
+          {/if}
+
+          <!-- Rating display -->
+          <div class="rating-row">
+            <span class="rating-stars-display">
+              {#each [1,2,3,4,5] as star}
+                {@const filled = avgRating / 2 >= star}
+                {@const half = !filled && avgRating / 2 >= star - 0.5}
+                <span class="star-icon" class:filled class:half>{filled ? '★' : half ? '⯨' : '☆'}</span>
+              {/each}
+            </span>
+            <span class="rating-value">{formatRating(avgRating)}</span>
+            <span class="rating-count">({ratingCount})</span>
+          </div>
+
+          <!-- User rating -->
+          {#if getAuth()}
+            <div class="my-rating">
+              <span class="my-rating-label">{t('books.myRating')}:</span>
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <span class="star-picker" onmouseleave={() => { hoverRating = 0; }}>
+                {#each Array.from({length: 10}, (_, i) => i + 1) as r}
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <span
+                    class="half-star"
+                    class:left={r % 2 === 1}
+                    class:right={r % 2 === 0}
+                    class:active={r <= (hoverRating || myRating)}
+                    onmouseenter={() => { hoverRating = r; }}
+                    onclick={() => submitRating(r)}
+                  ></span>
+                {/each}
+              </span>
+              {#if myRating > 0}
+                <span class="my-rating-value">{formatRating(myRating)}</span>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Reading status + actions -->
+          <div class="actions">
+            {#if getAuth()}
+              <button class="action-btn" class:active={readingStatus === 'want_to_read'} onclick={() => setStatus('want_to_read')}>
+                {t('books.wantToRead')}
+              </button>
+              <button class="action-btn" class:active={readingStatus === 'reading'} onclick={() => setStatus('reading')}>
+                {t('books.reading')}
+              </button>
+              <button class="action-btn" class:active={readingStatus === 'finished'} onclick={() => setStatus('finished')}>
+                {t('books.finished')}
+              </button>
+            {/if}
+            {#if getAuth()}
+              <a href="#/new?category=review&book_id={encodeURIComponent(id)}" class="action-btn primary">
+                {t('books.writeReview')}
+              </a>
+            {/if}
+            <a href="#/book-edit?id={encodeURIComponent(id)}" class="action-btn">
+              {t('books.editInfo')}
+            </a>
+          </div>
+
+          <!-- Progress bar for "reading" -->
+          {#if readingStatus === 'reading'}
+            <div class="progress-section">
+              <label class="progress-label">
+                {t('books.progress')}: {readingProgress}%
+                <input type="range" min="0" max="100" bind:value={readingProgress} onchange={updateProgress} class="progress-slider" />
+              </label>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Reviews -->
+      <div class="reviews-section">
+        <h2>{t('books.reviews')}</h2>
+        {#if detail.reviews.length === 0}
+          <p class="empty">{t('books.noReviews')}</p>
+        {:else}
+          {#each detail.reviews as review}
+            <PostCard article={review} articleTeaches={[]} variant="profile" />
+          {/each}
+        {/if}
       </div>
     </div>
-  </div>
 
-  <!-- Editions -->
-  {#if showEditions}
-    <div class="editions-section">
-      <h2>{t('books.editions')}</h2>
+    <!-- Right sidebar: Editions -->
+    <aside class="book-sidebar">
+      <h3>{t('books.editions')}</h3>
       {#each detail.editions as ed}
         <div class="edition-card">
           <div class="edition-top">
@@ -104,23 +220,45 @@
           + {t('books.addEdition')}
         </a>
       {/if}
-    </div>
-  {/if}
 
-  <!-- Reviews -->
-  <div class="reviews-section">
-    <h2>{t('books.reviews')}</h2>
-    {#if detail.reviews.length === 0}
-      <p class="empty">{t('books.noReviews')}</p>
-    {:else}
-      {#each detail.reviews as review}
-        <PostCard article={review} articleTeaches={[]} variant="profile" />
-      {/each}
-    {/if}
+      <div class="sidebar-stats">
+        <span>{detail.editions.length} {t('books.editionCount')}</span>
+        <span>{detail.review_count} {t('books.reviewCount')}</span>
+      </div>
+    </aside>
   </div>
 {/if}
 
 <style>
+  .book-layout {
+    display: flex;
+    gap: 32px;
+  }
+  .book-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .book-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+  }
+  .book-sidebar h3 {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    font-weight: 400;
+    margin: 0 0 12px;
+    color: var(--text-primary);
+  }
+
+  @media (max-width: 768px) {
+    .book-layout {
+      flex-direction: column;
+    }
+    .book-sidebar {
+      width: 100%;
+    }
+  }
+
   .book-header {
     display: flex;
     gap: 24px;
@@ -162,17 +300,82 @@
     color: var(--text-secondary);
     line-height: 1.6;
   }
-  .stats {
+
+  /* Rating display */
+  .rating-row {
     display: flex;
-    gap: 16px;
-    margin-top: 12px;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .star-icon {
+    font-size: 18px;
+    color: var(--text-hint);
+  }
+  .star-icon.filled, .star-icon.half {
+    color: #f59e0b;
+  }
+  .rating-value {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .rating-count {
     font-size: 13px;
     color: var(--text-hint);
   }
+
+  /* User rating picker */
+  .my-rating {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .my-rating-label { flex-shrink: 0; }
+  .my-rating-value {
+    font-weight: 600;
+    color: #f59e0b;
+  }
+  .star-picker {
+    display: inline-flex;
+    cursor: pointer;
+    height: 20px;
+  }
+  .half-star {
+    width: 10px;
+    height: 20px;
+    position: relative;
+  }
+  .half-star::before {
+    content: '☆';
+    position: absolute;
+    font-size: 18px;
+    color: var(--border-strong, #ccc);
+    overflow: hidden;
+  }
+  .half-star.left::before {
+    left: 0;
+    width: 10px;
+    clip-path: inset(0 50% 0 0);
+  }
+  .half-star.right::before {
+    right: 0;
+    width: 10px;
+    clip-path: inset(0 0 0 50%);
+  }
+  .half-star.active::before {
+    content: '★';
+    color: #f59e0b;
+  }
+
+  /* Actions */
   .actions {
     display: flex;
     gap: 8px;
-    margin-top: 16px;
+    margin-top: 14px;
     flex-wrap: wrap;
   }
   .action-btn {
@@ -191,27 +394,38 @@
     color: var(--accent);
     text-decoration: none;
   }
+  .action-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
   .action-btn.primary {
     background: var(--accent);
     color: white;
     border-color: var(--accent);
   }
-  .action-btn.primary:hover {
-    opacity: 0.9;
+  .action-btn.primary:hover { opacity: 0.9; }
+
+  /* Progress */
+  .progress-section {
+    margin-top: 10px;
+  }
+  .progress-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .progress-slider {
+    flex: 1;
+    max-width: 200px;
+    accent-color: var(--accent);
   }
 
-  /* Editions */
-  .editions-section {
-    margin-bottom: 32px;
-  }
-  .editions-section h2 {
-    font-family: var(--font-serif);
-    font-size: 1.2rem;
-    font-weight: 400;
-    margin: 0 0 12px;
-  }
+  /* Editions (sidebar) */
   .edition-card {
-    padding: 12px 16px;
+    padding: 10px 12px;
     border: 1px solid var(--border);
     border-radius: 4px;
     margin-bottom: 8px;
@@ -220,31 +434,33 @@
   .edition-top {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    font-size: 13px;
   }
   .edition-lang {
-    font-size: 11px;
-    padding: 1px 6px;
+    font-size: 10px;
+    padding: 1px 5px;
     border-radius: 3px;
     background: var(--bg-dim);
     color: var(--text-hint);
   }
   .edition-details {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    margin-top: 6px;
-    font-size: 13px;
-    color: var(--text-secondary);
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-hint);
   }
   .purchase-links {
     display: flex;
-    gap: 8px;
-    margin-top: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
   }
   .purchase-link {
-    font-size: 12px;
-    padding: 3px 10px;
+    font-size: 11px;
+    padding: 2px 8px;
     border: 1px solid var(--accent);
     border-radius: 3px;
     color: var(--accent);
@@ -258,13 +474,20 @@
   }
   .add-edition-btn {
     display: inline-block;
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-hint);
     text-decoration: none;
-    padding: 6px 0;
+    padding: 4px 0;
     transition: color 0.15s;
   }
   .add-edition-btn:hover { color: var(--accent); text-decoration: none; }
+  .sidebar-stats {
+    display: flex;
+    gap: 12px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-hint);
+  }
 
   /* Reviews */
   .reviews-section h2 {

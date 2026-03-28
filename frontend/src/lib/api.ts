@@ -277,3 +277,9 @@ export const addBookEdition = (book_id: string, edition: { title: string; lang: 
   post<BookEdition>('/books/editions', { book_id, ...edition });
 export const getBookEditHistory = (id: string) =>
   get<any[]>(`/books/history?id=${encodeURIComponent(id)}`);
+export const rateBook = (book_id: string, rating: number) =>
+  post<{ avg_rating: number; rating_count: number }>('/books/rate', { book_id, rating });
+export const setReadingStatus = (book_id: string, status: string, progress: number = 0) =>
+  post<void>('/books/reading-status', { book_id, status, progress });
+export const removeReadingStatus = (book_id: string) =>
+  post<void>('/books/reading-status/remove', { book_id });

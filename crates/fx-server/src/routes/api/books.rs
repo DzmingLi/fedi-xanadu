@@ -7,7 +7,7 @@ use fx_core::services::book_service;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, WriteAuth, tid};
+use super::{Auth, MaybeAuth, WriteAuth, tid};
 
 // --- List books ---
 
@@ -40,17 +40,29 @@ pub struct BookDetail {
     pub editions: Vec<book_service::BookEdition>,
     pub reviews: Vec<fx_core::models::Article>,
     pub review_count: usize,
+    pub rating: book_service::BookRatingStats,
+    pub my_rating: Option<i16>,
+    pub my_reading_status: Option<book_service::ReadingStatus>,
 }
 
 pub async fn get_book(
     State(state): State<AppState>,
+    MaybeAuth(user): MaybeAuth,
     Query(q): Query<BookIdQuery>,
 ) -> ApiResult<Json<BookDetail>> {
     let book = book_service::get_book(&state.pool, &q.id).await?;
     let editions = book_service::list_editions(&state.pool, &q.id).await?;
     let reviews = book_service::get_book_reviews(&state.pool, &q.id, 100, 0).await?;
     let review_count = reviews.len();
-    Ok(Json(BookDetail { book, editions, reviews, review_count }))
+    let rating = book_service::get_rating_stats(&state.pool, &q.id).await?;
+    let (my_rating, my_reading_status) = if let Some(ref u) = user {
+        let r = book_service::get_user_rating(&state.pool, &q.id, &u.did).await?;
+        let s = book_service::get_reading_status(&state.pool, &q.id, &u.did).await?;
+        (r, s)
+    } else {
+        (None, None)
+    };
+    Ok(Json(BookDetail { book, editions, reviews, review_count, rating, my_rating, my_reading_status }))
 }
 
 // --- Create book ---
@@ -175,4 +187,67 @@ pub async fn get_edit_history(
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(rows))
+}
+
+// --- Rate book ---
+
+#[derive(serde::Deserialize)]
+pub struct RateBookInput {
+    pub book_id: String,
+    pub rating: i16,
+}
+
+pub async fn rate_book(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Json(input): Json<RateBookInput>,
+) -> ApiResult<Json<book_service::BookRatingStats>> {
+    if !(1..=10).contains(&input.rating) {
+        return Err(AppError(fx_core::Error::BadRequest("rating must be 1-10 (half-stars)".into())));
+    }
+    let _ = book_service::get_book(&state.pool, &input.book_id).await?;
+    book_service::rate_book(&state.pool, &input.book_id, &user.did, input.rating).await?;
+    let stats = book_service::get_rating_stats(&state.pool, &input.book_id).await?;
+    Ok(Json(stats))
+}
+
+// --- Set reading status ---
+
+#[derive(serde::Deserialize)]
+pub struct SetReadingStatusInput {
+    pub book_id: String,
+    pub status: String,
+    #[serde(default)]
+    pub progress: i16,
+}
+
+pub async fn set_reading_status(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Json(input): Json<SetReadingStatusInput>,
+) -> ApiResult<StatusCode> {
+    let valid = ["want_to_read", "reading", "finished"];
+    if !valid.contains(&input.status.as_str()) {
+        return Err(AppError(fx_core::Error::BadRequest("status must be want_to_read, reading, or finished".into())));
+    }
+    let progress = input.progress.clamp(0, 100);
+    let _ = book_service::get_book(&state.pool, &input.book_id).await?;
+    book_service::set_reading_status(&state.pool, &input.book_id, &user.did, &input.status, progress).await?;
+    Ok(StatusCode::OK)
+}
+
+// --- Remove reading status ---
+
+#[derive(serde::Deserialize)]
+pub struct RemoveReadingStatusInput {
+    pub book_id: String,
+}
+
+pub async fn remove_reading_status(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Json(input): Json<RemoveReadingStatusInput>,
+) -> ApiResult<StatusCode> {
+    book_service::remove_reading_status(&state.pool, &input.book_id, &user.did).await?;
+    Ok(StatusCode::OK)
 }

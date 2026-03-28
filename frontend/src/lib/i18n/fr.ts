@@ -386,6 +386,11 @@ export default {
   'books.hideEditions': 'Masquer les éditions',
   'books.translators': 'Traducteurs',
   'books.addEdition': 'Ajouter une édition',
+  'books.myRating': 'Ma note',
+  'books.wantToRead': 'À lire',
+  'books.reading': 'En lecture',
+  'books.finished': 'Terminé',
+  'books.progress': 'Progression',
 
   // Profile tabs
   'profile.tabArticles': 'Articles',

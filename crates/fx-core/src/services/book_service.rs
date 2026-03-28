@@ -242,3 +242,80 @@ pub async fn get_book_reviews(
     .await?;
     Ok(rows)
 }
+
+// ---- Ratings ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookRatingStats {
+    pub avg_rating: f64,
+    pub rating_count: i64,
+}
+
+pub async fn rate_book(pool: &PgPool, book_id: &str, user_did: &str, rating: i16) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO book_ratings (book_id, user_did, rating) VALUES ($1, $2, $3) \
+         ON CONFLICT (book_id, user_did) DO UPDATE SET rating = $3, updated_at = NOW()",
+    )
+    .bind(book_id).bind(user_did).bind(rating)
+    .execute(pool).await?;
+    Ok(())
+}
+
+pub async fn get_user_rating(pool: &PgPool, book_id: &str, user_did: &str) -> crate::Result<Option<i16>> {
+    let row = sqlx::query_scalar::<_, i16>(
+        "SELECT rating FROM book_ratings WHERE book_id = $1 AND user_did = $2",
+    )
+    .bind(book_id).bind(user_did)
+    .fetch_optional(pool).await?;
+    Ok(row)
+}
+
+pub async fn get_rating_stats(pool: &PgPool, book_id: &str) -> crate::Result<BookRatingStats> {
+    let row = sqlx::query_as::<_, (Option<f64>, i64)>(
+        "SELECT AVG(rating::float), COUNT(*) FROM book_ratings WHERE book_id = $1",
+    )
+    .bind(book_id)
+    .fetch_one(pool).await?;
+    Ok(BookRatingStats {
+        avg_rating: row.0.unwrap_or(0.0),
+        rating_count: row.1,
+    })
+}
+
+// ---- Reading status ----
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ReadingStatus {
+    pub book_id: String,
+    pub user_did: String,
+    pub status: String,
+    pub progress: i16,
+    pub updated_at: DateTime<Utc>,
+}
+
+pub async fn set_reading_status(
+    pool: &PgPool, book_id: &str, user_did: &str, status: &str, progress: i16,
+) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO book_reading_status (book_id, user_did, status, progress) VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (book_id, user_did) DO UPDATE SET status = $3, progress = $4, updated_at = NOW()",
+    )
+    .bind(book_id).bind(user_did).bind(status).bind(progress)
+    .execute(pool).await?;
+    Ok(())
+}
+
+pub async fn get_reading_status(pool: &PgPool, book_id: &str, user_did: &str) -> crate::Result<Option<ReadingStatus>> {
+    sqlx::query_as::<_, ReadingStatus>(
+        "SELECT * FROM book_reading_status WHERE book_id = $1 AND user_did = $2",
+    )
+    .bind(book_id).bind(user_did)
+    .fetch_optional(pool).await.map_err(Into::into)
+}
+
+pub async fn remove_reading_status(pool: &PgPool, book_id: &str, user_did: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM book_reading_status WHERE book_id = $1 AND user_did = $2")
+        .bind(book_id).bind(user_did)
+        .execute(pool).await?;
+    Ok(())
+}
