@@ -63,7 +63,6 @@ pub fn routes() -> Router<AppState> {
         .route("/tags/search", get(tags::search_tags))
         .route("/tags/names", post(tags::update_tag_names))
         .route("/tags/teach", post(tags::set_teach))
-        .route("/tags/teach", post(tags::set_teach))
         // Articles
         .route("/articles", get(articles::list_articles).post(articles::create_article))
         .route("/articles/by-uri", get(articles::get_article))
