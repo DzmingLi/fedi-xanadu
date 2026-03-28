@@ -404,6 +404,18 @@ export default {
   'books.finished': 'Finished',
   'books.dropped': 'Dropped',
   'books.progress': 'Progress',
+  'books.titleLabel': 'Title',
+  'books.descriptionLabel': 'Description',
+  'books.coverUrlLabel': 'Cover URL',
+  'books.editSummary': 'Edit summary',
+  'books.editSummaryPlaceholder': 'Briefly describe your changes',
+  'books.editTitleRequired': 'Title cannot be empty',
+  'books.cancel': 'Cancel',
+  'books.save': 'Save',
+  'books.saving': 'Saving...',
+  'books.editHistory': 'Edit history',
+  'books.noEditHistory': 'No edit history',
+  'books.reportDispute': 'Report dispute',
 
   // Profile tabs
   'profile.tabArticles': 'Articles',

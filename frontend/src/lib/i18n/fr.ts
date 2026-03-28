@@ -404,6 +404,18 @@ export default {
   'books.finished': 'Terminé',
   'books.dropped': 'Abandonné',
   'books.progress': 'Progression',
+  'books.titleLabel': 'Titre',
+  'books.descriptionLabel': 'Description',
+  'books.coverUrlLabel': 'URL de la couverture',
+  'books.editSummary': 'Résumé des modifications',
+  'books.editSummaryPlaceholder': 'Décrivez brièvement vos modifications',
+  'books.editTitleRequired': 'Le titre ne peut pas être vide',
+  'books.cancel': 'Annuler',
+  'books.save': 'Enregistrer',
+  'books.saving': 'Enregistrement...',
+  'books.editHistory': 'Historique des modifications',
+  'books.noEditHistory': 'Aucune modification',
+  'books.reportDispute': 'Signaler un litige',
 
   // Profile tabs
   'profile.tabArticles': 'Articles',

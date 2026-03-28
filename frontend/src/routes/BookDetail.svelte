@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress } from '../lib/api';
+  import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { t, getLocale, onLocaleChange } from '../lib/i18n';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -23,6 +23,10 @@
   let readingStatus = $state('');
   let readingProgress = $state(0);
 
+  // Edit history
+  interface EditLog { id: string; editor_did: string; editor_handle: string | null; summary: string; created_at: string; }
+  let editHistory = $state<EditLog[]>([]);
+
   $effect(() => {
     load();
   });
@@ -36,6 +40,7 @@
       myRating = detail.my_rating || 0;
       readingStatus = detail.my_reading_status?.status || '';
       readingProgress = detail.my_reading_status?.progress || 0;
+      getBookEditHistory(id).then(h => { editHistory = h; }).catch(() => {});
     } catch { /* */ }
     loading = false;
   }
@@ -80,6 +85,45 @@
   async function updateProgress() {
     if (!getAuth() || readingStatus !== 'reading') return;
     try { await setReadingStatus(id, 'reading', readingProgress); } catch { /* */ }
+  }
+
+  // Edit modal state
+  let showEdit = $state(false);
+  let editTitle = $state('');
+  let editDescription = $state('');
+  let editCoverUrl = $state('');
+  let editSummary = $state('');
+  let editSaving = $state(false);
+  let editError = $state('');
+
+  function openEdit() {
+    if (!detail) return;
+    editTitle = detail.book.title;
+    editDescription = detail.book.description || '';
+    editCoverUrl = detail.book.cover_url || '';
+    editSummary = '';
+    editError = '';
+    showEdit = true;
+  }
+
+  async function saveEdit() {
+    if (!editTitle.trim()) { editError = t('books.editTitleRequired'); return; }
+    editSaving = true;
+    editError = '';
+    try {
+      await updateBook(id, {
+        title: editTitle.trim(),
+        description: editDescription.trim() || undefined,
+        cover_url: editCoverUrl.trim() || undefined,
+        edit_summary: editSummary.trim() || undefined,
+      });
+      showEdit = false;
+      await load();
+    } catch (e: any) {
+      editError = e.message;
+    } finally {
+      editSaving = false;
+    }
   }
 </script>
 
@@ -194,9 +238,9 @@
                 {t('books.writeReview')}
               </a>
             {/if}
-            <a href="#/book-edit?id={encodeURIComponent(id)}" class="action-btn">
+            <button class="action-btn" onclick={openEdit}>
               {t('books.editInfo')}
-            </a>
+            </button>
           </div>
 
           <!-- Progress bar for "reading" -->
@@ -319,11 +363,92 @@
         <span>{detail.editions.length} {t('books.editionCount')}</span>
         <span>{detail.review_count} {t('books.reviewCount')}</span>
       </div>
+
+      <!-- Edit history -->
+      <div class="edit-history">
+        <h3>{t('books.editHistory')}</h3>
+        {#if editHistory.length === 0}
+          <p class="empty-hint">{t('books.noEditHistory')}</p>
+        {:else}
+          {#each editHistory.slice(0, 10) as log}
+            <div class="edit-log">
+              <span class="edit-log-who">{log.editor_handle ? `@${log.editor_handle}` : log.editor_did.slice(0, 20)}</span>
+              <span class="edit-log-summary">{log.summary || '—'}</span>
+              <span class="edit-log-time">{new Date(log.created_at).toLocaleDateString()}</span>
+            </div>
+          {/each}
+        {/if}
+        {#if getAuth()}
+          <button class="report-dispute-btn" onclick={() => {
+            const uri = `book:${id}`;
+            window.location.hash = `#/report?kind=book_dispute&target_uri=${encodeURIComponent(uri)}`;
+          }}>
+            {t('books.reportDispute')}
+          </button>
+        {/if}
+      </div>
     </aside>
   </div>
+
+  <!-- Edit modal -->
+  {#if showEdit}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal-overlay" onclick={() => showEdit = false}>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="modal" onclick={(e) => e.stopPropagation()}>
+        <h3>{t('books.editInfo')}</h3>
+        {#if editError}<p class="error-msg">{editError}</p>{/if}
+        <div class="form-group">
+          <label>{t('books.titleLabel')}</label>
+          <input bind:value={editTitle} />
+        </div>
+        <div class="form-group">
+          <label>{t('books.descriptionLabel')}</label>
+          <textarea bind:value={editDescription} rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>{t('books.coverUrlLabel')}</label>
+          <input bind:value={editCoverUrl} placeholder="https://..." />
+        </div>
+        <div class="form-group">
+          <label>{t('books.editSummary')}</label>
+          <input bind:value={editSummary} placeholder={t('books.editSummaryPlaceholder')} />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick={() => showEdit = false}>{t('books.cancel')}</button>
+          <button class="btn btn-primary" onclick={saveEdit} disabled={editSaving}>
+            {editSaving ? t('books.saving') : t('books.save')}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 {/if}
 
 <style>
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal {
+    background: var(--bg); border-radius: 8px; padding: 24px;
+    width: 90%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  .modal h3 { margin: 0 0 16px; font-family: var(--font-serif); }
+  .modal .form-group { margin-bottom: 12px; }
+  .modal .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .modal input, .modal textarea {
+    width: 100%; padding: 8px; border: 1px solid var(--border);
+    border-radius: 4px; font-size: 14px; background: var(--bg);
+    color: var(--text); box-sizing: border-box;
+  }
+  .modal textarea { resize: vertical; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .error-msg { color: #c33; font-size: 13px; margin: 0 0 12px; }
   .book-layout {
     display: flex;
     gap: 32px;
@@ -568,6 +693,33 @@
     font-size: 12px;
     color: var(--text-hint);
   }
+
+  /* Edit history */
+  .edit-history {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+  .edit-history h3 {
+    font-size: 13px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text-hint); margin: 0 0 8px;
+  }
+  .empty-hint { font-size: 12px; color: var(--text-hint); }
+  .edit-log {
+    display: flex; flex-direction: column; gap: 1px;
+    padding: 6px 0; border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .edit-log-who { color: var(--accent); font-weight: 500; }
+  .edit-log-summary { color: var(--text-secondary); }
+  .edit-log-time { color: var(--text-hint); font-size: 11px; }
+  .report-dispute-btn {
+    margin-top: 12px; padding: 4px 10px;
+    font-size: 12px; color: var(--text-hint);
+    border: 1px solid var(--border); border-radius: 4px;
+    background: none; cursor: pointer; transition: all 0.15s;
+  }
+  .report-dispute-btn:hover { color: #c33; border-color: #c33; }
 
   /* Chapters */
   .chapters-section {

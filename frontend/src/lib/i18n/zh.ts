@@ -404,6 +404,18 @@ export default {
   'books.finished': '已读',
   'books.dropped': '不读了',
   'books.progress': '进度',
+  'books.titleLabel': '书名',
+  'books.descriptionLabel': '简介',
+  'books.coverUrlLabel': '封面 URL',
+  'books.editSummary': '编辑摘要',
+  'books.editSummaryPlaceholder': '简述修改内容',
+  'books.editTitleRequired': '书名不能为空',
+  'books.cancel': '取消',
+  'books.save': '保存',
+  'books.saving': '保存中...',
+  'books.editHistory': '编辑历史',
+  'books.noEditHistory': '暂无编辑记录',
+  'books.reportDispute': '上报争议',
 
   // Profile tabs
   'profile.tabArticles': '文章',
