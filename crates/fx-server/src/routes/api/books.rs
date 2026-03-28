@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use fx_core::services::{book_service, skill_service};
@@ -30,11 +30,6 @@ pub async fn list_books(
 
 // --- Get book detail ---
 
-#[derive(serde::Deserialize)]
-pub struct BookIdQuery {
-    pub id: String,
-}
-
 #[derive(serde::Serialize)]
 pub struct BookDetail {
     pub book: book_service::Book,
@@ -50,19 +45,19 @@ pub struct BookDetail {
 
 pub async fn get_book(
     State(state): State<AppState>,
+    Path(id): Path<String>,
     MaybeAuth(user): MaybeAuth,
-    Query(q): Query<BookIdQuery>,
 ) -> ApiResult<Json<BookDetail>> {
-    let book = book_service::get_book(&state.pool, &q.id).await?;
-    let editions = book_service::list_editions(&state.pool, &q.id).await?;
-    let chapters = book_service::list_chapters(&state.pool, &q.id).await?;
-    let reviews = book_service::get_book_reviews(&state.pool, &q.id, 100, 0).await?;
+    let book = book_service::get_book(&state.pool, &id).await?;
+    let editions = book_service::list_editions(&state.pool, &id).await?;
+    let chapters = book_service::list_chapters(&state.pool, &id).await?;
+    let reviews = book_service::get_book_reviews(&state.pool, &id, 100, 0).await?;
     let review_count = reviews.len();
-    let rating = book_service::get_rating_stats(&state.pool, &q.id).await?;
+    let rating = book_service::get_rating_stats(&state.pool, &id).await?;
     let (my_rating, my_reading_status, my_chapter_progress) = if let Some(ref u) = user {
-        let r = book_service::get_user_rating(&state.pool, &q.id, &u.did).await?;
-        let s = book_service::get_reading_status(&state.pool, &q.id, &u.did).await?;
-        let cp = book_service::list_chapter_progress(&state.pool, &q.id, &u.did).await?;
+        let r = book_service::get_user_rating(&state.pool, &id, &u.did).await?;
+        let s = book_service::get_reading_status(&state.pool, &id, &u.did).await?;
+        let cp = book_service::list_chapter_progress(&state.pool, &id, &u.did).await?;
         (r, s, cp)
     } else {
         (None, None, vec![])
@@ -98,9 +93,11 @@ pub struct UpdateBookInput {
 
 pub async fn update_book(
     State(state): State<AppState>,
+    Path(id): Path<String>,
     Auth(user): Auth,
-    Json(input): Json<UpdateBookInput>,
+    Json(mut input): Json<UpdateBookInput>,
 ) -> ApiResult<Json<book_service::Book>> {
+    input.id = id;
     // Record edit history before applying
     let old = book_service::get_book(&state.pool, &input.id).await?;
     let old_snapshot = serde_json::json!({
@@ -142,22 +139,16 @@ pub async fn update_book(
 
 // --- Add edition ---
 
-#[derive(serde::Deserialize)]
-pub struct AddEditionInput {
-    pub book_id: String,
-    #[serde(flatten)]
-    pub edition: book_service::CreateEdition,
-}
-
 pub async fn add_edition(
     State(state): State<AppState>,
+    Path(book_id): Path<String>,
     Auth(_user): Auth,
-    Json(input): Json<AddEditionInput>,
+    Json(input): Json<book_service::CreateEdition>,
 ) -> ApiResult<(StatusCode, Json<book_service::BookEdition>)> {
     // Verify book exists
-    let _ = book_service::get_book(&state.pool, &input.book_id).await?;
+    let _ = book_service::get_book(&state.pool, &book_id).await?;
     let id = format!("ed-{}", tid());
-    let edition = book_service::create_edition(&state.pool, &id, &input.book_id, &input.edition).await?;
+    let edition = book_service::create_edition(&state.pool, &id, &book_id, &input).await?;
     Ok((StatusCode::CREATED, Json(edition)))
 }
 
@@ -177,7 +168,7 @@ pub struct BookEditLog {
 
 pub async fn get_edit_history(
     State(state): State<AppState>,
-    Query(q): Query<BookIdQuery>,
+    Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<BookEditLog>>> {
     let rows = sqlx::query_as::<_, BookEditLog>(
         "SELECT l.id, l.book_id, l.editor_did, p.handle AS editor_handle, \
@@ -188,7 +179,7 @@ pub async fn get_edit_history(
          ORDER BY l.created_at DESC \
          LIMIT 100",
     )
-    .bind(&q.id)
+    .bind(&id)
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(rows))
@@ -198,21 +189,21 @@ pub async fn get_edit_history(
 
 #[derive(serde::Deserialize)]
 pub struct RateBookInput {
-    pub book_id: String,
     pub rating: i16,
 }
 
 pub async fn rate_book(
     State(state): State<AppState>,
+    Path(book_id): Path<String>,
     Auth(user): Auth,
     Json(input): Json<RateBookInput>,
 ) -> ApiResult<Json<book_service::BookRatingStats>> {
     if !(1..=10).contains(&input.rating) {
         return Err(AppError(fx_core::Error::BadRequest("rating must be 1-10 (half-stars)".into())));
     }
-    let _ = book_service::get_book(&state.pool, &input.book_id).await?;
-    book_service::rate_book(&state.pool, &input.book_id, &user.did, input.rating).await?;
-    let stats = book_service::get_rating_stats(&state.pool, &input.book_id).await?;
+    let _ = book_service::get_book(&state.pool, &book_id).await?;
+    book_service::rate_book(&state.pool, &book_id, &user.did, input.rating).await?;
+    let stats = book_service::get_rating_stats(&state.pool, &book_id).await?;
     Ok(Json(stats))
 }
 
@@ -220,7 +211,6 @@ pub async fn rate_book(
 
 #[derive(serde::Deserialize)]
 pub struct SetReadingStatusInput {
-    pub book_id: String,
     pub status: String,
     #[serde(default)]
     pub progress: i16,
@@ -228,6 +218,7 @@ pub struct SetReadingStatusInput {
 
 pub async fn set_reading_status(
     State(state): State<AppState>,
+    Path(book_id): Path<String>,
     Auth(user): Auth,
     Json(input): Json<SetReadingStatusInput>,
 ) -> ApiResult<StatusCode> {
@@ -236,12 +227,12 @@ pub async fn set_reading_status(
         return Err(AppError(fx_core::Error::BadRequest("status must be want_to_read, reading, finished, or dropped".into())));
     }
     let progress = input.progress.clamp(0, 100);
-    let _ = book_service::get_book(&state.pool, &input.book_id).await?;
-    book_service::set_reading_status(&state.pool, &input.book_id, &user.did, &input.status, progress).await?;
+    let _ = book_service::get_book(&state.pool, &book_id).await?;
+    book_service::set_reading_status(&state.pool, &book_id, &user.did, &input.status, progress).await?;
 
     // Auto-learn: when finished, mark book's teaches tags as mastered
     if input.status == "finished" {
-        let content_uri = format!("book:{}", input.book_id);
+        let content_uri = format!("book:{}", book_id);
         let tag_ids: Vec<String> = sqlx::query_scalar(
             "SELECT tag_id FROM content_teaches WHERE content_uri = $1",
         )
@@ -260,78 +251,64 @@ pub async fn set_reading_status(
 
 // --- Remove reading status ---
 
-#[derive(serde::Deserialize)]
-pub struct RemoveReadingStatusInput {
-    pub book_id: String,
-}
-
 pub async fn remove_reading_status(
     State(state): State<AppState>,
+    Path(book_id): Path<String>,
     Auth(user): Auth,
-    Json(input): Json<RemoveReadingStatusInput>,
 ) -> ApiResult<StatusCode> {
-    book_service::remove_reading_status(&state.pool, &input.book_id, &user.did).await?;
+    book_service::remove_reading_status(&state.pool, &book_id, &user.did).await?;
     Ok(StatusCode::OK)
 }
 
 // ---- Chapters ----
 
-#[derive(serde::Deserialize)]
-pub struct ChaptersQuery {
-    pub book_id: String,
-}
-
 pub async fn list_chapters(
     State(state): State<AppState>,
-    Query(q): Query<ChaptersQuery>,
+    Path(book_id): Path<String>,
 ) -> ApiResult<Json<Vec<book_service::BookChapter>>> {
-    let chapters = book_service::list_chapters(&state.pool, &q.book_id).await?;
+    let chapters = book_service::list_chapters(&state.pool, &book_id).await?;
     Ok(Json(chapters))
-}
-
-#[derive(serde::Deserialize)]
-pub struct CreateChapterInput {
-    pub book_id: String,
-    pub chapter: book_service::CreateChapter,
 }
 
 pub async fn create_chapter(
     State(state): State<AppState>,
+    Path(book_id): Path<String>,
     Auth(_user): Auth,
-    Json(input): Json<CreateChapterInput>,
+    Json(input): Json<book_service::CreateChapter>,
 ) -> ApiResult<Json<book_service::BookChapter>> {
     let id = format!("ch-{}", tid());
-    let ch = book_service::create_chapter(&state.pool, &id, &input.book_id, &input.chapter).await?;
+    let ch = book_service::create_chapter(&state.pool, &id, &book_id, &input).await?;
     Ok(Json(ch))
 }
 
 #[derive(serde::Deserialize)]
 pub struct DeleteChapterInput {
-    pub id: String,
+    pub chapter_id: String,
 }
 
 pub async fn delete_chapter(
     State(state): State<AppState>,
+    Path(_book_id): Path<String>,
     Auth(_user): Auth,
     Json(input): Json<DeleteChapterInput>,
 ) -> ApiResult<StatusCode> {
-    book_service::delete_chapter(&state.pool, &input.id).await?;
+    book_service::delete_chapter(&state.pool, &input.chapter_id).await?;
     Ok(StatusCode::OK)
 }
 
 #[derive(serde::Deserialize)]
 pub struct ChapterProgressInput {
-    pub book_id: String,
     pub chapter_id: String,
     pub completed: bool,
 }
 
 pub async fn set_chapter_progress(
     State(state): State<AppState>,
+    Path(book_id): Path<String>,
     Auth(user): Auth,
     Json(input): Json<ChapterProgressInput>,
 ) -> ApiResult<StatusCode> {
-    book_service::set_chapter_progress(&state.pool, &input.book_id, &input.chapter_id, &user.did, input.completed).await?;
+    book_service::set_chapter_progress(&state.pool, &book_id, &input.chapter_id, &user.did, input.completed).await?;
 
     // Auto-learn: when chapter completed, light up chapter's teaches tags
     if input.completed {

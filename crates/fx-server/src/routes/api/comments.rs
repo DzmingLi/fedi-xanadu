@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use fx_core::models::Comment;
@@ -91,12 +91,12 @@ pub async fn create_comment(
 
 #[derive(serde::Deserialize)]
 pub struct UpdateComment {
-    pub id: String,
     pub body: String,
 }
 
 pub async fn update_comment(
     State(state): State<AppState>,
+    Path(id): Path<String>,
     WriteAuth(user): WriteAuth,
     Json(input): Json<UpdateComment>,
 ) -> ApiResult<Json<Comment>> {
@@ -104,34 +104,29 @@ pub async fn update_comment(
         .map_err(|e| AppError(fx_core::Error::Validation(vec![e])))?;
 
     let (comment_did, _article_did) =
-        comment_service::get_comment_owner(&state.pool, &input.id).await?;
+        comment_service::get_comment_owner(&state.pool, &id).await?;
     if comment_did != user.did {
         return Err(AppError(fx_core::Error::Forbidden { action: "update comment owned by another user" }));
     }
 
-    let comment = comment_service::update_comment(&state.pool, &input.id, &input.body).await?;
+    let comment = comment_service::update_comment(&state.pool, &id, &input.body).await?;
     Ok(Json(comment))
-}
-
-#[derive(serde::Deserialize)]
-pub struct DeleteComment {
-    pub id: String,
 }
 
 pub async fn delete_comment(
     State(state): State<AppState>,
+    Path(id): Path<String>,
     WriteAuth(user): WriteAuth,
-    Json(input): Json<DeleteComment>,
 ) -> ApiResult<StatusCode> {
     let (comment_did, article_did) =
-        comment_service::get_comment_owner(&state.pool, &input.id).await?;
+        comment_service::get_comment_owner(&state.pool, &id).await?;
 
     // Comment author or article author may delete
     if comment_did != user.did && article_did != user.did {
         return Err(AppError(fx_core::Error::Forbidden { action: "delete comment" }));
     }
 
-    comment_service::delete_comment(&state.pool, &input.id).await?;
+    comment_service::delete_comment(&state.pool, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -139,7 +134,6 @@ pub async fn delete_comment(
 
 #[derive(serde::Deserialize)]
 pub struct CommentVoteInput {
-    pub comment_id: String,
     pub value: i32,
 }
 
@@ -152,14 +146,15 @@ pub struct CommentVoteResult {
 
 pub async fn vote_comment(
     State(state): State<AppState>,
+    Path(id): Path<String>,
     WriteAuth(user): WriteAuth,
     Json(input): Json<CommentVoteInput>,
 ) -> ApiResult<Json<CommentVoteResult>> {
     let value = input.value.clamp(-1, 1);
-    let score = comment_service::vote_comment(&state.pool, &input.comment_id, &user.did, value).await?;
+    let score = comment_service::vote_comment(&state.pool, &id, &user.did, value).await?;
 
     Ok(Json(CommentVoteResult {
-        comment_id: input.comment_id,
+        comment_id: id,
         score,
         my_vote: value,
     }))

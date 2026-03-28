@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
 };
 use fx_core::models::*;
@@ -12,7 +12,6 @@ use fx_core::validation;
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
 use crate::auth::WriteAuth;
-use super::IdQuery;
 
 #[derive(serde::Deserialize)]
 pub struct SearchTagsQuery {
@@ -45,7 +44,7 @@ pub async fn list_tags(
 
 pub async fn get_tag(
     State(state): State<AppState>,
-    Query(IdQuery { id }): Query<IdQuery>,
+    Path(id): Path<String>,
 ) -> ApiResult<Json<Tag>> {
     let tag = tag_service::get_tag(&state.pool, &id).await?;
     Ok(Json(tag))
@@ -76,12 +75,12 @@ pub async fn create_tag(
 
 #[derive(serde::Deserialize)]
 pub struct UpdateTagNamesInput {
-    pub id: String,
     pub names: HashMap<String, String>,
 }
 
 pub async fn update_tag_names(
     State(state): State<AppState>,
+    Path(id): Path<String>,
     headers: HeaderMap,
     Json(input): Json<UpdateTagNamesInput>,
 ) -> ApiResult<Json<Tag>> {
@@ -95,7 +94,7 @@ pub async fn update_tag_names(
         return Err(AppError(fx_core::Error::Unauthorized));
     }
 
-    let tag = tag_service::update_tag_names(&state.pool, &input.id, &input.names).await?;
+    let tag = tag_service::update_tag_names(&state.pool, &id, &input.names).await?;
     Ok(Json(tag))
 }
 

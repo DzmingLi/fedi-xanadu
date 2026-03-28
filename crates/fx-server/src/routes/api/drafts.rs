@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
 };
 use fx_core::content::ContentFormat;
@@ -67,24 +67,21 @@ pub async fn save_draft(
 
 pub async fn update_draft(
     State(state): State<AppState>,
+    Path(id): Path<String>,
     WriteAuth(user): WriteAuth,
-    Json(input): Json<UpdateDraft>,
+    Json(mut input): Json<UpdateDraft>,
 ) -> ApiResult<Json<Draft>> {
+    input.id = id;
     let draft = draft_service::update_draft(&state.pool, &user.did, &input).await?;
     Ok(Json(draft))
 }
 
-#[derive(serde::Deserialize)]
-pub struct DeleteDraftInput {
-    pub id: String,
-}
-
 pub async fn delete_draft(
     State(state): State<AppState>,
+    Path(id): Path<String>,
     WriteAuth(user): WriteAuth,
-    Json(input): Json<DeleteDraftInput>,
 ) -> ApiResult<StatusCode> {
-    let draft = draft_service::get_draft(&state.pool, &input.id).await?;
+    let draft = draft_service::get_draft(&state.pool, &id).await?;
     require_owner(Some(draft.did.as_str()), &user.did)?;
 
     // Delete from PDS
@@ -96,7 +93,7 @@ pub async fn delete_draft(
                 &fx_atproto::client::DeleteRecordInput {
                     repo: pds.did,
                     collection: fx_atproto::lexicon::DRAFT.to_string(),
-                    rkey: input.id.clone(),
+                    rkey: id.clone(),
                 },
             ).await {
                 log_pds_error("delete draft", e);
@@ -104,23 +101,18 @@ pub async fn delete_draft(
         }
     }
 
-    draft_service::delete_draft(&state.pool, &input.id).await?;
+    draft_service::delete_draft(&state.pool, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Publish draft (convert to article) ---
 
-#[derive(serde::Deserialize)]
-pub struct PublishDraftInput {
-    pub id: String,
-}
-
 pub async fn publish_draft(
     State(state): State<AppState>,
+    Path(id): Path<String>,
     WriteAuth(user): WriteAuth,
-    Json(input): Json<PublishDraftInput>,
 ) -> ApiResult<(StatusCode, Json<Article>)> {
-    let draft = draft_service::get_draft(&state.pool, &input.id).await?;
+    let draft = draft_service::get_draft(&state.pool, &id).await?;
     require_owner(Some(draft.did.as_str()), &user.did)?;
 
     let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
@@ -181,7 +173,7 @@ pub async fn publish_draft(
                 &fx_atproto::client::DeleteRecordInput {
                     repo: pds.did,
                     collection: fx_atproto::lexicon::DRAFT.to_string(),
-                    rkey: input.id.clone(),
+                    rkey: id.clone(),
                 },
             ).await {
                 log_pds_error("delete published draft", e);

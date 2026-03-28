@@ -147,20 +147,20 @@ export const getSeries = (id: string) => get<SeriesDetail>(`/series/${encodeURIC
 export const createSeries = (data: { title: string; description?: string; long_description?: string; topics?: string[]; parent_id?: string; category?: string }) =>
   post<Series>('/series', data);
 export const addSeriesArticle = (series_id: string, article_uri: string) =>
-  post<void>('/series/articles', { series_id, article_uri });
+  post<void>(`/series/${encodeURIComponent(series_id)}/articles`, { article_uri });
 export const removeSeriesArticle = (series_id: string, article_uri: string) =>
-  post<void>('/series/articles/remove', { series_id, article_uri });
+  del<void>(`/series/${encodeURIComponent(series_id)}/articles/remove`, { article_uri });
 export const addSeriesPrereq = (series_id: string, article_uri: string, prereq_article_uri: string) =>
-  post<void>('/series/prereqs', { series_id, article_uri, prereq_article_uri });
+  post<void>(`/series/${encodeURIComponent(series_id)}/prereqs`, { article_uri, prereq_article_uri });
 export const removeSeriesPrereq = (series_id: string, article_uri: string, prereq_article_uri: string) =>
-  post<void>('/series/prereqs/remove', { series_id, article_uri, prereq_article_uri });
+  del<void>(`/series/${encodeURIComponent(series_id)}/prereqs/remove`, { article_uri, prereq_article_uri });
 export const getSeriesContext = (uri: string) => get<SeriesContextItem[]>(`/series/context?uri=${encodeURIComponent(uri)}`);
 export const getAllSeriesArticles = () => get<{ series_id: string; article_uri: string }[]>('/series/all-articles');
-export const getSeriesTree = (id: string) => get<SeriesTreeNode>(`/series/tree?id=${encodeURIComponent(id)}`);
+export const getSeriesTree = (id: string) => get<SeriesTreeNode>(`/series/${encodeURIComponent(id)}/tree`);
 export const reorderSeriesArticles = (series_id: string, article_uris: string[]) =>
-  post<void>('/series/articles/reorder', { series_id, article_uris });
+  put<void>(`/series/${encodeURIComponent(series_id)}/articles/reorder`, { article_uris });
 export const reorderSeriesChildren = (parent_id: string, child_ids: string[]) =>
-  post<void>('/series/children/reorder', { parent_id, child_ids });
+  put<void>(`/series/${encodeURIComponent(parent_id)}/children/reorder`, { child_ids });
 
 // Skill Trees
 export const listSkillTrees = () => get<SkillTree[]>('/skill-trees');
@@ -251,7 +251,7 @@ export const updateComment = (id: string, body: string) =>
 export const deleteComment = (id: string) =>
   del<void>(`/comments/${encodeURIComponent(id)}`);
 export const voteComment = (comment_id: string, value: number) =>
-  post<CommentVoteResult>('/comments/vote', { comment_id, value });
+  post<CommentVoteResult>(`/comments/${encodeURIComponent(comment_id)}/vote`, { value });
 export const getMyCommentVotes = (uri: string) =>
   get<MyCommentVote[]>(`/comments/my-votes?uri=${encodeURIComponent(uri)}`);
 
@@ -308,27 +308,27 @@ export const getBook = (id: string) =>
 export const createBook = (data: { title: string; authors: string[]; description?: string; cover_url?: string; tags: string[]; prereqs?: string[] }) =>
   post<Book>('/books', data);
 export const updateBook = (id: string, data: { title?: string; description?: string; cover_url?: string; edit_summary?: string }) =>
-  post<Book>('/books/update', { id, ...data });
+  put<Book>(`/books/${encodeURIComponent(id)}`, data);
 export const addBookEdition = (book_id: string, edition: { title: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
-  post<BookEdition>('/books/editions', { book_id, ...edition });
+  post<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions`, edition);
 export const getBookEditHistory = (id: string) =>
-  get<any[]>(`/books/history?id=${encodeURIComponent(id)}`);
+  get<any[]>(`/books/${encodeURIComponent(id)}/history`);
 export const rateBook = (book_id: string, rating: number) =>
-  post<{ avg_rating: number; rating_count: number }>('/books/rate', { book_id, rating });
+  post<{ avg_rating: number; rating_count: number }>(`/books/${encodeURIComponent(book_id)}/rate`, { rating });
 export const setReadingStatus = (book_id: string, status: string, progress: number = 0) =>
-  post<void>('/books/reading-status', { book_id, status, progress });
+  post<void>(`/books/${encodeURIComponent(book_id)}/reading-status`, { status, progress });
 export const removeReadingStatus = (book_id: string) =>
-  post<void>('/books/reading-status/remove', { book_id });
+  del<void>(`/books/${encodeURIComponent(book_id)}/reading-status`);
 
 // Book chapters
 export const listChapters = (book_id: string) =>
-  get<BookChapter[]>(`/books/chapters?book_id=${encodeURIComponent(book_id)}`);
+  get<BookChapter[]>(`/books/${encodeURIComponent(book_id)}/chapters`);
 export const createChapter = (book_id: string, chapter: { title: string; parent_id?: string; order_index: number; article_uri?: string }) =>
-  post<BookChapter>('/books/chapters', { book_id, chapter });
-export const deleteChapter = (id: string) =>
-  del<void>(`/books/chapters/${encodeURIComponent(id)}`);
+  post<BookChapter>(`/books/${encodeURIComponent(book_id)}/chapters`, chapter);
+export const deleteChapter = (book_id: string, chapter_id: string) =>
+  del<void>(`/books/${encodeURIComponent(book_id)}/chapters/delete`, { chapter_id });
 export const setChapterProgress = (book_id: string, chapter_id: string, completed: boolean) =>
-  post<void>('/books/chapters/progress', { book_id, chapter_id, completed });
+  post<void>(`/books/${encodeURIComponent(book_id)}/chapters/progress`, { chapter_id, completed });
 
 // Members
 export const listMembers = () =>
