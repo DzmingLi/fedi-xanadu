@@ -96,7 +96,7 @@ pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesL
                 s.lang, s.translation_group, s.category \
          FROM series s \
          LEFT JOIN platform_users pu ON s.created_by = pu.did \
-         WHERE s.translation_group IS NULL AND s.parent_id IS NULL \
+         WHERE s.parent_id IS NULL \
          ORDER BY s.created_at DESC LIMIT $1",
     )
     .bind(limit)
