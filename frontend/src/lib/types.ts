@@ -386,48 +386,6 @@ export interface Report {
   resolved_at: string | null;
 }
 
-export interface Course {
-  id: string;
-  title: string;
-  description: string;
-  instructor_did: string;
-  cover_url: string | null;
-  schedule_type: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CourseUnit {
-  id: string;
-  course_id: string;
-  sort_order: number;
-  title: string;
-  description: string;
-  available_from: string | null;
-}
-
-export interface CourseItem {
-  id: string;
-  unit_id: string;
-  sort_order: number;
-  role: string;
-  target_uri: string | null;
-  external_url: string | null;
-  title: string;
-  note: string;
-  due_date: string | null;
-}
-
-export interface UnitWithItems {
-  unit: CourseUnit;
-  items: CourseItem[];
-}
-
-export interface CourseDetail {
-  course: Course;
-  units: UnitWithItems[];
-}
-
 export interface CreateArticle {
   title: string;
   description?: string;

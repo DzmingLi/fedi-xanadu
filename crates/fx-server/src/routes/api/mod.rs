@@ -6,7 +6,6 @@ mod books;
 mod auth;
 mod bookmarks;
 mod comments;
-mod courses;
 mod drafts;
 mod follows;
 mod graph;
@@ -205,19 +204,6 @@ pub fn routes() -> Router<AppState> {
         .route("/books/rate", post(books::rate_book))
         .route("/books/reading-status", post(books::set_reading_status))
         .route("/books/reading-status/remove", post(books::remove_reading_status))
-        // Courses
-        .route("/courses", get(courses::list_courses).post(courses::create_course))
-        .route("/courses/by-id", get(courses::get_course))
-        .route("/courses/update", post(courses::update_course))
-        .route("/courses/delete", post(courses::delete_course))
-        .route("/courses/units", post(courses::create_unit))
-        .route("/courses/units/update", post(courses::update_unit))
-        .route("/courses/units/delete", post(courses::delete_unit))
-        .route("/courses/units/reorder", post(courses::reorder_units))
-        .route("/courses/items", post(courses::create_item))
-        .route("/courses/items/update", post(courses::update_item))
-        .route("/courses/items/delete", post(courses::delete_item))
-        .route("/courses/items/reorder", post(courses::reorder_items))
 }
 
 // --- Health ---

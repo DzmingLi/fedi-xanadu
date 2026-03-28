@@ -5,7 +5,6 @@ import type {
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
   BlockedUser, Report, Book, BookDetail, BookEdition,
-  Course, CourseDetail, CourseUnit, CourseItem,
 } from './types';
 import { getToken } from './auth';
 
@@ -284,31 +283,3 @@ export const setReadingStatus = (book_id: string, status: string, progress: numb
   post<void>('/books/reading-status', { book_id, status, progress });
 export const removeReadingStatus = (book_id: string) =>
   post<void>('/books/reading-status/remove', { book_id });
-
-// Courses
-export const listCourses = (limit = 50, offset = 0) =>
-  get<Course[]>(`/courses?limit=${limit}&offset=${offset}`);
-export const getCourse = (id: string) =>
-  get<CourseDetail>(`/courses/by-id?id=${encodeURIComponent(id)}`);
-export const createCourse = (data: { title: string; description?: string; cover_url?: string; schedule_type?: string; tags?: string[] }) =>
-  post<Course>('/courses', data);
-export const updateCourse = (id: string, data: { title?: string; description?: string; cover_url?: string; schedule_type?: string }) =>
-  post<void>('/courses/update', { id, ...data });
-export const deleteCourse = (id: string) =>
-  post<void>('/courses/delete', { id });
-export const createUnit = (course_id: string, title: string, description?: string, available_from?: string) =>
-  post<CourseUnit>('/courses/units', { course_id, title, description, available_from });
-export const updateUnit = (id: string, data: { title?: string; description?: string; available_from?: string | null }) =>
-  post<void>('/courses/units/update', { id, ...data });
-export const deleteUnit = (id: string) =>
-  post<void>('/courses/units/delete', { id });
-export const reorderUnits = (course_id: string, unit_ids: string[]) =>
-  post<void>('/courses/units/reorder', { course_id, unit_ids });
-export const createItem = (unit_id: string, title: string, data?: { role?: string; target_uri?: string; external_url?: string; note?: string; due_date?: string }) =>
-  post<CourseItem>('/courses/items', { unit_id, title, ...data });
-export const updateItem = (id: string, data: { title?: string; role?: string; target_uri?: string | null; external_url?: string | null; note?: string; due_date?: string | null }) =>
-  post<void>('/courses/items/update', { id, ...data });
-export const deleteItem = (id: string) =>
-  post<void>('/courses/items/delete', { id });
-export const reorderItems = (unit_id: string, item_ids: string[]) =>
-  post<void>('/courses/items/reorder', { unit_id, item_ids });

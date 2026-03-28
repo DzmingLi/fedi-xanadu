@@ -28,9 +28,6 @@
   import Settings from './routes/Settings.svelte';
   import BookList from './routes/BookList.svelte';
   import BookDetailPage from './routes/BookDetail.svelte';
-  import CourseList from './routes/CourseList.svelte';
-  import CourseDetailPage from './routes/CourseDetail.svelte';
-  import NewCourse from './routes/NewCourse.svelte';
 
   let hash = $state(window.location.hash || '#/');
 
@@ -79,9 +76,6 @@
     if (base === '/settings') return { page: 'settings', params };
     if (base === '/books') return { page: 'books', params };
     if (base === '/book') return { page: 'book', params };
-    if (base === '/courses') return { page: 'courses', params };
-    if (base === '/course') return { page: 'course', params };
-    if (base === '/new-course') return { page: 'new-course', params };
     return { page: 'home', params };
   }
 
@@ -120,7 +114,7 @@
       <RightSidebar />
     </div>
   </div>
-{:else if route.page !== 'book' && route.page !== 'course'}
+{:else if route.page !== 'book'}
   <div class="top-nav">
     <NavBar />
   </div>
@@ -161,10 +155,6 @@
       <Settings />
     {:else if route.page === 'books'}
       <BookList />
-    {:else if route.page === 'courses'}
-      <CourseList />
-    {:else if route.page === 'new-course'}
-      <NewCourse />
     {/if}
   </div>
 {/if}
@@ -175,15 +165,6 @@
   </div>
   <div class="container-wide">
     <BookDetailPage id={route.params.id || ''} />
-  </div>
-{/if}
-
-{#if route.page === 'course'}
-  <div class="top-nav-wide">
-    <NavBar />
-  </div>
-  <div class="container-wide">
-    <CourseDetailPage id={route.params.id || ''} />
   </div>
 {/if}
 
