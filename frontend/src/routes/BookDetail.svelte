@@ -108,9 +108,23 @@
           <div class="rating-row">
             <span class="rating-stars-display">
               {#each [1,2,3,4,5] as star}
-                {@const filled = avgRating / 2 >= star}
-                {@const half = !filled && avgRating / 2 >= star - 0.5}
-                <span class="star-icon" class:filled class:half>{filled ? '★' : half ? '⯨' : '☆'}</span>
+                {@const val = avgRating / 2}
+                {@const filled = val >= star}
+                {@const half = !filled && val >= star - 0.5}
+                <svg class="star-svg" viewBox="0 0 24 24" width="28" height="28">
+                  <defs>
+                    <clipPath id="star-left-{star}"><rect x="0" y="0" width="12" height="24"/></clipPath>
+                    <clipPath id="star-right-{star}"><rect x="12" y="0" width="12" height="24"/></clipPath>
+                  </defs>
+                  {#if filled}
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#f59e0b" stroke="#f59e0b" stroke-width="1"/>
+                  {:else if half}
+                    <path clip-path="url(#star-left-{star})" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#f59e0b" stroke="#f59e0b" stroke-width="1"/>
+                    <path clip-path="url(#star-right-{star})" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="none" stroke="#ccc" stroke-width="1.5"/>
+                  {:else}
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="none" stroke="#ccc" stroke-width="1.5"/>
+                  {/if}
+                </svg>
               {/each}
             </span>
             <span class="rating-value">{formatRating(avgRating)}</span>
@@ -326,12 +340,10 @@
     gap: 6px;
     margin-top: 10px;
   }
-  .star-icon {
-    font-size: 18px;
-    color: var(--text-hint);
-  }
-  .star-icon.filled, .star-icon.half {
-    color: #f59e0b;
+  .rating-stars-display {
+    display: inline-flex;
+    gap: 2px;
+    align-items: center;
   }
   .rating-value {
     font-size: 15px;
