@@ -290,7 +290,7 @@ export const listCourses = (limit = 50, offset = 0) =>
   get<Course[]>(`/courses?limit=${limit}&offset=${offset}`);
 export const getCourse = (id: string) =>
   get<CourseDetail>(`/courses/by-id?id=${encodeURIComponent(id)}`);
-export const createCourse = (data: { title: string; description?: string; cover_url?: string; schedule_type?: string; term?: string; year?: number; canonical_id?: string; tags?: string[] }) =>
+export const createCourse = (data: { title: string; description?: string; cover_url?: string; schedule_type?: string; tags?: string[] }) =>
   post<Course>('/courses', data);
 export const updateCourse = (id: string, data: { title?: string; description?: string; cover_url?: string; schedule_type?: string }) =>
   post<void>('/courses/update', { id, ...data });

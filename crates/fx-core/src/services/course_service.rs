@@ -10,9 +10,6 @@ pub struct Course {
     pub instructor_did: String,
     pub cover_url: Option<String>,
     pub schedule_type: String,
-    pub term: Option<String>,
-    pub year: Option<i16>,
-    pub canonical_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -46,9 +43,6 @@ pub struct CreateCourse {
     pub description: Option<String>,
     pub cover_url: Option<String>,
     pub schedule_type: Option<String>,
-    pub term: Option<String>,
-    pub year: Option<i16>,
-    pub canonical_id: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
 }
@@ -63,7 +57,6 @@ pub struct UnitWithItems {
 pub struct CourseDetail {
     pub course: Course,
     pub units: Vec<UnitWithItems>,
-    pub offerings: Vec<Course>,
 }
 
 // ---- CRUD ----
@@ -83,8 +76,8 @@ pub async fn create_course(
 
     let schedule = input.schedule_type.as_deref().unwrap_or("weekly");
     sqlx::query(
-        "INSERT INTO courses (id, title, description, instructor_did, cover_url, schedule_type, term, year, canonical_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        "INSERT INTO courses (id, title, description, instructor_did, cover_url, schedule_type) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(id)
     .bind(&input.title)
@@ -92,9 +85,6 @@ pub async fn create_course(
     .bind(instructor_did)
     .bind(&input.cover_url)
     .bind(schedule)
-    .bind(&input.term)
-    .bind(input.year)
-    .bind(&input.canonical_id)
     .execute(&mut *tx).await?;
 
     for tag_id in &input.tags {
@@ -138,13 +128,7 @@ pub async fn get_course(pool: &PgPool, id: &str) -> crate::Result<CourseDetail> 
         UnitWithItems { unit: u, items: unit_items }
     }).collect();
 
-    // Fetch sibling offerings (same canonical group)
-    let canon = course.canonical_id.as_deref().unwrap_or(&course.id);
-    let offerings = sqlx::query_as::<_, Course>(
-        "SELECT * FROM courses WHERE (canonical_id = $1 OR id = $1) AND id != $2 ORDER BY year DESC NULLS LAST, term",
-    ).bind(canon).bind(id).fetch_all(pool).await?;
-
-    Ok(CourseDetail { course, units: units_with_items, offerings })
+    Ok(CourseDetail { course, units: units_with_items })
 }
 
 pub async fn list_courses(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<Course>> {
@@ -157,7 +141,6 @@ pub async fn update_course(
     pool: &PgPool, id: &str,
     title: Option<&str>, description: Option<&str>,
     cover_url: Option<&str>, schedule_type: Option<&str>,
-    term: Option<Option<&str>>, year: Option<Option<i16>>,
 ) -> crate::Result<()> {
     if let Some(v) = title {
         sqlx::query("UPDATE courses SET title = $1, updated_at = NOW() WHERE id = $2")
@@ -173,14 +156,6 @@ pub async fn update_course(
     }
     if let Some(v) = schedule_type {
         sqlx::query("UPDATE courses SET schedule_type = $1, updated_at = NOW() WHERE id = $2")
-            .bind(v).bind(id).execute(pool).await?;
-    }
-    if let Some(v) = term {
-        sqlx::query("UPDATE courses SET term = $1, updated_at = NOW() WHERE id = $2")
-            .bind(v).bind(id).execute(pool).await?;
-    }
-    if let Some(v) = year {
-        sqlx::query("UPDATE courses SET year = $1, updated_at = NOW() WHERE id = $2")
             .bind(v).bind(id).execute(pool).await?;
     }
     Ok(())

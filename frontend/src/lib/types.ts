@@ -393,9 +393,6 @@ export interface Course {
   instructor_did: string;
   cover_url: string | null;
   schedule_type: string;
-  term: string | null;
-  year: number | null;
-  canonical_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -429,7 +426,6 @@ export interface UnitWithItems {
 export interface CourseDetail {
   course: Course;
   units: UnitWithItems[];
-  offerings: Course[];
 }
 
 export interface CreateArticle {
