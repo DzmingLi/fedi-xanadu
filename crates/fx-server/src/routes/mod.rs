@@ -17,14 +17,14 @@ pub fn router(state: AppState, config: &Config) -> Router {
     // CORS: explicit origin whitelist, never permissive
     let cors = build_cors_layer(config);
 
-    // Rate limiting: 60 requests per minute per real client IP
+    // Rate limiting: 200 requests per minute per real client IP
     // Uses SmartIpKeyExtractor to read X-Forwarded-For/X-Real-IP from Caddy,
     // instead of peer IP (which is always 127.0.0.1 behind the reverse proxy).
     let governor_conf = std::sync::Arc::new(
         tower_governor::governor::GovernorConfigBuilder::default()
             .key_extractor(tower_governor::key_extractor::SmartIpKeyExtractor)
-            .per_second(1)
-            .burst_size(60)
+            .per_second(4)
+            .burst_size(200)
             .finish()
             .expect("invalid rate limiter config"),
     );

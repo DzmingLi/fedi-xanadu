@@ -369,7 +369,7 @@ try {
               <ul>
                 {#each tocItems as item}
                   <li class="toc-{item.level}" class:active={activeId === item.id}>
-                    <a href="#{item.id}">{item.text}</a>
+                    <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
                   </li>
                 {/each}
               </ul>
@@ -950,7 +950,7 @@ try {
       display: none;
     }
   }
-  @media (max-width: 85rem) {
+  @media (max-width: 60rem) {
     :global(.sidenote) {
       display: none;
     }
