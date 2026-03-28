@@ -49,7 +49,12 @@
         {/if}
         <div class="course-info">
           <h3 class="course-title">{course.title}</h3>
-          <span class="course-schedule">{scheduleLabel(course.schedule_type)}</span>
+          <div class="course-badges">
+            <span class="course-schedule">{scheduleLabel(course.schedule_type)}</span>
+            {#if course.term || course.year}
+              <span class="course-term">{course.term ?? ''} {course.year ?? ''}</span>
+            {/if}
+          </div>
           {#if course.description}
             <p class="course-desc">{course.description.slice(0, 150)}{course.description.length > 150 ? '...' : ''}</p>
           {/if}
@@ -118,15 +123,16 @@
     font-weight: 500;
     color: var(--text-primary);
   }
-  .course-schedule {
+  .course-badges { display: flex; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+  .course-schedule, .course-term {
     display: inline-block;
     font-size: 11px;
     color: var(--text-hint);
     background: var(--bg-light);
     padding: 1px 6px;
     border-radius: 3px;
-    margin-top: 3px;
   }
+  .course-term { color: var(--accent); }
   .course-desc {
     margin: 6px 0 0;
     font-size: 12px;

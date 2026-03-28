@@ -64,6 +64,8 @@ pub struct UpdateCourseInput {
     pub description: Option<String>,
     pub cover_url: Option<String>,
     pub schedule_type: Option<String>,
+    pub term: Option<Option<String>>,
+    pub year: Option<Option<i16>>,
 }
 
 pub async fn update_course(
@@ -79,6 +81,8 @@ pub async fn update_course(
         &state.pool, &input.id,
         input.title.as_deref(), input.description.as_deref(),
         input.cover_url.as_deref(), input.schedule_type.as_deref(),
+        input.term.as_ref().map(|o| o.as_deref()),
+        input.year,
     ).await?;
     Ok(StatusCode::OK)
 }

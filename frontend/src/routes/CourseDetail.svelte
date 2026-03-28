@@ -128,15 +128,36 @@
       {/if}
       <div class="meta-row">
         <span class="schedule-badge">{detail.course.schedule_type}</span>
+        {#if detail.course.term || detail.course.year}
+          <span class="term-badge">{detail.course.term ?? ''} {detail.course.year ?? ''}</span>
+        {/if}
         <span class="date">{new Date(detail.course.created_at).toLocaleDateString()}</span>
       </div>
     </div>
     {#if isOwner}
       <div class="owner-actions">
+        <a href="#/new-course?canonical_id={encodeURIComponent(detail.course.canonical_id || detail.course.id)}&canonical_title={encodeURIComponent(detail.course.title)}" class="btn-outline">{t('courses.newOffering')}</a>
         <button class="btn-danger" onclick={handleDeleteCourse}>{t('common.delete')}</button>
       </div>
     {/if}
   </div>
+
+  <!-- Other offerings -->
+  {#if detail.offerings.length > 0}
+    <div class="offerings">
+      <h3>{t('courses.otherOfferings')}</h3>
+      <div class="offering-list">
+        {#each detail.offerings as off}
+          <a href="#/course?id={encodeURIComponent(off.id)}" class="offering-chip" class:current={off.id === id}>
+            {off.term ?? ''} {off.year ?? ''}{!off.term && !off.year ? off.title : ''}
+          </a>
+        {/each}
+        <span class="offering-chip current">
+          {detail.course.term ?? ''} {detail.course.year ?? ''}{!detail.course.term && !detail.course.year ? t('courses.current') : ''} ({t('courses.current')})
+        </span>
+      </div>
+    </div>
+  {/if}
 
   <!-- Units -->
   <div class="units">
@@ -277,7 +298,55 @@
     border-radius: 3px;
     font-size: 11px;
   }
-  .owner-actions { flex-shrink: 0; }
+  .owner-actions { flex-shrink: 0; display: flex; gap: 8px; align-items: flex-start; }
+  .btn-outline {
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .btn-outline:hover { background: var(--accent); color: white; text-decoration: none; }
+  .term-badge {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  /* Offerings */
+  .offerings {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .offerings h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  .offering-list { display: flex; gap: 6px; flex-wrap: wrap; }
+  .offering-chip {
+    padding: 4px 10px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--accent);
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .offering-chip:hover { background: var(--bg-light); text-decoration: none; }
+  .offering-chip.current {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+    pointer-events: none;
+  }
 
   /* Units */
   .units { display: flex; flex-direction: column; gap: 20px; }

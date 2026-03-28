@@ -7,10 +7,14 @@
   let locale = $state(getLocale());
   $effect(() => onLocaleChange(() => { locale = getLocale(); }));
 
+  let { canonicalId = '', canonicalTitle = '' }: { canonicalId?: string; canonicalTitle?: string } = $props();
+
   let title = $state('');
   let description = $state('');
   let coverUrl = $state('');
   let scheduleType = $state('weekly');
+  let term = $state('');
+  let year = $state('');
   let submitting = $state(false);
 
   async function submit() {
@@ -22,6 +26,9 @@
         description: description.trim() || undefined,
         cover_url: coverUrl.trim() || undefined,
         schedule_type: scheduleType,
+        term: term.trim() || undefined,
+        year: year ? parseInt(year) : undefined,
+        canonical_id: canonicalId || undefined,
       });
       window.location.hash = `#/course?id=${encodeURIComponent(course.id)}`;
     } catch (e: any) {
@@ -61,6 +68,27 @@
       </select>
     </label>
 
+    <div class="row">
+      <label class="flex1">
+        {t('courses.term')}
+        <select bind:value={term}>
+          <option value="">—</option>
+          <option value="Spring">Spring</option>
+          <option value="Summer">Summer</option>
+          <option value="Fall">Fall</option>
+          <option value="Winter">Winter</option>
+        </select>
+      </label>
+      <label class="flex1">
+        {t('courses.year')}
+        <input type="number" bind:value={year} min="1900" max="2100" placeholder="2026" />
+      </label>
+    </div>
+
+    {#if canonicalId}
+      <p class="hint">{t('courses.newOffering')}: {canonicalTitle}</p>
+    {/if}
+
     <button type="submit" class="btn-primary" disabled={submitting || !title.trim()}>
       {submitting ? t('common.loading') : t('common.create')}
     </button>
@@ -91,6 +119,9 @@
     color: var(--text-primary);
   }
   textarea { resize: vertical; }
+  .row { display: flex; gap: 12px; }
+  .flex1 { flex: 1; }
+  .hint { font-size: 12px; color: var(--text-hint); margin: 0; }
   .btn-primary {
     align-self: flex-start;
     padding: 8px 20px;

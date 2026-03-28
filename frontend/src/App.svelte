@@ -164,7 +164,7 @@
     {:else if route.page === 'courses'}
       <CourseList />
     {:else if route.page === 'new-course'}
-      <NewCourse />
+      <NewCourse canonicalId={route.params.canonical_id || ''} canonicalTitle={route.params.canonical_title || ''} />
     {/if}
   </div>
 {/if}

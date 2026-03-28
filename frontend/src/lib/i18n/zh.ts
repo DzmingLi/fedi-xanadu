@@ -433,6 +433,11 @@ export default {
   'courses.confirmDeleteUnit': '确认删除此单元？所有内容将一并删除。',
   'courses.confirmDeleteItem': '确认删除此内容？',
   'courses.confirmDeleteCourse': '确认删除此课程？所有单元和内容将一并删除。',
+  'courses.term': '学期',
+  'courses.year': '年份',
+  'courses.newOffering': '新学期版本',
+  'courses.otherOfferings': '其他学期',
+  'courses.current': '当前',
 
   // Roadmap
   'roadmap.title': '路线图',

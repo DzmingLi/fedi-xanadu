@@ -433,6 +433,11 @@ export default {
   'courses.confirmDeleteUnit': "Supprimer cette unité ? Tous les contenus seront supprimés.",
   'courses.confirmDeleteItem': 'Supprimer ce contenu ?',
   'courses.confirmDeleteCourse': 'Supprimer ce cours ? Toutes les unités et contenus seront supprimés.',
+  'courses.term': 'Semestre',
+  'courses.year': 'Année',
+  'courses.newOffering': 'Nouvelle session',
+  'courses.otherOfferings': 'Autres sessions',
+  'courses.current': 'Actuel',
 
   // Roadmap
   'roadmap.title': 'Feuille de route',
