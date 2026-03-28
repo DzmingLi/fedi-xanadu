@@ -96,6 +96,11 @@ enum Command {
         #[command(subcommand)]
         action: TreeCommand,
     },
+    /// Manage books (create, update, add editions)
+    Book {
+        #[command(subcommand)]
+        action: BookCommand,
+    },
     /// Admin operations (manage platform users, publish as any user)
     Admin {
         #[command(subcommand)]
@@ -348,6 +353,84 @@ enum AdminCommand {
         /// AT URI of the article this is a translation of
         #[arg(long)]
         translation_of: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum BookCommand {
+    /// List all books
+    #[command(alias = "ls")]
+    List,
+    /// Create a new book
+    Create {
+        /// Book title
+        #[arg(short, long)]
+        title: String,
+        /// Authors (comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        authors: Vec<String>,
+        /// Description
+        #[arg(short, long)]
+        desc: Option<String>,
+        /// Cover image URL
+        #[arg(long)]
+        cover_url: Option<String>,
+        /// Tags (comma-separated tag IDs)
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// Prereq tags (comma-separated tag IDs)
+        #[arg(long, value_delimiter = ',')]
+        prereqs: Vec<String>,
+    },
+    /// Update a book's info
+    Update {
+        /// Book ID (e.g. bk-xxx)
+        id: String,
+        /// New title
+        #[arg(short, long)]
+        title: Option<String>,
+        /// New description
+        #[arg(short, long)]
+        desc: Option<String>,
+        /// New cover URL
+        #[arg(long)]
+        cover_url: Option<String>,
+        /// Edit summary
+        #[arg(long)]
+        summary: Option<String>,
+    },
+    /// Add an edition to a book
+    #[command(name = "add-edition")]
+    AddEdition {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+        /// Edition title
+        #[arg(short, long)]
+        title: String,
+        /// Language code (e.g. zh, en, ja)
+        #[arg(short, long, default_value = "zh")]
+        lang: String,
+        /// ISBN
+        #[arg(long)]
+        isbn: Option<String>,
+        /// Publisher
+        #[arg(long)]
+        publisher: Option<String>,
+        /// Year
+        #[arg(long)]
+        year: Option<String>,
+        /// Translators (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        translators: Vec<String>,
+        /// Purchase links as JSON: [{"label":"Amazon","url":"https://..."}]
+        #[arg(long)]
+        purchase_links: Option<String>,
+    },
+    /// Show a book's detail
+    Show {
+        /// Book ID
+        id: String,
     },
 }
 
@@ -684,6 +767,10 @@ async fn main() -> Result<()> {
             handle_tree(&base, &config, action).await?;
         }
 
+        Command::Book { action } => {
+            handle_book(&base, &config, action).await?;
+        }
+
         Command::Admin { action } => {
             handle_admin(&base, &mut config, action).await?;
         }
@@ -703,6 +790,139 @@ async fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result<()> {
+    let token = config.token()?;
+    match action {
+        BookCommand::List => {
+            let resp: Vec<serde_json::Value> = client()
+                .get(format!("{base}/books"))
+                .send().await?
+                .error_for_status().context("List books failed")?
+                .json().await?;
+
+            if resp.is_empty() {
+                println!("No books yet.");
+            } else {
+                for b in &resp {
+                    let id = b["id"].as_str().unwrap_or("?");
+                    let title = b["title"].as_str().unwrap_or("?");
+                    let authors = b["authors"].as_array()
+                        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+                        .unwrap_or_default();
+                    println!("  {id}  {title}  ({authors})");
+                }
+                println!("{} book(s)", resp.len());
+            }
+        }
+
+        BookCommand::Create { title, authors, desc, cover_url, tags, prereqs } => {
+            let body = serde_json::json!({
+                "title": title,
+                "authors": authors,
+                "description": desc.unwrap_or_default(),
+                "cover_url": cover_url,
+                "tags": tags,
+                "prereqs": prereqs,
+            });
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/books"))
+                .bearer_auth(token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Create book failed")?
+                .json().await?;
+
+            let id = resp["id"].as_str().unwrap_or("?");
+            println!("Created book: {title}");
+            println!("ID: {id}");
+        }
+
+        BookCommand::Update { id, title, desc, cover_url, summary } => {
+            let body = serde_json::json!({
+                "id": id,
+                "title": title,
+                "description": desc,
+                "cover_url": cover_url,
+                "edit_summary": summary,
+            });
+
+            client()
+                .post(format!("{base}/books/update"))
+                .bearer_auth(token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Update book failed")?;
+
+            println!("Updated book {id}");
+        }
+
+        BookCommand::AddEdition { book_id, title, lang, isbn, publisher, year, translators, purchase_links } => {
+            let links: Vec<serde_json::Value> = if let Some(ref pl) = purchase_links {
+                serde_json::from_str(pl).context("Invalid JSON for --purchase-links")?
+            } else {
+                vec![]
+            };
+
+            let body = serde_json::json!({
+                "book_id": book_id,
+                "title": title,
+                "lang": lang,
+                "isbn": isbn,
+                "publisher": publisher,
+                "year": year,
+                "translators": translators,
+                "purchase_links": links,
+            });
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/books/editions"))
+                .bearer_auth(token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Add edition failed")?
+                .json().await?;
+
+            let eid = resp["id"].as_str().unwrap_or("?");
+            println!("Added edition to book {book_id}: {title} ({lang})");
+            println!("Edition ID: {eid}");
+        }
+
+        BookCommand::Show { id } => {
+            let resp: serde_json::Value = client()
+                .get(format!("{base}/books/by-id?id={id}"))
+                .send().await?
+                .error_for_status().context("Get book failed")?
+                .json().await?;
+
+            let book = &resp["book"];
+            println!("Title: {}", book["title"].as_str().unwrap_or("?"));
+            println!("Authors: {}", book["authors"].as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+                .unwrap_or_default());
+            if let Some(d) = book["description"].as_str() {
+                if !d.is_empty() { println!("Description: {d}"); }
+            }
+
+            if let Some(editions) = resp["editions"].as_array() {
+                if !editions.is_empty() {
+                    println!("\nEditions:");
+                    for ed in editions {
+                        let etitle = ed["title"].as_str().unwrap_or("?");
+                        let elang = ed["lang"].as_str().unwrap_or("?");
+                        let eisbn = ed["isbn"].as_str().unwrap_or("-");
+                        println!("  [{elang}] {etitle}  ISBN: {eisbn}");
+                    }
+                }
+            }
+
+            let review_count = resp["review_count"].as_u64().unwrap_or(0);
+            println!("\n{review_count} review(s)");
+        }
+    }
     Ok(())
 }
 
