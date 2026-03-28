@@ -186,7 +186,11 @@ export const createReport = (target_did: string, kind: string, reason: string, t
   post<Report>('/reports', { target_did, target_uri, kind, reason });
 
 // Fork
-export const forkArticle = (uri: string) => post<Article>('/articles/fork', { uri });
+export const forkArticle = (uri: string, targetFormat?: string) => post<Article>('/articles/fork', { uri, target_format: targetFormat });
+
+// Format conversion
+export const convertContent = (content: string, from: string, to: string) =>
+  post<{ content: string }>('/articles/convert', { content, from, to });
 
 // Image upload
 export async function uploadImage(articleUri: string, file: File): Promise<{ filename: string }> {

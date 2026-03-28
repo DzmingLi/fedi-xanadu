@@ -435,6 +435,28 @@ enum BookCommand {
         /// Book ID
         id: String,
     },
+    /// Add a chapter to a book's table of contents
+    #[command(name = "add-chapter")]
+    AddChapter {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+        /// Chapter title
+        #[arg(short, long)]
+        title: String,
+        /// Parent chapter ID (for sub-chapters)
+        #[arg(long)]
+        parent_id: Option<String>,
+        /// Order index (0-based)
+        #[arg(long, default_value = "0")]
+        order: i32,
+        /// Linked article URI
+        #[arg(long)]
+        article_uri: Option<String>,
+        /// Tags this chapter teaches (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        teaches: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -926,6 +948,56 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
 
             let review_count = resp["review_count"].as_u64().unwrap_or(0);
             println!("\n{review_count} review(s)");
+
+            // Show chapters
+            if let Some(chapters) = resp["chapters"].as_array() {
+                if !chapters.is_empty() {
+                    println!("\nTable of Contents:");
+                    for ch in chapters {
+                        let ctitle = ch["title"].as_str().unwrap_or("?");
+                        let cid = ch["id"].as_str().unwrap_or("?");
+                        let indent = if ch["parent_id"].is_null() { "" } else { "  " };
+                        println!("  {indent}{ctitle}  ({cid})");
+                    }
+                }
+            }
+        }
+
+        BookCommand::AddChapter { book_id, title, parent_id, order, article_uri, teaches } => {
+            let body = serde_json::json!({
+                "book_id": book_id,
+                "chapter": {
+                    "title": title,
+                    "parent_id": parent_id,
+                    "order_index": order,
+                    "article_uri": article_uri,
+                }
+            });
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/books/chapters"))
+                .bearer_auth(token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Add chapter failed")?
+                .json().await?;
+
+            let cid = resp["id"].as_str().unwrap_or("?");
+            println!("Added chapter: {title} ({cid})");
+
+            // Set teaches tags for the chapter
+            for tag_id in &teaches {
+                let content_uri = format!("chapter:{cid}");
+                let _ = client()
+                    .post(format!("{base}/tags/teach"))
+                    .bearer_auth(token)
+                    .json(&serde_json::json!({
+                        "content_uri": content_uri,
+                        "tag_id": tag_id,
+                    }))
+                    .send().await;
+                println!("  teaches: {tag_id}");
+            }
         }
     }
     Ok(())

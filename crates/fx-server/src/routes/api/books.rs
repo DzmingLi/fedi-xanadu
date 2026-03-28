@@ -3,7 +3,7 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
 };
-use fx_core::services::book_service;
+use fx_core::services::{book_service, skill_service};
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
@@ -237,6 +237,23 @@ pub async fn set_reading_status(
     let progress = input.progress.clamp(0, 100);
     let _ = book_service::get_book(&state.pool, &input.book_id).await?;
     book_service::set_reading_status(&state.pool, &input.book_id, &user.did, &input.status, progress).await?;
+
+    // Auto-learn: when finished, mark book's teaches tags as mastered
+    if input.status == "finished" {
+        let content_uri = format!("book:{}", input.book_id);
+        let tag_ids: Vec<String> = sqlx::query_scalar(
+            "SELECT tag_id FROM content_teaches WHERE content_uri = $1",
+        )
+        .bind(&content_uri)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
+
+        for tag_id in &tag_ids {
+            let _ = skill_service::light_skill(&state.pool, &user.did, tag_id, "mastered").await;
+        }
+    }
+
     Ok(StatusCode::OK)
 }
 
@@ -314,5 +331,22 @@ pub async fn set_chapter_progress(
     Json(input): Json<ChapterProgressInput>,
 ) -> ApiResult<StatusCode> {
     book_service::set_chapter_progress(&state.pool, &input.book_id, &input.chapter_id, &user.did, input.completed).await?;
+
+    // Auto-learn: when chapter completed, light up chapter's teaches tags
+    if input.completed {
+        let content_uri = format!("chapter:{}", input.chapter_id);
+        let tag_ids: Vec<String> = sqlx::query_scalar(
+            "SELECT tag_id FROM content_teaches WHERE content_uri = $1",
+        )
+        .bind(&content_uri)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
+
+        for tag_id in &tag_ids {
+            let _ = skill_service::light_skill(&state.pool, &user.did, tag_id, "mastered").await;
+        }
+    }
+
     Ok(StatusCode::OK)
 }

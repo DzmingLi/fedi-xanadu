@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook } from '../lib/api';
+  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook } from '../lib/api';
   import { t, getLocale } from '../lib/i18n';
   import { getLangPrefs } from '../lib/langPrefs';
   import type { Tag, Article, BookEdition } from '../lib/types';
@@ -35,6 +35,25 @@
   let showDiff = $state(false);
   let originalContent = $state(''); // Original content for fork diff
   let loadingFile = $state(false);
+  let converting = $state(false);
+  let originalFormat = $state(''); // Track source format for fork conversion
+
+  async function handleFormatChange(newFormat: string) {
+    const oldFormat = contentFormat;
+    contentFormat = newFormat;
+    if (!forkSource || !content.trim() || oldFormat === newFormat) return;
+    converting = true;
+    error = '';
+    try {
+      const result = await convertContent(content, oldFormat, newFormat);
+      content = result.content;
+    } catch (e: any) {
+      error = `${t('newArticle.convertError')}: ${e.message}`;
+      contentFormat = oldFormat; // revert on failure
+    } finally {
+      converting = false;
+    }
+  }
 
   // Multi-language versions
   interface LangVersion {
@@ -69,6 +88,7 @@
       if (name.endsWith('.md') || name.endsWith('.markdown')) fmt = 'markdown';
       else if (name.endsWith('.typ') || name.endsWith('.typst')) fmt = 'typst';
       else if (name.endsWith('.html') || name.endsWith('.htm')) fmt = 'html';
+      else if (name.endsWith('.tex') || name.endsWith('.latex')) fmt = 'tex';
       extraLangs[idx] = { ...extraLangs[idx], content: text, contentFormat: fmt };
     } catch (err: any) {
       error = err.message;
@@ -145,6 +165,7 @@
         content = c.source;
         originalContent = c.source;
         contentFormat = a.content_format;
+        originalFormat = a.content_format;
         lang = a.lang || 'zh';
         license = a.license || 'CC-BY-NC-SA-4.0';
         forkSource = forkOf;
@@ -316,10 +337,12 @@
         contentFormat = 'typst';
       } else if (name.endsWith('.html') || name.endsWith('.htm')) {
         contentFormat = 'html';
+      } else if (name.endsWith('.tex') || name.endsWith('.latex')) {
+        contentFormat = 'tex';
       }
       // Use filename (without extension) as title if title is empty
       if (!title.trim()) {
-        title = file.name.replace(/\.(md|markdown|typ|typst|html|htm)$/i, '');
+        title = file.name.replace(/\.(md|markdown|typ|typst|html|htm|tex|latex)$/i, '');
       }
     } catch (err: any) {
       error = err.message;
@@ -517,20 +540,22 @@
 <div class="form-row">
   <div class="form-group" style="flex:1">
     <label for="format">{t('newArticle.formatLabel')}</label>
-    <select id="format" bind:value={contentFormat}>
+    <select id="format" value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value)} disabled={converting}>
       <option value="typst">Typst</option>
       <option value="markdown">Markdown + KaTeX</option>
+      <option value="tex">LaTeX</option>
       <option value="html">HTML</option>
     </select>
+    {#if converting}<span class="converting-hint">{t('newArticle.converting')}</span>{/if}
   </div>
 </div>
 
 <div class="form-group">
   <div class="content-label-row">
-    <label for="content">{t('newArticle.contentLabel')} ({contentFormat === 'markdown' ? 'Markdown' : contentFormat === 'html' ? 'HTML' : 'Typst'})</label>
+    <label for="content">{t('newArticle.contentLabel')} ({contentFormat === 'markdown' ? 'Markdown' : contentFormat === 'html' ? 'HTML' : contentFormat === 'tex' ? 'LaTeX' : 'Typst'})</label>
     <div class="upload-btns">
       <label class="upload-btn" class:disabled={loadingFile}>
-        <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm" onchange={handleFileLoad} hidden />
+        <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm,.tex,.latex" onchange={handleFileLoad} hidden />
         {loadingFile ? t('newArticle.readingFile') : t('newArticle.uploadFile')}
       </label>
       <label class="upload-btn" class:disabled={uploadingImage}>
@@ -561,10 +586,11 @@
         <select bind:value={extraLangs[idx].contentFormat}>
           <option value="typst">Typst</option>
           <option value="markdown">Markdown</option>
+          <option value="tex">LaTeX</option>
           <option value="html">HTML</option>
         </select>
         <label class="upload-btn">
-          <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm" onchange={(e) => handleLangFileLoad(idx, e)} hidden />
+          <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm,.tex,.latex" onchange={(e) => handleLangFileLoad(idx, e)} hidden />
           {t('newArticle.uploadFile')}
         </label>
         <button type="button" class="lang-remove" onclick={() => removeLangVersion(idx)}>&times;</button>
@@ -708,6 +734,11 @@
     margin-bottom: 4px;
   }
   .content-label-row label:first-child { margin-bottom: 0; }
+  .converting-hint {
+    font-size: 12px;
+    color: var(--accent);
+    margin-left: 8px;
+  }
   .upload-btns {
     display: flex;
     gap: 6px;

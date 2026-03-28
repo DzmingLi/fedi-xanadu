@@ -140,6 +140,8 @@ export default {
   'newArticle.recommended': '推荐',
   'newArticle.suggested': '建议',
   'newArticle.addPrereq': '添加',
+  'newArticle.converting': '格式转换中...',
+  'newArticle.convertError': '格式转换失败',
   'newArticle.publishing': '发布中...',
   'newArticle.publish': '发布',
   'newArticle.fillTitleContent': '请先填写标题和内容',

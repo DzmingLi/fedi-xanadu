@@ -97,3 +97,29 @@ pub async fn update_tag_names(
     let tag = tag_service::update_tag_names(&state.pool, &input.id, &input.names).await?;
     Ok(Json(tag))
 }
+
+// --- Set content teaches ---
+
+#[derive(serde::Deserialize)]
+pub struct SetTeachInput {
+    pub content_uri: String,
+    pub tag_id: String,
+}
+
+pub async fn set_teach(
+    State(state): State<AppState>,
+    super::Auth(_user): super::Auth,
+    Json(input): Json<SetTeachInput>,
+) -> ApiResult<StatusCode> {
+    // Ensure tag exists
+    tag_service::ensure_tag(&state.pool, &input.tag_id, &_user.did).await?;
+    sqlx::query(
+        "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    )
+    .bind(&input.content_uri)
+    .bind(&input.tag_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
+    Ok(StatusCode::OK)
+}

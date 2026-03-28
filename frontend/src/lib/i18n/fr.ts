@@ -140,6 +140,8 @@ export default {
   'newArticle.recommended': 'Recommandé',
   'newArticle.suggested': 'Suggéré',
   'newArticle.addPrereq': 'Ajouter',
+  'newArticle.converting': 'Conversion en cours...',
+  'newArticle.convertError': 'Échec de la conversion',
   'newArticle.publishing': 'Publication...',
   'newArticle.publish': 'Publier',
   'newArticle.fillTitleContent': 'Veuillez remplir le titre et le contenu',

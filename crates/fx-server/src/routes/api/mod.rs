@@ -62,6 +62,8 @@ pub fn routes() -> Router<AppState> {
         .route("/tags/by-id", get(tags::get_tag))
         .route("/tags/search", get(tags::search_tags))
         .route("/tags/names", post(tags::update_tag_names))
+        .route("/tags/teach", post(tags::set_teach))
+        .route("/tags/teach", post(tags::set_teach))
         // Articles
         .route("/articles", get(articles::list_articles).post(articles::create_article))
         .route("/articles/by-uri", get(articles::get_article))
@@ -80,6 +82,8 @@ pub fn routes() -> Router<AppState> {
         .route("/votes/my", get(votes::get_my_vote))
         // Fork (POST — mutation)
         .route("/articles/fork", post(articles::fork_article))
+        // Format conversion
+        .route("/articles/convert", post(articles::convert_content))
         // Image upload & serving
         .route("/articles/upload-image", post(articles::upload_image))
         .route("/articles/image", get(articles::get_image))
