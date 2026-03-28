@@ -5,7 +5,7 @@ use axum::{
 };
 use fx_core::models::{Article, CreateArticle};
 use fx_core::region::default_visibility;
-use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, series_service, tag_service};
+use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -138,6 +138,7 @@ pub struct AdminCreateSeriesInput {
     pub parent_id: Option<String>,
     pub lang: Option<String>,
     pub translation_of: Option<String>,
+    pub category: Option<String>,
 }
 
 pub async fn admin_create_series(
@@ -158,6 +159,7 @@ pub async fn admin_create_series(
         None
     };
 
+    let category = input.category.as_deref().unwrap_or("general");
     let row = series_service::create_series(
         &state.pool,
         &id,
@@ -168,6 +170,7 @@ pub async fn admin_create_series(
         &did,
         lang,
         translation_group,
+        category,
     )
     .await?;
 
@@ -506,4 +509,237 @@ pub async fn admin_resolve_appeal(
     ).await;
 
     Ok(Json(appeal))
+}
+
+// ---- Reports ----
+
+#[derive(serde::Deserialize)]
+pub struct ListReportsQuery {
+    pub status: Option<String>,
+    pub limit: Option<i64>,
+}
+
+pub async fn admin_list_reports(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<ListReportsQuery>,
+) -> ApiResult<Json<Vec<report_service::ReportWithNames>>> {
+    require_admin(&state, &headers)?;
+    let reports = report_service::list_reports(
+        &state.pool,
+        q.status.as_deref(),
+        q.limit.unwrap_or(100),
+    )
+    .await?;
+    Ok(Json(reports))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ResolveReportInput {
+    pub id: String,
+    pub status: String,
+    pub admin_note: Option<String>,
+}
+
+pub async fn admin_resolve_report(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<ResolveReportInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    require_admin(&state, &headers)?;
+    report_service::resolve_report(
+        &state.pool,
+        &input.id,
+        &input.status,
+        input.admin_note.as_deref(),
+    )
+    .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+// ---- Credentials Verification (education + affiliation) ----
+
+#[derive(serde::Deserialize)]
+pub struct VerifyCredentialsInput {
+    pub did: String,
+    /// Education entries: [{degree, school, year, current}]
+    pub education: Option<serde_json::Value>,
+    /// Current affiliation (workplace / org)
+    pub affiliation: Option<String>,
+}
+
+pub async fn admin_verify_credentials(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<VerifyCredentialsInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    require_admin(&state, &headers)?;
+
+    let education = input.education.unwrap_or(serde_json::json!([]));
+
+    // Update profiles
+    sqlx::query(
+        "UPDATE profiles SET education = $1, affiliation = $2, credentials_verified = true, credentials_verified_at = NOW() WHERE did = $3",
+    )
+    .bind(&education)
+    .bind(&input.affiliation)
+    .bind(&input.did)
+    .execute(&state.pool)
+    .await?;
+
+    // Update platform_users
+    sqlx::query(
+        "UPDATE platform_users SET education = $1, affiliation = $2, credentials_verified = true, credentials_verified_at = NOW() WHERE did = $3",
+    )
+    .bind(&education)
+    .bind(&input.affiliation)
+    .bind(&input.did)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "ok": true, "did": input.did })))
+}
+
+pub async fn admin_revoke_credentials(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<serde_json::Value>,
+) -> ApiResult<Json<serde_json::Value>> {
+    require_admin(&state, &headers)?;
+    let did = input["did"].as_str()
+        .ok_or(AppError(fx_core::Error::BadRequest("did required".into())))?;
+
+    sqlx::query("UPDATE profiles SET education = '[]', affiliation = NULL, credentials_verified = false, credentials_verified_at = NULL WHERE did = $1")
+        .bind(did)
+        .execute(&state.pool)
+        .await?;
+
+    sqlx::query("UPDATE platform_users SET education = '[]', affiliation = NULL, credentials_verified = false, credentials_verified_at = NULL WHERE did = $1")
+        .bind(did)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+// ---- Admin Question/Answer Publishing ----
+
+#[derive(serde::Deserialize)]
+pub struct AdminCreateQuestionInput {
+    pub as_handle: String,
+    #[serde(flatten)]
+    pub article: CreateArticle,
+}
+
+pub async fn admin_create_question(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<AdminCreateQuestionInput>,
+) -> ApiResult<(StatusCode, Json<Article>)> {
+    require_admin(&state, &headers)?;
+    validate_create_article(&input.article)?;
+
+    let did = platform_user_service::local_did(&input.as_handle);
+    let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
+
+    let node_id = uri_to_node_id(&at_uri);
+    state.pijul.init_repo(&node_id)
+        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+
+    let repo_path = state.pijul.repo_path(&node_id);
+    let src_ext = match input.article.content_format.as_str() {
+        "markdown" => "md",
+        "html" => "html",
+        _ => "typ",
+    };
+    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
+
+    if input.article.content_format != "html" {
+        let rendered = super::articles::render_content(
+            &input.article.content_format, &input.article.content, &repo_path,
+        )?;
+        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+    }
+
+    if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
+        tracing::warn!("pijul record failed for {node_id}: {e}");
+    }
+
+    let hash = content_hash(&input.article.content);
+
+    let article = article_service::create_article(
+        &state.pool, &did, &at_uri, &input.article, &hash, None,
+        default_visibility(true), "question", None,
+    ).await?;
+
+    let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
+
+    Ok((StatusCode::CREATED, Json(article)))
+}
+
+#[derive(serde::Deserialize)]
+pub struct AdminPostAnswerInput {
+    pub as_handle: String,
+    pub question_uri: String,
+    #[serde(flatten)]
+    pub article: CreateArticle,
+}
+
+pub async fn admin_post_answer(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<AdminPostAnswerInput>,
+) -> ApiResult<(StatusCode, Json<Article>)> {
+    require_admin(&state, &headers)?;
+    validate_create_article(&input.article)?;
+
+    // Verify question exists
+    let question = article_service::get_article_any_visibility(&state.pool, &input.question_uri).await?;
+    if question.kind != "question" {
+        return Err(AppError(fx_core::Error::BadRequest("target is not a question".into())));
+    }
+
+    let did = platform_user_service::local_did(&input.as_handle);
+    let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
+
+    let node_id = uri_to_node_id(&at_uri);
+    state.pijul.init_repo(&node_id)
+        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+
+    let repo_path = state.pijul.repo_path(&node_id);
+    let src_ext = match input.article.content_format.as_str() {
+        "markdown" => "md",
+        "html" => "html",
+        _ => "typ",
+    };
+    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
+
+    if input.article.content_format != "html" {
+        let rendered = super::articles::render_content(
+            &input.article.content_format, &input.article.content, &repo_path,
+        )?;
+        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+    }
+
+    if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
+        tracing::warn!("pijul record failed for {node_id}: {e}");
+    }
+
+    let hash = content_hash(&input.article.content);
+
+    let article = article_service::create_article(
+        &state.pool, &did, &at_uri, &input.article, &hash, None,
+        default_visibility(true), "answer", Some(&input.question_uri),
+    ).await?;
+
+    // Notify question author
+    if question.did != did {
+        let notif_id = tid();
+        let _ = notification_service::create_notification(
+            &state.pool, &notif_id, &question.did, &did,
+            "new_answer", Some(&input.question_uri), Some(&at_uri),
+        ).await;
+    }
+
+    Ok((StatusCode::CREATED, Json(article)))
 }

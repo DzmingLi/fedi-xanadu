@@ -15,6 +15,7 @@ pub struct SeriesRow {
     pub created_at: DateTime<Utc>,
     pub lang: String,
     pub translation_group: Option<String>,
+    pub category: String,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -29,6 +30,7 @@ pub struct SeriesListRow {
     pub created_at: DateTime<Utc>,
     pub lang: String,
     pub translation_group: Option<String>,
+    pub category: String,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -89,7 +91,7 @@ pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesL
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, \
                 s.parent_id, s.order_index, s.created_by, pu.handle AS author_handle, s.created_at, \
-                s.lang, s.translation_group \
+                s.lang, s.translation_group, s.category \
          FROM series s \
          LEFT JOIN platform_users pu ON s.created_by = pu.did \
          ORDER BY s.created_at DESC LIMIT $1",
@@ -110,6 +112,7 @@ pub async fn create_series(
     created_by: &str,
     lang: &str,
     translation_group: Option<String>,
+    category: &str,
 ) -> crate::Result<SeriesRow> {
     // Auto-assign order_index: append after existing siblings
     let order_index: i32 = if parent_id.is_some() {
@@ -128,8 +131,8 @@ pub async fn create_series(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO series (id, title, description, parent_id, order_index, created_by, lang, translation_group) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "INSERT INTO series (id, title, description, parent_id, order_index, created_by, lang, translation_group, category) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(id)
     .bind(title)
@@ -139,6 +142,7 @@ pub async fn create_series(
     .bind(created_by)
     .bind(lang)
     .bind(&translation_group)
+    .bind(category)
     .execute(&mut *tx)
     .await?;
 
@@ -155,7 +159,7 @@ pub async fn create_series(
     tx.commit().await?;
 
     let row = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group, category, category \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -167,7 +171,7 @@ pub async fn create_series(
 
 pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesDetailResponse> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group, category \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -196,7 +200,7 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
     .await?;
 
     let children = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group, category \
          FROM series WHERE parent_id = $1 ORDER BY order_index",
     )
     .bind(id)
@@ -256,7 +260,7 @@ pub async fn get_series_translations(pool: &PgPool, id: &str) -> crate::Result<V
     };
 
     let rows = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
+        "SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group, category \
          FROM series WHERE translation_group = $1 AND id != $2 ORDER BY lang",
     )
     .bind(&group)
@@ -400,10 +404,10 @@ pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<Seri
     // Fetch all series in the tree in one query using recursive CTE
     let all_series = sqlx::query_as::<_, SeriesRow>(
         "WITH RECURSIVE tree AS ( \
-             SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group \
+             SELECT id, title, description, parent_id, order_index, created_by, created_at, lang, translation_group, category \
              FROM series WHERE id = $1 \
              UNION ALL \
-             SELECT s.id, s.title, s.description, s.parent_id, s.order_index, s.created_by, s.created_at, s.lang, s.translation_group \
+             SELECT s.id, s.title, s.description, s.parent_id, s.order_index, s.created_by, s.created_at, s.lang, s.translation_group, s.category \
              FROM series s JOIN tree t ON s.parent_id = t.id \
          ) SELECT * FROM tree",
     )

@@ -18,6 +18,7 @@ pub(crate) struct CreateSeriesInput {
     parent_id: Option<String>,
     lang: Option<String>,
     translation_of: Option<String>,
+    category: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -64,6 +65,7 @@ pub async fn create_series(
         None
     };
 
+    let category = input.category.as_deref().unwrap_or("general");
     let row = series_service::create_series(
         &state.pool,
         &id,
@@ -74,6 +76,7 @@ pub async fn create_series(
         &user.did,
         lang,
         translation_group,
+        category,
     )
     .await?;
 

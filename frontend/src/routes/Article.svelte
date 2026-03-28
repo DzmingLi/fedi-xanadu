@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned } from '../lib/api';
+  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport } from '../lib/api';
   import { getAuth } from '../lib/auth';
   import { tagName } from '../lib/display';
+  import { isBlocked, addBlocked } from '../lib/blocklist';
   import { t, LANG_NAMES } from '../lib/i18n';
   import CommentThread from '../lib/components/CommentThread.svelte';
-  import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, BookmarkWithTitle, VoteSummary, SeriesContextItem } from '../lib/types';
+  import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, BookmarkWithTitle, VoteSummary, SeriesContextItem, AccessGrant } from '../lib/types';
 
   let { uri }: { uri: string } = $props();
 
@@ -22,6 +23,32 @@
   let seriesContext = $state<SeriesContextItem[]>([]);
   let isOwner = $derived(!!getAuth() && article?.did === getAuth()?.did);
   let learned = $state(false);
+  let accessDenied = $state(false);
+  let accessGrants = $state<AccessGrant[]>([]);
+  let newGrantDid = $state('');
+  let reportOpen = $state(false);
+  let reportReason = $state('');
+
+  async function doBlockUser() {
+    if (!article || !confirm(t('block.confirm'))) return;
+    try {
+      await apiBlockUser(article.did);
+      addBlocked(article.did);
+      window.location.hash = '#/';
+    } catch { /* */ }
+  }
+
+  async function doReportArticle() {
+    if (!article || !reportReason.trim()) return;
+    try {
+      await createReport(article.did, 'article', reportReason.trim(), article.at_uri);
+      reportOpen = false;
+      reportReason = '';
+      alert(t('report.success'));
+    } catch {
+      alert(t('report.failed'));
+    }
+  }
 
   interface TocItem { id: string; text: string; level: number; }
   let tocItems = $state<TocItem[]>([]);
@@ -41,6 +68,8 @@
     seriesContext = [];
     translations = [];
     learned = false;
+    accessDenied = false;
+    accessGrants = [];
     const ac = new AbortController();
 
     // Single request for all article page data
@@ -55,6 +84,11 @@
       translations = data.translations;
       myVote = data.my_vote;
       learned = data.learned;
+      accessDenied = data.access_denied;
+      // Load access grants if owner of restricted article
+      if (data.article.restricted && data.article.did === getAuth()?.did) {
+        listAccessGrants(uri).then(g => { accessGrants = g; }).catch(() => {});
+      }
       // Set bookmarked state from server response
       if (data.is_bookmarked) {
         bookmarks = [{ article_uri: uri, folder_path: '/', created_at: '', title: '', description: '' }];
@@ -145,6 +179,28 @@
   function doEdit() {
     if (!article) return;
     window.location.hash = `#/new?edit=${encodeURIComponent(article.at_uri)}`;
+  }
+
+  async function toggleRestricted() {
+    if (!article) return;
+    const newVal = !article.restricted;
+    await setRestricted(uri, newVal);
+    article = { ...article, restricted: newVal };
+    if (newVal) {
+      accessGrants = await listAccessGrants(uri);
+    }
+  }
+
+  async function doGrantAccess() {
+    if (!newGrantDid.trim()) return;
+    await grantAccess(uri, newGrantDid.trim());
+    accessGrants = await listAccessGrants(uri);
+    newGrantDid = '';
+  }
+
+  async function doRevokeAccess(did: string) {
+    await revokeAccess(uri, did);
+    accessGrants = accessGrants.filter(g => g.grantee_did !== did);
   }
 
   async function doDelete() {
@@ -398,7 +454,12 @@ try {
         {/if}
       </div>
 
-      {#if content}
+      {#if accessDenied}
+        <div class="paywall-notice">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          <p>{t('article.restricted')}</p>
+        </div>
+      {:else if content}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="content" bind:this={contentEl} onmouseup={onContentMouseUp}>{@html content.html}</div>
       {/if}
@@ -435,10 +496,22 @@ try {
           <span class="btn-label">{learned ? '已学会' : '学会'}</span>
         </button>
 
-        <button class="action-btn labeled-btn" onclick={doFork} disabled={!isLoggedIn} title={t('article.fork')}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
-          <span class="btn-label">{t('article.fork')}</span>
-        </button>
+        {#if article.license !== 'All-Rights-Reserved'}
+          <button class="action-btn labeled-btn" onclick={doFork} disabled={!isLoggedIn} title={t('article.fork')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
+            <span class="btn-label">{t('article.fork')}</span>
+          </button>
+        {/if}
+
+        {#if isLoggedIn && !isOwner}
+          <div class="action-separator"></div>
+          <button class="action-btn" onclick={() => { reportOpen = true; }} title={t('report.report')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          </button>
+          <button class="action-btn" onclick={doBlockUser} title={t('block.block')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+          </button>
+        {/if}
 
         {#if isOwner}
           <div class="action-separator"></div>
@@ -450,6 +523,58 @@ try {
           </button>
         {/if}
       </div>
+
+      <!-- Report modal -->
+      {#if reportOpen}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="report-overlay" onclick={() => { reportOpen = false; }}>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="report-modal" onclick={(e) => e.stopPropagation()}>
+            <h3>{t('report.title')}</h3>
+            <p class="report-target">{t('report.kindArticle')}: {article.title}</p>
+            <textarea
+              bind:value={reportReason}
+              placeholder={t('report.reasonPlaceholder')}
+              class="report-textarea"
+              rows="4"
+            ></textarea>
+            <div class="report-actions">
+              <button class="report-cancel" onclick={() => { reportOpen = false; }}>{t('common.cancel')}</button>
+              <button class="report-submit" onclick={doReportArticle} disabled={!reportReason.trim()}>{t('report.submit')}</button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Access control panel (owner only) -->
+      {#if isOwner}
+        <div class="access-panel">
+          <label class="restricted-toggle">
+            <input type="checkbox" checked={article.restricted} onchange={toggleRestricted} />
+            {t('article.restrictedToggle')}
+          </label>
+          {#if article.restricted}
+            <div class="grant-list">
+              <h4>{t('article.accessList')}</h4>
+              <div class="grant-add">
+                <input type="text" bind:value={newGrantDid} placeholder="did:plc:... 或 handle" />
+                <button onclick={doGrantAccess}>{t('article.grantAccess')}</button>
+              </div>
+              {#each accessGrants as g (g.grantee_did)}
+                <div class="grant-item">
+                  <span>{g.grantee_did}</span>
+                  <button class="revoke-btn" onclick={() => doRevokeAccess(g.grantee_did)}>{t('article.revokeAccess')}</button>
+                </div>
+              {/each}
+              {#if accessGrants.length === 0}
+                <p class="no-grants">{t('article.noGrants')}</p>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Comments -->
       <CommentThread bind:this={commentThread} contentUri={uri} {contentEl} />
@@ -845,5 +970,151 @@ try {
     :global(.sidenote-number) {
       cursor: pointer;
     }
+  }
+
+  /* Paywall notice */
+  .paywall-notice {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 48px 24px;
+    margin: 24px 0;
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    text-align: center;
+  }
+  .paywall-notice p {
+    margin: 0;
+    font-size: 15px;
+  }
+
+  /* Report modal */
+  .report-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 400;
+    display: flex;
+    justify-content: center;
+    padding-top: 10vh;
+  }
+  .report-modal {
+    width: 480px;
+    max-width: 90vw;
+    background: var(--bg-white);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+    align-self: flex-start;
+  }
+  .report-modal h3 {
+    margin: 0 0 12px;
+    font-size: 16px;
+  }
+  .report-target {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+  }
+  .report-textarea {
+    width: 100%;
+    padding: 8px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--font-sans);
+    resize: vertical;
+    background: var(--bg-white);
+    color: var(--text-primary);
+  }
+  .report-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .report-cancel {
+    padding: 5px 14px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: none;
+    cursor: pointer;
+  }
+  .report-submit {
+    padding: 5px 14px;
+    font-size: 13px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .report-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Access control panel */
+  .access-panel {
+    margin-top: 24px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .restricted-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .grant-list {
+    margin-top: 12px;
+  }
+  .grant-list h4 {
+    margin: 0 0 8px;
+    font-weight: 500;
+  }
+  .grant-add {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .grant-add input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .grant-add button {
+    padding: 4px 12px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .grant-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .revoke-btn {
+    background: none;
+    border: none;
+    color: var(--danger, #e53e3e);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .no-grants {
+    color: var(--text-hint);
+    font-size: 13px;
+    margin: 4px 0 0;
   }
 </style>

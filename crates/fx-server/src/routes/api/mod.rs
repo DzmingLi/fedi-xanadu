@@ -1,6 +1,8 @@
 mod admin;
 mod appeals;
 mod articles;
+mod blocks;
+mod books;
 mod auth;
 mod bookmarks;
 mod comments;
@@ -12,7 +14,9 @@ mod learned;
 mod notifications;
 mod keybindings;
 mod profile;
+mod settings;
 mod questions;
+mod reports;
 mod series;
 mod skill_trees;
 mod skills;
@@ -80,6 +84,11 @@ pub fn routes() -> Router<AppState> {
         .route("/articles/image", get(articles::get_image))
         .route("/articles/update", post(articles::update_article))
         .route("/articles/delete", post(articles::delete_article))
+        // Access control (paywall)
+        .route("/articles/restricted", post(articles::set_restricted))
+        .route("/articles/access/grant", post(articles::grant_access))
+        .route("/articles/access/revoke", post(articles::revoke_access))
+        .route("/articles/access/list", get(articles::list_access_grants))
         // Comments
         .route("/comments", get(comments::list_comments).post(comments::create_comment))
         .route("/comments/update", post(comments::update_comment))
@@ -104,6 +113,7 @@ pub fn routes() -> Router<AppState> {
         .route("/bookmarks/remove", post(bookmarks::remove_bookmark))
         .route("/bookmarks/move", post(bookmarks::move_bookmark))
         .route("/bookmarks/folders", get(bookmarks::list_bookmark_folders))
+        .route("/bookmarks/public", get(bookmarks::list_public_bookmarks))
         // Learned marks
         .route("/learned", get(learned::list_learned).post(learned::mark_learned))
         .route("/learned/check", get(learned::is_learned))
@@ -143,6 +153,8 @@ pub fn routes() -> Router<AppState> {
         .route("/drafts/publish", post(drafts::publish_draft))
         // Keybindings
         .route("/keybindings", get(keybindings::get_keybindings).post(keybindings::set_keybindings))
+        // User settings
+        .route("/settings", get(settings::get_settings).post(settings::set_settings))
         // Knowledge graph
         .route("/graph", get(graph::get_graph))
         // Questions & Answers
@@ -171,6 +183,24 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/appeals/resolve", post(admin::admin_resolve_appeal))
         // Appeals (user-facing, Auth not WriteAuth so banned users can appeal)
         .route("/appeals", get(appeals::list_my_appeals).post(appeals::create_appeal))
+        // Blocks
+        .route("/blocks", get(blocks::list_blocked_users).post(blocks::block_user))
+        .route("/blocks/remove", post(blocks::unblock_user))
+        .route("/blocks/dids", get(blocks::list_blocked_dids))
+        // Reports
+        .route("/reports", post(reports::create_report))
+        .route("/admin/reports", get(admin::admin_list_reports))
+        .route("/admin/reports/resolve", post(admin::admin_resolve_report))
+        .route("/admin/credentials/verify", post(admin::admin_verify_credentials))
+        .route("/admin/credentials/revoke", post(admin::admin_revoke_credentials))
+        .route("/admin/questions", post(admin::admin_create_question))
+        .route("/admin/questions/answer", post(admin::admin_post_answer))
+        // Books
+        .route("/books", get(books::list_books).post(books::create_book))
+        .route("/books/by-id", get(books::get_book))
+        .route("/books/update", post(books::update_book))
+        .route("/books/editions", post(books::add_edition))
+        .route("/books/history", get(books::get_edit_history))
 }
 
 // --- Health ---

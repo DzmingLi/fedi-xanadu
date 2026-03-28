@@ -1,12 +1,13 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth';
+  import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist';
   import { tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
   import { t, onLocaleChange, getLocale } from '../lib/i18n';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink } from '../lib/types';
+  import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink, BookmarkWithTitle, EducationEntry } from '../lib/types';
 
   // All series (including sub-series) for building tree
   let allUserSeries = $state<Series[]>([]);
@@ -29,10 +30,16 @@
   let editLinks = $state<ProfileLink[]>([]);
   let newLinkLabel = $state('');
   let newLinkUrl = $state('');
+  let editingEmail = $state(false);
+  let editEmail = $state('');
+  let userBlocked = $state(false);
+  let reportOpen = $state(false);
+  let reportReason = $state('');
 
   let questions = $state<Article[]>([]);
   let answers = $state<Article[]>([]);
-  let profileTab = $state<'works' | 'qa'>('works');
+  let publicBookmarks = $state<BookmarkWithTitle[]>([]);
+  let profileTab = $state<'articles' | 'lectures' | 'papers' | 'reviews' | 'qa' | 'bookmarks'>('articles');
 
   let isOwnProfile = $derived(getAuth()?.did === did);
   let following = $state<FollowEntry[]>([]);
@@ -81,24 +88,28 @@
     expandedSeries = next;
   }
 
-  let profileFeed = $derived.by(() => {
+  function buildFeed(categoryFilter: string): ProfileFeedItem[] {
     const items: ProfileFeedItem[] = [];
-    // Standalone articles (not in any series), deduplicated by translation
     const deduped = deduplicateByTranslation(articles, locale);
     for (const a of deduped) {
-      if (!seriesArticleUris.has(a.at_uri)) {
+      if (!seriesArticleUris.has(a.at_uri) && (a.category || 'general') === categoryFilter) {
         items.push({ type: 'article', article: a, sortDate: a.created_at });
       }
     }
-    // Only top-level series (no parent)
     for (const s of allUserSeries) {
       if (s.parent_id) continue;
+      if ((s.category || 'general') !== categoryFilter) continue;
       const totalArticles = countDescendantArticles(s.id);
       items.push({ type: 'series', series: s, articleCount: totalArticles, sortDate: s.created_at });
     }
     items.sort((a, b) => b.sortDate.localeCompare(a.sortDate));
     return items;
-  });
+  }
+
+  let articlesFeed = $derived(buildFeed('general'));
+  let lecturesFeed = $derived(buildFeed('lecture'));
+  let papersFeed = $derived(buildFeed('paper'));
+  let reviewsFeed = $derived(buildFeed('review'));
 
   $effect(() => {
     load();
@@ -133,7 +144,8 @@
       following = fg;
       followers = fr;
 
-      // Check follow status
+      // Check block + follow status
+      userBlocked = isBlocked(did);
       if (getAuth() && !isOwnProfile) {
         try {
           const follows = await listFollows();
@@ -141,6 +153,13 @@
           // Mark as seen
           if (isFollowing) markFollowSeen(did).catch(() => {});
         } catch { /* */ }
+      }
+
+      // Load public bookmarks (for other users)
+      if (!isOwnProfile) {
+        try {
+          publicBookmarks = await listPublicBookmarks(did);
+        } catch { publicBookmarks = []; }
       }
     } catch { /* */ }
     loading = false;
@@ -181,6 +200,49 @@
       await updateProfileLinks(editLinks);
       if (profile) profile.links = editLinks;
       editingLinks = false;
+    } catch { /* */ }
+  }
+
+  async function toggleBlock() {
+    if (userBlocked) {
+      try {
+        await apiUnblockUser(did);
+        removeBlocked(did);
+        userBlocked = false;
+      } catch { /* */ }
+    } else {
+      if (!confirm(t('block.confirm'))) return;
+      try {
+        await apiBlockUser(did);
+        addBlocked(did);
+        userBlocked = true;
+      } catch { /* */ }
+    }
+  }
+
+  async function submitReport() {
+    if (!reportReason.trim()) return;
+    try {
+      await createReport(did, 'user', reportReason.trim());
+      reportOpen = false;
+      reportReason = '';
+      alert(t('report.success'));
+    } catch {
+      alert(t('report.failed'));
+    }
+  }
+
+  function startEditEmail() {
+    editEmail = profile?.email || '';
+    editingEmail = true;
+  }
+
+  async function saveEmail() {
+    try {
+      const s = await getSettings();
+      await setSettings({ ...s, email: editEmail.trim() || null });
+      if (profile) profile.email = editEmail.trim() || null;
+      editingEmail = false;
     } catch { /* */ }
   }
 
@@ -264,6 +326,53 @@
       {#if profile.handle}
         <p class="handle">@{profile.handle}</p>
       {/if}
+      {#if profile.affiliation}
+        <p class="credential-line">
+          {profile.affiliation}
+          {#if profile.credentials_verified}
+            <span class="verified-badge" title={t('profile.verified')}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)" stroke="white" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </span>
+          {/if}
+        </p>
+      {/if}
+      {#if profile.education.length > 0}
+        <div class="education-list">
+          {#each profile.education as edu}
+            <span class="education-entry">
+              {#if edu.current}{t('profile.enrolledIn')}{/if}{edu.degree}{#if edu.degree && edu.school}, {/if}{edu.school}{#if edu.year} ({edu.year}){/if}
+            </span>
+          {/each}
+          {#if profile.credentials_verified && !profile.affiliation}
+            <span class="verified-badge" title={t('profile.verified')}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)" stroke="white" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </span>
+          {/if}
+        </div>
+      {/if}
+      {#if profile.email || isOwnProfile}
+        <div class="profile-email">
+          {#if editingEmail}
+            <input
+              type="email"
+              bind:value={editEmail}
+              placeholder="user@example.com"
+              class="email-input"
+            />
+            <button class="email-save" onclick={saveEmail}>{t('common.save')}</button>
+            <button class="email-cancel" onclick={() => { editingEmail = false; }}>{t('common.cancel')}</button>
+          {:else}
+            {#if profile.email}
+              <a href="mailto:{profile.email}" class="email-link">{profile.email}</a>
+            {/if}
+            {#if isOwnProfile}
+              <button class="edit-email-btn" onclick={startEditEmail}>
+                {profile.email ? t('common.edit') : t('settings.email')}
+              </button>
+            {/if}
+          {/if}
+        </div>
+      {/if}
       <div class="profile-stats">
         <span>{profile.article_count} {t('profile.articles')}</span>
         <span>{profile.series_count} {t('profile.seriesCount')}</span>
@@ -285,7 +394,46 @@
         {isFollowing ? t('profile.unfollow') : t('profile.follow')}
       </button>
     {/if}
+    {#if getAuth() && !isOwnProfile}
+      <div class="profile-actions-secondary">
+        <button class="action-btn" class:active={userBlocked} onclick={toggleBlock}>
+          {userBlocked ? t('block.unblock') : t('block.block')}
+        </button>
+        <button class="action-btn" onclick={() => { reportOpen = true; }}>
+          {t('report.report')}
+        </button>
+      </div>
+    {/if}
+    {#if isOwnProfile}
+      <a href="#/settings" class="settings-link">{t('profile.settings')}</a>
+    {/if}
   </div>
+
+  <!-- Report modal -->
+  {#if reportOpen}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="links-overlay" onclick={() => { reportOpen = false; }}>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="links-modal" onclick={(e) => e.stopPropagation()}>
+        <h3>{t('report.title')}</h3>
+        <p class="report-target">
+          {t('report.kindUser')}: {profile?.display_name || profile?.handle || did}
+        </p>
+        <textarea
+          bind:value={reportReason}
+          placeholder={t('report.reasonPlaceholder')}
+          class="report-textarea"
+          rows="4"
+        ></textarea>
+        <div class="link-actions">
+          <button class="link-cancel" onclick={() => { reportOpen = false; }}>{t('common.cancel')}</button>
+          <button class="link-save" onclick={submitReport} disabled={!reportReason.trim()}>{t('report.submit')}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- Profile links -->
   {#if profile.links.length > 0 || isOwnProfile}
@@ -366,17 +514,45 @@
   {/if}
 
   <div class="profile-tabs">
-    <button class="tab-btn" class:active={profileTab === 'works'} onclick={() => { profileTab = 'works'; }}>{t('profile.works')}</button>
+    <button class="tab-btn" class:active={profileTab === 'articles'} onclick={() => { profileTab = 'articles'; }}>
+      {t('category.general')}
+      {#if articlesFeed.length > 0}<span class="tab-count">{articlesFeed.length}</span>{/if}
+    </button>
+    {#if lecturesFeed.length > 0 || isOwnProfile}
+      <button class="tab-btn" class:active={profileTab === 'lectures'} onclick={() => { profileTab = 'lectures'; }}>
+        {t('category.lecture')}
+        {#if lecturesFeed.length > 0}<span class="tab-count">{lecturesFeed.length}</span>{/if}
+      </button>
+    {/if}
+    {#if papersFeed.length > 0 || isOwnProfile}
+      <button class="tab-btn" class:active={profileTab === 'papers'} onclick={() => { profileTab = 'papers'; }}>
+        {t('category.paper')}
+        {#if papersFeed.length > 0}<span class="tab-count">{papersFeed.length}</span>{/if}
+      </button>
+    {/if}
+    {#if reviewsFeed.length > 0}
+      <button class="tab-btn" class:active={profileTab === 'reviews'} onclick={() => { profileTab = 'reviews'; }}>
+        {t('category.review')}
+        <span class="tab-count">{reviewsFeed.length}</span>
+      </button>
+    {/if}
     <button class="tab-btn" class:active={profileTab === 'qa'} onclick={() => { profileTab = 'qa'; }}>
       {t('profile.questions')}
       {#if questions.length + answers.length > 0}
         <span class="tab-count">{questions.length + answers.length}</span>
       {/if}
     </button>
+    {#if !isOwnProfile && publicBookmarks.length > 0}
+      <button class="tab-btn" class:active={profileTab === 'bookmarks'} onclick={() => { profileTab = 'bookmarks'; }}>
+        {t('profile.publicBookmarks')}
+        <span class="tab-count">{publicBookmarks.length}</span>
+      </button>
+    {/if}
   </div>
 
-  {#if profileTab === 'works'}
-    {#each profileFeed as item}
+  {#if profileTab === 'articles' || profileTab === 'lectures' || profileTab === 'papers' || profileTab === 'reviews'}
+    {@const feed = profileTab === 'articles' ? articlesFeed : profileTab === 'lectures' ? lecturesFeed : profileTab === 'papers' ? papersFeed : reviewsFeed}
+    {#each feed as item}
       {#if item.type === 'article' && item.article}
         <PostCard
           article={item.article}
@@ -388,7 +564,7 @@
       {/if}
     {/each}
 
-    {#if profileFeed.length === 0}
+    {#if feed.length === 0}
       <p class="empty-text">{t('profile.noWorks')}</p>
     {/if}
 
@@ -429,6 +605,21 @@
       <div class="create-actions">
         <a href="#/new-question" class="create-link">{t('qa.askQuestion')}</a>
       </div>
+    {/if}
+  {:else if profileTab === 'bookmarks'}
+    {#each publicBookmarks as bm}
+      <a href="#/article?uri={encodeURIComponent(bm.article_uri)}" class="bookmark-card">
+        <div class="bookmark-info">
+          <span class="bookmark-title">{bm.title}</span>
+          {#if bm.folder_path && bm.folder_path !== '/'}
+            <span class="bookmark-folder">{bm.folder_path}</span>
+          {/if}
+        </div>
+        <span class="bookmark-date">{bm.created_at.split(' ')[0]}</span>
+      </a>
+    {/each}
+    {#if publicBookmarks.length === 0}
+      <p class="empty-text">{t('profile.noWorks')}</p>
     {/if}
   {/if}
 {/if}
@@ -497,6 +688,137 @@
     font-size: 14px;
     color: var(--text-secondary);
     margin: 2px 0 0;
+  }
+  .credential-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 2px 0 0;
+  }
+  .verified-badge {
+    display: inline-flex;
+    align-items: center;
+  }
+  .education-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .education-entry {
+    display: inline;
+  }
+  .profile-email {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 13px;
+  }
+  .email-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+  }
+  .email-link:hover { color: var(--accent); }
+  .edit-email-btn {
+    font-size: 12px;
+    color: var(--text-hint);
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 3px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .edit-email-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .email-input {
+    padding: 3px 8px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-family: var(--font-sans);
+    width: 200px;
+  }
+  .email-save {
+    font-size: 12px;
+    padding: 3px 10px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .email-cancel {
+    font-size: 12px;
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: none;
+    cursor: pointer;
+  }
+  .settings-link {
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: all 0.15s;
+    align-self: center;
+    flex-shrink: 0;
+  }
+  .settings-link:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .profile-actions-secondary {
+    display: flex;
+    gap: 6px;
+    align-self: center;
+    flex-shrink: 0;
+  }
+  .action-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: none;
+    color: var(--text-hint);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .action-btn:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-secondary);
+  }
+  .action-btn.active {
+    border-color: #dc2626;
+    color: #dc2626;
+  }
+  .report-target {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+  }
+  .report-textarea {
+    width: 100%;
+    padding: 8px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--font-sans);
+    resize: vertical;
+    background: var(--bg-white);
+    color: var(--text-primary);
   }
   .profile-stats {
     display: flex;
@@ -882,5 +1204,51 @@
     font-size: 12px;
     color: var(--text-hint);
     flex-shrink: 0;
+  }
+
+  /* Bookmark cards */
+  .bookmark-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 6px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s;
+  }
+  .bookmark-card:hover {
+    border-color: var(--border-strong);
+    text-decoration: none;
+  }
+  .bookmark-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+  .bookmark-title {
+    font-size: 14px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bookmark-folder {
+    font-size: 11px;
+    color: var(--text-hint);
+    background: var(--bg-dim);
+    padding: 1px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .bookmark-date {
+    font-size: 12px;
+    color: var(--text-hint);
+    flex-shrink: 0;
+    margin-left: 12px;
   }
 </style>

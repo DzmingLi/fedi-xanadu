@@ -27,6 +27,10 @@
     { title: { en: 'Markdown + KaTeX support', zh: 'Markdown + KaTeX 支持', fr: 'Support Markdown + KaTeX' }, desc: { en: 'Write articles in Markdown with KaTeX math rendering', zh: '支持 Markdown 写作和 KaTeX 数学渲染', fr: 'Rédiger en Markdown avec rendu mathématique KaTeX' }, status: 'done' },
     { title: { en: 'Article editor', zh: '文章编辑器', fr: 'Éditeur d\'articles' }, desc: { en: 'Edit published articles in-place', zh: '在线编辑已发布文章', fr: 'Modifier les articles publiés sur place' }, status: 'done' },
     { title: { en: 'Learning state for skills', zh: '技能学习状态', fr: 'État d\'apprentissage' }, desc: { en: 'Mark skills as "learning" in addition to "mastered"', zh: '技能支持"正在学习"状态', fr: 'Marquer les compétences comme « en cours » en plus de « maîtrisé »' }, status: 'done' },
+    { title: { en: 'User settings', zh: '用户设置', fr: 'Paramètres utilisateur' }, desc: { en: 'Language preferences, default format, email, keybindings', zh: '语言偏好、默认格式、邮箱、快捷键设置', fr: 'Préférences linguistiques, format par défaut, e-mail, raccourcis' }, status: 'done' },
+    { title: { en: 'Block & report', zh: '拉黑与举报', fr: 'Blocage et signalement' }, desc: { en: 'Block users to hide their content; report users/articles for admin review', zh: '拉黑用户屏蔽其内容；举报用户/文章交由管理员处理', fr: 'Bloquer des utilisateurs et signaler du contenu pour modération' }, status: 'done' },
+    { title: { en: 'Bookmark visibility', zh: '收藏夹可见性', fr: 'Visibilité des favoris' }, desc: { en: 'Choose to make bookmarks public or share specific folders', zh: '选择公开收藏夹或仅分享特定文件夹', fr: 'Choisir de rendre les favoris publics ou partager des dossiers spécifiques' }, status: 'done' },
+    { title: { en: 'Credentials verification', zh: '学历认证', fr: 'Vérification des diplômes' }, desc: { en: 'Admin-verified education and affiliation displayed on profile', zh: '管理员认证学历、学位和单位，显示在个人主页', fr: 'Éducation et affiliation vérifiées par l\'admin, affichées sur le profil' }, status: 'done' },
 
     // Planned
     { title: { en: 'Pandoc format conversion', zh: 'Pandoc 格式转换', fr: 'Conversion de format Pandoc' }, desc: { en: 'Convert between Typst, Markdown, LaTeX, and more', zh: '在 Typst、Markdown、LaTeX 等格式间转换', fr: 'Convertir entre Typst, Markdown, LaTeX et plus' }, status: 'planned' },
@@ -38,6 +42,7 @@
     { title: { en: 'SeriesDetail DAG view', zh: '系列详情 DAG 视图', fr: 'Vue DAG des séries' }, desc: { en: 'Visualize series articles as interactive DAG', zh: '以交互式 DAG 可视化系列讲义', fr: 'Visualiser les articles d\'une série en DAG interactif' }, status: 'planned' },
     { title: { en: 'CLI with AI upload', zh: 'CLI + AI 上传', fr: 'CLI avec import IA' }, desc: { en: 'Local CLI tool that lets AI parse and upload your notes directly', zh: '本地命令行工具，让 AI 解析并上传笔记到平台', fr: 'Outil CLI local permettant à l\'IA d\'analyser et importer vos notes' }, status: 'planned' },
     { title: { en: 'Paid articles', zh: '付费文章', fr: 'Articles payants' }, desc: { en: 'Support paid/premium articles with payment integration', zh: '支持付费文章和支付集成', fr: 'Articles payants avec intégration de paiement' }, status: 'planned' },
+    { title: { en: 'Campus email verification', zh: '校园邮箱验证', fr: 'Vérification par e-mail universitaire' }, desc: { en: 'Verify school affiliation via campus email (currently admin-verified)', zh: '通过校园邮箱自动验证学校身份（目前由管理员认证）', fr: 'Vérifier l\'affiliation scolaire par e-mail universitaire (actuellement vérifié par l\'admin)' }, status: 'planned' },
   ];
 
   const statusOrder = { 'in-progress': 0, 'planned': 1, 'done': 2 };

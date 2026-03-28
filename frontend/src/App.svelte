@@ -25,6 +25,9 @@
   import Questions from './routes/Questions.svelte';
   import QuestionDetail from './routes/QuestionDetail.svelte';
   import NewQuestion from './routes/NewQuestion.svelte';
+  import Settings from './routes/Settings.svelte';
+  import BookList from './routes/BookList.svelte';
+  import BookDetailPage from './routes/BookDetail.svelte';
 
   let hash = $state(window.location.hash || '#/');
 
@@ -70,6 +73,9 @@
     if (base === '/questions') return { page: 'questions', params };
     if (base === '/question') return { page: 'question', params };
     if (base === '/new-question') return { page: 'new-question', params };
+    if (base === '/settings') return { page: 'settings', params };
+    if (base === '/books') return { page: 'books', params };
+    if (base === '/book') return { page: 'book', params };
     return { page: 'home', params };
   }
 
@@ -116,7 +122,7 @@
     {#if route.page === 'tag'}
       <TagDetail id={route.params.id || ''} />
     {:else if route.page === 'new'}
-      <NewArticle forkOf={route.params.fork_of || ''} editUri={route.params.edit || ''} draftId={route.params.draft || ''} />
+      <NewArticle forkOf={route.params.fork_of || ''} editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} />
     {:else if route.page === 'about'}
       <About />
     {:else if route.page === 'roadmap'}
@@ -145,6 +151,12 @@
       <QuestionDetail uri={route.params.uri || ''} />
     {:else if route.page === 'new-question'}
       <NewQuestion />
+    {:else if route.page === 'settings'}
+      <Settings />
+    {:else if route.page === 'books'}
+      <BookList />
+    {:else if route.page === 'book'}
+      <BookDetailPage id={route.params.id || ''} />
     {/if}
   </div>
 {/if}

@@ -24,6 +24,17 @@ pub struct ProfileLink {
     pub url: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EducationEntry {
+    pub degree: String,
+    pub school: String,
+    #[serde(default)]
+    pub year: String,
+    /// true = currently enrolled / in progress
+    #[serde(default)]
+    pub current: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ProfileResponse {
     pub did: String,
@@ -33,6 +44,10 @@ pub struct ProfileResponse {
     pub article_count: i64,
     pub series_count: i64,
     pub links: Vec<ProfileLink>,
+    pub email: Option<String>,
+    pub education: Vec<EducationEntry>,
+    pub affiliation: Option<String>,
+    pub credentials_verified: bool,
 }
 
 pub async fn list_follows(pool: &PgPool, did: &str) -> crate::Result<Vec<FollowedUser>> {
@@ -126,6 +141,10 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         display_name: Option<String>,
         avatar_url: Option<String>,
         links: Option<String>,
+        email: Option<String>,
+        education: serde_json::Value,
+        affiliation: Option<String>,
+        credentials_verified: Option<bool>,
         article_count: i64,
         series_count: i64,
     }
@@ -133,9 +152,15 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
     let row = sqlx::query_as::<_, ProfileRow>(
         "SELECT \
             p.handle, p.display_name, p.avatar_url, p.links, \
+            us.email, \
+            p.education, \
+            p.affiliation, \
+            p.credentials_verified, \
             (SELECT COUNT(*) FROM articles WHERE did = $1) AS article_count, \
             (SELECT COUNT(*) FROM series WHERE created_by = $1) AS series_count \
-         FROM profiles p WHERE p.did = $1",
+         FROM profiles p \
+         LEFT JOIN user_settings us ON us.did = p.did \
+         WHERE p.did = $1",
     )
     .bind(did)
     .fetch_optional(pool)
@@ -148,15 +173,23 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         .unwrap_or_default();
 
     match row {
-        Some(r) => Ok(ProfileResponse {
-            did: did.to_string(),
-            handle: r.handle,
-            display_name: r.display_name,
-            avatar_url: r.avatar_url,
-            article_count: r.article_count,
-            series_count: r.series_count,
-            links,
-        }),
+        Some(r) => {
+            let education: Vec<EducationEntry> =
+                serde_json::from_value(r.education).unwrap_or_default();
+            Ok(ProfileResponse {
+                did: did.to_string(),
+                handle: r.handle,
+                display_name: r.display_name,
+                avatar_url: r.avatar_url,
+                article_count: r.article_count,
+                series_count: r.series_count,
+                links,
+                email: r.email,
+                education,
+                affiliation: r.affiliation,
+                credentials_verified: r.credentials_verified.unwrap_or(false),
+            })
+        }
         None => Ok(ProfileResponse {
             did: did.to_string(),
             handle: None,
@@ -165,6 +198,10 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
             article_count: 0,
             series_count: 0,
             links: Vec::new(),
+            email: None,
+            education: Vec::new(),
+            affiliation: None,
+            credentials_verified: false,
         }),
     }
 }

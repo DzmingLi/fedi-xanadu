@@ -2,6 +2,7 @@
   import { listComments, createComment, updateComment, deleteComment, voteComment, getMyCommentVotes } from '../api';
   import { getAuth } from '../auth';
   import { t } from '../i18n';
+  import { isBlocked } from '../blocklist';
   import type { Comment } from '../types';
 
   let {
@@ -24,8 +25,9 @@
   let myCommentVotes = $state<Record<string, number>>({});
 
   let isLoggedIn = $derived(!!getAuth());
-  let rootComments = $derived(comments.filter(c => !c.parent_id));
-  function getReplies(parentId: string) { return comments.filter(c => c.parent_id === parentId); }
+  let visibleComments = $derived(comments.filter(c => !isBlocked(c.did)));
+  let rootComments = $derived(visibleComments.filter(c => !c.parent_id));
+  function getReplies(parentId: string) { return visibleComments.filter(c => c.parent_id === parentId); }
 
   // Exposed for parent to set quote text from text selection
   export function setQuoteText(text: string) {

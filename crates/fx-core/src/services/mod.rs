@@ -14,4 +14,7 @@ pub mod tag_service;
 pub mod notification_service;
 pub mod appeal_service;
 pub mod moderation_service;
+pub mod block_service;
+pub mod report_service;
 pub mod vote_service;
+pub mod book_service;

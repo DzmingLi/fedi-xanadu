@@ -7,7 +7,7 @@ use crate::region::{InstanceMode, visibility_filter};
 const ARTICLE_BASE: &str = "\
     SELECT a.at_uri, a.did, p.handle AS author_handle, a.kind, a.title, a.description, \
     a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
-    a.question_uri, a.answer_count, \
+    a.question_uri, a.answer_count, a.restricted, \
     COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
     COALESCE((SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = a.at_uri), 0) AS bookmark_count, \
     a.created_at, a.updated_at \
@@ -306,13 +306,18 @@ pub async fn create_article(
     question_uri: Option<&str>,
 ) -> crate::Result<Article> {
     let lang = input.lang.as_deref().unwrap_or("zh");
-    let license = input.license.as_deref().unwrap_or("CC-BY-NC-SA-4.0");
+    let restricted = input.restricted.unwrap_or(false);
+    let license = if restricted { "All-Rights-Reserved" } else {
+        input.license.as_deref().unwrap_or("CC-BY-SA-4.0")
+    };
 
     let mut tx = pool.begin().await?;
 
+    let category = input.category.as_deref().unwrap_or("general");
+
     sqlx::query(
-        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0.8, $10, $11, $12)",
+        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0.8, $10, $11, $12, $13, $14, $15)",
     )
     .bind(at_uri)
     .bind(did)
@@ -326,6 +331,9 @@ pub async fn create_article(
     .bind(visibility)
     .bind(kind)
     .bind(question_uri)
+    .bind(restricted)
+    .bind(category)
+    .bind(input.book_id.as_deref())
     .execute(&mut *tx)
     .await?;
 
@@ -550,4 +558,85 @@ pub async fn auto_bookmark(pool: &PgPool, did: &str, uri: &str) -> crate::Result
     .bind(did).bind(uri)
     .execute(pool).await?;
     Ok(())
+}
+
+// --- Access control (paywall) ---
+
+/// Check if a viewer can access article content.
+/// Returns true if unrestricted, or if viewer is owner or has a grant.
+pub async fn check_content_access(pool: &PgPool, uri: &str, viewer_did: Option<&str>) -> crate::Result<bool> {
+    let row: Option<(String, bool)> = sqlx::query_as(
+        "SELECT did, restricted FROM articles WHERE at_uri = $1",
+    )
+    .bind(uri)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some((owner_did, restricted)) = row else {
+        return Err(crate::Error::NotFound { entity: "article", id: uri.to_string() });
+    };
+
+    if !restricted {
+        return Ok(true);
+    }
+
+    let Some(viewer) = viewer_did else {
+        return Ok(false);
+    };
+
+    if viewer == owner_did {
+        return Ok(true);
+    }
+
+    let granted: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM article_access_grants WHERE article_uri = $1 AND grantee_did = $2)",
+    )
+    .bind(uri).bind(viewer)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(granted)
+}
+
+pub async fn set_restricted(pool: &PgPool, uri: &str, restricted: bool) -> crate::Result<()> {
+    if restricted {
+        sqlx::query("UPDATE articles SET restricted = TRUE, license = 'All-Rights-Reserved', updated_at = NOW() WHERE at_uri = $1")
+            .bind(uri).execute(pool).await?;
+    } else {
+        sqlx::query("UPDATE articles SET restricted = FALSE, updated_at = NOW() WHERE at_uri = $1")
+            .bind(uri).execute(pool).await?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct AccessGrant {
+    pub article_uri: String,
+    pub grantee_did: String,
+    pub granted_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub async fn grant_access(pool: &PgPool, uri: &str, grantee_did: &str) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO article_access_grants (article_uri, grantee_did) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    )
+    .bind(uri).bind(grantee_did)
+    .execute(pool).await?;
+    Ok(())
+}
+
+pub async fn revoke_access(pool: &PgPool, uri: &str, grantee_did: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM article_access_grants WHERE article_uri = $1 AND grantee_did = $2")
+        .bind(uri).bind(grantee_did).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn list_access_grants(pool: &PgPool, uri: &str) -> crate::Result<Vec<AccessGrant>> {
+    let rows = sqlx::query_as::<_, AccessGrant>(
+        "SELECT article_uri, grantee_did, granted_at FROM article_access_grants WHERE article_uri = $1 ORDER BY granted_at",
+    )
+    .bind(uri)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }

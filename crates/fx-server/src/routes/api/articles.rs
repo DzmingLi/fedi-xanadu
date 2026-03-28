@@ -38,8 +38,16 @@ pub async fn get_article(
 
 pub async fn get_article_content(
     State(state): State<AppState>,
+    super::MaybeAuth(user): super::MaybeAuth,
     Query(UriQuery { uri }): Query<UriQuery>,
 ) -> ApiResult<Json<ArticleContent>> {
+    let has_access = article_service::check_content_access(
+        &state.pool, &uri, user.as_ref().map(|u| u.did.as_str()),
+    ).await?;
+    if !has_access {
+        return Err(AppError(fx_core::Error::Forbidden { action: "view restricted article" }));
+    }
+
     let format = article_service::get_content_format(&state.pool, &uri).await?;
 
     let node_id = uri_to_node_id(&uri);
@@ -156,25 +164,28 @@ pub async fn create_article(
         default_visibility(user.phone_verified), "article", None,
     ).await?;
 
-    if let Some(pds) = pds_session(&state.pool, &user.token).await {
-        let record = serde_json::json!({
-            "$type": fx_atproto::lexicon::ARTICLE,
-            "title": input.title,
-            "description": input.description.as_deref().unwrap_or(""),
-            "contentFormat": input.content_format,
-            "tags": input.tags,
-            "createdAt": now_rfc3339(),
-        });
-        if let Err(e) = state.at_client.create_record(
-            &pds.pds_url, &pds.access_jwt,
-            &fx_atproto::client::CreateRecordInput {
-                repo: pds.did,
-                collection: fx_atproto::lexicon::ARTICLE.to_string(),
-                record,
-                rkey: None,
-            },
-        ).await {
-            log_pds_error("create article", e);
+    // Skip PDS sync for restricted articles — content stays server-local only
+    if !input.restricted.unwrap_or(false) {
+        if let Some(pds) = pds_session(&state.pool, &user.token).await {
+            let record = serde_json::json!({
+                "$type": fx_atproto::lexicon::ARTICLE,
+                "title": input.title,
+                "description": input.description.as_deref().unwrap_or(""),
+                "contentFormat": input.content_format,
+                "tags": input.tags,
+                "createdAt": now_rfc3339(),
+            });
+            if let Err(e) = state.at_client.create_record(
+                &pds.pds_url, &pds.access_jwt,
+                &fx_atproto::client::CreateRecordInput {
+                    repo: pds.did,
+                    collection: fx_atproto::lexicon::ARTICLE.to_string(),
+                    record,
+                    rkey: None,
+                },
+            ).await {
+                log_pds_error("create article", e);
+            }
         }
     }
 
@@ -197,6 +208,7 @@ pub struct ArticleFullResponse {
     my_vote: i32,
     is_bookmarked: bool,
     learned: bool,
+    access_denied: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -223,30 +235,40 @@ pub async fn get_article_full(
         article_service::get_translations(&state.pool, mode, &uri),
     ).map_err(AppError)?;
 
-    let node_id = uri_to_node_id(&uri);
-    let repo = state.pijul.repo_path(&node_id);
-    let src_ext = match article.content_format.as_str() {
-        "markdown" => "md",
-        "html" => "html",
-        _ => "typ",
-    };
-    let src_path = repo.join(format!("content.{src_ext}"));
-    let html_path = repo.join("content.html");
+    // Access control check
+    let has_access = article_service::check_content_access(
+        &state.pool, &uri, user.as_ref().map(|u| u.did.as_str()),
+    ).await?;
 
-    let source = match tokio::fs::read_to_string(&src_path).await {
-        Ok(s) => s,
-        Err(_) => tokio::fs::read_to_string(repo.join("content.typ"))
-            .await
-            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?,
-    };
-    let html = if article.content_format == "html" {
-        source.clone()
-    } else if is_cached_fresh(&html_path, &src_path).await {
-        tokio::fs::read_to_string(&html_path).await?
+    let content = if has_access {
+        let node_id = uri_to_node_id(&uri);
+        let repo = state.pijul.repo_path(&node_id);
+        let src_ext = match article.content_format.as_str() {
+            "markdown" => "md",
+            "html" => "html",
+            _ => "typ",
+        };
+        let src_path = repo.join(format!("content.{src_ext}"));
+        let html_path = repo.join("content.html");
+
+        let source = match tokio::fs::read_to_string(&src_path).await {
+            Ok(s) => s,
+            Err(_) => tokio::fs::read_to_string(repo.join("content.typ"))
+                .await
+                .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?,
+        };
+        let html = if article.content_format == "html" {
+            source.clone()
+        } else if is_cached_fresh(&html_path, &src_path).await {
+            tokio::fs::read_to_string(&html_path).await?
+        } else {
+            let rendered = render_content(&article.content_format, &source, &repo)?;
+            let _ = tokio::fs::write(&html_path, &rendered).await;
+            rendered
+        };
+        ArticleContent { source, html }
     } else {
-        let rendered = render_content(&article.content_format, &source, &repo)?;
-        let _ = tokio::fs::write(&html_path, &rendered).await;
-        rendered
+        ArticleContent { source: String::new(), html: String::new() }
     };
 
     let (my_vote, is_bookmarked, learned) = if let Some(ref u) = user {
@@ -266,7 +288,7 @@ pub async fn get_article_full(
 
     Ok(Json(ArticleFullResponse {
         article,
-        content: ArticleContent { source, html },
+        content,
         prereqs,
         forks,
         votes: ArticleVoteSummary {
@@ -279,6 +301,7 @@ pub async fn get_article_full(
         my_vote,
         is_bookmarked,
         learned,
+        access_denied: !has_access,
     }))
 }
 
@@ -357,6 +380,13 @@ pub async fn fork_article(
     }
 
     let source = article_service::get_article(&state.pool, state.instance_mode, &input.uri).await?;
+
+    if source.license == "All-Rights-Reserved" {
+        return Err(AppError(fx_core::Error::Forbidden { action: "fork proprietary article" }));
+    }
+    if source.restricted {
+        return Err(AppError(fx_core::Error::Forbidden { action: "fork restricted article" }));
+    }
 
     let fork_at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
     let fork_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::FORK, tid());
@@ -616,6 +646,64 @@ pub async fn delete_article(
     let _ = tokio::fs::remove_dir_all(&repo_path).await;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+// --- Access control (paywall) ---
+
+#[derive(serde::Deserialize)]
+pub struct SetRestrictedInput {
+    pub uri: String,
+    pub restricted: bool,
+}
+
+pub async fn set_restricted(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<SetRestrictedInput>,
+) -> ApiResult<StatusCode> {
+    let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
+    require_owner(Some(&owner), &user.did)?;
+    article_service::set_restricted(&state.pool, &input.uri, input.restricted).await?;
+    Ok(StatusCode::OK)
+}
+
+#[derive(serde::Deserialize)]
+pub struct AccessGrantInput {
+    pub uri: String,
+    pub grantee_did: String,
+}
+
+pub async fn grant_access(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<AccessGrantInput>,
+) -> ApiResult<StatusCode> {
+    let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
+    require_owner(Some(&owner), &user.did)?;
+    article_service::grant_access(&state.pool, &input.uri, &input.grantee_did).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn revoke_access(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<AccessGrantInput>,
+) -> ApiResult<StatusCode> {
+    let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
+    require_owner(Some(&owner), &user.did)?;
+    article_service::revoke_access(&state.pool, &input.uri, &input.grantee_did).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn list_access_grants(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Query(UriQuery { uri }): Query<UriQuery>,
+) -> ApiResult<Json<Vec<article_service::AccessGrant>>> {
+    let owner = article_service::get_article_owner(&state.pool, &uri).await?;
+    require_owner(Some(&owner), &user.did)?;
+    let grants = article_service::list_access_grants(&state.pool, &uri).await?;
+    Ok(Json(grants))
 }
 
 // --- Search ---

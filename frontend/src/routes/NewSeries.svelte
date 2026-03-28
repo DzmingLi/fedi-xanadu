@@ -16,6 +16,7 @@
   let allSeries = $state<Series[]>([]);
   let selectedParentId = $state(parentId || '');
   let parentSearch = $state('');
+  let category = $state('general');
   let error = $state('');
   let creating = $state(false);
 
@@ -112,6 +113,7 @@
         description,
         topics: selectedTagId ? [selectedTagId] : undefined,
         parent_id: selectedParentId || undefined,
+        category,
       });
 
       // Add articles in order
@@ -171,6 +173,15 @@
   <label>
     {t('newArticle.descLabel')}
     <textarea bind:value={description} rows="3" placeholder={t('newSeries.descPlaceholder')}></textarea>
+  </label>
+
+  <label>
+    {t('newArticle.categoryLabel')}
+    <select bind:value={category}>
+      <option value="general">{t('category.general')}</option>
+      <option value="lecture">{t('category.lecture')}</option>
+      <option value="paper">{t('category.paper')}</option>
+    </select>
   </label>
 
   <label>

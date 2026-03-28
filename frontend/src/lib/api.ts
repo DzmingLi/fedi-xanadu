@@ -3,7 +3,8 @@ import type {
   ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
-  ArticleFullResponse, Notification, QuestionDetail,
+  ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
+  BlockedUser, Report, Book, BookDetail, BookEdition,
 } from './types';
 import { getToken } from './auth';
 
@@ -97,6 +98,7 @@ export const removeBookmark = (uri: string) => post<void>('/bookmarks/remove', {
 export const moveBookmark = (article_uri: string, folder_path: string) =>
   post<void>('/bookmarks/move', { article_uri, folder_path });
 export const listBookmarkFolders = () => get<string[]>('/bookmarks/folders');
+export const listPublicBookmarks = (did: string) => get<BookmarkWithTitle[]>(`/bookmarks/public?did=${encodeURIComponent(did)}`);
 
 // Interests
 export const getInterests = () => get<string[]>('/interests');
@@ -110,7 +112,7 @@ export const updateProfileLinks = (links: { label: string; url: string }[]) =>
 // Series
 export const listSeries = () => get<Series[]>('/series');
 export const getSeries = (id: string) => get<SeriesDetail>(`/series/by-id?id=${encodeURIComponent(id)}`);
-export const createSeries = (data: { title: string; description?: string; topics?: string[]; parent_id?: string }) =>
+export const createSeries = (data: { title: string; description?: string; topics?: string[]; parent_id?: string; category?: string }) =>
   post<Series>('/series', data);
 export const addSeriesArticle = (series_id: string, article_uri: string) =>
   post<void>('/series/articles', { series_id, article_uri });
@@ -169,6 +171,20 @@ export const getKeybindings = () => get<{ bindings: Record<string, string> }>('/
 export const setKeybindings = (bindings: Record<string, string>) =>
   post<{ bindings: Record<string, string> }>('/keybindings', { bindings });
 
+// Settings
+export const getSettings = () => get<UserSettings>('/settings');
+export const setSettings = (settings: UserSettings) => post<UserSettings>('/settings', settings);
+
+// Blocks
+export const blockUser = (did: string) => post<void>('/blocks', { did });
+export const unblockUser = (did: string) => post<void>('/blocks/remove', { did });
+export const listBlockedUsers = () => get<BlockedUser[]>('/blocks');
+export const listBlockedDids = () => get<string[]>('/blocks/dids');
+
+// Reports
+export const createReport = (target_did: string, kind: string, reason: string, target_uri?: string) =>
+  post<Report>('/reports', { target_did, target_uri, kind, reason });
+
 // Fork
 export const forkArticle = (uri: string) => post<Article>('/articles/fork', { uri });
 
@@ -209,6 +225,16 @@ export const updateArticle = (uri: string, data: { title?: string; description?:
 export const deleteArticle = (uri: string) =>
   post<void>('/articles/delete', { uri });
 
+// Access control (paywall)
+export const setRestricted = (uri: string, restricted: boolean) =>
+  post<void>('/articles/restricted', { uri, restricted });
+export const grantAccess = (uri: string, grantee_did: string) =>
+  post<void>('/articles/access/grant', { uri, grantee_did });
+export const revokeAccess = (uri: string, grantee_did: string) =>
+  post<void>('/articles/access/revoke', { uri, grantee_did });
+export const listAccessGrants = (uri: string) =>
+  get<AccessGrant[]>(`/articles/access/list?uri=${encodeURIComponent(uri)}`);
+
 // Drafts
 export const listDrafts = () => get<Draft[]>('/drafts');
 export const saveDraft = (data: CreateArticle) => post<Draft>('/drafts', data);
@@ -237,3 +263,17 @@ export const markAllNotificationsRead = () =>
 
 // Graph
 export const getGraph = () => get<GraphData>('/graph');
+
+// Books
+export const listBooks = (limit = 50, offset = 0) =>
+  get<Book[]>(`/books?limit=${limit}&offset=${offset}`);
+export const getBook = (id: string) =>
+  get<BookDetail>(`/books/by-id?id=${encodeURIComponent(id)}`);
+export const createBook = (data: { title: string; authors: string[]; description?: string; cover_url?: string; tags: string[]; prereqs?: string[] }) =>
+  post<Book>('/books', data);
+export const updateBook = (id: string, data: { title?: string; description?: string; cover_url?: string; edit_summary?: string }) =>
+  post<Book>('/books/update', { id, ...data });
+export const addBookEdition = (book_id: string, edition: { title: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[] }) =>
+  post<BookEdition>('/books/editions', { book_id, ...edition });
+export const getBookEditHistory = (id: string) =>
+  get<any[]>(`/books/history?id=${encodeURIComponent(id)}`);

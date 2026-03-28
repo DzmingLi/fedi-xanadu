@@ -20,7 +20,10 @@ export interface Article {
   translation_group: string | null;
   license: string;
   prereq_threshold: number;
+  category: string;
+  restricted: boolean;
   question_uri: string | null;
+  book_id: string | null;
   answer_count: number;
   vote_score: number;
   bookmark_count: number;
@@ -129,6 +132,42 @@ export interface Series {
   created_at: string;
   lang: string;
   translation_group: string | null;
+  category: string;
+}
+
+export interface Book {
+  id: string;
+  title: string;
+  authors: string[];
+  description: string;
+  cover_url: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export interface PurchaseLink {
+  label: string;
+  url: string;
+}
+
+export interface BookEdition {
+  id: string;
+  book_id: string;
+  title: string;
+  lang: string;
+  isbn: string | null;
+  publisher: string | null;
+  year: string | null;
+  translators: string[];
+  purchase_links: PurchaseLink[];
+  created_at: string;
+}
+
+export interface BookDetail {
+  book: Book;
+  editions: BookEdition[];
+  reviews: Article[];
+  review_count: number;
 }
 
 export interface SeriesArticle {
@@ -206,11 +245,25 @@ export interface ArticleFullResponse {
   my_vote: number;
   is_bookmarked: boolean;
   learned: boolean;
+  access_denied: boolean;
+}
+
+export interface AccessGrant {
+  article_uri: string;
+  grantee_did: string;
+  granted_at: string;
 }
 
 export interface ProfileLink {
   label: string;
   url: string;
+}
+
+export interface EducationEntry {
+  degree: string;
+  school: string;
+  year: string;
+  current?: boolean;
 }
 
 export interface ProfileData {
@@ -221,6 +274,21 @@ export interface ProfileData {
   article_count: number;
   series_count: number;
   links: ProfileLink[];
+  email: string | null;
+  education: EducationEntry[];
+  affiliation: string | null;
+  credentials_verified: boolean;
+}
+
+export interface UserSettings {
+  native_lang: string;
+  known_langs: string[];
+  prefer_native: boolean;
+  hide_unknown: boolean;
+  default_format: string;
+  email: string | null;
+  bookmarks_public: boolean;
+  public_folders: string[];
 }
 
 export interface Comment {
@@ -281,6 +349,27 @@ export interface QuestionDetail {
   answers: Article[];
 }
 
+export interface BlockedUser {
+  blocked_did: string;
+  handle: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+export interface Report {
+  id: string;
+  reporter_did: string;
+  target_did: string;
+  target_uri: string | null;
+  kind: string;
+  reason: string;
+  status: string;
+  admin_note: string | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
 export interface CreateArticle {
   title: string;
   description?: string;
@@ -289,6 +378,9 @@ export interface CreateArticle {
   lang?: string;
   license?: string;
   translation_of?: string;
+  restricted?: boolean;
+  category?: string;
+  book_id?: string;
   tags: string[];
   prereqs: { tag_id: string; prereq_type: string }[];
 }

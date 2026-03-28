@@ -54,9 +54,15 @@ enum Command {
         /// Tags (comma-separated tag IDs)
         #[arg(long, value_delimiter = ',')]
         tags: Vec<String>,
-        /// License (default: CC-BY-NC-SA-4.0)
-        #[arg(long, default_value = "CC-BY-NC-SA-4.0")]
+        /// License (default: CC-BY-SA-4.0)
+        #[arg(long, default_value = "CC-BY-SA-4.0")]
         license: String,
+        /// Category: general, lecture, paper, review
+        #[arg(long, default_value = "general")]
+        category: String,
+        /// Book ID (for reviews)
+        #[arg(long)]
+        book_id: Option<String>,
     },
     /// Update an existing article's content from a local file
     Update {
@@ -248,6 +254,68 @@ enum AdminCommand {
         #[arg(long)]
         into: String,
     },
+    /// Publish a question as a platform user
+    #[command(name = "publish-question")]
+    PublishQuestion {
+        /// Platform user handle to publish as
+        #[arg(long)]
+        r#as: String,
+        /// Path to .md, .typ, or .html file
+        #[arg(short, long)]
+        file: PathBuf,
+        /// Question title
+        #[arg(short, long)]
+        title: Option<String>,
+        /// Short description
+        #[arg(short, long)]
+        desc: Option<String>,
+        /// Language code (default: zh)
+        #[arg(short, long, default_value = "zh")]
+        lang: String,
+        /// Tags (comma-separated tag IDs)
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+    },
+    /// Post an answer to a question as a platform user
+    #[command(name = "publish-answer")]
+    PublishAnswer {
+        /// Platform user handle to publish as
+        #[arg(long)]
+        r#as: String,
+        /// Question AT URI to answer
+        #[arg(long)]
+        question: String,
+        /// Path to .md, .typ, or .html file
+        #[arg(short, long)]
+        file: PathBuf,
+        /// Answer title
+        #[arg(short, long)]
+        title: Option<String>,
+        /// Short description
+        #[arg(short, long)]
+        desc: Option<String>,
+        /// Language code (default: zh)
+        #[arg(short, long, default_value = "zh")]
+        lang: String,
+    },
+    /// Verify a user's credentials (education + affiliation)
+    #[command(name = "verify-credentials")]
+    VerifyCredentials {
+        /// DID or handle
+        did_or_handle: String,
+        /// Education entries as JSON: [{"degree":"PhD","school":"MIT","year":"2024","current":false}]
+        #[arg(long)]
+        education: Option<String>,
+        /// Current affiliation
+        #[arg(long)]
+        affiliation: Option<String>,
+    },
+    /// Revoke a user's credentials verification
+    #[command(name = "revoke-credentials")]
+    RevokeCredentials {
+        /// DID or handle
+        did_or_handle: String,
+    },
     /// Publish an article as a platform user
     Publish {
         /// Platform user handle to publish as
@@ -262,6 +330,12 @@ enum AdminCommand {
         /// Short description
         #[arg(short, long)]
         desc: Option<String>,
+        /// Category: general, lecture, paper, review
+        #[arg(long, default_value = "general")]
+        category: String,
+        /// Book ID (for reviews)
+        #[arg(long)]
+        book_id: Option<String>,
         /// Language code (default: zh)
         #[arg(short, long, default_value = "zh")]
         lang: String,
@@ -483,7 +557,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        Command::Upload { file, title, desc, lang, tags, license } => {
+        Command::Upload { file, title, desc, lang, tags, license, category, book_id } => {
             let token = config.token()?;
 
             let content = std::fs::read_to_string(&file)
@@ -516,6 +590,9 @@ async fn main() -> Result<()> {
                 lang: Some(lang),
                 license: Some(license),
                 translation_of: None,
+                restricted: None,
+                category: Some(category),
+                book_id,
                 tags,
                 prereqs: vec![],
             };
@@ -1184,7 +1261,128 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             println!("Appeal {id} ({kind} by {did}): {status}");
         }
 
-        AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license, translation_of } => {
+        AdminCommand::PublishQuestion { r#as: as_handle, file, title, desc, lang, tags } => {
+            let content = std::fs::read_to_string(&file)
+                .with_context(|| format!("Cannot read {}", file.display()))?;
+
+            let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let content_format = match ext {
+                "md" | "markdown" => "markdown",
+                "typ" | "typst" => "typst",
+                "html" | "htm" => "html",
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
+            };
+
+            let title = title.unwrap_or_else(|| {
+                file.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled")
+                    .to_string()
+            });
+
+            let body = serde_json::json!({
+                "as_handle": as_handle,
+                "title": title,
+                "description": desc.unwrap_or_default(),
+                "content": content,
+                "content_format": content_format,
+                "lang": lang,
+                "tags": tags,
+                "prereqs": [],
+            });
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/questions"))
+                .header("x-admin-secret", &secret)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Publish question failed")?
+                .json().await?;
+
+            let uri = resp["at_uri"].as_str().unwrap_or("?");
+            println!("Published question as {as_handle}: {title}");
+            println!("URI: {uri}");
+        }
+
+        AdminCommand::PublishAnswer { r#as: as_handle, question, file, title, desc, lang } => {
+            let content = std::fs::read_to_string(&file)
+                .with_context(|| format!("Cannot read {}", file.display()))?;
+
+            let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let content_format = match ext {
+                "md" | "markdown" => "markdown",
+                "typ" | "typst" => "typst",
+                "html" | "htm" => "html",
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
+            };
+
+            let title = title.unwrap_or_else(|| {
+                file.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Answer")
+                    .to_string()
+            });
+
+            let body = serde_json::json!({
+                "as_handle": as_handle,
+                "question_uri": question,
+                "title": title,
+                "description": desc.unwrap_or_default(),
+                "content": content,
+                "content_format": content_format,
+                "lang": lang,
+                "tags": [],
+                "prereqs": [],
+            });
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/questions/answer"))
+                .header("x-admin-secret", &secret)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Publish answer failed")?
+                .json().await?;
+
+            let uri = resp["at_uri"].as_str().unwrap_or("?");
+            println!("Published answer as {as_handle}: {title}");
+            println!("URI: {uri}");
+        }
+
+        AdminCommand::VerifyCredentials { did_or_handle, education, affiliation } => {
+            let did = resolve_did_or_handle(&did_or_handle);
+            let education_val: serde_json::Value = if let Some(ref e) = education {
+                serde_json::from_str(e).context("Invalid JSON for --education")?
+            } else {
+                serde_json::json!([])
+            };
+
+            client()
+                .post(format!("{base}/admin/credentials/verify"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({
+                    "did": did,
+                    "education": education_val,
+                    "affiliation": affiliation,
+                }))
+                .send().await?
+                .error_for_status().context("Verify credentials failed")?;
+
+            println!("Verified credentials for {did_or_handle} ({did})");
+        }
+
+        AdminCommand::RevokeCredentials { did_or_handle } => {
+            let did = resolve_did_or_handle(&did_or_handle);
+            client()
+                .post(format!("{base}/admin/credentials/revoke"))
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "did": did }))
+                .send().await?
+                .error_for_status().context("Revoke credentials failed")?;
+
+            println!("Revoked credentials for {did_or_handle} ({did})");
+        }
+
+        AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license, translation_of, category, book_id } => {
             let content = std::fs::read_to_string(&file)
                 .with_context(|| format!("Cannot read {}", file.display()))?;
 
@@ -1216,6 +1414,8 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "lang": lang,
                 "license": license,
                 "translation_of": translation_of,
+                "category": category,
+                "book_id": book_id,
                 "tags": tags,
                 "prereqs": [],
             });

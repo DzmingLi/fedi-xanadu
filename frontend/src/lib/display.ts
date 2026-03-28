@@ -1,5 +1,7 @@
 import type { Article, Series } from './types';
 import { getLocale } from './i18n';
+import { getLangPrefs } from './langPrefs';
+import { getBlockedDids } from './blocklist';
 
 export function authorName(a: Pick<Article, 'author_handle' | 'did'>): string {
   if (a.author_handle) return `@${a.author_handle}`;
@@ -7,14 +9,53 @@ export function authorName(a: Pick<Article, 'author_handle' | 'did'>): string {
 }
 
 /**
+ * Pick the best variant from a translation group.
+ * If user has langPrefs and prefer_native is true, prefer native_lang.
+ * Otherwise prefer the original (first by date).
+ */
+function pickBest<T extends { lang: string }>(variants: T[], locale: string): T {
+  const prefs = getLangPrefs();
+  if (prefs?.prefer_native) {
+    const native = variants.find(v => v.lang === prefs.native_lang);
+    if (native) return native;
+  }
+  return variants.find(v => v.lang === locale)
+    || variants.find(v => v.lang === 'zh')
+    || variants[0];
+}
+
+/**
+ * If hide_unknown is set, filter out articles in languages the user doesn't know.
+ */
+function filterByKnownLangs<T extends { lang: string }>(items: T[]): T[] {
+  const prefs = getLangPrefs();
+  if (!prefs?.hide_unknown) return items;
+  const known = new Set(prefs.known_langs);
+  return items.filter(i => known.has(i.lang));
+}
+
+/**
+ * Filter out content from blocked users.
+ */
+function filterBlocked<T extends { did?: string; created_by?: string }>(items: T[]): T[] {
+  const blocked = getBlockedDids();
+  if (blocked.size === 0) return items;
+  return items.filter(i => {
+    const d = (i as any).did || (i as any).created_by;
+    return !d || !blocked.has(d);
+  });
+}
+
+/**
  * Deduplicate articles by translation_group, preferring the version
- * matching the given locale. Falls back to any available version.
+ * matching the given locale or user preference.
  */
 export function deduplicateByTranslation(articles: Article[], locale: string): Article[] {
+  const filtered = filterByKnownLangs(filterBlocked(articles));
   const groups = new Map<string, Article[]>();
   const ungrouped: Article[] = [];
 
-  for (const a of articles) {
+  for (const a of filtered) {
     const key = a.translation_group;
     if (key) {
       const arr = groups.get(key) || [];
@@ -27,10 +68,7 @@ export function deduplicateByTranslation(articles: Article[], locale: string): A
 
   const result: Article[] = [...ungrouped];
   for (const [, variants] of groups) {
-    const match = variants.find(a => a.lang === locale)
-      || variants.find(a => a.lang === 'zh')
-      || variants[0];
-    result.push(match);
+    result.push(pickBest(variants, locale));
   }
 
   return result;
@@ -40,10 +78,11 @@ export function deduplicateByTranslation(articles: Article[], locale: string): A
  * Deduplicate series by translation_group, preferring the locale match.
  */
 export function deduplicateSeriesByTranslation(series: Series[], locale: string): Series[] {
+  const filtered = filterByKnownLangs(filterBlocked(series));
   const groups = new Map<string, Series[]>();
   const ungrouped: Series[] = [];
 
-  for (const s of series) {
+  for (const s of filtered) {
     const key = s.translation_group;
     if (key) {
       const arr = groups.get(key) || [];
@@ -56,10 +95,7 @@ export function deduplicateSeriesByTranslation(series: Series[], locale: string)
 
   const result: Series[] = [...ungrouped];
   for (const [, variants] of groups) {
-    const match = variants.find(s => s.lang === locale)
-      || variants.find(s => s.lang === 'zh')
-      || variants[0];
-    result.push(match);
+    result.push(pickBest(variants, locale));
   }
 
   return result;

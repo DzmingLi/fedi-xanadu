@@ -8,7 +8,7 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use super::{Auth, WriteAuth};
+use super::{Auth, WriteAuth, DidQuery};
 
 #[derive(serde::Deserialize)]
 pub struct AddBookmarkInput {
@@ -82,4 +82,51 @@ pub async fn list_bookmark_folders(
 ) -> ApiResult<Json<Vec<String>>> {
     let folders = bookmark_service::list_bookmark_folders(&state.pool, &user.did).await?;
     Ok(Json(folders))
+}
+
+/// View another user's public bookmarks (respects their visibility settings).
+pub async fn list_public_bookmarks(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<DidQuery>,
+) -> ApiResult<Json<Vec<bookmark_service::BookmarkWithTitle>>> {
+    // Check if the user has bookmarks_public enabled
+    #[derive(sqlx::FromRow)]
+    struct VisRow {
+        bookmarks_public: bool,
+        public_folders: sqlx::types::JsonValue,
+    }
+
+    let vis = sqlx::query_as::<_, VisRow>(
+        "SELECT COALESCE(bookmarks_public, false) AS bookmarks_public, \
+         COALESCE(public_folders, '[]') AS public_folders \
+         FROM user_settings WHERE did = $1",
+    )
+    .bind(&q.did)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let (is_public, folders) = match vis {
+        Some(v) => {
+            let f: Vec<String> = serde_json::from_value(v.public_folders).unwrap_or_default();
+            (v.bookmarks_public, f)
+        }
+        None => (false, Vec::new()),
+    };
+
+    if !is_public {
+        return Ok(Json(Vec::new()));
+    }
+
+    let all = bookmark_service::list_bookmarks(&state.pool, &q.did).await?;
+
+    // If specific folders are set, only return those; otherwise return all
+    if folders.is_empty() {
+        Ok(Json(all))
+    } else {
+        let filtered = all
+            .into_iter()
+            .filter(|b| folders.iter().any(|f| b.folder_path.starts_with(f)))
+            .collect();
+        Ok(Json(filtered))
+    }
 }

@@ -1,9 +1,10 @@
 <script lang="ts">
   import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts } from '../lib/api';
-  import { t } from '../lib/i18n';
+  import { t, getLocale } from '../lib/i18n';
+  import { getLangPrefs } from '../lib/langPrefs';
   import type { Tag, Article } from '../lib/types';
 
-  let { forkOf = '', editUri = '', draftId: initialDraftId = '' } = $props();
+  let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
   let isEditing = $state(false);
   // svelte-ignore state_referenced_locally
   let currentDraftId = $state(initialDraftId);
@@ -15,10 +16,13 @@
   let title = $state('');
   let description = $state('');
   let content = $state('');
-  let contentFormat = $state('typst');
-  let lang = $state('zh');
-  let license = $state('CC-BY-NC-SA-4.0');
+  let contentFormat = $state(getLangPrefs()?.default_format || 'typst');
+  let lang = $state(getLangPrefs()?.native_lang || getLocale());
+  let license = $state('CC-BY-SA-4.0');
+  let restricted = $state(false);
   let translationOf = $state('');
+  let category = $state(initialCategory || 'general');
+  let bookId = $state(initialBookId || '');
   let selectedTags = $state<string[]>([]);
   let prereqs = $state<Array<{ tag_id: string; prereq_type: string }>>([]);
   let submitting = $state(false);
@@ -185,9 +189,12 @@
           description: description.trim() || undefined,
           content: content.trim(),
           content_format: contentFormat,
-          lang: lang || 'zh',
-          license: license || undefined,
+          lang: lang || getLocale(),
+          license: restricted ? 'All-Rights-Reserved' : (license || undefined),
           translation_of: translationOf || undefined,
+          restricted: restricted || undefined,
+          category: category || undefined,
+          book_id: bookId || undefined,
           tags: selectedTags,
           prereqs,
         });
@@ -335,7 +342,7 @@
         description: description.trim() || undefined,
         content: content,
         content_format: contentFormat,
-        lang: lang || 'zh',
+        lang: lang || getLocale(),
         license: license || undefined,
         tags: selectedTags,
         prereqs,
@@ -373,9 +380,12 @@
           description: description.trim() || undefined,
           content: content.trim(),
           content_format: contentFormat,
-          lang: lang || 'zh',
-          license: license || undefined,
+          lang: lang || getLocale(),
+          license: restricted ? 'All-Rights-Reserved' : (license || undefined),
           translation_of: translationOf || undefined,
+          restricted: restricted || undefined,
+          category: category || undefined,
+          book_id: bookId || undefined,
           tags: selectedTags,
           prereqs,
         });
@@ -392,6 +402,8 @@
               lang: lv.lang,
               license: license || undefined,
               translation_of: article.at_uri,
+              category: category || undefined,
+              book_id: bookId || undefined,
               tags: selectedTags,
               prereqs,
             });
@@ -444,7 +456,7 @@
   </div>
   <div class="form-group" style="flex:1">
     <label for="license">{t('newArticle.licenseLabel')}</label>
-    <select id="license" bind:value={license}>
+    <select id="license" bind:value={license} disabled={restricted}>
       <option value="CC-BY-NC-SA-4.0">CC BY-NC-SA 4.0</option>
       <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
       <option value="CC-BY-4.0">CC BY 4.0</option>
@@ -455,6 +467,19 @@
       <option value="Apache-2.0">Apache 2.0</option>
       <option value="GFDL-1.3">GFDL 1.3</option>
       <option value="All-Rights-Reserved">All Rights Reserved</option>
+    </select>
+    <label class="restricted-check">
+      <input type="checkbox" bind:checked={restricted} />
+      {t('newArticle.restricted')}
+    </label>
+  </div>
+  <div class="form-group" style="flex:1">
+    <label for="category">{t('newArticle.categoryLabel')}</label>
+    <select id="category" bind:value={category}>
+      <option value="general">{t('category.general')}</option>
+      <option value="lecture">{t('category.lecture')}</option>
+      <option value="paper">{t('category.paper')}</option>
+      <option value="review">{t('category.review')}</option>
     </select>
   </div>
   <div class="form-group" style="flex:2">
@@ -692,6 +717,15 @@
   }
   .form-group {
     margin-bottom: 1.25rem;
+  }
+  .restricted-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text-secondary);
   }
   .form-hint {
     font-size: 12px;
