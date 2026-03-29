@@ -17,6 +17,7 @@ pub struct AddBookmarkInput {
     folder_path: Option<String>,
 }
 
+#[utoipa::path(get, path = "/api/v1/bookmarks", responses((status = 200, body = Vec<bookmark_service::BookmarkWithTitle>)), security(("bearer" = [])))]
 pub async fn list_bookmarks(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -25,6 +26,7 @@ pub async fn list_bookmarks(
     Ok(Json(rows))
 }
 
+#[utoipa::path(post, path = "/api/v1/bookmarks", responses((status = 201)), security(("bearer" = [])))]
 pub async fn add_bookmark(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -48,6 +50,7 @@ pub struct RemoveBookmarkInput {
     uri: String,
 }
 
+#[utoipa::path(delete, path = "/api/v1/bookmarks/remove", responses((status = 200)), security(("bearer" = [])))]
 pub async fn remove_bookmark(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -63,6 +66,7 @@ pub(crate) struct MoveBookmarkInput {
     folder_path: String,
 }
 
+#[utoipa::path(patch, path = "/api/v1/bookmarks/move", responses((status = 200)), security(("bearer" = [])))]
 pub async fn move_bookmark(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -77,6 +81,7 @@ pub async fn move_bookmark(
     Ok(StatusCode::OK)
 }
 
+#[utoipa::path(get, path = "/api/v1/bookmarks/folders", responses((status = 200, body = Vec<String>)), security(("bearer" = [])))]
 pub async fn list_bookmark_folders(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -85,6 +90,7 @@ pub async fn list_bookmark_folders(
     Ok(Json(folders))
 }
 
+#[utoipa::path(get, path = "/api/v1/bookmarks/public", params(("did" = String, Query)), responses((status = 200, body = Vec<bookmark_service::BookmarkWithTitle>)))]
 /// View another user's public bookmarks (respects their visibility settings).
 pub async fn list_public_bookmarks(
     State(state): State<AppState>,

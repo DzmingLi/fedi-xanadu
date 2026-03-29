@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Content format — determines which renderer to use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "content_format", rename_all = "lowercase")]
 pub enum ContentFormat {
@@ -65,7 +65,7 @@ impl std::fmt::Display for ContentFormat {
 }
 
 /// Content kind — article, question, or answer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "content_kind", rename_all = "lowercase")]
 pub enum ContentKind {
@@ -103,7 +103,7 @@ impl std::fmt::Display for ContentKind {
 }
 
 /// Article category.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "article_category", rename_all = "lowercase")]
 pub enum Category {
@@ -150,7 +150,7 @@ impl std::fmt::Display for Category {
 }
 
 /// Prerequisite strength.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
 pub enum PrereqType {

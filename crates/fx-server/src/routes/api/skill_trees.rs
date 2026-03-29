@@ -16,6 +16,7 @@ pub struct ListSkillTreesQuery {
     pub limit: Option<i64>,
 }
 
+#[utoipa::path(get, path = "/api/v1/skill-trees", responses((status = 200)))]
 pub async fn list_skill_trees(
     State(state): State<AppState>,
     Query(q): Query<ListSkillTreesQuery>,
@@ -39,6 +40,7 @@ pub(crate) struct EdgeInput {
     child_tag: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/skill-trees", responses((status = 201)), security(("bearer" = [])))]
 pub async fn create_skill_tree(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -61,6 +63,7 @@ pub async fn create_skill_tree(
     Ok((StatusCode::CREATED, Json(row)))
 }
 
+#[utoipa::path(get, path = "/api/v1/skill-trees/by-uri", params(("uri" = String, Query)), responses((status = 200)))]
 pub async fn get_skill_tree_detail(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
@@ -74,6 +77,7 @@ pub(crate) struct ForkSkillTreeInput {
     uri: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/skill-trees/fork", responses((status = 201)), security(("bearer" = [])))]
 pub async fn fork_skill_tree(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -91,6 +95,7 @@ pub(crate) struct SkillTreeEdgeInput {
     child_tag: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/skill-trees/edges", responses((status = 200)), security(("bearer" = [])))]
 pub async fn add_skill_tree_edge(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -100,6 +105,7 @@ pub async fn add_skill_tree_edge(
     Ok(StatusCode::OK)
 }
 
+#[utoipa::path(delete, path = "/api/v1/skill-trees/edges/remove", responses((status = 200)), security(("bearer" = [])))]
 pub async fn remove_skill_tree_edge(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -114,6 +120,7 @@ pub(crate) struct AdoptTreeInput {
     tree_uri: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/skill-trees/adopt", responses((status = 200)), security(("bearer" = [])))]
 pub async fn adopt_skill_tree(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -123,6 +130,7 @@ pub async fn adopt_skill_tree(
     Ok(StatusCode::OK)
 }
 
+#[utoipa::path(get, path = "/api/v1/skill-trees/active", responses((status = 200)))]
 pub async fn get_active_tree(
     State(state): State<AppState>,
     MaybeAuth(user): MaybeAuth,

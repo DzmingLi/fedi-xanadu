@@ -1,6 +1,6 @@
 use crate::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct ValidationError {
     pub field: String,
     pub message: String,

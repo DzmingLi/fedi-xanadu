@@ -4,7 +4,7 @@ use sqlx::PgPool;
 
 use crate::models::Tag;
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct GraphNode {
     pub id: String,
     pub name: String,
@@ -12,7 +12,7 @@ pub struct GraphNode {
     pub lit: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct GraphEdge {
     pub from: String,
     pub to: String,
@@ -20,7 +20,7 @@ pub struct GraphEdge {
     pub edge_type: String,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct GraphData {
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,

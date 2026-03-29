@@ -1,6 +1,6 @@
 use sqlx::PgPool;
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Report {
     pub id: String,
     pub reporter_did: String,
@@ -14,7 +14,7 @@ pub struct Report {
     pub resolved_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ReportWithNames {
     pub id: String,
     pub reporter_did: String,

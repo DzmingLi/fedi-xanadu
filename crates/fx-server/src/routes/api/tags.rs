@@ -13,12 +13,18 @@ use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
 use crate::auth::WriteAuth;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::IntoParams)]
 pub struct SearchTagsQuery {
     pub q: String,
     pub limit: Option<i64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/tags/search",
+    params(SearchTagsQuery),
+    responses((status = 200, description = "Matching tags", body = Vec<Tag>))
+)]
 pub async fn search_tags(
     State(state): State<AppState>,
     Query(q): Query<SearchTagsQuery>,
@@ -28,11 +34,17 @@ pub async fn search_tags(
     Ok(Json(tags))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::IntoParams)]
 pub struct ListTagsQuery {
     pub limit: Option<i64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/tags",
+    params(ListTagsQuery),
+    responses((status = 200, description = "All tags", body = Vec<Tag>))
+)]
 pub async fn list_tags(
     State(state): State<AppState>,
     Query(q): Query<ListTagsQuery>,
@@ -42,6 +54,15 @@ pub async fn list_tags(
     Ok(Json(tags))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/tags/{id}",
+    params(("id" = String, Path, description = "Tag ID")),
+    responses(
+        (status = 200, description = "Tag details", body = Tag),
+        (status = 404, description = "Not found"),
+    )
+)]
 pub async fn get_tag(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -50,6 +71,16 @@ pub async fn get_tag(
     Ok(Json(tag))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/tags",
+    request_body = CreateTag,
+    responses(
+        (status = 201, description = "Tag created", body = Tag),
+        (status = 422, description = "Validation error"),
+    ),
+    security(("bearer" = []))
+)]
 pub async fn create_tag(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -73,11 +104,19 @@ pub async fn create_tag(
     Ok((StatusCode::CREATED, Json(tag)))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct UpdateTagNamesInput {
     pub names: HashMap<String, String>,
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/tags/{id}/names",
+    params(("id" = String, Path, description = "Tag ID")),
+    request_body = UpdateTagNamesInput,
+    responses((status = 200, description = "Tag updated", body = Tag)),
+    security(("bearer" = []))
+)]
 pub async fn update_tag_names(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -100,12 +139,19 @@ pub async fn update_tag_names(
 
 // --- Set content teaches ---
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct SetTeachInput {
     pub content_uri: String,
     pub tag_id: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/tags/teach",
+    request_body = SetTeachInput,
+    responses((status = 200, description = "Teach association set")),
+    security(("bearer" = []))
+)]
 pub async fn set_teach(
     State(state): State<AppState>,
     crate::auth::Auth(_user): crate::auth::Auth,

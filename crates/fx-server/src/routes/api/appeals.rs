@@ -19,6 +19,7 @@ pub struct CreateAppealInput {
     pub reason: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/appeals", responses((status = 201)), security(("bearer" = [])))]
 /// Submit an appeal. Uses Auth (not WriteAuth) so banned users can appeal.
 pub async fn create_appeal(
     State(state): State<AppState>,
@@ -49,6 +50,7 @@ pub async fn create_appeal(
     Ok((StatusCode::CREATED, Json(appeal)))
 }
 
+#[utoipa::path(get, path = "/api/v1/appeals", responses((status = 200)), security(("bearer" = [])))]
 /// List my appeals. Uses Auth so banned users can check appeal status.
 pub async fn list_my_appeals(
     State(state): State<AppState>,

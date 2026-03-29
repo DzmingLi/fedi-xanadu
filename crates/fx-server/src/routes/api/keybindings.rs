@@ -13,6 +13,7 @@ pub struct KeybindingsData {
     pub bindings: serde_json::Value,
 }
 
+#[utoipa::path(get, path = "/api/v1/keybindings", responses((status = 200)), security(("bearer" = [])))]
 pub async fn get_keybindings(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -32,6 +33,7 @@ pub async fn get_keybindings(
     Ok(Json(KeybindingsData { bindings: value }))
 }
 
+#[utoipa::path(put, path = "/api/v1/keybindings", responses((status = 200)), security(("bearer" = [])))]
 pub async fn set_keybindings(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,

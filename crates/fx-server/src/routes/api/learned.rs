@@ -15,6 +15,7 @@ pub struct MarkLearnedInput {
     article_uri: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/learned", responses((status = 200)), security(("bearer" = [])))]
 pub async fn mark_learned(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -24,6 +25,7 @@ pub async fn mark_learned(
     Ok(StatusCode::OK)
 }
 
+#[utoipa::path(delete, path = "/api/v1/learned/remove", responses((status = 200)), security(("bearer" = [])))]
 pub async fn unmark_learned(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -33,6 +35,7 @@ pub async fn unmark_learned(
     Ok(StatusCode::OK)
 }
 
+#[utoipa::path(get, path = "/api/v1/learned/check", params(("uri" = String, Query)), responses((status = 200)))]
 pub async fn is_learned(
     State(state): State<AppState>,
     MaybeAuth(user): MaybeAuth,
@@ -46,6 +49,7 @@ pub async fn is_learned(
     Ok(Json(serde_json::json!({ "learned": learned })))
 }
 
+#[utoipa::path(get, path = "/api/v1/learned", responses((status = 200)), security(("bearer" = [])))]
 pub async fn list_learned(
     State(state): State<AppState>,
     Auth(user): Auth,

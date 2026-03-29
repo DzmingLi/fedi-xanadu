@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Book {
     pub id: String,
     pub title: String,
@@ -13,7 +13,7 @@ pub struct Book {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CreateBook {
     pub title: String,
     pub authors: Vec<String>,
@@ -24,13 +24,13 @@ pub struct CreateBook {
     pub prereqs: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PurchaseLink {
     pub label: String,
     pub url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct BookEdition {
     pub id: String,
     pub book_id: String,
@@ -40,12 +40,13 @@ pub struct BookEdition {
     pub publisher: Option<String>,
     pub year: Option<String>,
     pub translators: Vec<String>,
+    #[schema(value_type = Vec<PurchaseLink>)]
     pub purchase_links: sqlx::types::Json<Vec<PurchaseLink>>,
     pub cover_url: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CreateEdition {
     pub title: String,
     pub lang: String,
@@ -248,7 +249,7 @@ pub async fn get_book_reviews(
 
 // ---- Ratings ----
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BookRatingStats {
     pub avg_rating: f64,
     pub rating_count: i64,
@@ -287,7 +288,7 @@ pub async fn get_rating_stats(pool: &PgPool, book_id: &str) -> crate::Result<Boo
 
 // ---- Reading status ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ReadingStatus {
     pub book_id: String,
     pub user_did: String,
@@ -325,7 +326,7 @@ pub async fn remove_reading_status(pool: &PgPool, book_id: &str, user_did: &str)
 
 // ---- Chapters ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct BookChapter {
     pub id: String,
     pub book_id: String,
@@ -335,7 +336,7 @@ pub struct BookChapter {
     pub article_uri: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CreateChapter {
     pub title: String,
     pub parent_id: Option<String>,
@@ -389,7 +390,7 @@ pub async fn delete_chapter(pool: &PgPool, id: &str) -> crate::Result<()> {
 
 // ---- Chapter progress ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ChapterProgress {
     pub book_id: String,
     pub chapter_id: String,

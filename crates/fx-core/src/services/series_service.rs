@@ -4,7 +4,7 @@ use sqlx::PgPool;
 
 use crate::error::Error;
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct SeriesRow {
     pub id: String,
     pub title: String,
@@ -19,7 +19,7 @@ pub struct SeriesRow {
     pub category: String,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct SeriesListRow {
     pub id: String,
     pub title: String,
@@ -35,7 +35,7 @@ pub struct SeriesListRow {
     pub category: String,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct SeriesArticleRow {
     pub series_id: String,
     pub article_uri: String,
@@ -45,13 +45,13 @@ pub struct SeriesArticleRow {
     pub order_index: i32,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct SeriesPrereqRow {
     pub article_uri: String,
     pub prereq_article_uri: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct SeriesDetailResponse {
     pub series: SeriesRow,
     pub articles: Vec<SeriesArticleRow>,
@@ -61,20 +61,20 @@ pub struct SeriesDetailResponse {
 }
 
 /// Recursive tree node for full hierarchy display.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct SeriesTreeNode {
     pub series: SeriesRow,
     pub articles: Vec<SeriesArticleRow>,
     pub children: Vec<SeriesTreeNode>,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct SeriesArticleMemberRow {
     pub series_id: String,
     pub article_uri: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct SeriesContextItem {
     pub series_id: String,
     pub series_title: String,
@@ -83,7 +83,7 @@ pub struct SeriesContextItem {
     pub next: Vec<SeriesNavItem>,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct SeriesNavItem {
     pub article_uri: String,
     pub title: String,

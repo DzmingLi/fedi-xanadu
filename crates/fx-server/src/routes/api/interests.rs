@@ -10,6 +10,7 @@ use crate::auth::{Auth, WriteAuth};
 
 const MAX_INTERESTS: usize = 100;
 
+#[utoipa::path(get, path = "/api/v1/interests", responses((status = 200, body = Vec<String>)), security(("bearer" = [])))]
 pub async fn get_interests(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -28,6 +29,7 @@ pub(crate) struct SetInterestsInput {
     tag_ids: Vec<String>,
 }
 
+#[utoipa::path(put, path = "/api/v1/interests", responses((status = 200)), security(("bearer" = [])))]
 pub async fn set_interests(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,

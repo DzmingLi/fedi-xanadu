@@ -8,7 +8,7 @@ use crate::content::{Category, ContentFormat, ContentKind};
 
 // ---- DB row ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Article {
     pub at_uri: String,
     pub did: String,
@@ -36,7 +36,7 @@ pub struct Article {
 
 // ---- Request ----
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CreateArticle {
     pub title: String,
     pub description: Option<String>,
@@ -55,21 +55,22 @@ pub struct CreateArticle {
 
 // ---- Response ----
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ArticleContent {
     pub source: String,
     pub html: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ArticlePrereqRow {
     pub tag_id: String,
     pub prereq_type: String,
     pub tag_name: String,
+    #[schema(value_type = HashMap<String, String>)]
     pub tag_names: sqlx::types::Json<HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ForkWithTitle {
     pub fork_uri: String,
     pub forked_uri: String,

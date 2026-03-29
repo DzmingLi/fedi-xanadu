@@ -15,12 +15,20 @@ use crate::auth::{WriteAuth, pds_session, log_pds_error};
 use fx_core::util::{content_hash, tid, uri_to_node_id, now_rfc3339};
 use super::UriQuery;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::IntoParams)]
 pub struct ListArticlesQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles",
+    params(ListArticlesQuery),
+    responses(
+        (status = 200, description = "List of articles", body = Vec<Article>),
+    )
+)]
 pub async fn list_articles(
     State(state): State<AppState>,
     Query(q): Query<ListArticlesQuery>,
@@ -31,6 +39,15 @@ pub async fn list_articles(
     Ok(Json(articles))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/by-uri",
+    params(("uri" = String, Query, description = "AT URI of the article")),
+    responses(
+        (status = 200, description = "Article metadata", body = Article),
+        (status = 404, description = "Not found"),
+    )
+)]
 pub async fn get_article(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
@@ -39,6 +56,16 @@ pub async fn get_article(
     Ok(Json(article))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/by-uri/content",
+    params(("uri" = String, Query, description = "AT URI of the article")),
+    responses(
+        (status = 200, description = "Article source and rendered HTML", body = ArticleContent),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Not found"),
+    )
+)]
 pub async fn get_article_content(
     State(state): State<AppState>,
     crate::auth::MaybeAuth(user): crate::auth::MaybeAuth,
@@ -281,6 +308,14 @@ pub(super) fn render_content(format: &str, source: &str, repo_path: &std::path::
         .map_err(|e| { tracing::warn!("render error: {e}"); AppError(fx_core::Error::Render(e.to_string())) })
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/by-uri/prereqs",
+    params(("uri" = String, Query, description = "AT URI of the article")),
+    responses(
+        (status = 200, description = "Article prerequisites", body = Vec<ArticlePrereqRow>),
+    )
+)]
 pub async fn get_article_prereqs(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
@@ -289,6 +324,14 @@ pub async fn get_article_prereqs(
     Ok(Json(prereqs))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/by-uri/forks",
+    params(("uri" = String, Query, description = "AT URI of the article")),
+    responses(
+        (status = 200, description = "Forks of the article", body = Vec<ForkWithTitle>),
+    )
+)]
 pub async fn get_article_forks(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
@@ -297,6 +340,17 @@ pub async fn get_article_forks(
     Ok(Json(forks))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/articles",
+    request_body = CreateArticle,
+    responses(
+        (status = 201, description = "Article created", body = Article),
+        (status = 401, description = "Unauthorized"),
+        (status = 422, description = "Validation error"),
+    ),
+    security(("bearer" = []))
+)]
 pub async fn create_article(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -368,7 +422,7 @@ pub async fn create_article(
 
 // --- Full article page data (single request) ---
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct ArticleFullResponse {
     article: Article,
     content: ArticleContent,
@@ -383,13 +437,21 @@ pub struct ArticleFullResponse {
     access_denied: bool,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, utoipa::ToSchema)]
 struct ArticleVoteSummary {
     score: i64,
     upvotes: i64,
     downvotes: i64,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/articles/full",
+    params(("uri" = String, Query, description = "AT URI of the article")),
+    responses(
+        (status = 200, description = "Full article page data", body = ArticleFullResponse),
+    )
+)]
 pub async fn get_article_full(
     State(state): State<AppState>,
     crate::auth::MaybeAuth(user): crate::auth::MaybeAuth,
@@ -480,6 +542,7 @@ pub struct BulkLimitQuery {
     pub limit: Option<i64>,
 }
 
+#[utoipa::path(get, path = "/api/v1/articles/all-teaches", responses((status = 200, body = Vec<article_service::ContentTeachRow>)))]
 pub async fn get_all_article_teaches(
     State(state): State<AppState>,
     Query(q): Query<BulkLimitQuery>,
@@ -489,6 +552,7 @@ pub async fn get_all_article_teaches(
     Ok(Json(rows))
 }
 
+#[utoipa::path(get, path = "/api/v1/articles/all-prereqs", responses((status = 200, body = Vec<article_service::ContentPrereqBulkRow>)))]
 pub async fn get_all_article_prereqs(
     State(state): State<AppState>,
     Query(q): Query<BulkLimitQuery>,
@@ -504,6 +568,7 @@ pub struct TagArticlesQuery {
     pub limit: Option<i64>,
 }
 
+#[utoipa::path(get, path = "/api/v1/articles/by-tag", params(("tag_id" = String, Query), ("limit" = Option<i64>, Query)), responses((status = 200, body = Vec<Article>)))]
 pub async fn get_articles_by_tag(
     State(state): State<AppState>,
     Query(q): Query<TagArticlesQuery>,
@@ -519,6 +584,7 @@ pub struct DidArticlesQuery {
     pub limit: Option<i64>,
 }
 
+#[utoipa::path(get, path = "/api/v1/articles/by-did", params(("did" = String, Query), ("limit" = Option<i64>, Query)), responses((status = 200, body = Vec<Article>)))]
 pub async fn get_articles_by_did(
     State(state): State<AppState>,
     Query(q): Query<DidArticlesQuery>,
@@ -528,6 +594,7 @@ pub async fn get_articles_by_did(
     Ok(Json(articles))
 }
 
+#[utoipa::path(get, path = "/api/v1/articles/translations", params(("uri" = String, Query)), responses((status = 200, body = Vec<Article>)))]
 pub async fn get_translations(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
@@ -538,6 +605,7 @@ pub async fn get_translations(
 
 // --- Fork ---
 
+#[utoipa::path(post, path = "/api/v1/articles/fork", request_body = ForkArticleInput, responses((status = 201, body = Article)), security(("bearer" = [])))]
 pub async fn fork_article(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -631,7 +699,7 @@ pub async fn fork_article(
     Ok((StatusCode::CREATED, Json(article)))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct ForkArticleInput {
     uri: String,
     /// Target format for format conversion on fork. If omitted, keeps original format.
@@ -640,18 +708,19 @@ pub struct ForkArticleInput {
 
 // --- Format conversion ---
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct ConvertInput {
     content: String,
     from: String,
     to: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct ConvertOutput {
     content: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/articles/convert", request_body = ConvertInput, responses((status = 200, body = ConvertOutput)))]
 pub async fn convert_content(
     Json(input): Json<ConvertInput>,
 ) -> ApiResult<Json<ConvertOutput>> {
@@ -671,6 +740,7 @@ pub async fn convert_content(
 const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp"];
 
+#[utoipa::path(post, path = "/api/v1/articles/upload-image", responses((status = 200, body = ImageUploadResponse)), security(("bearer" = [])))]
 pub async fn upload_image(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -740,7 +810,7 @@ pub async fn upload_image(
     Ok(Json(ImageUploadResponse { filename: safe_name }))
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct ImageUploadResponse {
     pub filename: String,
 }
@@ -753,6 +823,7 @@ pub struct ImageQuery {
     pub name: String,
 }
 
+#[utoipa::path(get, path = "/api/v1/articles/image", params(("uri" = String, Query), ("name" = String, Query)), responses((status = 200, description = "Image bytes")))]
 pub async fn get_image(
     State(state): State<AppState>,
     Query(q): Query<ImageQuery>,
@@ -787,7 +858,7 @@ pub async fn get_image(
 
 // --- Update article ---
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct UpdateArticleInput {
     pub uri: String,
     pub title: Option<String>,
@@ -795,6 +866,7 @@ pub struct UpdateArticleInput {
     pub content: Option<String>,
 }
 
+#[utoipa::path(put, path = "/api/v1/articles/update", request_body = UpdateArticleInput, responses((status = 200, body = Article)), security(("bearer" = [])))]
 pub async fn update_article(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -852,11 +924,12 @@ pub async fn update_article(
 
 // --- Delete article ---
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct DeleteArticleInput {
     pub uri: String,
 }
 
+#[utoipa::path(delete, path = "/api/v1/articles/delete", request_body = DeleteArticleInput, responses((status = 204, description = "Deleted")), security(("bearer" = [])))]
 pub async fn delete_article(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -876,12 +949,13 @@ pub async fn delete_article(
 
 // --- Access control (paywall) ---
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct SetRestrictedInput {
     pub uri: String,
     pub restricted: bool,
 }
 
+#[utoipa::path(put, path = "/api/v1/articles/restricted", request_body = SetRestrictedInput, responses((status = 200)), security(("bearer" = [])))]
 pub async fn set_restricted(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -893,12 +967,13 @@ pub async fn set_restricted(
     Ok(StatusCode::OK)
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct AccessGrantInput {
     pub uri: String,
     pub grantee_did: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/articles/access/grant", request_body = AccessGrantInput, responses((status = 200)), security(("bearer" = [])))]
 pub async fn grant_access(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -910,6 +985,7 @@ pub async fn grant_access(
     Ok(StatusCode::OK)
 }
 
+#[utoipa::path(delete, path = "/api/v1/articles/access/revoke", request_body = AccessGrantInput, responses((status = 200)), security(("bearer" = [])))]
 pub async fn revoke_access(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -921,6 +997,7 @@ pub async fn revoke_access(
     Ok(StatusCode::OK)
 }
 
+#[utoipa::path(get, path = "/api/v1/articles/access/list", params(("uri" = String, Query)), responses((status = 200, body = Vec<article_service::AccessGrant>)), security(("bearer" = [])))]
 pub async fn list_access_grants(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -940,6 +1017,7 @@ pub struct SearchQuery {
     pub limit: Option<i64>,
 }
 
+#[utoipa::path(get, path = "/api/v1/search", params(("q" = String, Query), ("limit" = Option<i64>, Query)), responses((status = 200, body = Vec<Article>)))]
 pub async fn search_articles(
     State(state): State<AppState>,
     Query(q): Query<SearchQuery>,

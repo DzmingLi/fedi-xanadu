@@ -2,7 +2,7 @@ use sqlx::PgPool;
 
 use crate::Result;
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Appeal {
     pub id: String,
     pub did: String,

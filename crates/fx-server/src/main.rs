@@ -1,6 +1,8 @@
 pub mod auth;
 mod config;
 mod error;
+pub mod metrics;
+mod openapi;
 mod routes;
 mod state;
 
@@ -21,6 +23,8 @@ async fn main() -> Result<()> {
             .with_env_filter(env_filter)
             .init();
     }
+
+    metrics::init();
 
     let config = config::Config::load()?;
     let state = state::AppState::new(&config).await?;

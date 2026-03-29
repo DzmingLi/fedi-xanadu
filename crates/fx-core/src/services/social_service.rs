@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct FollowedUser {
     pub follows_did: String,
     pub handle: Option<String>,
@@ -10,7 +10,7 @@ pub struct FollowedUser {
     pub has_update: bool,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct FollowEntry {
     pub did: String,
     pub handle: Option<String>,
@@ -18,13 +18,13 @@ pub struct FollowEntry {
     pub avatar_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ProfileLink {
     pub label: String,
     pub url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct EducationEntry {
     pub degree: String,
     pub school: String,
@@ -35,7 +35,7 @@ pub struct EducationEntry {
     pub current: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct ProfileResponse {
     pub did: String,
     pub handle: Option<String>,

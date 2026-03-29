@@ -31,6 +31,11 @@ reqwest.workspace = true
 blake3.workspace = true
 rand.workspace = true
 chrono.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+utoipa-swagger-ui.workspace = true
 regex-lite = "0.1"
 urlencoding = "2"
 

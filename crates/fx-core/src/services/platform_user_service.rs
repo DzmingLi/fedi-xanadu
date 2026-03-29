@@ -10,7 +10,7 @@ pub struct PlatformUser {
     pub password_hash: String,
 }
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct PlatformUserInfo {
     pub did: String,
     pub handle: String,

@@ -15,6 +15,7 @@ pub(crate) struct UpdateProfileLinksInput {
     links: Vec<social_service::ProfileLink>,
 }
 
+#[utoipa::path(get, path = "/api/v1/profile", params(("did" = String, Query)), responses((status = 200)))]
 pub async fn get_profile(
     State(state): State<AppState>,
     Query(DidQuery { did }): Query<DidQuery>,
@@ -23,6 +24,7 @@ pub async fn get_profile(
     Ok(Json(profile))
 }
 
+#[utoipa::path(put, path = "/api/v1/profile/links", responses((status = 200)), security(("bearer" = [])))]
 pub async fn update_profile_links(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,

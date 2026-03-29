@@ -10,13 +10,13 @@ use crate::state::AppState;
 use crate::auth::{Auth, extract_bearer_token};
 use fx_core::util::gen_session_token;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct LoginInput {
     identifier: String,
     password: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct LoginOutput {
     token: String,
     did: String,
@@ -25,6 +25,15 @@ pub struct LoginOutput {
     avatar: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/login",
+    request_body = LoginInput,
+    responses(
+        (status = 200, description = "Login successful", body = LoginOutput),
+        (status = 401, description = "Invalid credentials"),
+    )
+)]
 pub async fn login(
     State(state): State<AppState>,
     Json(input): Json<LoginInput>,
@@ -139,6 +148,12 @@ pub async fn login(
     }))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/logout",
+    responses((status = 200, description = "Logged out")),
+    security(("bearer" = []))
+)]
 pub async fn logout(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -149,7 +164,7 @@ pub async fn logout(
     Ok(StatusCode::OK)
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, utoipa::ToSchema)]
 pub(crate) struct AuthMeOutput {
     did: String,
     handle: String,
@@ -159,6 +174,15 @@ pub(crate) struct AuthMeOutput {
     ban_reason: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/me",
+    responses(
+        (status = 200, description = "Current user info", body = AuthMeOutput),
+        (status = 401, description = "Not authenticated"),
+    ),
+    security(("bearer" = []))
+)]
 pub async fn auth_me(
     State(state): State<AppState>,
     Auth(user): Auth,

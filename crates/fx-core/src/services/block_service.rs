@@ -36,7 +36,7 @@ pub async fn list_blocked_dids(pool: &PgPool, did: &str) -> crate::Result<Vec<St
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct BlockedUser {
     pub blocked_did: String,
     pub handle: Option<String>,

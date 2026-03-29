@@ -1,6 +1,6 @@
 use sqlx::PgPool;
 
-#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Notification {
     pub id: String,
     pub recipient_did: String,

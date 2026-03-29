@@ -21,20 +21,22 @@ fn visible(mode: InstanceMode) -> String {
 
 // ---- Row types local to this service ----
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ContentTeachRow {
     pub content_uri: String,
     pub tag_id: String,
     pub tag_name: String,
+    #[schema(value_type = HashMap<String, String>)]
     pub tag_names: sqlx::types::Json<std::collections::HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ContentPrereqBulkRow {
     pub content_uri: String,
     pub tag_id: String,
     pub prereq_type: String,
     pub tag_name: String,
+    #[schema(value_type = HashMap<String, String>)]
     pub tag_names: sqlx::types::Json<std::collections::HashMap<String, String>>,
 }
 
@@ -616,7 +618,7 @@ pub async fn set_restricted(pool: &PgPool, uri: &str, restricted: bool) -> crate
     Ok(())
 }
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct AccessGrant {
     pub article_uri: String,
     pub grantee_did: String,

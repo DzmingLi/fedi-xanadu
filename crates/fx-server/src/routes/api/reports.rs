@@ -13,6 +13,7 @@ pub struct CreateReportInput {
     pub reason: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/reports", responses((status = 200)), security(("bearer" = [])))]
 pub async fn create_report(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,

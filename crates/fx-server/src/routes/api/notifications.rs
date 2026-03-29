@@ -15,6 +15,7 @@ pub struct ListNotificationsQuery {
     pub offset: Option<i64>,
 }
 
+#[utoipa::path(get, path = "/api/v1/notifications", responses((status = 200)), security(("bearer" = [])))]
 pub async fn list_notifications(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -26,6 +27,7 @@ pub async fn list_notifications(
     Ok(Json(rows))
 }
 
+#[utoipa::path(get, path = "/api/v1/notifications/unread", responses((status = 200)), security(("bearer" = [])))]
 pub async fn unread_count(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -39,6 +41,7 @@ pub struct MarkReadInput {
     pub id: String,
 }
 
+#[utoipa::path(post, path = "/api/v1/notifications/read", responses((status = 200)), security(("bearer" = [])))]
 pub async fn mark_read(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -48,6 +51,7 @@ pub async fn mark_read(
     Ok(StatusCode::OK)
 }
 
+#[utoipa::path(post, path = "/api/v1/notifications/read-all", responses((status = 200)), security(("bearer" = [])))]
 pub async fn mark_all_read(
     State(state): State<AppState>,
     Auth(user): Auth,

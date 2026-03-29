@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Vote {
     pub at_uri: String,
     pub target_uri: String,
@@ -9,7 +9,7 @@ pub struct Vote {
     pub value: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Fork {
     pub fork_uri: String,
     pub source_uri: String,
@@ -18,7 +18,7 @@ pub struct Fork {
     pub vote_score: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct UserSkill {
     pub did: String,
     pub tag_id: String,
@@ -26,7 +26,7 @@ pub struct UserSkill {
     pub lit_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct UserBookmark {
     pub did: String,
     pub article_uri: String,
@@ -34,7 +34,7 @@ pub struct UserBookmark {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Comment {
     pub id: String,
     pub content_uri: String,
