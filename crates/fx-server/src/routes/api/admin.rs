@@ -93,12 +93,14 @@ pub async fn admin_create_article(
     let src_ext = fx_render::format_extension(input.article.content_format.as_str());
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
 
-    // Pre-render HTML cache
+    // Pre-render HTML cache (best-effort: don't fail the publish if rendering fails)
     if input.article.content_format != ContentFormat::Html {
-        let rendered = super::articles::render_content(
+        match super::articles::render_content(
             input.article.content_format.as_str(), &input.article.content, &repo_path,
-        )?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+        ) {
+            Ok(rendered) => { let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await; }
+            Err(e) => { tracing::warn!("render failed for {node_id}, saving raw content only: {e:?}"); }
+        }
     }
 
     if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
@@ -646,10 +648,12 @@ pub async fn admin_create_question(
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
 
     if input.article.content_format != ContentFormat::Html {
-        let rendered = super::articles::render_content(
+        match super::articles::render_content(
             input.article.content_format.as_str(), &input.article.content, &repo_path,
-        )?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+        ) {
+            Ok(rendered) => { let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await; }
+            Err(e) => { tracing::warn!("render failed for {node_id}, saving raw content only: {e:?}"); }
+        }
     }
 
     if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
@@ -702,10 +706,12 @@ pub async fn admin_post_answer(
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
 
     if input.article.content_format != ContentFormat::Html {
-        let rendered = super::articles::render_content(
+        match super::articles::render_content(
             input.article.content_format.as_str(), &input.article.content, &repo_path,
-        )?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+        ) {
+            Ok(rendered) => { let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await; }
+            Err(e) => { tracing::warn!("render failed for {node_id}, saving raw content only: {e:?}"); }
+        }
     }
 
     if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
