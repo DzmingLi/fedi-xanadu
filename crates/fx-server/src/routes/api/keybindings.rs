@@ -5,8 +5,7 @@ use axum::{
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use crate::auth::{Auth, WriteAuth, pds_session, log_pds_error};
-use fx_core::util::now_rfc3339;
+use crate::auth::{Auth, WriteAuth};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct KeybindingsData {
@@ -47,27 +46,6 @@ pub async fn set_keybindings(
     .bind(&json_str)
     .execute(&state.pool)
     .await?;
-
-    // Sync to PDS
-    if let Some(pds) = pds_session(&state.pool, &user.token).await {
-        let record = serde_json::json!({
-            "$type": fx_atproto::lexicon::KEYBINDINGS,
-            "bindings": input.bindings,
-            "updatedAt": now_rfc3339(),
-        });
-        if let Err(e) = state.at_client.create_record(
-            &pds.pds_url,
-            &pds.access_jwt,
-            &fx_atproto::client::CreateRecordInput {
-                repo: pds.did,
-                collection: fx_atproto::lexicon::KEYBINDINGS.to_string(),
-                record,
-                rkey: Some("self".to_string()),
-            },
-        ).await {
-            log_pds_error("sync keybindings", e);
-        }
-    }
 
     Ok(Json(KeybindingsData { bindings: input.bindings }))
 }

@@ -9,4 +9,3 @@ pub const TAG: &str = "li.dzming.fedi-xanadu.tag";
 pub const TAG_REL: &str = "li.dzming.fedi-xanadu.tagrel";
 pub const DRAFT: &str = "li.dzming.fedi-xanadu.draft";
 pub const DEFS: &str = "li.dzming.fedi-xanadu.defs";
-pub const KEYBINDINGS: &str = "li.dzming.fedi-xanadu.keybindings";
