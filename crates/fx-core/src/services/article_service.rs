@@ -230,7 +230,7 @@ pub async fn get_article_owner(pool: &PgPool, uri: &str) -> crate::Result<String
 }
 
 pub async fn get_content_format(pool: &PgPool, uri: &str) -> crate::Result<String> {
-    sqlx::query_scalar::<_, String>("SELECT content_format FROM articles WHERE at_uri = $1")
+    sqlx::query_scalar::<_, String>("SELECT content_format::text FROM articles WHERE at_uri = $1")
         .bind(uri)
         .fetch_optional(pool)
         .await?
