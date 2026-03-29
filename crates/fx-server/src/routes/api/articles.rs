@@ -6,7 +6,7 @@ use axum::{
 use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::*;
 use fx_core::region::default_visibility;
-use fx_core::services::{article_service, notification_service};
+use fx_core::services::{article_service, notification_service, series_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult, require_owner};
@@ -74,6 +74,9 @@ pub async fn get_article_content(
 
     let html = if format == "html" {
         source.clone()
+    } else if let Some(series_html) = try_series_render(&state, &uri, &format).await {
+        // Series virtual-document rendering succeeded — use it
+        series_html
     } else if is_cached_fresh(&html_path, &src_path).await {
         tokio::fs::read_to_string(&html_path).await?
     } else {
@@ -83,6 +86,86 @@ pub async fn get_article_content(
     };
 
     Ok(Json(ArticleContent { source, html }))
+}
+
+/// Try rendering this article as part of a series virtual document.
+/// Returns Some(html) if the article belongs to a typst-only series and rendering succeeds.
+/// Returns None to fall back to individual rendering.
+async fn try_series_render(
+    state: &crate::state::AppState,
+    article_uri: &str,
+    format: &str,
+) -> Option<String> {
+    // Only typst supports virtual-document compilation
+    if format != "typst" {
+        return None;
+    }
+
+    let (series_id, chapters) = series_service::get_series_chapters_for_render(
+        &state.pool, article_uri,
+    ).await.ok()??;
+
+    // All chapters must be typst
+    if chapters.iter().any(|c| c.content_format != "typst") {
+        return None;
+    }
+
+    // Check series-level cache
+    let first_node = uri_to_node_id(&chapters[0].article_uri);
+    let cache_dir = state.pijul.repo_path(&first_node).parent()?.to_path_buf();
+    let series_cache = cache_dir.join(format!("series-{series_id}.cache"));
+
+    // Check if cache is fresh (newer than all chapter sources)
+    let cache_fresh = if let Ok(cache_meta) = tokio::fs::metadata(&series_cache).await {
+        let cache_time = cache_meta.modified().ok();
+        let mut all_fresh = cache_time.is_some();
+        if all_fresh {
+            for ch in &chapters {
+                let node = uri_to_node_id(&ch.article_uri);
+                let src = state.pijul.repo_path(&node).join("content.typ");
+                if let Ok(src_meta) = tokio::fs::metadata(&src).await {
+                    if let (Some(ct), Ok(st)) = (cache_time, src_meta.modified()) {
+                        if st > ct { all_fresh = false; break; }
+                    }
+                }
+            }
+        }
+        all_fresh
+    } else {
+        false
+    };
+
+    if cache_fresh {
+        // Read per-chapter cache
+        let node = uri_to_node_id(article_uri);
+        let ch_cache = state.pijul.repo_path(&node).join(format!("content.series-{series_id}.html"));
+        return tokio::fs::read_to_string(&ch_cache).await.ok();
+    }
+
+    // Compile the whole series
+    let mut chapter_sources = Vec::new();
+    for ch in &chapters {
+        let node = uri_to_node_id(&ch.article_uri);
+        let src_path = state.pijul.repo_path(&node).join("content.typ");
+        let source = tokio::fs::read_to_string(&src_path).await.ok()?;
+        chapter_sources.push((ch.article_uri.clone(), source));
+    }
+
+    let rendered = tokio::task::spawn_blocking(move || {
+        fx_render::render_series_to_html(&chapter_sources)
+    }).await.ok()?.ok()?;
+
+    // Write per-chapter caches
+    for (ch_uri, ch_html) in &rendered {
+        let node = uri_to_node_id(ch_uri);
+        let ch_cache = state.pijul.repo_path(&node).join(format!("content.series-{series_id}.html"));
+        let _ = tokio::fs::write(&ch_cache, ch_html).await;
+    }
+
+    // Touch the series cache marker
+    let _ = tokio::fs::write(&series_cache, "").await;
+
+    rendered.get(article_uri).cloned()
 }
 
 async fn is_cached_fresh(cache: &std::path::Path, source: &std::path::Path) -> bool {

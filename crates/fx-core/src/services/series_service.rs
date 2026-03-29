@@ -583,3 +583,44 @@ pub async fn get_series_context(
 
     Ok(result)
 }
+
+/// Info about a chapter in a series, used for virtual-document rendering.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SeriesChapterInfo {
+    pub article_uri: String,
+    pub order_index: i32,
+    pub content_format: String,
+}
+
+/// Get all chapters in the same series as the given article, ordered by position.
+/// Returns None if the article doesn't belong to any series.
+/// If it belongs to multiple series, returns the first one found.
+pub async fn get_series_chapters_for_render(
+    pool: &PgPool,
+    article_uri: &str,
+) -> crate::Result<Option<(String, Vec<SeriesChapterInfo>)>> {
+    // Find the first series this article belongs to
+    let series_id: Option<String> = sqlx::query_scalar(
+        "SELECT series_id FROM series_articles WHERE article_uri = $1 LIMIT 1",
+    )
+    .bind(article_uri)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(series_id) = series_id else {
+        return Ok(None);
+    };
+
+    let chapters = sqlx::query_as::<_, SeriesChapterInfo>(
+        "SELECT sa.article_uri, sa.order_index, a.content_format::text \
+         FROM series_articles sa \
+         JOIN articles a ON a.at_uri = sa.article_uri \
+         WHERE sa.series_id = $1 \
+         ORDER BY sa.order_index",
+    )
+    .bind(&series_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Some((series_id, chapters)))
+}

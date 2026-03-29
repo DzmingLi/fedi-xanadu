@@ -8,7 +8,7 @@ use std::path::Path;
 pub use convert::convert_format;
 pub use markdown_render::render_markdown_to_html;
 pub use tex_render::render_tex_to_html;
-pub use typst_render::{render_typst_to_html, render_typst_to_html_with_images};
+pub use typst_render::{render_typst_to_html, render_typst_to_html_with_images, render_series_to_html};
 
 /// Map a content format identifier to its canonical file extension.
 pub fn format_extension(format: &str) -> &'static str {

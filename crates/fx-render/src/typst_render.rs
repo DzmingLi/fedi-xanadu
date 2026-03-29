@@ -177,6 +177,83 @@ fn extract_body(html: &str) -> String {
     }
 }
 
+/// Render an entire series as a single typst document, then split the output
+/// back into per-chapter HTML fragments. Cross-chapter references resolve
+/// naturally because typst compiles the whole document.
+///
+/// `chapters` is a list of (article_uri, typst_source) in series order.
+/// Returns a map from article_uri to rendered HTML.
+pub fn render_series_to_html(chapters: &[(String, String)]) -> anyhow::Result<HashMap<String, String>> {
+    if chapters.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Build the virtual document: wrap each chapter in an html.elem div with a unique marker
+    let mut full_source = String::new();
+    for (i, (uri, source)) in chapters.iter().enumerate() {
+        // Unique marker div wrapping each chapter
+        full_source.push_str(&format!(
+            "\n#html.elem(\"div\", attrs: (\"class\": \"fx-chapter\", \"data-uri\": \"{uri}\", \"data-idx\": \"{i}\"))[\n"
+        ));
+        full_source.push_str(source);
+        full_source.push_str("\n]\n");
+    }
+
+    let world = RenderWorld::new(&full_source);
+    let html = render_world(&world)?;
+
+    split_chapters(&html, chapters)
+}
+
+/// Split compiled HTML into per-chapter fragments by finding the fx-chapter marker divs.
+fn split_chapters(html: &str, chapters: &[(String, String)]) -> anyhow::Result<HashMap<String, String>> {
+    let mut result = HashMap::new();
+
+    for (i, (uri, _)) in chapters.iter().enumerate() {
+        let marker = format!(r#"data-uri="{uri}" data-idx="{i}""#);
+        // Also try the alternate attribute order
+        let marker_alt = format!(r#"data-idx="{i}" data-uri="{uri}""#);
+
+        let start_pos = html.find(&marker).or_else(|| html.find(&marker_alt));
+
+        if let Some(marker_pos) = start_pos {
+            // Find the opening > of this div
+            let div_content_start = match html[marker_pos..].find('>') {
+                Some(offset) => marker_pos + offset + 1,
+                None => continue,
+            };
+
+            // Track div nesting to find the matching </div>
+            let mut depth = 1i32;
+            let content_bytes = html[div_content_start..].as_bytes();
+            let mut pos = 0;
+            while pos < content_bytes.len() && depth > 0 {
+                if content_bytes[pos] == b'<' {
+                    let rest = &html[div_content_start + pos..];
+                    if rest.starts_with("<div") {
+                        depth += 1;
+                    } else if rest.starts_with("</div>") {
+                        depth -= 1;
+                        if depth == 0 {
+                            let chapter_html = html[div_content_start..div_content_start + pos].trim();
+                            result.insert(uri.clone(), chapter_html.to_string());
+                            break;
+                        }
+                    }
+                }
+                pos += 1;
+            }
+        }
+    }
+
+    // For any chapters not found in the split, return empty string
+    for (uri, _) in chapters {
+        result.entry(uri.clone()).or_default();
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,6 +290,31 @@ mod tests {
         assert!(html.contains(r#"class="thm-block thm-defn""#), "missing defn class");
         assert!(html.contains(r#"class="thm-block thm-thm""#), "missing thm class");
         assert!(html.contains(r#"class="thm-block thm-proof""#), "missing proof class");
+    }
+
+    #[test]
+    fn test_series_split() {
+        let ch1 = (
+            "at://did:local:test/article/ch1".to_string(),
+            "= Chapter One\nFirst chapter content with $x^2$ math.\n".to_string(),
+        );
+        let ch2 = (
+            "at://did:local:test/article/ch2".to_string(),
+            "= Chapter Two\nSecond chapter about $y = f(x)$.\n".to_string(),
+        );
+        let result = render_series_to_html(&[ch1.clone(), ch2.clone()]).unwrap();
+        eprintln!("=== ch1 ===\n{}", result.get(&ch1.0).unwrap());
+        eprintln!("=== ch2 ===\n{}", result.get(&ch2.0).unwrap());
+
+        let ch1_html = result.get(&ch1.0).unwrap();
+        let ch2_html = result.get(&ch2.0).unwrap();
+        assert!(ch1_html.contains("First chapter"), "ch1 should have its content");
+        assert!(ch2_html.contains("Second chapter"), "ch2 should have its content");
+        assert!(!ch1_html.contains("Second chapter"), "ch1 should not have ch2 content");
+        assert!(!ch2_html.contains("First chapter"), "ch2 should not have ch1 content");
+        // Both should have math
+        assert!(ch1_html.contains("<math"), "ch1 should have MathML");
+        assert!(ch2_html.contains("<math"), "ch2 should have MathML");
     }
 
     #[test]
