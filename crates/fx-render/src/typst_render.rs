@@ -27,6 +27,13 @@ const MATH_PREAMBLE: &str = r#"#import "mathyml/lib.typ": try-to-mathml, include
 #import "fx/lib.typ": *
 "#;
 
+/// Extended preamble for series documents (enables heading numbering for cross-references).
+const SERIES_PREAMBLE: &str = r#"#import "mathyml/lib.typ": try-to-mathml, include-mathfont
+#show math.equation: try-to-mathml
+#import "fx/lib.typ": *
+#set heading(numbering: "1.1")
+"#;
+
 struct RenderWorld {
     library: LazyHash<Library>,
     book: LazyHash<FontBook>,
@@ -39,10 +46,14 @@ struct RenderWorld {
 
 impl RenderWorld {
     fn new(text: &str) -> Self {
-        Self::with_repo(text, None)
+        Self::with_preamble(text, MATH_PREAMBLE, None)
     }
 
     fn with_repo(text: &str, repo_path: Option<&Path>) -> Self {
+        Self::with_preamble(text, MATH_PREAMBLE, repo_path)
+    }
+
+    fn with_preamble(text: &str, preamble: &str, repo_path: Option<&Path>) -> Self {
         let features: Features = [Feature::Html].into_iter().collect();
         let library = Library::builder().with_features(features).build();
 
@@ -73,7 +84,7 @@ impl RenderWorld {
         }
 
         // Main source = preamble + user content
-        let full_source = format!("{MATH_PREAMBLE}{text}");
+        let full_source = format!("{preamble}{text}");
         let main_id = FileId::new(None, VirtualPath::new("main.typ"));
         let main = Source::new(main_id, full_source);
         sources.insert(main_id, main.clone());
@@ -199,7 +210,7 @@ pub fn render_series_to_html(chapters: &[(String, String)]) -> anyhow::Result<Ha
         full_source.push_str("\n]\n");
     }
 
-    let world = RenderWorld::new(&full_source);
+    let world = RenderWorld::with_preamble(&full_source, SERIES_PREAMBLE, None);
     let html = render_world(&world)?;
 
     split_chapters(&html, chapters)
@@ -315,6 +326,27 @@ mod tests {
         // Both should have math
         assert!(ch1_html.contains("<math"), "ch1 should have MathML");
         assert!(ch2_html.contains("<math"), "ch2 should have MathML");
+    }
+
+    #[test]
+    fn test_series_cross_reference() {
+        let ch1 = (
+            "at://test/ch1".to_string(),
+            "= Introduction <intro>\nSome intro text.\n".to_string(),
+        );
+        let ch2 = (
+            "at://test/ch2".to_string(),
+            "= Methods <methods>\nAs discussed in @intro, we proceed.\n".to_string(),
+        );
+        let result = render_series_to_html(&[ch1.clone(), ch2.clone()]).unwrap();
+        let ch1_html = result.get(&ch1.0).unwrap();
+        let ch2_html = result.get(&ch2.0).unwrap();
+        eprintln!("=== ch1 (cross-ref) ===\n{ch1_html}");
+        eprintln!("=== ch2 (cross-ref) ===\n{ch2_html}");
+
+        // Ch2 should have a link to #intro (resolved cross-chapter reference)
+        assert!(ch2_html.contains("intro"), "ch2 should reference intro");
+        assert!(ch2_html.contains("href"), "ch2 should have a hyperlink from @intro");
     }
 
     #[test]
