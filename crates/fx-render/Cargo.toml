@@ -12,4 +12,4 @@ typst = "0.14.2"
 typst-html = "0.14.2"
 typst-assets = { version = "0.14.2", features = ["fonts"] }
 pulldown-cmark = { version = "0.13", features = ["html"] }
-katex = { version = "0.4", default-features = false, features = ["duktape"] }
+latex2mathml = "0.2"

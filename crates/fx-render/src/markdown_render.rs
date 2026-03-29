@@ -1,9 +1,9 @@
 use pulldown_cmark::{Options, Parser, Event, html};
 
-/// Render Markdown with KaTeX math support to HTML.
+/// Render Markdown with LaTeX math to HTML using MathML.
 ///
 /// Math delimiters: `$...$` for inline, `$$...$$` for display.
-/// KaTeX is rendered server-side so the client only needs katex.min.css.
+/// LaTeX math is converted to MathML server-side for native browser rendering.
 pub fn render_markdown_to_html(source: &str) -> anyhow::Result<String> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
@@ -15,36 +15,23 @@ pub fn render_markdown_to_html(source: &str) -> anyhow::Result<String> {
 
     let parser = Parser::new_ext(source, options);
 
-    let inline_opts = katex::Opts::builder()
-        .display_mode(false)
-        .throw_on_error(false)
-        .build()
-        .unwrap();
-    let display_opts = katex::Opts::builder()
-        .display_mode(true)
-        .throw_on_error(false)
-        .build()
-        .unwrap();
-
-    // Transform math events into pre-rendered KaTeX HTML
+    // Transform math events into MathML
     let events: Vec<Event<'_>> = parser.map(|event| match event {
         Event::InlineMath(math) => {
-            match katex::render_with_opts(&math, &inline_opts) {
-                Ok(rendered) => Event::Html(rendered.into()),
+            match latex2mathml::latex_to_mathml(&math, latex2mathml::DisplayStyle::Inline) {
+                Ok(mathml) => Event::Html(mathml.into()),
                 Err(_) => {
                     let escaped = html_escape(&math);
-                    Event::Html(format!(r#"<span class="katex-error">{escaped}</span>"#).into())
+                    Event::Html(format!(r#"<code class="math-error">{escaped}</code>"#).into())
                 }
             }
         }
         Event::DisplayMath(math) => {
-            match katex::render_with_opts(&math, &display_opts) {
-                Ok(rendered) => Event::Html(
-                    format!(r#"<div class="katex-display-wrapper">{rendered}</div>"#).into()
-                ),
+            match latex2mathml::latex_to_mathml(&math, latex2mathml::DisplayStyle::Block) {
+                Ok(mathml) => Event::Html(mathml.into()),
                 Err(_) => {
                     let escaped = html_escape(&math);
-                    Event::Html(format!(r#"<div class="katex-error">{escaped}</div>"#).into())
+                    Event::Html(format!(r#"<div class="math-error"><code>{escaped}</code></div>"#).into())
                 }
             }
         }
@@ -76,16 +63,17 @@ mod tests {
     }
 
     #[test]
-    fn test_inline_math() {
+    fn test_inline_math_mathml() {
         let html = render_markdown_to_html("The formula $x^2 + y^2 = r^2$ is a circle.").unwrap();
-        assert!(html.contains("katex"));
-        assert!(html.contains("x")); // rendered contains the math
+        assert!(html.contains("<math"));
+        assert!(html.contains("</math>"));
     }
 
     #[test]
-    fn test_display_math() {
+    fn test_display_math_mathml() {
         let html = render_markdown_to_html("Display:\n\n$$\nE = mc^2\n$$").unwrap();
-        assert!(html.contains("katex-display-wrapper"));
+        assert!(html.contains("<math"));
+        assert!(html.contains(r#"display="block""#));
     }
 
     #[test]
