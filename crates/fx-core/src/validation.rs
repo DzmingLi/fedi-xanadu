@@ -85,11 +85,20 @@ pub fn validate_tag_id(id: &str) -> Result<(), ValidationError> {
 }
 
 pub fn validate_content_format(format: &str) -> Result<(), ValidationError> {
-    if format.parse::<crate::content::ContentFormat>().is_err() {
-        return Err(ValidationError {
-            field: "content_format".into(),
-            message: format!("unsupported content format: {format} (allowed: typst, markdown, html, tex)"),
-        });
+    match format.parse::<crate::content::ContentFormat>() {
+        Ok(crate::content::ContentFormat::Tex) => {
+            return Err(ValidationError {
+                field: "content_format".into(),
+                message: "tex upload is not supported server-side; convert to markdown locally first (e.g. pandoc -f latex -t markdown)".into(),
+            });
+        }
+        Err(_) => {
+            return Err(ValidationError {
+                field: "content_format".into(),
+                message: format!("unsupported content format: {format} (allowed: typst, markdown, html)"),
+            });
+        }
+        _ => {}
     }
     Ok(())
 }
