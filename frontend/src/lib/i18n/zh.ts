@@ -252,6 +252,16 @@ export default {
   'skills.learning': '学习中',
   'skills.unlearned': '未学习',
   'skills.expandable': '可展开',
+  'skills.available': '可学习',
+  'skills.locked': '未解锁',
+  'skills.prerequisites': '前置要求',
+  'skills.unlocks': '解锁',
+  'skills.viewTag': '查看标签详情',
+  'skills.startLearning': '开始学习',
+  'skills.markMastered': '标为已掌握',
+  'skills.resetSkill': '重置',
+  'skills.completePrereqs': '请先完成前置要求',
+  'skills.searchTag': '搜索添加技能...',
 
   // Skill Tree View
   'skillTree.adopt': '采用',
@@ -416,6 +426,24 @@ export default {
   'books.editHistory': '编辑历史',
   'books.noEditHistory': '暂无编辑记录',
   'books.reportDispute': '上报争议',
+
+  // Book edition form
+  'bookEdition.title': '添加版本',
+  'bookEdition.editionTitle': '版本名称',
+  'bookEdition.editionTitlePlaceholder': '如：中文第一版',
+  'bookEdition.lang': '语言',
+  'bookEdition.publisher': '出版社',
+  'bookEdition.year': '出版年份',
+  'bookEdition.translators': '译者',
+  'bookEdition.translatorsPlaceholder': '多个译者用逗号分隔',
+  'bookEdition.coverUrl': '封面 URL',
+  'bookEdition.purchaseLinks': '购买链接',
+  'bookEdition.linkLabel': '名称（如：京东）',
+  'bookEdition.linkUrl': '链接地址',
+  'bookEdition.submit': '添加版本',
+  'bookEdition.submitting': '添加中...',
+  'bookEdition.errTitle': '版本名称不能为空',
+  'bookEdition.errCreate': '添加版本失败',
 
   // Profile tabs
   'profile.tabArticles': '文章',

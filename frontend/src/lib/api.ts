@@ -111,6 +111,7 @@ export const getQuestionsByTag = (tagId: string, limit = 50) => get<Article[]>(`
 export const castVote = (target_uri: string, value: number) =>
   post<VoteSummary>('/votes', { target_uri, value });
 export const getArticleVotes = (uri: string) => get<VoteSummary>(`/votes?uri=${encodeURIComponent(uri)}`);
+export const getVotesBatch = (uris: string[]) => post<VoteSummary[]>('/votes/batch', uris);
 export const getMyVote = (uri: string) => get<{ value: number }>(`/votes/my?uri=${encodeURIComponent(uri)}`);
 
 // Skills

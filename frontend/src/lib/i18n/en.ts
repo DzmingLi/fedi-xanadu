@@ -252,6 +252,16 @@ export default {
   'skills.learning': 'Learning',
   'skills.unlearned': 'Not learned',
   'skills.expandable': 'Expandable',
+  'skills.available': 'Available',
+  'skills.locked': 'Locked',
+  'skills.prerequisites': 'Prerequisites',
+  'skills.unlocks': 'Unlocks',
+  'skills.viewTag': 'View tag details',
+  'skills.startLearning': 'Start Learning',
+  'skills.markMastered': 'Mark Mastered',
+  'skills.resetSkill': 'Reset',
+  'skills.completePrereqs': 'Complete prerequisites first',
+  'skills.searchTag': 'Search to add skill...',
 
   // Skill Tree View
   'skillTree.adopt': 'Adopt',
@@ -416,6 +426,24 @@ export default {
   'books.editHistory': 'Edit history',
   'books.noEditHistory': 'No edit history',
   'books.reportDispute': 'Report dispute',
+
+  // Book edition form
+  'bookEdition.title': 'Add Edition',
+  'bookEdition.editionTitle': 'Edition title',
+  'bookEdition.editionTitlePlaceholder': 'e.g. English 1st Edition',
+  'bookEdition.lang': 'Language',
+  'bookEdition.publisher': 'Publisher',
+  'bookEdition.year': 'Year',
+  'bookEdition.translators': 'Translators',
+  'bookEdition.translatorsPlaceholder': 'Separate multiple translators with commas',
+  'bookEdition.coverUrl': 'Cover URL',
+  'bookEdition.purchaseLinks': 'Purchase links',
+  'bookEdition.linkLabel': 'Label (e.g. Amazon)',
+  'bookEdition.linkUrl': 'URL',
+  'bookEdition.submit': 'Add Edition',
+  'bookEdition.submitting': 'Adding...',
+  'bookEdition.errTitle': 'Edition title is required',
+  'bookEdition.errCreate': 'Failed to add edition',
 
   // Profile tabs
   'profile.tabArticles': 'Articles',

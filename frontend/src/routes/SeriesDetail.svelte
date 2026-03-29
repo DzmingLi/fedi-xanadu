@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getSeries, getSeriesTree, getArticleVotes, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
+  import { getSeries, getSeriesTree, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, SeriesTreeNode, VoteSummary, BookmarkWithTitle } from '../lib/types';
@@ -45,16 +45,19 @@
       for (const a of d.articles) allArticleUris.add(a.article_uri);
       if (tree) collectTreeArticleUris(tree, allArticleUris);
 
-      // Fetch votes
+      // Fetch votes in a single batch request
       const voteMap = new Map<string, VoteSummary>();
-      const results = await Promise.all(
-        [...allArticleUris].map(uri =>
-          getArticleVotes(uri).catch(() => ({
-            target_uri: uri, score: 0, upvotes: 0, downvotes: 0,
-          }))
-        )
-      );
-      for (const v of results) voteMap.set(v.target_uri, v);
+      if (allArticleUris.size > 0) {
+        try {
+          const results = await getVotesBatch([...allArticleUris]);
+          for (const v of results) voteMap.set(v.target_uri, v);
+        } catch {
+          // fallback: zero votes
+          for (const uri of allArticleUris) {
+            voteMap.set(uri, { target_uri: uri, score: 0, upvotes: 0, downvotes: 0 });
+          }
+        }
+      }
       articleVotes = voteMap;
 
       if (getAuth()) {
@@ -201,7 +204,7 @@
       {:else}
         <span class="meta">{detail.articles.length} {t('series.articles')}</span>
       {/if}
-      <span class="meta"><a href="#/profile?did={encodeURIComponent(detail.series.created_by)}">{detail.series.created_by}</a></span>
+      <span class="meta"><a href="#/profile?did={encodeURIComponent(detail.series.created_by)}">@{detail.series.author_handle || detail.series.created_by}</a></span>
     </div>
     {#if detail.translations && detail.translations.length > 0}
       <div class="series-translations">

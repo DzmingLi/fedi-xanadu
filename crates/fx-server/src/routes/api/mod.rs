@@ -149,6 +149,7 @@ fn article_routes() -> Router<AppState> {
 fn vote_routes() -> Router<AppState> {
     Router::new()
         .route("/votes", get(votes::get_article_votes).post(votes::cast_vote))
+        .route("/votes/batch", post(votes::get_votes_batch))
         .route("/votes/my", get(votes::get_my_vote))
 }
 

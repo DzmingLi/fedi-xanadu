@@ -45,6 +45,7 @@
   const lazySettings = () => import('./routes/Settings.svelte');
   const lazyBookList = () => import('./routes/BookList.svelte');
   const lazyBookDetail = () => import('./routes/BookDetail.svelte');
+  const lazyBookEdition = () => import('./routes/BookEdition.svelte');
 </script>
 
 <Toast />
@@ -160,6 +161,10 @@
     {:else if route.page === 'books'}
       {#await lazyBookList() then mod}
         <mod.default />
+      {/await}
+    {:else if route.page === 'book-edition'}
+      {#await lazyBookEdition() then mod}
+        <mod.default bookId={route.params.book_id || ''} />
       {/await}
     {/if}
   </div>

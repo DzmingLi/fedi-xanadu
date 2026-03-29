@@ -91,6 +91,24 @@ pub async fn get_article_votes(
     }))
 }
 
+pub async fn get_votes_batch(
+    State(state): State<AppState>,
+    Json(uris): Json<Vec<String>>,
+) -> ApiResult<Json<Vec<VoteSummary>>> {
+    let summaries = vote_service::get_vote_summaries_batch(&state.pool, &uris).await?;
+    Ok(Json(
+        summaries
+            .into_iter()
+            .map(|s| VoteSummary {
+                target_uri: s.target_uri,
+                score: s.score,
+                upvotes: s.upvotes,
+                downvotes: s.downvotes,
+            })
+            .collect(),
+    ))
+}
+
 pub async fn get_my_vote(
     State(state): State<AppState>,
     MaybeAuth(user): MaybeAuth,

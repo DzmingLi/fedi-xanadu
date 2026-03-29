@@ -106,6 +106,58 @@ async fn vote_summary_in_tx(
     })
 }
 
+pub async fn get_vote_summaries_batch(pool: &PgPool, target_uris: &[String]) -> Result<Vec<VoteSummary>> {
+    if target_uris.is_empty() {
+        return Ok(vec![]);
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        target_uri: String,
+        score: i64,
+        upvotes: i64,
+        downvotes: i64,
+    }
+
+    let rows = sqlx::query_as::<_, Row>(
+        "SELECT target_uri, \
+            COALESCE(SUM(value), 0) AS score, \
+            COUNT(*) FILTER (WHERE value > 0) AS upvotes, \
+            COUNT(*) FILTER (WHERE value < 0) AS downvotes \
+         FROM votes WHERE target_uri = ANY($1) \
+         GROUP BY target_uri",
+    )
+    .bind(target_uris)
+    .fetch_all(pool)
+    .await?;
+
+    // Include entries with zero votes for URIs not in the result
+    let result: Vec<VoteSummary> = rows
+        .into_iter()
+        .map(|r| VoteSummary {
+            target_uri: r.target_uri,
+            score: r.score,
+            upvotes: r.upvotes,
+            downvotes: r.downvotes,
+        })
+        .collect();
+
+    let found: std::collections::HashSet<String> = result.iter().map(|v| v.target_uri.clone()).collect();
+    let mut all = result;
+    for uri in target_uris {
+        if !found.contains(uri.as_str()) {
+            all.push(VoteSummary {
+                target_uri: uri.clone(),
+                score: 0,
+                upvotes: 0,
+                downvotes: 0,
+            });
+        }
+    }
+
+    Ok(all)
+}
+
 pub async fn get_my_vote(pool: &PgPool, target_uri: &str, did: &str) -> Result<i32> {
     let value: Option<i32> = sqlx::query_scalar(
         "SELECT value FROM votes WHERE target_uri = $1 AND did = $2",

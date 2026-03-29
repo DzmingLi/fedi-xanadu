@@ -30,6 +30,7 @@ export const routes: Route[] = [
   { pattern: '/new-question', page: 'new-question' },
   { pattern: '/settings', page: 'settings' },
   { pattern: '/books', page: 'books' },
+  { pattern: '/book-edition', page: 'book-edition' },
   { pattern: '/book', page: 'book' },
 ];
 
