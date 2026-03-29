@@ -88,63 +88,79 @@ pub async fn get_article_content(
     Ok(Json(ArticleContent { source, html }))
 }
 
-/// Try rendering this article as part of a series virtual document.
-/// Returns Some(html) if the article belongs to a typst-only series and rendering succeeds.
-/// Returns None to fall back to individual rendering.
+/// Try rendering this article with series-aware cross-chapter references.
+///
+/// For typst series: concatenate all chapters, compile as one document, split back.
+/// For any format: rewrite intra-document anchor links to cross-article links.
+///
+/// Returns Some(html) on success, None to fall back to individual rendering.
 async fn try_series_render(
     state: &crate::state::AppState,
     article_uri: &str,
     format: &str,
 ) -> Option<String> {
-    // Only typst supports virtual-document compilation
-    if format != "typst" {
-        return None;
-    }
-
     let (series_id, chapters) = series_service::get_series_chapters_for_render(
         &state.pool, article_uri,
     ).await.ok()??;
 
-    // All chapters must be typst
-    if chapters.iter().any(|c| c.content_format != "typst") {
+    if chapters.is_empty() {
         return None;
     }
 
-    // Check series-level cache
+    // Check series-level cache freshness
     let first_node = uri_to_node_id(&chapters[0].article_uri);
     let cache_dir = state.pijul.repo_path(&first_node).parent()?.to_path_buf();
     let series_cache = cache_dir.join(format!("series-{series_id}.cache"));
 
-    // Check if cache is fresh (newer than all chapter sources)
-    let cache_fresh = if let Ok(cache_meta) = tokio::fs::metadata(&series_cache).await {
-        let cache_time = cache_meta.modified().ok();
-        let mut all_fresh = cache_time.is_some();
-        if all_fresh {
-            for ch in &chapters {
-                let node = uri_to_node_id(&ch.article_uri);
-                let src = state.pijul.repo_path(&node).join("content.typ");
-                if let Ok(src_meta) = tokio::fs::metadata(&src).await {
-                    if let (Some(ct), Ok(st)) = (cache_time, src_meta.modified()) {
-                        if st > ct { all_fresh = false; break; }
-                    }
-                }
-            }
-        }
-        all_fresh
-    } else {
-        false
-    };
+    let cache_fresh = is_series_cache_fresh(&series_cache, &chapters, state).await;
 
     if cache_fresh {
-        // Read per-chapter cache
         let node = uri_to_node_id(article_uri);
         let ch_cache = state.pijul.repo_path(&node).join(format!("content.series-{series_id}.html"));
         return tokio::fs::read_to_string(&ch_cache).await.ok();
     }
 
-    // Compile the whole series
+    let all_typst = chapters.iter().all(|c| c.content_format == "typst");
+
+    if all_typst {
+        // Typst: virtual document compilation
+        typst_series_render(state, article_uri, &series_id, &chapters, &series_cache).await
+    } else {
+        // Any format: render individually, then rewrite cross-chapter anchor links
+        anchor_rewrite_series_render(state, article_uri, &series_id, &chapters, &series_cache).await
+    }
+}
+
+async fn is_series_cache_fresh(
+    series_cache: &std::path::Path,
+    chapters: &[series_service::SeriesChapterInfo],
+    state: &crate::state::AppState,
+) -> bool {
+    let Ok(cache_meta) = tokio::fs::metadata(series_cache).await else { return false };
+    let Ok(cache_time) = cache_meta.modified() else { return false };
+    for ch in chapters {
+        let node = uri_to_node_id(&ch.article_uri);
+        let ext = fx_render::format_extension(&ch.content_format);
+        let src = state.pijul.repo_path(&node).join(format!("content.{ext}"));
+        if let Ok(src_meta) = tokio::fs::metadata(&src).await {
+            if let Ok(st) = src_meta.modified() {
+                if st > cache_time { return false; }
+            }
+        }
+    }
+    true
+}
+
+/// Typst series: compile all chapters as one virtual document.
+async fn typst_series_render(
+    state: &crate::state::AppState,
+    article_uri: &str,
+    series_id: &str,
+    chapters: &[series_service::SeriesChapterInfo],
+    series_cache: &std::path::Path,
+) -> Option<String> {
     let mut chapter_sources = Vec::new();
-    for ch in &chapters {
+    for ch in chapters {
         let node = uri_to_node_id(&ch.article_uri);
         let src_path = state.pijul.repo_path(&node).join("content.typ");
         let source = tokio::fs::read_to_string(&src_path).await.ok()?;
@@ -155,17 +171,99 @@ async fn try_series_render(
         fx_render::render_series_to_html(&chapter_sources)
     }).await.ok()?.ok()?;
 
-    // Write per-chapter caches
-    for (ch_uri, ch_html) in &rendered {
+    write_series_cache(state, series_id, &rendered, series_cache).await;
+    rendered.get(article_uri).cloned()
+}
+
+/// Any format: render each chapter individually, then rewrite cross-chapter anchor links.
+///
+/// Collects all anchor IDs from all chapters, then for each chapter rewrites
+/// `href="#anchor"` links to `#/article?uri=TARGET_URI` when the anchor
+/// exists in a different chapter.
+async fn anchor_rewrite_series_render(
+    state: &crate::state::AppState,
+    article_uri: &str,
+    series_id: &str,
+    chapters: &[series_service::SeriesChapterInfo],
+    series_cache: &std::path::Path,
+) -> Option<String> {
+    use std::collections::HashMap;
+
+    // Render each chapter individually
+    let mut chapter_htmls: Vec<(String, String)> = Vec::new();
+    for ch in chapters {
+        let node = uri_to_node_id(&ch.article_uri);
+        let repo = state.pijul.repo_path(&node);
+        let ext = fx_render::format_extension(&ch.content_format);
+        let src_path = repo.join(format!("content.{ext}"));
+        let html_path = repo.join("content.html");
+
+        let source = tokio::fs::read_to_string(&src_path).await.ok()?;
+        let html = if ch.content_format == "html" {
+            source
+        } else if is_cached_fresh(&html_path, &src_path).await {
+            tokio::fs::read_to_string(&html_path).await.ok()?
+        } else {
+            let fmt = ch.content_format.clone();
+            let src = source.clone();
+            let rp = repo.clone();
+            let rendered = tokio::task::spawn_blocking(move || {
+                fx_render::render_to_html(&fmt, &src, &rp)
+            }).await.ok()?.ok()?;
+            let _ = tokio::fs::write(&html_path, &rendered).await;
+            rendered
+        };
+        chapter_htmls.push((ch.article_uri.clone(), html));
+    }
+
+    // Collect all anchor IDs from all chapters: id -> article_uri
+    let mut anchor_map: HashMap<String, String> = HashMap::new();
+    for (uri, html) in &chapter_htmls {
+        for cap in regex_lite::Regex::new(r##"id="([^"]+)""##).ok()?.captures_iter(html) {
+            let anchor = cap.get(1)?.as_str().to_string();
+            anchor_map.entry(anchor).or_insert_with(|| uri.clone());
+        }
+    }
+
+    // Rewrite cross-chapter links in each chapter
+    let mut rendered: HashMap<String, String> = HashMap::new();
+    let link_re = regex_lite::Regex::new(r##"href="#([^"]+)""##).ok()?;
+
+    for (uri, html) in &chapter_htmls {
+        let rewritten = link_re.replace_all(html, |caps: &regex_lite::Captures| {
+            let anchor = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            if let Some(target_uri) = anchor_map.get(anchor) {
+                if target_uri != uri {
+                    // Cross-chapter link: rewrite to article URL
+                    return format!(
+                        r##"href="#/article?uri={}#{}""##,
+                        urlencoding::encode(target_uri),
+                        anchor,
+                    );
+                }
+            }
+            // Same-chapter link or unknown anchor: keep as-is
+            caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string()
+        });
+        rendered.insert(uri.clone(), rewritten.into_owned());
+    }
+
+    write_series_cache(state, series_id, &rendered, series_cache).await;
+    rendered.get(article_uri).cloned()
+}
+
+async fn write_series_cache(
+    state: &crate::state::AppState,
+    series_id: &str,
+    rendered: &std::collections::HashMap<String, String>,
+    series_cache: &std::path::Path,
+) {
+    for (ch_uri, ch_html) in rendered {
         let node = uri_to_node_id(ch_uri);
         let ch_cache = state.pijul.repo_path(&node).join(format!("content.series-{series_id}.html"));
         let _ = tokio::fs::write(&ch_cache, ch_html).await;
     }
-
-    // Touch the series cache marker
-    let _ = tokio::fs::write(&series_cache, "").await;
-
-    rendered.get(article_uri).cloned()
+    let _ = tokio::fs::write(series_cache, "").await;
 }
 
 async fn is_cached_fresh(cache: &std::path::Path, source: &std::path::Path) -> bool {
