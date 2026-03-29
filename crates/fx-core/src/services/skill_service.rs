@@ -90,6 +90,17 @@ pub async fn get_user_tag_tree(pool: &PgPool, did: &str) -> crate::Result<Vec<Ta
     .fetch_all(pool)
     .await?;
 
+    if !tree.is_empty() {
+        return Ok(tree);
+    }
+
+    // Fall back to the default public tree (did:plc:anonymous)
+    let tree = sqlx::query_as::<_, TagTreeEntry>(
+        "SELECT parent_tag, child_tag FROM user_tag_tree WHERE did = 'did:plc:anonymous'",
+    )
+    .fetch_all(pool)
+    .await?;
+
     Ok(tree)
 }
 
