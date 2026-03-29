@@ -10,8 +10,8 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
-use axum::response::{Html, IntoResponse, Json as AxumJson};
 use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use crate::config::Config;
 use crate::openapi::ApiDoc;
@@ -39,8 +39,8 @@ pub fn router(state: AppState, config: &Config) -> Router {
     let governor_limiter = tower_governor::GovernorLayer::new(governor_conf);
 
     Router::new()
-        .route("/api/doc/openapi.json", get(openapi_json))
-        .route("/api/doc", get(swagger_ui_html))
+        .merge(SwaggerUi::new("/api/doc/{_:.*}")
+            .url("/api/doc/openapi.json", ApiDoc::openapi()))
         .route("/metrics", get(crate::metrics::handler))
         .nest("/api/v1", api::routes())
         // Backwards-compatible redirect: /api/* → /api/v1/*
@@ -55,22 +55,6 @@ pub fn router(state: AppState, config: &Config) -> Router {
         // Global body limit: 16 MB (image uploads are max 10 MB + overhead)
         .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024))
         .with_state(state)
-}
-
-async fn openapi_json() -> impl IntoResponse {
-    AxumJson(ApiDoc::openapi())
-}
-
-async fn swagger_ui_html() -> Html<&'static str> {
-    Html(r#"<!DOCTYPE html>
-<html><head>
-<title>Fedi-Xanadu API</title>
-<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
-</head><body>
-<div id="swagger-ui"></div>
-<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-<script>SwaggerUIBundle({ url: '/api/doc/openapi.json', dom_id: '#swagger-ui' });</script>
-</body></html>"#)
 }
 
 /// Redirect old /api/* paths to /api/v1/* for backwards compatibility.

@@ -35,6 +35,7 @@ metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
+utoipa-swagger-ui.workspace = true
 regex-lite = "0.1"
 urlencoding = "2"
 
