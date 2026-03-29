@@ -37,11 +37,6 @@ pub(crate) struct UriQuery {
 }
 
 #[derive(serde::Deserialize)]
-pub(crate) struct IdQuery {
-    pub id: String,
-}
-
-#[derive(serde::Deserialize)]
 pub(crate) struct DidQuery {
     pub did: String,
 }
@@ -328,14 +323,6 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/rate", post(books::rate_book))
         .route("/books/{id}/reading-status", post(books::set_reading_status).delete(books::remove_reading_status))
         .route("/books/{id}/history", get(books::get_edit_history))
-}
-
-// --- Pagination query (used by articles, series, etc.) ---
-
-#[derive(serde::Deserialize)]
-pub(crate) struct PaginationQuery {
-    pub limit: Option<i64>,
-    pub offset: Option<i64>,
 }
 
 // --- Health ---

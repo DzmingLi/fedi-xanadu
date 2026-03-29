@@ -1,1 +1,0 @@
-import{l as a,p as c,n as s,m as o}from"./Dwit3O6e.js";import{l as r}from"./BAhjfwPq.js";let e=a(c(new Set));function d(){return o(e)}function u(t){return o(e).has(t)}function f(t){s(e,new Set([...o(e),t]),!0)}function k(t){const n=new Set(o(e));n.delete(t),s(e,n,!0)}async function m(){try{const t=await r();s(e,new Set(t),!0)}catch{}}export{f as a,d as g,u as i,m as l,k as r};

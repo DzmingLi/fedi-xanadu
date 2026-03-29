@@ -124,7 +124,7 @@ pub async fn get_article_content(
 async fn try_series_render(
     state: &crate::state::AppState,
     article_uri: &str,
-    format: &str,
+    _format: &str,
 ) -> Option<String> {
     let (series_id, chapters) = series_service::get_series_chapters_for_render(
         &state.pool, article_uri,
