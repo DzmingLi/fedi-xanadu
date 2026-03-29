@@ -1,0 +1,96 @@
+{
+	"/(wide)": [
+		"src/routes/+layout.ts"
+	],
+	"/(home)": [
+		"src/routes/+layout.ts",
+		"src/routes/+layout.ts"
+	],
+	"/(fullwidth)": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)": [
+		"src/routes/+layout.ts"
+	],
+	"/(article)": [
+		"src/routes/+layout.ts"
+	],
+	"/": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/about": [
+		"src/routes/+layout.ts"
+	],
+	"/(article)/article": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/book-edition": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/books": [
+		"src/routes/+layout.ts"
+	],
+	"/(wide)/book": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/drafts": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/forks": [
+		"src/routes/+layout.ts"
+	],
+	"/(fullwidth)/graph": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/guide": [
+		"src/routes/+layout.ts"
+	],
+	"/(fullwidth)/library": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/new-question": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/new-series": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/new": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/notifications": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/profile": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/questions": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/question": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/roadmap": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/series": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/settings": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/skill-trees": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/skill-tree": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/skill-tree/new": [
+		"src/routes/+layout.ts"
+	],
+	"/(fullwidth)/skills": [
+		"src/routes/+layout.ts"
+	],
+	"/(default)/tag": [
+		"src/routes/+layout.ts"
+	]
+}

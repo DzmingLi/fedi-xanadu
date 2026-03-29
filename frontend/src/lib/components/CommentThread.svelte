@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { listComments, createComment, updateComment, deleteComment, voteComment, getMyCommentVotes } from '../api';
-  import { getAuth } from '../auth.svelte';
-  import { t } from '../i18n/index.svelte';
-  import { isBlocked } from '../blocklist.svelte';
-  import type { Comment } from '../types';
+  import { listComments, createComment, updateComment, deleteComment, voteComment, getMyCommentVotes } from '$lib/api';
+  import { getAuth } from '$lib/auth.svelte';
+  import { t } from '$lib/i18n/index.svelte';
+  import { isBlocked } from '$lib/blocklist.svelte';
+  import type { Comment } from '$lib/types';
 
   let {
     contentUri,
@@ -176,7 +176,7 @@
   {#snippet commentNode(c: Comment, depth: number)}
     <div class="comment-item" style:margin-left="{depth * 24}px">
       <div class="comment-header">
-        <a href="#/profile?did={encodeURIComponent(c.did)}" class="comment-author">
+        <a href="/profile?did={encodeURIComponent(c.did)}" class="comment-author">
           {c.author_handle ? `@${c.author_handle}` : c.did.slice(0, 20) + '…'}
         </a>
         <span class="comment-date">{c.created_at.split('T')[0]}</span>

@@ -1,0 +1,1 @@
+function n(s){const r=new Set,e=new Map;for(const t of s){r.add(t.article_uri);const i=e.get(t.series_id)||[];i.push(t.article_uri),e.set(t.series_id,i)}return{seriesArticleUris:r,seriesArticleMap:e}}function a(s){const r=new Map;for(const e of s){const t=r.get(e.content_uri)||[];t.push(e),r.set(e.content_uri,t)}return r}export{a,n as b};

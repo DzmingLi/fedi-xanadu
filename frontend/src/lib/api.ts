@@ -8,7 +8,7 @@ import type {
 } from './types';
 import { getToken } from './auth.svelte';
 
-const BASE = '/api';
+const BASE = '/api/v1';
 
 function authHeaders(): Record<string, string> {
   const token = getToken();
