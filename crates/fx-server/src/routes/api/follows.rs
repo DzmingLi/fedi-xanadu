@@ -16,7 +16,6 @@ pub struct FollowInput {
     did: String,
 }
 
-#[utoipa::path(get, path = "/api/v1/follows", responses((status = 200)), security(("bearer" = [])))]
 pub async fn list_follows(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -25,7 +24,6 @@ pub async fn list_follows(
     Ok(Json(rows))
 }
 
-#[utoipa::path(post, path = "/api/v1/follows", responses((status = 200)), security(("bearer" = [])))]
 pub async fn follow(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -43,7 +41,6 @@ pub async fn follow(
     Ok(StatusCode::OK)
 }
 
-#[utoipa::path(delete, path = "/api/v1/follows/remove", responses((status = 200)), security(("bearer" = [])))]
 pub async fn unfollow(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -53,7 +50,6 @@ pub async fn unfollow(
     Ok(StatusCode::OK)
 }
 
-#[utoipa::path(post, path = "/api/v1/follows/seen", responses((status = 200)), security(("bearer" = [])))]
 pub async fn mark_seen(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -63,7 +59,6 @@ pub async fn mark_seen(
     Ok(StatusCode::OK)
 }
 
-#[utoipa::path(get, path = "/api/v1/follows/following", params(("did" = String, Query)), responses((status = 200)))]
 pub async fn following_by_did(
     State(state): State<AppState>,
     Query(DidQuery { did }): Query<DidQuery>,
@@ -72,7 +67,6 @@ pub async fn following_by_did(
     Ok(Json(rows))
 }
 
-#[utoipa::path(get, path = "/api/v1/follows/followers", params(("did" = String, Query)), responses((status = 200)))]
 pub async fn followers_by_did(
     State(state): State<AppState>,
     Query(DidQuery { did }): Query<DidQuery>,

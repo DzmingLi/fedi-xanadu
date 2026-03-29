@@ -18,7 +18,6 @@ pub struct ListBooksQuery {
     pub offset: Option<i64>,
 }
 
-#[utoipa::path(get, path = "/api/v1/books", responses((status = 200)))]
 pub async fn list_books(
     State(state): State<AppState>,
     Query(q): Query<ListBooksQuery>,
@@ -44,7 +43,6 @@ pub struct BookDetail {
     pub my_chapter_progress: Vec<book_service::ChapterProgress>,
 }
 
-#[utoipa::path(get, path = "/api/v1/books/{id}", params(("id" = String, Path)), responses((status = 200)))]
 pub async fn get_book(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -69,7 +67,6 @@ pub async fn get_book(
 
 // --- Create book ---
 
-#[utoipa::path(post, path = "/api/v1/books", responses((status = 201)), security(("bearer" = [])))]
 pub async fn create_book(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -94,7 +91,6 @@ pub struct UpdateBookInput {
     pub edit_summary: Option<String>,
 }
 
-#[utoipa::path(put, path = "/api/v1/books/{id}", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn update_book(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -143,7 +139,6 @@ pub async fn update_book(
 
 // --- Add edition ---
 
-#[utoipa::path(post, path = "/api/v1/books/{id}/editions", params(("id" = String, Path)), responses((status = 201)), security(("bearer" = [])))]
 pub async fn add_edition(
     State(state): State<AppState>,
     Path(book_id): Path<String>,
@@ -171,7 +166,6 @@ pub struct BookEditLog {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[utoipa::path(get, path = "/api/v1/books/{id}/history", params(("id" = String, Path)), responses((status = 200)))]
 pub async fn get_edit_history(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -198,7 +192,6 @@ pub struct RateBookInput {
     pub rating: i16,
 }
 
-#[utoipa::path(post, path = "/api/v1/books/{id}/rate", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn rate_book(
     State(state): State<AppState>,
     Path(book_id): Path<String>,
@@ -223,7 +216,6 @@ pub struct SetReadingStatusInput {
     pub progress: i16,
 }
 
-#[utoipa::path(post, path = "/api/v1/books/{id}/reading-status", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn set_reading_status(
     State(state): State<AppState>,
     Path(book_id): Path<String>,
@@ -259,7 +251,6 @@ pub async fn set_reading_status(
 
 // --- Remove reading status ---
 
-#[utoipa::path(delete, path = "/api/v1/books/{id}/reading-status", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn remove_reading_status(
     State(state): State<AppState>,
     Path(book_id): Path<String>,
@@ -271,7 +262,6 @@ pub async fn remove_reading_status(
 
 // ---- Chapters ----
 
-#[utoipa::path(get, path = "/api/v1/books/{id}/chapters", params(("id" = String, Path)), responses((status = 200)))]
 pub async fn list_chapters(
     State(state): State<AppState>,
     Path(book_id): Path<String>,
@@ -280,7 +270,6 @@ pub async fn list_chapters(
     Ok(Json(chapters))
 }
 
-#[utoipa::path(post, path = "/api/v1/books/{id}/chapters", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn create_chapter(
     State(state): State<AppState>,
     Path(book_id): Path<String>,
@@ -297,7 +286,6 @@ pub struct DeleteChapterInput {
     pub chapter_id: String,
 }
 
-#[utoipa::path(delete, path = "/api/v1/books/{id}/chapters/delete", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn delete_chapter(
     State(state): State<AppState>,
     Path(_book_id): Path<String>,
@@ -314,7 +302,6 @@ pub struct ChapterProgressInput {
     pub completed: bool,
 }
 
-#[utoipa::path(post, path = "/api/v1/books/{id}/chapters/progress", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn set_chapter_progress(
     State(state): State<AppState>,
     Path(book_id): Path<String>,

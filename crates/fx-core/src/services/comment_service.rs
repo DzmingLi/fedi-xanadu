@@ -10,7 +10,8 @@ const COMMENT_SELECT: &str = "\
     c.created_at, c.updated_at \
     FROM comments c LEFT JOIN profiles p ON c.did = p.did";
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct MyCommentVote {
     pub comment_id: String,
     pub value: i32,

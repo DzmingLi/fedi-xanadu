@@ -6,7 +6,8 @@ use crate::content::ContentFormat;
 
 // ---- DB row ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct Draft {
     pub id: String,
     pub did: String,
@@ -25,7 +26,8 @@ pub struct Draft {
 
 // ---- Request ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SaveDraft {
     pub title: String,
     pub description: Option<String>,
@@ -37,7 +39,8 @@ pub struct SaveDraft {
     pub prereqs: Vec<ArticlePrereq>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct UpdateDraft {
     pub id: String,
     pub title: Option<String>,

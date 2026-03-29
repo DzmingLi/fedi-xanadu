@@ -6,7 +6,8 @@ use sqlx::PgPool;
 
 use crate::Result;
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SkillTreeRow {
     pub at_uri: String,
     pub did: String,
@@ -17,7 +18,8 @@ pub struct SkillTreeRow {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SkillTreeListRow {
     pub at_uri: String,
     pub did: String,
@@ -26,7 +28,8 @@ pub struct SkillTreeListRow {
     pub description: Option<String>,
     pub tag_id: Option<String>,
     pub tag_name: Option<String>,
-    #[schema(value_type = Option<HashMap<String, String>>)]
+    #[ts(type = "Record<string, string> | null")]
+
     pub tag_names: Option<sqlx::types::Json<HashMap<String, String>>>,
     pub forked_from: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -35,13 +38,15 @@ pub struct SkillTreeListRow {
     pub adopt_count: i64,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SkillTreeEdgeRow {
     pub parent_tag: String,
     pub child_tag: String,
 }
 
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SkillTreeDetailResponse {
     pub tree: SkillTreeRow,
     pub edges: Vec<SkillTreeEdgeRow>,

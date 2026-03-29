@@ -3,7 +3,8 @@ use sqlx::PgPool;
 
 use crate::models::UserSkill;
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct TagTreeEntry {
     pub parent_tag: String,
     pub child_tag: String,

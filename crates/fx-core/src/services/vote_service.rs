@@ -2,7 +2,8 @@ use sqlx::PgPool;
 
 use crate::Result;
 
-#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct VoteSummary {
     pub target_uri: String,
     pub score: i64,

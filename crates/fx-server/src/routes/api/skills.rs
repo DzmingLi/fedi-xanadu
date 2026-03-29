@@ -12,7 +12,6 @@ use crate::state::AppState;
 use crate::auth::{WriteAuth, MaybeAuth};
 use super::TagIdQuery;
 
-#[utoipa::path(get, path = "/api/v1/skills", responses((status = 200, body = Vec<UserSkill>)))]
 pub async fn list_user_skills(
     State(state): State<AppState>,
     MaybeAuth(user): MaybeAuth,
@@ -28,7 +27,6 @@ pub struct LightSkillInput {
     status: Option<String>,
 }
 
-#[utoipa::path(post, path = "/api/v1/skills", responses((status = 200)), security(("bearer" = [])))]
 pub async fn light_skill(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -43,7 +41,6 @@ pub async fn light_skill(
     Ok(StatusCode::OK)
 }
 
-#[utoipa::path(delete, path = "/api/v1/skills/unlight", responses((status = 200)), security(("bearer" = [])))]
 pub async fn delete_skill(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -59,7 +56,6 @@ pub async fn delete_skill(
 
 // --- User Tag Tree ---
 
-#[utoipa::path(get, path = "/api/v1/tag-tree", responses((status = 200)))]
 pub async fn get_user_tag_tree(
     State(state): State<AppState>,
     MaybeAuth(user): MaybeAuth,
@@ -75,7 +71,6 @@ pub struct AddTagChildInput {
     child_tag: String,
 }
 
-#[utoipa::path(post, path = "/api/v1/tag-tree", responses((status = 201)), security(("bearer" = [])))]
 pub async fn add_tag_child(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,

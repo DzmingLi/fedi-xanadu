@@ -17,7 +17,6 @@ use super::UriQuery;
 
 // --- List questions ---
 
-#[utoipa::path(get, path = "/api/v1/questions", responses((status = 200, body = Vec<Article>)))]
 pub async fn list_questions(
     State(state): State<AppState>,
     Query(q): Query<super::articles::ListArticlesQuery>,
@@ -36,7 +35,6 @@ pub struct QuestionDetail {
     pub answers: Vec<Article>,
 }
 
-#[utoipa::path(get, path = "/api/v1/questions/by-uri", params(("uri" = String, Query)), responses((status = 200)))]
 pub async fn get_question(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
@@ -51,7 +49,6 @@ pub async fn get_question(
 
 // --- Create question ---
 
-#[utoipa::path(post, path = "/api/v1/questions", request_body = CreateArticle, responses((status = 201, body = Article)), security(("bearer" = [])))]
 pub async fn create_question(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -92,7 +89,6 @@ pub async fn create_question(
 
 // --- Post answer ---
 
-#[utoipa::path(post, path = "/api/v1/questions/answer", request_body = CreateArticle, responses((status = 201, body = Article)), security(("bearer" = [])))]
 pub async fn post_answer(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -156,7 +152,6 @@ pub struct DidLimitQuery {
     pub limit: Option<i64>,
 }
 
-#[utoipa::path(get, path = "/api/v1/questions/by-did", params(("did" = String, Query)), responses((status = 200, body = Vec<Article>)))]
 pub async fn get_questions_by_did(
     State(state): State<AppState>,
     Query(q): Query<DidLimitQuery>,
@@ -166,7 +161,6 @@ pub async fn get_questions_by_did(
     Ok(Json(questions))
 }
 
-#[utoipa::path(get, path = "/api/v1/answers/by-did", params(("did" = String, Query)), responses((status = 200, body = Vec<Article>)))]
 pub async fn get_answers_by_did(
     State(state): State<AppState>,
     Query(q): Query<DidLimitQuery>,
@@ -184,7 +178,6 @@ pub struct TagQuestionsQuery {
     pub limit: Option<i64>,
 }
 
-#[utoipa::path(get, path = "/api/v1/questions/by-tag", params(("tag_id" = String, Query)), responses((status = 200, body = Vec<Article>)))]
 pub async fn get_questions_by_tag(
     State(state): State<AppState>,
     Query(q): Query<TagQuestionsQuery>,

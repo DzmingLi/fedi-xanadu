@@ -1,20 +1,13 @@
 pub mod api;
 
 use axum::Router;
-use axum::extract::Request;
-use axum::response::Redirect;
-use axum::routing::get;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
-
 use crate::config::Config;
-use crate::openapi::ApiDoc;
 use crate::state::AppState;
 
 pub fn router(state: AppState, config: &Config) -> Router {
@@ -39,14 +32,8 @@ pub fn router(state: AppState, config: &Config) -> Router {
     let governor_limiter = tower_governor::GovernorLayer::new(governor_conf);
 
     Router::new()
-        .merge(SwaggerUi::new("/api/doc/{_:.*}")
-            .url("/api/doc/openapi.json", ApiDoc::openapi()))
-        .route("/metrics", get(crate::metrics::handler))
-        .nest("/api/v1", api::routes())
-        // Backwards-compatible redirect: /api/* → /api/v1/*
-        .nest("/api", Router::new().fallback(api_v1_redirect))
+        .nest("/api", api::routes())
         .fallback_service(spa)
-        .layer(axum::middleware::from_fn(crate::metrics::track_requests))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(TraceLayer::new_for_http())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
@@ -55,14 +42,6 @@ pub fn router(state: AppState, config: &Config) -> Router {
         // Global body limit: 16 MB (image uploads are max 10 MB + overhead)
         .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024))
         .with_state(state)
-}
-
-/// Redirect old /api/* paths to /api/v1/* for backwards compatibility.
-async fn api_v1_redirect(req: Request) -> Redirect {
-    let path = req.uri().path();
-    let rest = &path[4..]; // strip "/api"
-    let query = req.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
-    Redirect::permanent(&format!("/api/v1{rest}{query}"))
 }
 
 fn build_cors_layer(config: &Config) -> CorsLayer {
@@ -88,7 +67,6 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
 
     let origin_list = config.cors_origin_list();
     if origin_list.is_empty() {
-        // No origins configured: only same-origin requests allowed
         layer.allow_origin(AllowOrigin::exact(
             format!("http://{}:{}", config.host, config.port)
                 .parse()

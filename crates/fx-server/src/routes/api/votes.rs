@@ -10,13 +10,13 @@ use crate::auth::{WriteAuth, MaybeAuth, pds_session, log_pds_error};
 use fx_core::util::{tid, now_rfc3339};
 use super::UriQuery;
 
-#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[derive(serde::Deserialize)]
 pub struct CastVoteInput {
     target_uri: String,
     value: i32,
 }
 
-#[derive(serde::Serialize, utoipa::ToSchema)]
+#[derive(serde::Serialize)]
 pub struct VoteSummary {
     target_uri: String,
     score: i64,
@@ -24,21 +24,11 @@ pub struct VoteSummary {
     downvotes: i64,
 }
 
-#[derive(serde::Serialize, utoipa::ToSchema)]
+#[derive(serde::Serialize)]
 pub(crate) struct MyVoteOutput {
     value: i32,
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/votes",
-    request_body = CastVoteInput,
-    responses(
-        (status = 200, description = "Vote cast", body = VoteSummary),
-        (status = 401, description = "Unauthorized"),
-    ),
-    security(("bearer" = []))
-)]
 pub async fn cast_vote(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -88,12 +78,6 @@ pub async fn cast_vote(
     }))
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/votes",
-    params(("uri" = String, Query, description = "Target AT URI")),
-    responses((status = 200, description = "Vote summary", body = VoteSummary))
-)]
 pub async fn get_article_votes(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
@@ -107,12 +91,6 @@ pub async fn get_article_votes(
     }))
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/votes/batch",
-    request_body = Vec<String>,
-    responses((status = 200, description = "Batch vote summaries", body = Vec<VoteSummary>))
-)]
 pub async fn get_votes_batch(
     State(state): State<AppState>,
     Json(uris): Json<Vec<String>>,
@@ -131,12 +109,6 @@ pub async fn get_votes_batch(
     ))
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/votes/my",
-    params(("uri" = String, Query, description = "Target AT URI")),
-    responses((status = 200, description = "Current user vote", body = MyVoteOutput))
-)]
 pub async fn get_my_vote(
     State(state): State<AppState>,
     MaybeAuth(user): MaybeAuth,

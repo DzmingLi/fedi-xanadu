@@ -2,7 +2,8 @@ use sqlx::PgPool;
 
 use crate::Result;
 
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SessionInfo {
     pub did: String,
     pub handle: String,

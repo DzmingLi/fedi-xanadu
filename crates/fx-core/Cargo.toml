@@ -15,4 +15,4 @@ chrono.workspace = true
 argon2.workspace = true
 blake3.workspace = true
 rand.workspace = true
-utoipa.workspace = true
+ts-rs.workspace = true

@@ -1,0 +1,26 @@
+digraph {
+node_AAAAAAAAAAAAA_0_0[label="AAAAAAAAAAAAA [0;0["];
+node_AAAAAAAAAAAAA_0_0 -> node_GOZBTWOLBXCD6_1_1 [label="[GOZBTWOLBXCD6]", color="royalblue"];
+node_GOZBTWOLBXCD6_1_1[label="GOZBTWOLBXCD6 [1;1["];
+node_GOZBTWOLBXCD6_1_1 -> node_GOZBTWOLBXCD6_2_2 [label="[GOZBTWOLBXCD6]", color="royalblue"];
+node_GOZBTWOLBXCD6_1_1 -> node_AAAAAAAAAAAAA_0_0 [label="[GOZBTWOLBXCD6]", color="orange"];
+node_GOZBTWOLBXCD6_2_2[label="GOZBTWOLBXCD6 [2;2["];
+node_GOZBTWOLBXCD6_2_2 -> node_GOZBTWOLBXCD6_14_42 [label="[GOZBTWOLBXCD6]", color="royalblue"];
+node_GOZBTWOLBXCD6_2_2 -> node_GOZBTWOLBXCD6_1_1 [label="[GOZBTWOLBXCD6]", color="orange"];
+node_GOZBTWOLBXCD6_4_4[label="GOZBTWOLBXCD6 [4;4["];
+node_GOZBTWOLBXCD6_4_4 -> node_GOZBTWOLBXCD6_11_13 [label="AAAAAAAAAAAAA", color="forestgreen", style=dotted];
+node_GOZBTWOLBXCD6_4_4 -> node_GOZBTWOLBXCD6_14_42 [label="[GOZBTWOLBXCD6]", color="orange"];
+node_GOZBTWOLBXCD6_4_4 -> node_GOZBTWOLBXCD6_5_9 [label="[ZY2P2HNIJHT2O]", color="forestgreen", style=dashed];
+node_GOZBTWOLBXCD6_5_9[label="GOZBTWOLBXCD6 [5;9["];
+node_GOZBTWOLBXCD6_5_9 -> node_GOZBTWOLBXCD6_9_11 [label="[ZY2P2HNIJHT2O]", color="forestgreen", style=dashed];
+node_GOZBTWOLBXCD6_5_9 -> node_GOZBTWOLBXCD6_4_4 [label="[ZY2P2HNIJHT2O]", color="red", style=dashed];
+node_GOZBTWOLBXCD6_9_11[label="GOZBTWOLBXCD6 [9;11["];
+node_GOZBTWOLBXCD6_9_11 -> node_GOZBTWOLBXCD6_11_13 [label="[GOZBTWOLBXCD6]", color="forestgreen"];
+node_GOZBTWOLBXCD6_9_11 -> node_GOZBTWOLBXCD6_5_9 [label="[ZY2P2HNIJHT2O]", color="red", style=dashed];
+node_GOZBTWOLBXCD6_11_13[label="GOZBTWOLBXCD6 [11;13["];
+node_GOZBTWOLBXCD6_11_13 -> node_GOZBTWOLBXCD6_9_11 [label="[GOZBTWOLBXCD6]", color="red"];
+node_GOZBTWOLBXCD6_11_13 -> node_GOZBTWOLBXCD6_4_4 [label="AAAAAAAAAAAAA", color="red", style=dotted];
+node_GOZBTWOLBXCD6_14_42[label="GOZBTWOLBXCD6 [14;42["];
+node_GOZBTWOLBXCD6_14_42 -> node_GOZBTWOLBXCD6_4_4 [label="[GOZBTWOLBXCD6]", color="royalblue"];
+node_GOZBTWOLBXCD6_14_42 -> node_GOZBTWOLBXCD6_2_2 [label="[GOZBTWOLBXCD6]", color="orange"];
+}

@@ -8,7 +8,6 @@ use crate::error::ApiResult;
 use crate::state::AppState;
 use crate::auth::MaybeAuth;
 
-#[utoipa::path(get, path = "/api/v1/graph", responses((status = 200, body = graph_service::GraphData)))]
 pub async fn get_graph(
     State(state): State<AppState>,
     MaybeAuth(user): MaybeAuth,

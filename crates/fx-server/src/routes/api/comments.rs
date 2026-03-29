@@ -13,18 +13,12 @@ use crate::auth::{WriteAuth, MaybeAuth};
 use fx_core::util::tid;
 use super::UriQuery;
 
-#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[derive(serde::Deserialize)]
 pub struct ListCommentsQuery {
     pub uri: String,
     pub limit: Option<i64>,
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/comments",
-    params(ListCommentsQuery),
-    responses((status = 200, description = "List of comments", body = Vec<Comment>))
-)]
 pub async fn list_comments(
     State(state): State<AppState>,
     Query(q): Query<ListCommentsQuery>,
@@ -34,7 +28,7 @@ pub async fn list_comments(
     Ok(Json(comments))
 }
 
-#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[derive(serde::Deserialize)]
 pub struct CreateComment {
     pub content_uri: String,
     pub body: String,
@@ -42,17 +36,6 @@ pub struct CreateComment {
     pub quote_text: Option<String>,
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/comments",
-    request_body = CreateComment,
-    responses(
-        (status = 201, description = "Comment created", body = Comment),
-        (status = 401, description = "Unauthorized"),
-        (status = 422, description = "Validation error"),
-    ),
-    security(("bearer" = []))
-)]
 pub async fn create_comment(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -106,22 +89,11 @@ pub async fn create_comment(
     Ok((StatusCode::CREATED, Json(comment)))
 }
 
-#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[derive(serde::Deserialize)]
 pub struct UpdateComment {
     pub body: String,
 }
 
-#[utoipa::path(
-    put,
-    path = "/api/v1/comments/{id}",
-    params(("id" = String, Path, description = "Comment ID")),
-    request_body = UpdateComment,
-    responses(
-        (status = 200, description = "Comment updated", body = Comment),
-        (status = 403, description = "Forbidden"),
-    ),
-    security(("bearer" = []))
-)]
 pub async fn update_comment(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -141,16 +113,6 @@ pub async fn update_comment(
     Ok(Json(comment))
 }
 
-#[utoipa::path(
-    delete,
-    path = "/api/v1/comments/{id}",
-    params(("id" = String, Path, description = "Comment ID")),
-    responses(
-        (status = 204, description = "Comment deleted"),
-        (status = 403, description = "Forbidden"),
-    ),
-    security(("bearer" = []))
-)]
 pub async fn delete_comment(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -170,26 +132,18 @@ pub async fn delete_comment(
 
 // --- Comment votes ---
 
-#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[derive(serde::Deserialize)]
 pub struct CommentVoteInput {
     pub value: i32,
 }
 
-#[derive(serde::Serialize, utoipa::ToSchema)]
+#[derive(serde::Serialize)]
 pub struct CommentVoteResult {
     pub comment_id: String,
     pub score: i64,
     pub my_vote: i32,
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/comments/{id}/vote",
-    params(("id" = String, Path, description = "Comment ID")),
-    request_body = CommentVoteInput,
-    responses((status = 200, description = "Comment vote result", body = CommentVoteResult)),
-    security(("bearer" = []))
-)]
 pub async fn vote_comment(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -206,12 +160,6 @@ pub async fn vote_comment(
     }))
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/comments/my-votes",
-    params(("uri" = String, Query, description = "Content URI")),
-    responses((status = 200, body = Vec<comment_service::MyCommentVote>))
-)]
 pub async fn get_my_comment_votes(
     State(state): State<AppState>,
     MaybeAuth(user): MaybeAuth,

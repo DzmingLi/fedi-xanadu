@@ -10,7 +10,6 @@ pub struct BlockInput {
     pub did: String,
 }
 
-#[utoipa::path(post, path = "/api/v1/blocks", responses((status = 200)), security(("bearer" = [])))]
 pub async fn block_user(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -20,7 +19,6 @@ pub async fn block_user(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-#[utoipa::path(delete, path = "/api/v1/blocks/remove", responses((status = 200)), security(("bearer" = [])))]
 pub async fn unblock_user(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -30,7 +28,6 @@ pub async fn unblock_user(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-#[utoipa::path(get, path = "/api/v1/blocks", responses((status = 200)), security(("bearer" = [])))]
 pub async fn list_blocked_users(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -39,7 +36,6 @@ pub async fn list_blocked_users(
     Ok(Json(list))
 }
 
-#[utoipa::path(get, path = "/api/v1/blocks/dids", responses((status = 200, body = Vec<String>)), security(("bearer" = [])))]
 pub async fn list_blocked_dids(
     State(state): State<AppState>,
     Auth(user): Auth,

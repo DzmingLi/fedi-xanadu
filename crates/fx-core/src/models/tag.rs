@@ -7,11 +7,13 @@ use crate::content::PrereqType;
 
 // ---- DB row ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct Tag {
     pub id: String,
     pub name: String,
-    #[schema(value_type = HashMap<String, String>)]
+    #[ts(type = "Record<string, string>")]
+
     pub names: sqlx::types::Json<HashMap<String, String>>,
     pub description: Option<String>,
     pub created_by: String,
@@ -20,7 +22,8 @@ pub struct Tag {
 
 // ---- Request ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct CreateTag {
     pub id: String,
     pub name: String,
@@ -30,7 +33,8 @@ pub struct CreateTag {
 
 // ---- Shared ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct ArticlePrereq {
     pub tag_id: String,
     pub prereq_type: PrereqType,

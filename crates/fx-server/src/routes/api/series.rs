@@ -29,7 +29,6 @@ pub struct ListSeriesQuery {
     pub limit: Option<i64>,
 }
 
-#[utoipa::path(get, path = "/api/v1/series", responses((status = 200)))]
 pub async fn list_series(
     State(state): State<AppState>,
     Query(q): Query<ListSeriesQuery>,
@@ -39,7 +38,6 @@ pub async fn list_series(
     Ok(Json(rows))
 }
 
-#[utoipa::path(post, path = "/api/v1/series", responses((status = 201)), security(("bearer" = [])))]
 pub async fn create_series(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -84,7 +82,6 @@ pub async fn create_series(
     Ok((StatusCode::CREATED, Json(row)))
 }
 
-#[utoipa::path(get, path = "/api/v1/series/{id}", params(("id" = String, Path)), responses((status = 200)))]
 pub async fn get_series_detail(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -98,7 +95,6 @@ pub(crate) struct AddSeriesArticleInput {
     article_uri: String,
 }
 
-#[utoipa::path(post, path = "/api/v1/series/{id}/articles", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn add_series_article(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -121,7 +117,6 @@ pub struct RemoveSeriesArticleInput {
     article_uri: String,
 }
 
-#[utoipa::path(delete, path = "/api/v1/series/{id}/articles/remove", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn remove_series_article(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -142,7 +137,6 @@ pub(crate) struct AddSeriesPrereqInput {
     prereq_article_uri: String,
 }
 
-#[utoipa::path(post, path = "/api/v1/series/{id}/prereqs", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn add_series_prereq(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -168,7 +162,6 @@ pub(crate) struct RemoveSeriesPrereqInput {
     prereq_article_uri: String,
 }
 
-#[utoipa::path(delete, path = "/api/v1/series/{id}/prereqs/remove", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn remove_series_prereq(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -195,7 +188,6 @@ pub struct BulkLimitQuery {
     pub limit: Option<i64>,
 }
 
-#[utoipa::path(get, path = "/api/v1/series/all-articles", responses((status = 200)))]
 pub async fn all_series_articles(
     State(state): State<AppState>,
     Query(q): Query<BulkLimitQuery>,
@@ -207,7 +199,6 @@ pub async fn all_series_articles(
 
 // --- Series context for article navigation (DAG-based) ---
 
-#[utoipa::path(get, path = "/api/v1/series/context", params(("uri" = String, Query)), responses((status = 200)))]
 pub async fn get_series_context(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,
@@ -218,7 +209,6 @@ pub async fn get_series_context(
 
 // --- Series tree (full hierarchy) ---
 
-#[utoipa::path(get, path = "/api/v1/series/{id}/tree", params(("id" = String, Path)), responses((status = 200)))]
 pub async fn get_series_tree(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -234,7 +224,6 @@ pub(crate) struct ReorderArticlesInput {
     article_uris: Vec<String>,
 }
 
-#[utoipa::path(put, path = "/api/v1/series/{id}/articles/reorder", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn reorder_articles(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -256,7 +245,6 @@ pub(crate) struct ReorderChildrenInput {
     child_ids: Vec<String>,
 }
 
-#[utoipa::path(put, path = "/api/v1/series/{id}/children/reorder", params(("id" = String, Path)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn reorder_children(
     State(state): State<AppState>,
     Path(id): Path<String>,

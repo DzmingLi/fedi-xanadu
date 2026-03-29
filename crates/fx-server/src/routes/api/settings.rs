@@ -36,7 +36,6 @@ impl Default for UserSettings {
     }
 }
 
-#[utoipa::path(get, path = "/api/v1/settings", responses((status = 200)), security(("bearer" = [])))]
 pub async fn get_settings(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -83,7 +82,6 @@ pub async fn get_settings(
     Ok(Json(settings))
 }
 
-#[utoipa::path(put, path = "/api/v1/settings", responses((status = 200)), security(("bearer" = [])))]
 pub async fn set_settings(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,

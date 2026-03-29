@@ -10,7 +10,6 @@ pub struct MemberInput {
     pub member_did: String,
 }
 
-#[utoipa::path(post, path = "/api/v1/members", responses((status = 200)), security(("bearer" = [])))]
 pub async fn add_member(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -20,7 +19,6 @@ pub async fn add_member(
     Ok(StatusCode::OK)
 }
 
-#[utoipa::path(delete, path = "/api/v1/members/remove", responses((status = 200)), security(("bearer" = [])))]
 pub async fn remove_member(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -30,7 +28,6 @@ pub async fn remove_member(
     Ok(StatusCode::OK)
 }
 
-#[utoipa::path(get, path = "/api/v1/members", responses((status = 200)), security(("bearer" = [])))]
 pub async fn list_members(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -44,7 +41,6 @@ pub struct CheckMemberQuery {
     pub author_did: String,
 }
 
-#[utoipa::path(get, path = "/api/v1/members/check", params(("author_did" = String, Query)), responses((status = 200)), security(("bearer" = [])))]
 pub async fn check_membership(
     State(state): State<AppState>,
     Auth(user): Auth,

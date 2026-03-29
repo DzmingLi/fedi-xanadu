@@ -14,7 +14,6 @@ use crate::state::AppState;
 use crate::auth::{Auth, WriteAuth, pds_session, log_pds_error};
 use fx_core::util::{tid, content_hash, uri_to_node_id, now_rfc3339};
 
-#[utoipa::path(get, path = "/api/v1/drafts", responses((status = 200, body = Vec<Draft>)), security(("bearer" = [])))]
 pub async fn list_drafts(
     State(state): State<AppState>,
     Auth(user): Auth,
@@ -23,7 +22,6 @@ pub async fn list_drafts(
     Ok(Json(drafts))
 }
 
-#[utoipa::path(post, path = "/api/v1/drafts", request_body = SaveDraft, responses((status = 201, body = Draft)), security(("bearer" = [])))]
 pub async fn save_draft(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -67,7 +65,6 @@ pub async fn save_draft(
     Ok((StatusCode::CREATED, Json(draft)))
 }
 
-#[utoipa::path(put, path = "/api/v1/drafts/{id}", params(("id" = String, Path)), responses((status = 200, body = Draft)), security(("bearer" = [])))]
 pub async fn update_draft(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -79,7 +76,6 @@ pub async fn update_draft(
     Ok(Json(draft))
 }
 
-#[utoipa::path(delete, path = "/api/v1/drafts/{id}", params(("id" = String, Path)), responses((status = 204)), security(("bearer" = [])))]
 pub async fn delete_draft(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -111,7 +107,6 @@ pub async fn delete_draft(
 
 // --- Publish draft (convert to article) ---
 
-#[utoipa::path(post, path = "/api/v1/drafts/{id}/publish", params(("id" = String, Path)), responses((status = 201, body = Article)), security(("bearer" = [])))]
 pub async fn publish_draft(
     State(state): State<AppState>,
     Path(id): Path<String>,
