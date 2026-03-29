@@ -1,4 +1,4 @@
-export type ContentFormat = 'typst' | 'markdown' | 'html' | 'tex';
+export type ContentFormat = 'typst' | 'markdown' | 'html';
 export type ContentKind = 'article' | 'question' | 'answer';
 export type Category = 'general' | 'lecture' | 'paper' | 'review';
 export type PrereqType = 'required' | 'recommended' | 'suggested';

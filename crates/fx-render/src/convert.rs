@@ -3,7 +3,7 @@ use std::process::Command;
 
 /// Convert content between formats using pandoc.
 ///
-/// Supported formats: "markdown", "typst", "tex", "html".
+/// Supported formats: "markdown", "typst", "html".
 /// Returns the converted source text (not rendered HTML).
 pub fn convert_format(source: &str, from: &str, to: &str) -> anyhow::Result<String> {
     if from == to {
@@ -44,7 +44,6 @@ fn to_pandoc_format(fmt: &str) -> anyhow::Result<&'static str> {
     match fmt {
         "markdown" => Ok("markdown"),
         "typst" => Ok("typst"),
-        "tex" => Ok("latex"),
         "html" => Ok("html"),
         _ => anyhow::bail!("unsupported format for conversion: {fmt}"),
     }
@@ -66,18 +65,5 @@ mod tests {
         let out = convert_format("# Hello\n\n**bold** text", "markdown", "typst").unwrap();
         assert!(out.contains("Hello"));
         assert!(out.contains("bold"));
-    }
-
-    #[test]
-    fn test_markdown_to_tex() {
-        let out = convert_format("# Hello\n\n**bold** text", "markdown", "tex").unwrap();
-        assert!(out.contains("Hello"));
-        assert!(out.contains("bold") || out.contains("textbf"));
-    }
-
-    #[test]
-    fn test_tex_to_typst() {
-        let out = convert_format(r"\section{Hello}\textbf{bold}", "tex", "typst").unwrap();
-        assert!(out.contains("Hello"));
     }
 }

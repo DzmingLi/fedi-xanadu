@@ -689,12 +689,7 @@ async fn main() -> Result<()> {
                 "md" | "markdown" => (ContentFormat::Markdown, content),
                 "typ" | "typst" => (ContentFormat::Typst, content),
                 "html" | "htm" => (ContentFormat::Html, content),
-                "tex" | "latex" => {
-                    eprintln!("Converting LaTeX to Markdown via pandoc...");
-                    let converted = convert_tex_to_markdown(&content)?;
-                    (ContentFormat::Markdown, converted)
-                }
-                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, .html, or .tex)"),
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
             };
 
             if content_format == ContentFormat::Html {
@@ -1297,32 +1292,6 @@ fn validate_html_fragment(content: &str) -> Result<()> {
     Ok(())
 }
 
-/// Convert LaTeX to Markdown using pandoc locally.
-fn convert_tex_to_markdown(tex_source: &str) -> Result<String> {
-    use std::process::{Command, Stdio};
-    use std::io::Write;
-
-    let mut child = Command::new("pandoc")
-        .args(["--from", "latex", "--to", "markdown", "--wrap=none", "--mathml"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("Failed to run pandoc. Is it installed? (nix develop provides it)")?;
-
-    child.stdin.take().unwrap().write_all(tex_source.as_bytes())
-        .context("Failed to write to pandoc stdin")?;
-
-    let output = child.wait_with_output().context("pandoc process failed")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("pandoc conversion failed:\n{stderr}");
-    }
-
-    Ok(String::from_utf8(output.stdout).context("pandoc output is not valid UTF-8")?)
-}
-
 /// Resolve a DID or handle to a DID. If already a DID (starts with "did:"), pass through.
 /// Otherwise treat as a platform user handle and generate did:local:<handle>.
 fn resolve_did_or_handle(input: &str) -> String {
@@ -1614,11 +1583,7 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "md" | "markdown" => ("markdown", content),
                 "typ" | "typst" => ("typst", content),
                 "html" | "htm" => ("html", content),
-                "tex" | "latex" => {
-                    eprintln!("Converting LaTeX to Markdown via pandoc...");
-                    ("markdown", convert_tex_to_markdown(&content)?)
-                }
-                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, .html, or .tex)"),
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
             };
 
             let title = title.unwrap_or_else(|| {
@@ -1661,11 +1626,7 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "md" | "markdown" => ("markdown", content),
                 "typ" | "typst" => ("typst", content),
                 "html" | "htm" => ("html", content),
-                "tex" | "latex" => {
-                    eprintln!("Converting LaTeX to Markdown via pandoc...");
-                    ("markdown", convert_tex_to_markdown(&content)?)
-                }
-                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, .html, or .tex)"),
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
             };
 
             let title = title.unwrap_or_else(|| {
@@ -1743,11 +1704,7 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "md" | "markdown" => ("markdown", content),
                 "typ" | "typst" => ("typst", content),
                 "html" | "htm" => ("html", content),
-                "tex" | "latex" => {
-                    eprintln!("Converting LaTeX to Markdown via pandoc...");
-                    ("markdown", convert_tex_to_markdown(&content)?)
-                }
-                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, .html, or .tex)"),
+                _ => bail!("Unsupported file extension: .{ext} (use .md, .typ, or .html)"),
             };
 
             if content_format == "html" {

@@ -11,9 +11,6 @@ pub enum ContentFormat {
     Typst,
     Markdown,
     Html,
-    #[serde(rename = "tex")]
-    #[sqlx(rename = "tex")]
-    Tex,
 }
 
 impl ContentFormat {
@@ -22,7 +19,6 @@ impl ContentFormat {
             Self::Typst => "typst",
             Self::Markdown => "markdown",
             Self::Html => "html",
-            Self::Tex => "tex",
         }
     }
 
@@ -31,7 +27,6 @@ impl ContentFormat {
             Self::Typst => "typ",
             Self::Markdown => "md",
             Self::Html => "html",
-            Self::Tex => "tex",
         }
     }
 
@@ -40,7 +35,6 @@ impl ContentFormat {
             "typ" => Some(Self::Typst),
             "md" => Some(Self::Markdown),
             "html" | "htm" => Some(Self::Html),
-            "tex" | "latex" => Some(Self::Tex),
             _ => None,
         }
     }
@@ -53,7 +47,6 @@ impl std::str::FromStr for ContentFormat {
             "typst" => Ok(Self::Typst),
             "markdown" | "md" => Ok(Self::Markdown),
             "html" => Ok(Self::Html),
-            "tex" | "latex" => Ok(Self::Tex),
             other => Err(format!("unknown content format: {other}")),
         }
     }
@@ -185,7 +178,7 @@ mod tests {
 
     #[test]
     fn content_format_roundtrip() {
-        for fmt in [ContentFormat::Typst, ContentFormat::Markdown, ContentFormat::Html, ContentFormat::Tex] {
+        for fmt in [ContentFormat::Typst, ContentFormat::Markdown, ContentFormat::Html] {
             let s = serde_json::to_string(&fmt).unwrap();
             let back: ContentFormat = serde_json::from_str(&s).unwrap();
             assert_eq!(fmt, back);
