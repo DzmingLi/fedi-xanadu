@@ -64,6 +64,12 @@ enum Command {
         /// Book ID (for reviews)
         #[arg(long)]
         book_id: Option<String>,
+        /// Series ID — add this article to a series
+        #[arg(long)]
+        series: Option<String>,
+        /// Resource files to upload to the series repo (e.g. references.bib)
+        #[arg(long, value_delimiter = ',')]
+        resource: Vec<PathBuf>,
     },
     /// Update an existing article's content from a local file
     Update {
@@ -366,6 +372,12 @@ enum AdminCommand {
         /// AT URI of the article this is a translation of
         #[arg(long)]
         translation_of: Option<String>,
+        /// Series ID — add this article to a series
+        #[arg(long)]
+        series: Option<String>,
+        /// Resource files to upload to the series repo (e.g. references.bib)
+        #[arg(long, value_delimiter = ',')]
+        resource: Vec<PathBuf>,
     },
 }
 
@@ -678,7 +690,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        Command::Upload { file, title, desc, lang, tags, license, category, book_id } => {
+        Command::Upload { file, title, desc, lang, tags, license, category, book_id, series, resource } => {
             let token = config.token()?;
 
             let content = std::fs::read_to_string(&file)
@@ -733,6 +745,56 @@ async fn main() -> Result<()> {
             let uri = resp["at_uri"].as_str().unwrap_or("?");
             println!("Published: {title}");
             println!("URI: {uri}");
+
+            // Add to series if specified
+            if let Some(ref series_id) = series {
+                client()
+                    .post(format!("{base}/series/{series_id}/articles"))
+                    .bearer_auth(token)
+                    .json(&serde_json::json!({ "article_uri": uri }))
+                    .send().await?
+                    .error_for_status().context("Failed to add article to series")?;
+                println!("Added to series: {series_id}");
+            }
+
+            // Upload resource files (images, bib, etc.)
+            for res_path in &resource {
+                let file_name = res_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .context("Invalid resource filename")?;
+                let file_bytes = std::fs::read(res_path)
+                    .with_context(|| format!("Cannot read {}", res_path.display()))?;
+
+                if let Some(ref series_id) = series {
+                    // Upload to series repo
+                    let part = reqwest::multipart::Part::bytes(file_bytes)
+                        .file_name(file_name.to_string());
+                    let form = reqwest::multipart::Form::new().part("file", part);
+                    client()
+                        .post(format!("{base}/series/{series_id}/resource"))
+                        .bearer_auth(token)
+                        .multipart(form)
+                        .send().await?
+                        .error_for_status()
+                        .with_context(|| format!("Failed to upload resource: {file_name}"))?;
+                    println!("Uploaded to series: {file_name}");
+                } else {
+                    // Upload to article repo (as image/resource)
+                    let part = reqwest::multipart::Part::bytes(file_bytes)
+                        .file_name(file_name.to_string());
+                    let form = reqwest::multipart::Form::new()
+                        .text("article_uri", uri.to_string())
+                        .part("file", part);
+                    client()
+                        .post(format!("{base}/articles/upload-image"))
+                        .bearer_auth(token)
+                        .multipart(form)
+                        .send().await?
+                        .error_for_status()
+                        .with_context(|| format!("Failed to upload resource: {file_name}"))?;
+                    println!("Uploaded to article: {file_name}");
+                }
+            }
         }
 
         Command::Update { uri, file, title, desc } => {
@@ -1695,7 +1757,7 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             println!("Revoked credentials for {did_or_handle} ({did})");
         }
 
-        AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license, translation_of, category, book_id } => {
+        AdminCommand::Publish { r#as: as_handle, file, title, desc, lang, tags, license, translation_of, category, book_id, series, resource } => {
             let content = std::fs::read_to_string(&file)
                 .with_context(|| format!("Cannot read {}", file.display()))?;
 
@@ -1744,6 +1806,54 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             let uri = resp["at_uri"].as_str().unwrap_or("?");
             println!("Published as {as_handle}: {title}");
             println!("URI: {uri}");
+
+            // Add to series if specified
+            if let Some(ref series_id) = series {
+                client()
+                    .post(format!("{base}/series/{series_id}/articles"))
+                    .header("x-admin-secret", &secret)
+                    .json(&serde_json::json!({ "article_uri": uri }))
+                    .send().await?
+                    .error_for_status().context("Failed to add article to series")?;
+                println!("Added to series: {series_id}");
+            }
+
+            // Upload resource files
+            for res_path in &resource {
+                let file_name = res_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .context("Invalid resource filename")?;
+                let file_bytes = std::fs::read(res_path)
+                    .with_context(|| format!("Cannot read {}", res_path.display()))?;
+
+                if let Some(ref series_id) = series {
+                    let part = reqwest::multipart::Part::bytes(file_bytes)
+                        .file_name(file_name.to_string());
+                    let form = reqwest::multipart::Form::new().part("file", part);
+                    client()
+                        .post(format!("{base}/series/{series_id}/resource"))
+                        .header("x-admin-secret", &secret)
+                        .multipart(form)
+                        .send().await?
+                        .error_for_status()
+                        .with_context(|| format!("Failed to upload resource: {file_name}"))?;
+                    println!("Uploaded to series: {file_name}");
+                } else {
+                    let part = reqwest::multipart::Part::bytes(file_bytes)
+                        .file_name(file_name.to_string());
+                    let form = reqwest::multipart::Form::new()
+                        .text("article_uri", uri.to_string())
+                        .part("file", part);
+                    client()
+                        .post(format!("{base}/admin/articles/upload-image"))
+                        .header("x-admin-secret", &secret)
+                        .multipart(form)
+                        .send().await?
+                        .error_for_status()
+                        .with_context(|| format!("Failed to upload resource: {file_name}"))?;
+                    println!("Uploaded to article: {file_name}");
+                }
+            }
         }
 
         AdminCommand::BookHistory { book_id } => {
