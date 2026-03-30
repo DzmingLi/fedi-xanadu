@@ -139,6 +139,10 @@ fn article_routes() -> Router<AppState> {
         .route("/articles/by-tag", get(articles::get_articles_by_tag))
         .route("/articles/by-did", get(articles::get_articles_by_did))
         .route("/articles/translations", get(articles::get_translations))
+        // Version history
+        .route("/articles/by-uri/history", get(articles::get_article_history))
+        .route("/articles/by-uri/version", get(articles::get_article_version))
+        .route("/articles/by-uri/diff", get(articles::get_article_diff))
 }
 
 fn vote_routes() -> Router<AppState> {

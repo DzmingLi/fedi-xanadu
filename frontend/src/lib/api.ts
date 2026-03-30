@@ -5,6 +5,7 @@ import type {
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
   BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter,
+  ArticleVersion, ArticleVersionFull, VersionDiff,
 } from './types';
 import { getToken } from './auth.svelte';
 
@@ -97,6 +98,11 @@ export const getArticlesByTag = (tagId: string) => get<Article[]>(`/articles/by-
 export const getArticlesByDid = (did: string) => get<Article[]>(`/articles/by-did?did=${encodeURIComponent(did)}`);
 export const getTranslations = (uri: string) => get<Article[]>(`/articles/translations?uri=${encodeURIComponent(uri)}`);
 export const getArticleFull = (uri: string) => get<ArticleFullResponse>(`/articles/full?uri=${encodeURIComponent(uri)}`);
+
+// Version history
+export const getArticleHistory = (uri: string) => get<ArticleVersion[]>(`/articles/by-uri/history?uri=${encodeURIComponent(uri)}`);
+export const getArticleVersion = (uri: string, id: number) => get<ArticleVersionFull>(`/articles/by-uri/version?uri=${encodeURIComponent(uri)}&id=${id}`);
+export const getArticleDiff = (uri: string, from: number, to: number) => get<VersionDiff>(`/articles/by-uri/diff?uri=${encodeURIComponent(uri)}&from=${from}&to=${to}`);
 
 // Questions & Answers
 export const listQuestions = (limit = 50, offset = 0) => get<Article[]>(`/questions?limit=${limit}&offset=${offset}`);

@@ -6,7 +6,7 @@ use axum::{
 use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::*;
 use fx_core::region::default_visibility;
-use fx_core::services::{article_service, notification_service, series_service};
+use fx_core::services::{article_service, notification_service, series_service, version_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult, require_owner};
@@ -319,8 +319,14 @@ pub async fn create_article(
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
     }
 
-    if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
-        tracing::warn!("pijul record failed for {node_id}: {e}");
+    match state.pijul.record(&node_id, "Initial publish") {
+        Ok(Some(hash)) => {
+            let _ = version_service::record_version(
+                &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
+            ).await;
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
     }
 
     let hash = content_hash(&input.content);
@@ -590,6 +596,17 @@ pub async fn fork_article(
         }
     }
 
+    // Record initial version for the fork
+    let fork_repo = state.pijul.repo_path(&fork_node_id);
+    let fork_src_ext = fx_render::format_extension(target_format);
+    let fork_src_file = format!("content.{fork_src_ext}");
+    if let Ok(source_text) = tokio::fs::read_to_string(&fork_repo.join(&fork_src_file)).await {
+        let _ = version_service::record_version(
+            &state.pool, &fork_at_uri, "fork-initial", &user.did,
+            &format!("Forked from {}", input.uri), &source_text,
+        ).await;
+    }
+
     let mut source_for_fork = source.clone();
     if target_format != source_for_fork.content_format.as_str() {
         source_for_fork.content_format = target_format.parse::<ContentFormat>()
@@ -733,8 +750,14 @@ pub async fn upload_image(
 
     let _ = tokio::fs::remove_file(repo_path.join("content.html")).await;
 
-    if let Err(e) = state.pijul.record(&node_id, &format!("Add image: {safe_name}")) {
-        tracing::warn!("pijul record failed for {node_id}: {e}");
+    match state.pijul.record(&node_id, &format!("Add image: {safe_name}")) {
+        Ok(Some(hash)) => {
+            let _ = version_service::record_version(
+                &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
+            ).await;
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
     }
 
     Ok(Json(ImageUploadResponse { filename: safe_name }))
@@ -841,8 +864,14 @@ pub async fn update_article(
         let hash = content_hash(content);
         article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;
 
-        if let Err(e) = state.pijul.record(&node_id, "Update article") {
-            tracing::warn!("pijul record failed for {node_id}: {e}");
+        match state.pijul.record(&node_id, "Update article") {
+            Ok(Some(hash)) => {
+                let _ = version_service::record_version(
+                    &state.pool, &input.uri, &hash, &user.did, "Update article", content,
+                ).await;
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
         }
     }
 
@@ -951,4 +980,43 @@ pub async fn search_articles(
 
     let articles = article_service::get_articles_by_uris(&state.pool, state.instance_mode, &uris).await?;
     Ok(Json(articles))
+}
+
+// --- Version history ---
+
+pub async fn get_article_history(
+    State(state): State<AppState>,
+    Query(q): Query<UriQuery>,
+) -> ApiResult<Json<Vec<version_service::ArticleVersion>>> {
+    let versions = version_service::list_versions(&state.pool, &q.uri).await?;
+    Ok(Json(versions))
+}
+
+#[derive(serde::Deserialize)]
+pub struct VersionQuery {
+    pub uri: String,
+    pub id: i32,
+}
+
+pub async fn get_article_version(
+    State(state): State<AppState>,
+    Query(q): Query<VersionQuery>,
+) -> ApiResult<Json<version_service::ArticleVersionFull>> {
+    let version = version_service::get_version(&state.pool, &q.uri, q.id).await?;
+    Ok(Json(version))
+}
+
+#[derive(serde::Deserialize)]
+pub struct DiffQuery {
+    pub uri: String,
+    pub from: i32,
+    pub to: i32,
+}
+
+pub async fn get_article_diff(
+    State(state): State<AppState>,
+    Query(q): Query<DiffQuery>,
+) -> ApiResult<Json<version_service::VersionDiff>> {
+    let diff = version_service::diff_versions(&state.pool, &q.uri, q.from, q.to).await?;
+    Ok(Json(diff))
 }

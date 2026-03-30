@@ -9,6 +9,7 @@
   import { isBlocked, addBlocked } from '$lib/blocklist.svelte';
   import { t, LANG_NAMES } from '$lib/i18n/index.svelte';
   import CommentThread from '$lib/components/CommentThread.svelte';
+  import VersionHistory from '$lib/components/VersionHistory.svelte';
   import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, BookmarkWithTitle, VoteSummary, SeriesContextItem, AccessGrant } from '$lib/types';
 
   let uri = $derived($page.url.searchParams.get('uri') ?? '');
@@ -31,6 +32,7 @@
   let accessGrants = $state<AccessGrant[]>([]);
   let newGrantDid = $state('');
   let reportOpen = $state(false);
+  let historyOpen = $state(false);
   let reportReason = $state('');
 
   const articleQuery = createQuery({
@@ -540,6 +542,10 @@ try {
           </button>
         {/if}
 
+        <button class="action-btn" onclick={() => { historyOpen = true; }} title="版本历史">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </button>
+
         {#if isOwner}
           <div class="action-separator"></div>
           <button class="action-btn" onclick={doEdit} title={t('article.edit')}>
@@ -605,6 +611,9 @@ try {
 
       <!-- Comments -->
       <CommentThread bind:this={commentThread} contentUri={uri} {contentEl} />
+
+      <!-- Version history panel -->
+      <VersionHistory {uri} bind:open={historyOpen} />
 
     </article>
   </div>

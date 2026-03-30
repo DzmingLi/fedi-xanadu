@@ -6,7 +6,7 @@ use axum::{
 use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::*;
 use fx_core::region::default_visibility;
-use fx_core::services::{article_service, notification_service};
+use fx_core::services::{article_service, notification_service, version_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -71,8 +71,14 @@ pub async fn create_question(
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
 
-    if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
-        tracing::warn!("pijul record failed for {node_id}: {e}");
+    match state.pijul.record(&node_id, "Initial publish") {
+        Ok(Some(hash)) => {
+            let _ = version_service::record_version(
+                &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
+            ).await;
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
     }
 
     let hash = content_hash(&input.content);
@@ -121,8 +127,14 @@ pub async fn post_answer(
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
 
-    if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
-        tracing::warn!("pijul record failed for {node_id}: {e}");
+    match state.pijul.record(&node_id, "Initial publish") {
+        Ok(Some(hash)) => {
+            let _ = version_service::record_version(
+                &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
+            ).await;
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
     }
 
     let hash = content_hash(&input.content);

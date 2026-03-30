@@ -6,7 +6,7 @@ use axum::{
 use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::{Article, CreateArticle};
 use fx_core::region::default_visibility;
-use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service};
+use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service, version_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -103,8 +103,14 @@ pub async fn admin_create_article(
         }
     }
 
-    if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
-        tracing::warn!("pijul record failed for {node_id}: {e}");
+    match state.pijul.record(&node_id, "Initial publish") {
+        Ok(Some(hash)) => {
+            let _ = version_service::record_version(
+                &state.pool, &at_uri, &hash, &did, "Initial publish", &input.article.content,
+            ).await;
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
     }
 
     let hash = content_hash(&input.article.content);
@@ -235,8 +241,14 @@ pub async fn admin_update_article(
         let hash = content_hash(content);
         article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;
 
-        if let Err(e) = state.pijul.record(&node_id, "Admin update") {
-            tracing::warn!("pijul record failed for {node_id}: {e}");
+        match state.pijul.record(&node_id, "Admin update") {
+            Ok(Some(hash)) => {
+                let _ = version_service::record_version(
+                    &state.pool, &input.uri, &hash, "admin", "Admin update", content,
+                ).await;
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
         }
     }
 
@@ -656,8 +668,14 @@ pub async fn admin_create_question(
         }
     }
 
-    if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
-        tracing::warn!("pijul record failed for {node_id}: {e}");
+    match state.pijul.record(&node_id, "Initial publish") {
+        Ok(Some(hash)) => {
+            let _ = version_service::record_version(
+                &state.pool, &at_uri, &hash, &did, "Initial publish", &input.article.content,
+            ).await;
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
     }
 
     let hash = content_hash(&input.article.content);
@@ -714,8 +732,14 @@ pub async fn admin_post_answer(
         }
     }
 
-    if let Err(e) = state.pijul.record(&node_id, "Initial publish") {
-        tracing::warn!("pijul record failed for {node_id}: {e}");
+    match state.pijul.record(&node_id, "Initial publish") {
+        Ok(Some(hash)) => {
+            let _ = version_service::record_version(
+                &state.pool, &at_uri, &hash, &did, "Initial publish", &input.article.content,
+            ).await;
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
     }
 
     let hash = content_hash(&input.article.content);

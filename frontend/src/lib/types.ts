@@ -428,3 +428,37 @@ export interface CreateArticle {
   tags: string[];
   prereqs: { tag_id: string; prereq_type: PrereqType }[];
 }
+
+// --- Version History ---
+
+export interface ArticleVersion {
+  id: number;
+  article_uri: string;
+  change_hash: string;
+  editor_did: string;
+  message: string;
+  created_at: string;
+}
+
+export interface ArticleVersionFull extends ArticleVersion {
+  source_text: string;
+}
+
+export interface VersionDiff {
+  from_version: number;
+  to_version: number;
+  hunks: DiffHunk[];
+}
+
+export interface DiffHunk {
+  old_start: number;
+  old_count: number;
+  new_start: number;
+  new_count: number;
+  lines: DiffLine[];
+}
+
+export interface DiffLine {
+  kind: 'context' | 'add' | 'remove';
+  content: string;
+}

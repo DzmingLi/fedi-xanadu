@@ -1475,6 +1475,7 @@ dependencies = [
  "argon2",
  "blake3",
  "chrono",
+ "imara-diff",
  "rand 0.10.0",
  "serde",
  "serde_json",
