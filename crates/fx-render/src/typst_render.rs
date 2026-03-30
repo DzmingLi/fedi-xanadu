@@ -212,6 +212,13 @@ pub fn render_series_to_html(
         full_source.push_str("\n]\n");
     }
 
+    // If the series repo contains a bibliography file, append it to the document
+    if let Some(rp) = repo_path {
+        if rp.join("references.bib").exists() {
+            full_source.push_str("\n#bibliography(\"references.bib\")\n");
+        }
+    }
+
     // repo_path allows Typst to resolve shared resources (bib, images, etc.)
     let world = RenderWorld::with_preamble(&full_source, SERIES_PREAMBLE, repo_path);
     let html = render_world(&world)?;
