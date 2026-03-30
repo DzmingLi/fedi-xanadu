@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import { tagName } from '$lib/display';
-  import { authorName } from '$lib/display';
-  import { t } from '$lib/i18n/index.svelte';
-  import type { Article, ContentTeachRow, ContentPrereqBulkRow, Series } from '$lib/types';
+  import { tagName } from '../display';
+  import { authorName } from '../display';
+  import { t } from '../i18n/index.svelte';
+  import type { Article, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
 
   type CardVariant = 'home' | 'profile';
 
@@ -27,7 +26,7 @@
     if (e instanceof KeyboardEvent && e.key !== 'Enter') return;
     e.preventDefault();
     e.stopPropagation();
-    goto(`/tag?id=${encodeURIComponent(tagId)}`);
+    window.location.hash = `#/tag?id=${encodeURIComponent(tagId)}`;
   }
 
   function seriesAuthor(s: Series): string {
@@ -37,7 +36,7 @@
 </script>
 
 {#if article}
-  <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card">
+  <a href="#/article?uri={encodeURIComponent(article.at_uri)}" class="post-card">
     <div class="card-top">
       {#if article.kind === 'question'}
         <span class="question-badge">{t('qa.questionBadge')}</span>
@@ -77,7 +76,7 @@
     </div>
   </a>
 {:else if series}
-  <a href="/series?id={encodeURIComponent(series.id)}" class="post-card series-card">
+  <a href="#/series?id={encodeURIComponent(series.id)}" class="post-card series-card">
     <div class="card-top">
       <span class="post-title">{series.title}</span>
       <span class="series-badge">{t('home.series')}</span>

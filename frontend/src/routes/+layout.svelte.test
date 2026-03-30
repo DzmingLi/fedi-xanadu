@@ -1,0 +1,6 @@
+<script lang="ts">
+  let { children } = $props();
+</script>
+
+<h1>TEST - SvelteKit works</h1>
+{@render children()}
