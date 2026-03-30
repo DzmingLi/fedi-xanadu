@@ -44,24 +44,58 @@
     </ul>
 
     <h3>系列讲义（Series）</h3>
-    <p>多篇文章可以组织为系列讲义。系列讲义支持<strong>多级嵌套</strong>，适合结构化教材：</p>
+    <p>系列讲义是一个完整的 <strong>Typst 项目</strong>（一个 pijul 仓库），包含 <code>main.typ</code> 入口文件和所有章节文件、参考文献等共享资源。</p>
+    <p>系统编译 <code>main.typ</code>，然后按照你选择的标题级别自动拆分成独立页面，每个页面有自己的 URL 和评论区。</p>
+    <h4>项目结构</h4>
+    <pre><code>my-series/
+├── main.typ          ← 入口文件（必须）
+├── chapters/
+│   ├── intro.typ
+│   ├── ch1.typ
+│   ├── ch2.typ
+│   └── ...
+├── references.bib    ← 参考文献（可选）
+├── images/           ← 图片目录（可选）
+└── macros.typ        ← 自定义宏（可选）</code></pre>
+
+    <h4>main.typ 示例</h4>
+    <pre><code>#set heading(numbering: "1.1")
+
+#include "chapters/intro.typ"
+#include "chapters/ch1.typ"
+#include "chapters/ch2.typ"
+
+#bibliography("references.bib")</code></pre>
+
+    <p>发布时选择拆分级别：</p>
     <ul>
-      <li>有明确的阅读顺序（章节编号）</li>
-      <li>章节间可以建立直接的前置依赖关系</li>
-      <li>阅读文章时左右侧有导航箭头跳转前后章节</li>
-      <li><strong>嵌套结构</strong> — 创建子系列作为章节，子系列下再添加文章作为小节</li>
+      <li><strong>按一级标题拆分</strong> — 每个 <code>= Chapter</code> 是一个独立页面</li>
+      <li><strong>按二级标题拆分</strong> — 每个 <code>== Section</code> 是一个独立页面（适合细粒度内容如教材）</li>
     </ul>
-    <p>例如，上传《Composing Programs》教材的推荐结构：</p>
-    <pre><code>Composing Programs（根系列）
-├── Chapter 1: Building Abstractions with Functions（子系列）
-│   ├── 1.1 Getting Started（文章）
-│   ├── 1.2 Elements of Programming（文章）
-│   └── 1.3 Defining New Functions（文章）
-├── Chapter 2: Building Abstractions with Data（子系列）
-│   ├── 2.1 Introduction（文章）
+    <p>例如，《Composing Programs》按二级标题拆分后的结构：</p>
+    <pre><code>Composing Programs
+├── Chapter 1: Building Abstractions with Functions
+│   ├── 1.1 Getting Started（页面，独立评论区）
+│   ├── 1.2 Elements of Programming（页面）
+│   └── 1.3 Defining New Functions（页面）
+├── Chapter 2: Building Abstractions with Data
+│   ├── 2.1 Introduction（页面）
 │   └── ...
 └── ...</code></pre>
-    <p>每篇文章内部用标题（h2/h3）组织小节内容，例如 1.2 文章内含 1.2.1 ~ 1.2.6 等小节。</p>
+
+    <h4>跨章引用和参考文献</h4>
+    <p>因为整个系列作为一个文档编译，Typst 的跨文件引用自然生效：</p>
+    <pre><code>// 在 ch1.typ 中定义标签
+= 类型论基础 &lt;ch:type-theory&gt;
+
+// 在 ch2.typ 中引用
+如 @ch:type-theory 所述...
+
+// 参考文献引用
+根据 Martin-Löf @Martin-Lof-1972 的工作...</code></pre>
+
+    <h4>Fork 系列</h4>
+    <p>Fork 一个系列 = fork 整个仓库。你可以修改任何章节，添加新内容，系统会跟踪 pijul diff。</p>
 
     <h3>书架（书签系统）</h3>
     <p>收藏你喜欢的文章，组织成个人知识库：</p>
@@ -82,8 +116,8 @@
 
   <section>
     <h2>内容格式</h2>
-    <p>平台支持四种写作格式，在编辑器的「格式」下拉菜单中选择。上传文件时会根据扩展名自动识别。</p>
-    <p>Fork 文章时可以切换目标格式，系统会自动转换内容。转换可能丢失部分格式特有的语法（如 Typst 定理环境转 Markdown 后变为普通文本），建议转换后检查。</p>
+    <p>平台支持三种写作格式：<strong>Typst</strong>（推荐）、<strong>Markdown</strong>、<strong>HTML</strong>。上传文件时根据扩展名自动识别（<code>.typ</code>、<code>.md</code>、<code>.html</code>）。</p>
+    <p>系列讲义推荐使用 Typst（跨章引用、参考文献支持最完整），也支持 Markdown 和 HTML。</p>
   </section>
 
   <section>
@@ -189,40 +223,6 @@ $$</code></pre>
   </section>
 
   <section>
-    <h2>LaTeX</h2>
-    <p>适合已有 LaTeX 文档或习惯 LaTeX 语法的用户。通过 pandoc 转换为 HTML，数学渲染为 MathML。</p>
-
-    <h3>基本用法</h3>
-    <p>不需要 <code>\documentclass</code> 和 <code>\begin&lbrace;document&rbrace;</code>，直接写正文内容：</p>
-    <pre><code>\section&lbrace;引言&rbrace;
-
-这是一段文字，包含行内公式 $E = mc^2$ 和块级公式：
-\[
-  \int_a^b f(x)\,dx = F(b) - F(a)
-\]
-
-\subsection&lbrace;列表&rbrace;
-
-\begin&lbrace;enumerate&rbrace;
-\item 第一项
-\item 第二项
-\end&lbrace;enumerate&rbrace;</code></pre>
-
-    <h3>支持的命令</h3>
-    <ul>
-      <li>章节：<code>\section</code>、<code>\subsection</code>、<code>\subsubsection</code></li>
-      <li>格式：<code>\textbf&lbrace;&rbrace;</code>、<code>\textit&lbrace;&rbrace;</code>、<code>\emph&lbrace;&rbrace;</code></li>
-      <li>列表：<code>enumerate</code>、<code>itemize</code></li>
-      <li>数学：<code>$...$</code>、<code>\[...\]</code>、<code>equation</code>、<code>align</code></li>
-      <li>环境：<code>theorem</code>、<code>proof</code>、<code>definition</code> 等</li>
-    </ul>
-
-    <h3>注意事项</h3>
-    <ul>
-      <li>不支持自定义宏包（<code>\usepackage</code>），只处理标准 LaTeX</li>
-      <li>复杂表格和 TikZ 图形可能无法正确转换</li>
-      <li>建议先在本地编译确认效果后再上传</li>
-    </ul>
   </section>
 
   <section>
@@ -283,7 +283,7 @@ $$</code></pre>
       <li>使用 Bluesky 账号登录（Handle + App Password）</li>
       <li>选择感兴趣的领域，首页将按领域推荐文章</li>
       <li>浏览<a href="#/skill-trees">技能树</a>，采用一棵适合你的学习路径</li>
-      <li>点击「Write」<a href="#/new">创建文章</a>，选择 Typst / Markdown / LaTeX / HTML 格式</li>
+      <li>点击「Write」<a href="#/new">创建文章</a>，选择 Typst / Markdown / HTML 格式</li>
       <li>为文章添加 tag 和前置知识声明</li>
       <li>发布后，文章会同时存储在你的 AT Protocol PDS 上</li>
     </ol>
