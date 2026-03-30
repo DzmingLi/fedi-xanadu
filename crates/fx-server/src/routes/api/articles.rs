@@ -219,54 +219,40 @@ async fn typst_series_render(
     .await
     .ok()?;
 
+    let Some(pijul_node_id) = series_pijul else {
+        tracing::warn!("series {series_id} has no pijul repo");
+        return None;
+    };
+
+    let series_repo = state.pijul.series_repo_path(&pijul_node_id);
     let mut chapter_sources = Vec::new();
-
-    if let Some(ref pijul_node_id) = series_pijul {
-        // Read from series repo
-        let series_repo = state.pijul.series_repo_path(pijul_node_id);
-        for ch in chapters {
-            let chapter_id = ch.article_uri.rsplit('/').next().unwrap_or("");
-            let src_path = series_repo.join("chapters").join(format!("{chapter_id}.typ"));
-            let source = tokio::fs::read_to_string(&src_path).await.ok()?;
-            chapter_sources.push((ch.article_uri.clone(), source));
-        }
-        // Pass series repo as repo_path so Typst can resolve bib files etc.
-        let repo_path = series_repo.clone();
-        let rendered = tokio::task::spawn_blocking(move || {
-            fx_render::render_series_to_html(&chapter_sources, Some(&repo_path))
-        }).await.ok()?;
-
-        match rendered {
-            Ok(map) => {
-                write_series_cache(state, series_id, &map, series_cache).await;
-                map.get(article_uri).cloned()
-            }
+    for ch in chapters {
+        let chapter_id = ch.article_uri.rsplit('/').next().unwrap_or("");
+        let ext = fx_render::format_extension(&ch.content_format);
+        let src_path = series_repo.join("chapters").join(format!("{chapter_id}.{ext}"));
+        let source = match tokio::fs::read_to_string(&src_path).await {
+            Ok(s) => s,
             Err(e) => {
-                tracing::warn!("series render failed: {e}");
-                None
+                tracing::warn!("series chapter read failed: {src_path:?}: {e}");
+                return None;
             }
-        }
-    } else {
-        // Legacy: read from individual article repos
-        for ch in chapters {
-            let node = uri_to_node_id(&ch.article_uri);
-            let src_path = state.pijul.repo_path(&node).join("content.typ");
-            let source = tokio::fs::read_to_string(&src_path).await.ok()?;
-            chapter_sources.push((ch.article_uri.clone(), source));
-        }
-        let rendered = tokio::task::spawn_blocking(move || {
-            fx_render::render_series_to_html(&chapter_sources, None)
-        }).await.ok()?;
+        };
+        chapter_sources.push((ch.article_uri.clone(), source));
+    }
 
-        match rendered {
-            Ok(map) => {
-                write_series_cache(state, series_id, &map, series_cache).await;
-                map.get(article_uri).cloned()
-            }
-            Err(e) => {
-                tracing::warn!("series render (legacy) failed: {e}");
-                None
-            }
+    let repo_path = series_repo.clone();
+    let rendered = tokio::task::spawn_blocking(move || {
+        fx_render::render_series_to_html(&chapter_sources, Some(&repo_path))
+    }).await.ok()?;
+
+    match rendered {
+        Ok(map) => {
+            write_series_cache(state, series_id, &map, series_cache).await;
+            map.get(article_uri).cloned()
+        }
+        Err(e) => {
+            tracing::warn!("series render failed: {e}");
+            None
         }
     }
 }
