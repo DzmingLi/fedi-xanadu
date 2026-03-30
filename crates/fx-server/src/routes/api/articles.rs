@@ -150,13 +150,28 @@ async fn try_series_render(
     article_uri: &str,
     _format: &str,
 ) -> Option<String> {
-    let (series_id, chapters) = series_service::get_series_chapters_for_render(
+    let result = series_service::get_series_chapters_for_render(
         &state.pool, article_uri,
-    ).await.ok()??;
+    ).await;
+
+    let (series_id, chapters) = match result {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            tracing::debug!("article {article_uri} not in any series");
+            return None;
+        }
+        Err(e) => {
+            tracing::warn!("get_series_chapters_for_render failed: {e}");
+            return None;
+        }
+    };
 
     if chapters.is_empty() {
+        tracing::debug!("series {series_id} has no chapters");
         return None;
     }
+
+    tracing::info!("series render: {series_id} with {} chapters", chapters.len());
 
     // Get series pijul repo for cache paths
     let series_pijul: Option<String> = sqlx::query_scalar(
@@ -165,12 +180,15 @@ async fn try_series_render(
     .bind(&series_id)
     .fetch_optional(&state.pool)
     .await
-    .ok()?;
+    .ok()
+    .flatten();
 
     let Some(ref pijul_node_id) = series_pijul else {
-        tracing::warn!("series {series_id} has no pijul repo (in try_series_render)");
+        tracing::warn!("series {series_id} has no pijul repo");
         return None;
     };
+
+    tracing::info!("series pijul repo: {pijul_node_id}");
 
     let series_repo = state.pijul.series_repo_path(pijul_node_id);
     let cache_dir = series_repo.join("cache");
