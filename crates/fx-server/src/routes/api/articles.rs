@@ -234,10 +234,18 @@ async fn typst_series_render(
         let repo_path = series_repo.clone();
         let rendered = tokio::task::spawn_blocking(move || {
             fx_render::render_series_to_html(&chapter_sources, Some(&repo_path))
-        }).await.ok()?.ok()?;
+        }).await.ok()?;
 
-        write_series_cache(state, series_id, &rendered, series_cache).await;
-        rendered.get(article_uri).cloned()
+        match rendered {
+            Ok(map) => {
+                write_series_cache(state, series_id, &map, series_cache).await;
+                map.get(article_uri).cloned()
+            }
+            Err(e) => {
+                tracing::warn!("series render failed: {e}");
+                None
+            }
+        }
     } else {
         // Legacy: read from individual article repos
         for ch in chapters {
@@ -248,10 +256,18 @@ async fn typst_series_render(
         }
         let rendered = tokio::task::spawn_blocking(move || {
             fx_render::render_series_to_html(&chapter_sources, None)
-        }).await.ok()?.ok()?;
+        }).await.ok()?;
 
-        write_series_cache(state, series_id, &rendered, series_cache).await;
-        rendered.get(article_uri).cloned()
+        match rendered {
+            Ok(map) => {
+                write_series_cache(state, series_id, &map, series_cache).await;
+                map.get(article_uri).cloned()
+            }
+            Err(e) => {
+                tracing::warn!("series render (legacy) failed: {e}");
+                None
+            }
+        }
     }
 }
 
