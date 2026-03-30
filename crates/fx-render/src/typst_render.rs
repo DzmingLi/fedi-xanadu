@@ -194,77 +194,67 @@ fn extract_body(html: &str) -> String {
 ///
 /// `chapters` is a list of (article_uri, typst_source) in series order.
 /// Returns a map from article_uri to rendered HTML.
+/// Render a series by compiling the repo's main.typ.
+///
+/// The series repo at `repo_path` must contain a `main.typ` that
+/// #includes chapter files and declares #bibliography if needed.
+/// Users are responsible for maintaining a valid main.typ.
+///
+/// `chapter_ids` maps (article_uri, chapter_index) for splitting
+/// the compiled HTML back into per-chapter fragments. The main.typ
+/// should wrap each chapter in:
+///   `#html.elem("section", attrs: ("data-chapter": "0"))[ #include "ch1.typ" ]`
+///
+/// Returns a map from article_uri to rendered HTML for that chapter.
 pub fn render_series_to_html(
-    chapters: &[(String, String)],
-    repo_path: Option<&Path>,
+    chapter_ids: &[(String, usize)], // (article_uri, chapter_index)
+    repo_path: &Path,
 ) -> anyhow::Result<HashMap<String, String>> {
-    if chapters.is_empty() {
+    if chapter_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
-    // Build the virtual document: wrap each chapter in an html.elem div with a unique marker
-    let mut full_source = String::new();
-    for (i, (uri, source)) in chapters.iter().enumerate() {
-        full_source.push_str(&format!(
-            "\n#html.elem(\"div\", attrs: (\"class\": \"fx-chapter\", \"data-uri\": \"{uri}\", \"data-idx\": \"{i}\"))[\n"
-        ));
-        full_source.push_str(source);
-        full_source.push_str("\n]\n");
-    }
+    // Read main.typ from the series repo
+    let main_path = repo_path.join("main.typ");
+    let source = std::fs::read_to_string(&main_path)
+        .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", main_path.display()))?;
 
-    // Append bibliography if any .bib files exist in repo (must be at document level, not inside chapter divs)
-    if let Some(rp) = repo_path {
-        if let Ok(entries) = std::fs::read_dir(rp) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.ends_with(".bib") {
-                    full_source.push_str(&format!("\n#bibliography(\"{name}\")\n"));
-                }
-            }
-        }
-    }
-
-    // repo_path allows Typst to resolve shared resources (bib, images, etc.)
-    let world = RenderWorld::with_preamble(&full_source, SERIES_PREAMBLE, repo_path);
+    // Compile with repo_path so #include and #bibliography resolve from the repo
+    let world = RenderWorld::with_preamble(&source, SERIES_PREAMBLE, Some(repo_path));
     let html = render_world(&world)?;
 
-    split_chapters(&html, chapters)
+    // Split output by <section data-chapter="N"> markers
+    split_series_html(&html, chapter_ids)
 }
 
-/// Split compiled HTML into per-chapter fragments by finding the fx-chapter marker divs.
-fn split_chapters(html: &str, chapters: &[(String, String)]) -> anyhow::Result<HashMap<String, String>> {
+/// Split compiled series HTML into per-chapter fragments by
+/// finding `<section data-chapter="N">` markers.
+fn split_series_html(
+    html: &str,
+    chapter_ids: &[(String, usize)],
+) -> anyhow::Result<HashMap<String, String>> {
     let mut result = HashMap::new();
 
-    for (i, (uri, _)) in chapters.iter().enumerate() {
-        let marker = format!(r#"data-uri="{uri}" data-idx="{i}""#);
-        // Also try the alternate attribute order
-        let marker_alt = format!(r#"data-idx="{i}" data-uri="{uri}""#);
+    for (uri, idx) in chapter_ids {
+        let marker = format!("data-chapter=\"{idx}\"");
 
-        let start_pos = html.find(&marker).or_else(|| html.find(&marker_alt));
-
-        if let Some(marker_pos) = start_pos {
-            // Find the opening > of this div
-            let div_content_start = match html[marker_pos..].find('>') {
+        if let Some(marker_pos) = html.find(&marker) {
+            let content_start = match html[marker_pos..].find('>') {
                 Some(offset) => marker_pos + offset + 1,
                 None => continue,
             };
 
-            // Track div nesting to find the matching </div>
             let mut depth = 1i32;
-            let content_bytes = html[div_content_start..].as_bytes();
             let mut pos = 0;
-            while pos < content_bytes.len() && depth > 0 {
-                if content_bytes[pos] == b'<' {
-                    let rest = &html[div_content_start + pos..];
-                    if rest.starts_with("<div") {
-                        depth += 1;
-                    } else if rest.starts_with("</div>") {
-                        depth -= 1;
-                        if depth == 0 {
-                            let chapter_html = html[div_content_start..div_content_start + pos].trim();
-                            result.insert(uri.clone(), chapter_html.to_string());
-                            break;
-                        }
+            let slice = &html[content_start..];
+            while pos < slice.len() && depth > 0 {
+                if slice[pos..].starts_with("<section") {
+                    depth += 1;
+                } else if slice[pos..].starts_with("</section>") {
+                    depth -= 1;
+                    if depth == 0 {
+                        result.insert(uri.clone(), slice[..pos].trim().to_string());
+                        break;
                     }
                 }
                 pos += 1;
@@ -272,8 +262,7 @@ fn split_chapters(html: &str, chapters: &[(String, String)]) -> anyhow::Result<H
         }
     }
 
-    // For any chapters not found in the split, return empty string
-    for (uri, _) in chapters {
+    for (uri, _) in chapter_ids {
         result.entry(uri.clone()).or_default();
     }
 

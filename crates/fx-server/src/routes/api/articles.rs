@@ -208,7 +208,7 @@ async fn try_series_render(
 
     if all_typst {
         // Typst: virtual document compilation
-        typst_series_render(state, article_uri, &series_id, &chapters, &series_cache).await
+        typst_series_render(state, article_uri, &series_id, &chapters, &series_cache, pijul_node_id).await
     } else {
         // Any format: render individually, then rewrite cross-chapter anchor links
         anchor_rewrite_series_render(state, article_uri, &series_id, &chapters, &series_cache).await
@@ -235,52 +235,30 @@ async fn is_series_cache_fresh(
     true
 }
 
-/// Typst series: compile all chapters as one virtual document.
+/// Typst series: compile the repo's main.typ which #includes all chapters.
 async fn typst_series_render(
     state: &crate::state::AppState,
     article_uri: &str,
-    series_id: &str,
+    _series_id: &str,
     chapters: &[series_service::SeriesChapterInfo],
     series_cache: &std::path::Path,
+    pijul_node_id: &str,
 ) -> Option<String> {
-    // Check if this series has a unified pijul repo
-    let series_pijul: Option<String> = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1 AND pijul_node_id IS NOT NULL",
-    )
-    .bind(series_id)
-    .fetch_optional(&state.pool)
-    .await
-    .ok()?;
+    let series_repo = state.pijul.series_repo_path(pijul_node_id);
 
-    let Some(pijul_node_id) = series_pijul else {
-        tracing::warn!("series {series_id} has no pijul repo");
-        return None;
-    };
+    // Build chapter_ids: (article_uri, chapter_index)
+    let chapter_ids: Vec<(String, usize)> = chapters.iter().enumerate()
+        .map(|(i, ch)| (ch.article_uri.clone(), i))
+        .collect();
 
-    let series_repo = state.pijul.series_repo_path(&pijul_node_id);
-    let mut chapter_sources = Vec::new();
-    for ch in chapters {
-        let chapter_id = ch.article_uri.rsplit('/').next().unwrap_or("");
-        let ext = fx_render::format_extension(&ch.content_format);
-        let src_path = series_repo.join("chapters").join(format!("{chapter_id}.{ext}"));
-        let source = match tokio::fs::read_to_string(&src_path).await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!("series chapter read failed: {src_path:?}: {e}");
-                return None;
-            }
-        };
-        chapter_sources.push((ch.article_uri.clone(), source));
-    }
-
-    let repo_path = series_repo.clone();
+    let repo = series_repo.clone();
     let rendered = tokio::task::spawn_blocking(move || {
-        fx_render::render_series_to_html(&chapter_sources, Some(&repo_path))
+        fx_render::render_series_to_html(&chapter_ids, &repo)
     }).await.ok()?;
 
     match rendered {
         Ok(map) => {
-            write_series_cache(state, series_id, &map, series_cache).await;
+            write_series_cache(state, _series_id, &map, series_cache).await;
             map.get(article_uri).cloned()
         }
         Err(e) => {
