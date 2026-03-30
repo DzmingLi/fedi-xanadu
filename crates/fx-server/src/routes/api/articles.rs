@@ -158,16 +158,31 @@ async fn try_series_render(
         return None;
     }
 
-    // Check series-level cache freshness
-    let first_node = uri_to_node_id(&chapters[0].article_uri);
-    let cache_dir = state.pijul.repo_path(&first_node).parent()?.to_path_buf();
-    let series_cache = cache_dir.join(format!("series-{series_id}.cache"));
+    // Get series pijul repo for cache paths
+    let series_pijul: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1 AND pijul_node_id IS NOT NULL",
+    )
+    .bind(&series_id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()?;
 
-    let cache_fresh = is_series_cache_fresh(&series_cache, &chapters, state).await;
+    let Some(ref pijul_node_id) = series_pijul else {
+        tracing::warn!("series {series_id} has no pijul repo (in try_series_render)");
+        return None;
+    };
+
+    let series_repo = state.pijul.series_repo_path(pijul_node_id);
+    let cache_dir = series_repo.join("cache");
+    let _ = tokio::fs::create_dir_all(&cache_dir).await;
+    let series_cache = cache_dir.join("series.cache");
+
+    // Check cache freshness against chapter sources in series repo
+    let cache_fresh = is_series_cache_fresh(&series_cache, &chapters, &series_repo).await;
 
     if cache_fresh {
-        let node = uri_to_node_id(article_uri);
-        let ch_cache = state.pijul.repo_path(&node).join(format!("content.series-{series_id}.html"));
+        let chapter_id = article_uri.rsplit('/').next().unwrap_or("");
+        let ch_cache = cache_dir.join(format!("{chapter_id}.html"));
         return tokio::fs::read_to_string(&ch_cache).await.ok();
     }
 
@@ -185,14 +200,14 @@ async fn try_series_render(
 async fn is_series_cache_fresh(
     series_cache: &std::path::Path,
     chapters: &[series_service::SeriesChapterInfo],
-    state: &crate::state::AppState,
+    series_repo: &std::path::Path,
 ) -> bool {
     let Ok(cache_meta) = tokio::fs::metadata(series_cache).await else { return false };
     let Ok(cache_time) = cache_meta.modified() else { return false };
     for ch in chapters {
-        let node = uri_to_node_id(&ch.article_uri);
+        let chapter_id = ch.article_uri.rsplit('/').next().unwrap_or("");
         let ext = fx_render::format_extension(&ch.content_format);
-        let src = state.pijul.repo_path(&node).join(format!("content.{ext}"));
+        let src = series_repo.join("chapters").join(format!("{chapter_id}.{ext}"));
         if let Ok(src_meta) = tokio::fs::metadata(&src).await {
             if let Ok(st) = src_meta.modified() {
                 if st > cache_time { return false; }
@@ -335,16 +350,19 @@ async fn anchor_rewrite_series_render(
 }
 
 async fn write_series_cache(
-    state: &crate::state::AppState,
-    series_id: &str,
+    _state: &crate::state::AppState,
+    _series_id: &str,
     rendered: &std::collections::HashMap<String, String>,
     series_cache: &std::path::Path,
 ) {
+    // Write per-chapter HTML caches to the same directory as series_cache
+    let cache_dir = series_cache.parent().unwrap_or(std::path::Path::new("."));
     for (ch_uri, ch_html) in rendered {
-        let node = uri_to_node_id(ch_uri);
-        let ch_cache = state.pijul.repo_path(&node).join(format!("content.series-{series_id}.html"));
+        let chapter_id = ch_uri.rsplit('/').next().unwrap_or("");
+        let ch_cache = cache_dir.join(format!("{chapter_id}.html"));
         let _ = tokio::fs::write(&ch_cache, ch_html).await;
     }
+    // Touch the series cache marker
     let _ = tokio::fs::write(series_cache, "").await;
 }
 
