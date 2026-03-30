@@ -212,6 +212,18 @@ pub fn render_series_to_html(
         full_source.push_str("\n]\n");
     }
 
+    // Append bibliography if any .bib files exist in repo (must be at document level, not inside chapter divs)
+    if let Some(rp) = repo_path {
+        if let Ok(entries) = std::fs::read_dir(rp) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.ends_with(".bib") {
+                    full_source.push_str(&format!("\n#bibliography(\"{name}\")\n"));
+                }
+            }
+        }
+    }
+
     // repo_path allows Typst to resolve shared resources (bib, images, etc.)
     let world = RenderWorld::with_preamble(&full_source, SERIES_PREAMBLE, repo_path);
     let html = render_world(&world)?;
