@@ -546,6 +546,91 @@ impl PijulStore {
         Ok(files)
     }
 
+    // --- Series repo methods ---
+
+    /// Initialize a series repo with chapters/ and cache/ directories.
+    pub fn init_series_repo(&self, node_id: &str) -> anyhow::Result<PathBuf> {
+        let path = self.repo_path(node_id);
+        std::fs::create_dir_all(path.join("chapters"))?;
+        std::fs::create_dir_all(path.join("cache"))?;
+
+        let dot_dir = path.join(pijul_core::DOT_DIR);
+        if dot_dir.exists() {
+            tracing::debug!("series pijul repo already exists at {}", path.display());
+            return Ok(path);
+        }
+
+        let pristine_dir = dot_dir.join("pristine");
+        let changes_dir = dot_dir.join("changes");
+        std::fs::create_dir_all(&pristine_dir)?;
+        std::fs::create_dir_all(&changes_dir)?;
+
+        // Ignore HTML caches and the cache directory
+        std::fs::write(path.join(".ignore"), "*.html\ncache/\n")?;
+
+        let pristine = pijul_core::pristine::sanakirja::Pristine::new(&pristine_dir.join("db"))?;
+        let mut txn = pristine.mut_txn_begin()?;
+        txn.open_or_create_channel(pijul_core::DEFAULT_CHANNEL)?;
+        txn.commit()?;
+
+        tracing::info!("initialized series pijul repo at {}", path.display());
+        Ok(path)
+    }
+
+    /// Write a chapter file into a series repo.
+    pub fn write_chapter(
+        &self,
+        series_node_id: &str,
+        chapter_id: &str,
+        content: &str,
+        ext: &str,
+    ) -> anyhow::Result<()> {
+        let chapters_dir = self.repo_path(series_node_id).join("chapters");
+        std::fs::create_dir_all(&chapters_dir)?;
+        let filename = format!("{chapter_id}.{ext}");
+        std::fs::write(chapters_dir.join(&filename), content)?;
+        Ok(())
+    }
+
+    /// Read a chapter source from a series repo.
+    pub fn read_chapter(
+        &self,
+        series_node_id: &str,
+        chapter_id: &str,
+        ext: &str,
+    ) -> anyhow::Result<String> {
+        let filename = format!("{chapter_id}.{ext}");
+        let path = self.repo_path(series_node_id).join("chapters").join(&filename);
+        Ok(std::fs::read_to_string(&path)?)
+    }
+
+    /// Write a shared resource file (bib, macros, etc.) to a series repo root.
+    pub fn write_resource(
+        &self,
+        series_node_id: &str,
+        filename: &str,
+        content: &[u8],
+    ) -> anyhow::Result<()> {
+        let path = self.repo_path(series_node_id).join(filename);
+        std::fs::write(&path, content)?;
+        Ok(())
+    }
+
+    /// Fork an entire series repo (including all chapters and shared resources).
+    pub fn fork_series(
+        &self,
+        source_node_id: &str,
+        fork_node_id: &str,
+    ) -> anyhow::Result<PathBuf> {
+        // Reuse the existing fork mechanism (deep directory copy)
+        self.fork(source_node_id, fork_node_id)
+    }
+
+    /// Get the series repo path for a series node.
+    pub fn series_repo_path(&self, series_node_id: &str) -> PathBuf {
+        self.repo_path(series_node_id)
+    }
+
     fn open_repo(&self, path: &Path) -> anyhow::Result<RepoHandle> {
         let dot_dir = path.join(pijul_core::DOT_DIR);
         let pristine_dir = dot_dir.join("pristine");

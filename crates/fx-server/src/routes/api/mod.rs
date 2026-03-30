@@ -218,6 +218,10 @@ fn series_routes() -> Router<AppState> {
         .route("/series/{id}/prereqs/remove", delete(series::remove_series_prereq))
         .route("/series/context", get(series::get_series_context))
         .route("/series/all-articles", get(series::all_series_articles))
+        // Series pijul repo
+        .route("/series/{id}/resource", post(series::upload_resource))
+        .route("/series/{id}/resources", get(series::list_resources))
+        .route("/series/{id}/fork", post(series::fork_series))
 }
 
 fn notification_routes() -> Router<AppState> {

@@ -52,30 +52,39 @@ pub async fn get_article_content(
     }
 
     let format = article_service::get_content_format(&state.pool, &uri).await?;
-
-    let node_id = uri_to_node_id(&uri);
-    let repo = state.pijul.repo_path(&node_id);
-
     let src_ext = fx_render::format_extension(&format);
-    let src_path = repo.join(format!("content.{src_ext}"));
-    let html_path = repo.join("content.html");
 
-    let source = match tokio::fs::read_to_string(&src_path).await {
-        Ok(s) => s,
-        Err(_) => {
-            tokio::fs::read_to_string(repo.join("content.typ"))
-                .await
-                .map_err(|_| AppError(fx_core::Error::NotFound {
-                    entity: "content",
-                    id: uri.clone(),
-                }))?
-        }
+    // Check if article is in a series with a pijul repo
+    let series_info = get_series_pijul_info(&state, &uri).await;
+
+    let (source, repo, src_path, html_path) = if let Some((series_node_id, chapter_id)) = &series_info {
+        // Read from series repo
+        let series_repo = state.pijul.series_repo_path(series_node_id);
+        let src = series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}"));
+        let html = series_repo.join("cache").join(format!("{chapter_id}.html"));
+        let source = tokio::fs::read_to_string(&src).await
+            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?;
+        (source, series_repo, src, html)
+    } else {
+        // Read from independent article repo
+        let node_id = uri_to_node_id(&uri);
+        let repo = state.pijul.repo_path(&node_id);
+        let src = repo.join(format!("content.{src_ext}"));
+        let html = repo.join("content.html");
+        let source = match tokio::fs::read_to_string(&src).await {
+            Ok(s) => s,
+            Err(_) => {
+                tokio::fs::read_to_string(repo.join("content.typ"))
+                    .await
+                    .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?
+            }
+        };
+        (source, repo, src, html)
     };
 
     let html = if format == "html" {
         source.clone()
     } else if let Some(series_html) = try_series_render(&state, &uri, &format).await {
-        // Series virtual-document rendering succeeded — use it
         series_html
     } else if is_cached_fresh(&html_path, &src_path).await {
         tokio::fs::read_to_string(&html_path).await?
@@ -86,6 +95,48 @@ pub async fn get_article_content(
     };
 
     Ok(Json(ArticleContent { source, html }))
+}
+
+/// Check if an article is in a series with a pijul repo.
+/// Returns Some((series_pijul_node_id, chapter_id)) if so.
+async fn get_series_pijul_info(
+    state: &crate::state::AppState,
+    article_uri: &str,
+) -> Option<(String, String)> {
+    // Find the series this article belongs to, and its pijul_node_id
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT s.pijul_node_id FROM series s \
+         JOIN series_articles sa ON s.id = sa.series_id \
+         WHERE sa.article_uri = $1 AND s.pijul_node_id IS NOT NULL \
+         LIMIT 1",
+    )
+    .bind(article_uri)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()?;
+
+    let pijul_node_id = row?.0;
+
+    // Extract chapter ID (TID) from article URI: at://did/collection/TID → TID
+    let chapter_id = article_uri.rsplit('/').next()?;
+
+    // Check the chapter file exists in the series repo
+    let series_repo = state.pijul.series_repo_path(&pijul_node_id);
+    let chapter_dir = series_repo.join("chapters");
+    if !chapter_dir.exists() {
+        return None;
+    }
+    // Try to find a file matching this chapter_id (any extension)
+    if let Ok(entries) = std::fs::read_dir(&chapter_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(chapter_id) {
+                return Some((pijul_node_id, chapter_id.to_string()));
+            }
+        }
+    }
+
+    None
 }
 
 /// Try rendering this article with series-aware cross-chapter references.
@@ -159,20 +210,49 @@ async fn typst_series_render(
     chapters: &[series_service::SeriesChapterInfo],
     series_cache: &std::path::Path,
 ) -> Option<String> {
+    // Check if this series has a unified pijul repo
+    let series_pijul: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1 AND pijul_node_id IS NOT NULL",
+    )
+    .bind(series_id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()?;
+
     let mut chapter_sources = Vec::new();
-    for ch in chapters {
-        let node = uri_to_node_id(&ch.article_uri);
-        let src_path = state.pijul.repo_path(&node).join("content.typ");
-        let source = tokio::fs::read_to_string(&src_path).await.ok()?;
-        chapter_sources.push((ch.article_uri.clone(), source));
+
+    if let Some(ref pijul_node_id) = series_pijul {
+        // Read from series repo
+        let series_repo = state.pijul.series_repo_path(pijul_node_id);
+        for ch in chapters {
+            let chapter_id = ch.article_uri.rsplit('/').next().unwrap_or("");
+            let src_path = series_repo.join("chapters").join(format!("{chapter_id}.typ"));
+            let source = tokio::fs::read_to_string(&src_path).await.ok()?;
+            chapter_sources.push((ch.article_uri.clone(), source));
+        }
+        // Pass series repo as repo_path so Typst can resolve bib files etc.
+        let repo_path = series_repo.clone();
+        let rendered = tokio::task::spawn_blocking(move || {
+            fx_render::render_series_to_html(&chapter_sources, Some(&repo_path))
+        }).await.ok()?.ok()?;
+
+        write_series_cache(state, series_id, &rendered, series_cache).await;
+        rendered.get(article_uri).cloned()
+    } else {
+        // Legacy: read from individual article repos
+        for ch in chapters {
+            let node = uri_to_node_id(&ch.article_uri);
+            let src_path = state.pijul.repo_path(&node).join("content.typ");
+            let source = tokio::fs::read_to_string(&src_path).await.ok()?;
+            chapter_sources.push((ch.article_uri.clone(), source));
+        }
+        let rendered = tokio::task::spawn_blocking(move || {
+            fx_render::render_series_to_html(&chapter_sources, None)
+        }).await.ok()?.ok()?;
+
+        write_series_cache(state, series_id, &rendered, series_cache).await;
+        rendered.get(article_uri).cloned()
     }
-
-    let rendered = tokio::task::spawn_blocking(move || {
-        fx_render::render_series_to_html(&chapter_sources)
-    }).await.ok()?.ok()?;
-
-    write_series_cache(state, series_id, &rendered, series_cache).await;
-    rendered.get(article_uri).cloned()
 }
 
 /// Any format: render each chapter individually, then rewrite cross-chapter anchor links.

@@ -194,7 +194,10 @@ fn extract_body(html: &str) -> String {
 ///
 /// `chapters` is a list of (article_uri, typst_source) in series order.
 /// Returns a map from article_uri to rendered HTML.
-pub fn render_series_to_html(chapters: &[(String, String)]) -> anyhow::Result<HashMap<String, String>> {
+pub fn render_series_to_html(
+    chapters: &[(String, String)],
+    repo_path: Option<&Path>,
+) -> anyhow::Result<HashMap<String, String>> {
     if chapters.is_empty() {
         return Ok(HashMap::new());
     }
@@ -202,7 +205,6 @@ pub fn render_series_to_html(chapters: &[(String, String)]) -> anyhow::Result<Ha
     // Build the virtual document: wrap each chapter in an html.elem div with a unique marker
     let mut full_source = String::new();
     for (i, (uri, source)) in chapters.iter().enumerate() {
-        // Unique marker div wrapping each chapter
         full_source.push_str(&format!(
             "\n#html.elem(\"div\", attrs: (\"class\": \"fx-chapter\", \"data-uri\": \"{uri}\", \"data-idx\": \"{i}\"))[\n"
         ));
@@ -210,7 +212,8 @@ pub fn render_series_to_html(chapters: &[(String, String)]) -> anyhow::Result<Ha
         full_source.push_str("\n]\n");
     }
 
-    let world = RenderWorld::with_preamble(&full_source, SERIES_PREAMBLE, None);
+    // repo_path allows Typst to resolve shared resources (bib, images, etc.)
+    let world = RenderWorld::with_preamble(&full_source, SERIES_PREAMBLE, repo_path);
     let html = render_world(&world)?;
 
     split_chapters(&html, chapters)

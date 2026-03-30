@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
 };
 use fx_core::services::series_service;
@@ -64,6 +64,17 @@ pub async fn create_series(
     };
 
     let category = input.category.as_deref().unwrap_or("general");
+    // Initialize pijul repo for the series (only for root series, not sub-series)
+    let pijul_node_id = if input.parent_id.is_none() {
+        let node_id = format!("series_{id}");
+        if let Err(e) = state.pijul.init_series_repo(&node_id) {
+            tracing::warn!("failed to init series pijul repo: {e}");
+        }
+        Some(node_id)
+    } else {
+        None
+    };
+
     let row = series_service::create_series(
         &state.pool,
         &id,
@@ -78,6 +89,15 @@ pub async fn create_series(
         category,
     )
     .await?;
+
+    // Store pijul_node_id
+    if let Some(ref node_id) = pijul_node_id {
+        sqlx::query("UPDATE series SET pijul_node_id = $1 WHERE id = $2")
+            .bind(node_id)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
 
     Ok((StatusCode::CREATED, Json(row)))
 }
@@ -256,4 +276,161 @@ pub async fn reorder_children(
 
     series_service::reorder_children(&state.pool, &id, &input.child_ids).await?;
     Ok(StatusCode::OK)
+}
+
+// --- Series resource upload ---
+
+pub async fn upload_resource(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WriteAuth(user): WriteAuth,
+    mut multipart: Multipart,
+) -> ApiResult<StatusCode> {
+    let owner = series_service::get_series_owner(&state.pool, &id).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    let pijul_node_id: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+
+    let Some(node_id) = pijul_node_id else {
+        return Err(AppError(fx_core::Error::BadRequest(
+            "Series does not have a pijul repo. Only root series support resources.".into(),
+        )));
+    };
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        AppError(fx_core::Error::BadRequest(format!("multipart error: {e}")))
+    })? {
+        let filename = field.file_name().unwrap_or("unnamed").to_string();
+        // Validate filename: only allow safe names
+        if filename.contains('/') || filename.contains("..") || filename.starts_with('.') {
+            return Err(AppError(fx_core::Error::BadRequest(
+                format!("Invalid filename: {filename}"),
+            )));
+        }
+        let data = field.bytes().await.map_err(|e| {
+            AppError(fx_core::Error::BadRequest(format!("read error: {e}")))
+        })?;
+
+        state.pijul.write_resource(&node_id, &filename, &data)
+            .map_err(|e| AppError(fx_core::Error::Internal(format!("write resource: {e}"))))?;
+    }
+
+    // Record the change
+    if let Err(e) = state.pijul.record(&node_id, "Upload shared resource") {
+        tracing::warn!("pijul record failed for series resource: {e}");
+    }
+
+    Ok(StatusCode::CREATED)
+}
+
+#[derive(serde::Serialize)]
+pub struct ResourceInfo {
+    pub filename: String,
+    pub size: u64,
+}
+
+pub async fn list_resources(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<ResourceInfo>>> {
+    let pijul_node_id: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+
+    let Some(node_id) = pijul_node_id else {
+        return Ok(Json(vec![]));
+    };
+
+    let repo_path = state.pijul.series_repo_path(&node_id);
+    let mut resources = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&repo_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                // Skip pijul internals and ignore files
+                if name.starts_with('.') || name.ends_with(".html") {
+                    continue;
+                }
+                if let Ok(meta) = entry.metadata() {
+                    resources.push(ResourceInfo {
+                        filename: name,
+                        size: meta.len(),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(Json(resources))
+}
+
+// --- Fork series ---
+
+pub async fn fork_series(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WriteAuth(user): WriteAuth,
+) -> ApiResult<(StatusCode, Json<series_service::SeriesRow>)> {
+    // Get original series
+    let original = series_service::get_series_detail(&state.pool, &id).await?;
+
+    let fork_id = format!("s-{}", tid());
+    let fork_node_id = format!("series_{fork_id}");
+
+    // Fork pijul repo if original has one
+    let original_pijul: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+
+    if let Some(ref source_node) = original_pijul {
+        state.pijul.fork_series(source_node, &fork_node_id)
+            .map_err(|e| AppError(fx_core::Error::Internal(format!("fork series repo: {e}"))))?;
+    }
+
+    // Create forked series record
+    let fork_title = format!("{} (fork)", original.series.title);
+    let row = series_service::create_series(
+        &state.pool,
+        &fork_id,
+        &fork_title,
+        original.series.description.as_deref(),
+        original.series.long_description.as_deref(),
+        &[],
+        None,
+        &user.did,
+        &original.series.lang,
+        None,
+        &original.series.category,
+    )
+    .await?;
+
+    // Store pijul_node_id
+    if original_pijul.is_some() {
+        sqlx::query("UPDATE series SET pijul_node_id = $1 WHERE id = $2")
+            .bind(&fork_node_id)
+            .bind(&fork_id)
+            .execute(&state.pool)
+            .await?;
+    }
+
+    // TODO: Create forked articles for each chapter and add to new series.
+    // For now, the pijul repo is forked but articles need to be created manually.
+
+    Ok((StatusCode::CREATED, Json(row)))
 }
