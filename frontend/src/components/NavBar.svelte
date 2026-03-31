@@ -1,15 +1,14 @@
 <script lang="ts">
   import { listArticles, logout as apiLogout, getUnreadCount } from '../lib/api';
-  import { getAuth, setAuth, onAuthChange } from '../lib/auth.svelte';
-  import { t, getLocale, setLocale, onLocaleChange, LOCALES } from '../lib/i18n/index.svelte';
+  import { getAuth, setAuth } from '../lib/auth.svelte';
+  import { t, getLocale, setLocale, LOCALES } from '../lib/i18n/index.svelte';
   import { loadLangPrefs, clearLangPrefs } from '../lib/langPrefs.svelte';
   import { loadBlocklist, clearBlocklist } from '../lib/blocklist.svelte';
   import type { Locale } from '../lib/i18n/index.svelte';
   import type { Article, AuthUser } from '../lib/types';
   import LoginModal from './LoginModal.svelte';
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   function cycleLocale() {
     const codes = LOCALES.map(l => l.code);
@@ -38,19 +37,12 @@
   let searchEl: HTMLInputElement | undefined = $state();
 
   let loginOpen = $state(false);
-  let user = $state<AuthUser | null>(getAuth());
+  let user = $derived(getAuth());
 
+  // Load/clear settings + blocklist when auth state changes
   $effect(() => {
-    return onAuthChange(() => {
-      user = getAuth();
-      if (user) { loadLangPrefs(); loadBlocklist(); }
-      else { clearLangPrefs(); clearBlocklist(); }
-    });
-  });
-
-  // Load settings + blocklist on mount if already logged in
-  $effect(() => {
-    if (getAuth()) { loadLangPrefs(); loadBlocklist(); }
+    if (user) { loadLangPrefs(); loadBlocklist(); }
+    else { clearLangPrefs(); clearBlocklist(); }
   });
 
   async function openSearch() {

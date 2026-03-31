@@ -282,7 +282,7 @@ $$</code></pre>
     <ol>
       <li>使用 Bluesky 账号登录（Handle + App Password）</li>
       <li>选择感兴趣的领域，首页将按领域推荐文章</li>
-      <li>浏览<a href="#/skill-trees">技能树</a>，采用一棵适合你的学习路径</li>
+      <li>浏览<a href="#/skills">技能树</a>，采用一棵适合你的学习路径</li>
       <li>点击「Write」<a href="#/new">创建文章</a>，选择 Typst / Markdown / HTML 格式</li>
       <li>为文章添加 tag 和前置知识声明</li>
       <li>发布后，文章会同时存储在你的 AT Protocol PDS 上</li>

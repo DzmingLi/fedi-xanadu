@@ -4,7 +4,7 @@
   import { getAuth } from '../lib/auth.svelte';
   import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
   import { tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
-  import { t, onLocaleChange, getLocale } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
   import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink, BookmarkWithTitle, EducationEntry } from '../lib/types';
@@ -14,8 +14,7 @@
 
   let { did } = $props<{ did: string }>();
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   let profile = $state<ProfileData | null>(null);
   let articles = $state<Article[]>([]);

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getSettings, setSettings, getKeybindings, listBlockedUsers, unblockUser as apiUnblockUser, listBookmarkFolders, listMembers, addMember, removeMember } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
-  import { t, getLocale, setLocale, onLocaleChange, LOCALES } from '../lib/i18n/index.svelte';
+  import { t, getLocale, setLocale, LOCALES } from '../lib/i18n/index.svelte';
   import type { Locale } from '../lib/i18n/index.svelte';
   import { LANG_NAMES } from '../lib/i18n/index.svelte';
   import { setLangPrefs } from '../lib/langPrefs.svelte';
@@ -13,8 +13,7 @@
   import { removeBlocked } from '../lib/blocklist.svelte';
   import type { UserSettings, BlockedUser, ContentFormat } from '../lib/types';
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   let loading = $state(true);
   let saving = $state(false);

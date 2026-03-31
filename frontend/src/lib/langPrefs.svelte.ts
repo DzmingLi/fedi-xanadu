@@ -44,8 +44,3 @@ export function clearLangPrefs() {
   settings = null;
   loaded = false;
 }
-
-// Compatibility shim — no-op, Svelte 5 reactivity handles this.
-export function onLangPrefsChange(_fn: () => void): () => void {
-  return () => {};
-}

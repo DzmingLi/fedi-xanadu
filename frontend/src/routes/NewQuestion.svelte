@@ -1,12 +1,11 @@
 <script lang="ts">
   import { createQuestion, searchTags } from '../lib/api';
-  import { t, onLocaleChange, getLocale } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import { toast } from '../lib/components/Toast.svelte';
   import type { Tag, ContentFormat } from '../lib/types';
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   let title = $state('');
   let description = $state('');

@@ -1,13 +1,12 @@
 <script lang="ts">
   import { listQuestions, getAllArticleTeaches } from '../lib/api';
   import { tagName, authorName } from '../lib/display';
-  import { t, onLocaleChange, getLocale } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildArticleRowMap } from '../lib/series';
   import { getAuth } from '../lib/auth.svelte';
   import type { Article, ContentTeachRow } from '../lib/types';
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   let questions = $state<Article[]>([]);
   let articleTeaches = $state(new Map<string, ContentTeachRow[]>());

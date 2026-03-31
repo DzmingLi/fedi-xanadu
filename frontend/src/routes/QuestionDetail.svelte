@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getQuestionDetail, postAnswer, castVote, getMyVote, getArticleContent } from '../lib/api';
   import { authorName } from '../lib/display';
-  import { t, onLocaleChange, getLocale } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import CommentThread from '../lib/components/CommentThread.svelte';
   import type { ArticleContent, QuestionDetail, ContentFormat } from '../lib/types';
@@ -9,8 +9,7 @@
 
   let { uri } = $props<{ uri: string }>();
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   let detail = $state<QuestionDetail | null>(null);
   let questionContent = $state<ArticleContent | null>(null);

@@ -19,12 +19,11 @@
   import { listArticles, getAllArticleTeaches, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { authorName, tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
-  import { t, onLocaleChange, getLocale } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   let articles = $state<Article[]>(_cache?.articles ?? []);
   let allTags = $state<Tag[]>(_cache?.allTags ?? []);

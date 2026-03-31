@@ -144,8 +144,3 @@ export const CATEGORY_LABELS: Record<string, { en: string; zh: string }> = {
   article: { en: 'Article', zh: '文章' },
   list: { en: 'List', zh: '列表' },
 };
-
-// Compatibility shim -- no-op, Svelte 5 reactivity handles this.
-export function onBindingsChange(_fn: () => void): () => void {
-  return () => {};
-}

@@ -26,12 +26,3 @@ export function setAuth(newUser: AuthUser | null) {
     localStorage.removeItem(STORAGE_KEY);
   }
 }
-
-// Keep onAuthChange as a no-op compatibility shim that returns an unsubscribe function.
-// Components using Svelte 5 runes will react to state changes automatically.
-// This avoids breaking any remaining callers during the transition.
-export function onAuthChange(_fn: () => void): () => void {
-  // No-op: Svelte 5 $state reactivity handles this.
-  // Return a no-op unsubscribe.
-  return () => {};
-}

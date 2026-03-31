@@ -1,28 +1,21 @@
 <script lang="ts">
   import {
     ACTIONS, getAllBindings, parseKeyCombo, matchesKey, formatKeyDisplay,
-    CATEGORY_LABELS, onBindingsChange, loadFromServer,
+    CATEGORY_LABELS, loadFromServer,
   } from '../lib/keybindings.svelte';
-  import { onAuthChange } from '../lib/auth.svelte';
+  import { getAuth } from '../lib/auth.svelte';
 
   let helpOpen = $state(false);
   let settingsOpen = $state(false);
   let pendingKeys: string[] = $state([]);
   let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
-  let bindings = $state(getAllBindings());
+  let bindings = $derived(getAllBindings());
 
-  // Reload bindings when they change
+  // Load from server on mount and auth change
   $effect(() => {
-    return onBindingsChange(() => { bindings = getAllBindings(); });
+    void getAuth();
+    loadFromServer();
   });
-
-  // Load from server on auth change
-  $effect(() => {
-    return onAuthChange(() => { loadFromServer(); });
-  });
-
-  // Load from server on mount
-  $effect(() => { loadFromServer(); });
 
   // Expose open functions for external use
   export function openHelp() { helpOpen = true; }

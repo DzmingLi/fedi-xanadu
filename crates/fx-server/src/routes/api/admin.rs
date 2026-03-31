@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
 };
 use fx_core::content::ContentKind;
 use fx_core::models::{Article, CreateArticle};
@@ -11,19 +11,8 @@ use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
+use crate::auth::AdminAuth;
 use fx_core::util::{content_hash, tid};
-
-fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
-    let secret = state.admin_secret.as_deref()
-        .ok_or(AppError(fx_core::Error::Forbidden { action: "admin not configured" }))?;
-    let provided = headers.get("x-admin-secret")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(AppError(fx_core::Error::Unauthorized))?;
-    if provided != secret {
-        return Err(AppError(fx_core::Error::Unauthorized));
-    }
-    Ok(())
-}
 
 #[derive(serde::Deserialize)]
 pub struct CreatePlatformUserInput {
@@ -34,10 +23,10 @@ pub struct CreatePlatformUserInput {
 
 pub async fn create_platform_user(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<CreatePlatformUserInput>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
-    require_admin(&state, &headers)?;
+
 
     let did = platform_user_service::create_platform_user(
         &state.pool,
@@ -54,9 +43,9 @@ pub async fn create_platform_user(
 
 pub async fn list_platform_users(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
 ) -> ApiResult<Json<Vec<platform_user_service::PlatformUserInfo>>> {
-    require_admin(&state, &headers)?;
+
     let users = platform_user_service::list_platform_users(&state.pool).await?;
     Ok(Json(users))
 }
@@ -73,10 +62,10 @@ pub struct AdminCreateArticleInput {
 
 pub async fn admin_create_article(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<AdminCreateArticleInput>,
 ) -> ApiResult<(StatusCode, Json<Article>)> {
-    require_admin(&state, &headers)?;
+
     validate_create_article(&input.article)?;
 
     let did = platform_user_service::local_did(&input.as_handle);
@@ -125,10 +114,10 @@ pub struct AdminCreateSeriesInput {
 
 pub async fn admin_create_series(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<AdminCreateSeriesInput>,
 ) -> ApiResult<(StatusCode, Json<series_service::SeriesRow>)> {
-    require_admin(&state, &headers)?;
+
 
     let did = platform_user_service::local_did(&input.as_handle);
     let id = format!("s-{}", tid());
@@ -176,10 +165,10 @@ pub struct AdminAddSeriesArticleInput {
 
 pub async fn admin_add_series_article(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<AdminAddSeriesArticleInput>,
 ) -> ApiResult<StatusCode> {
-    require_admin(&state, &headers)?;
+
 
     series_service::add_series_article(&state.pool, &input.series_id, &input.article_uri).await?;
     Ok(StatusCode::OK)
@@ -197,10 +186,10 @@ pub struct AdminUpdateArticleInput {
 
 pub async fn admin_update_article(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<AdminUpdateArticleInput>,
 ) -> ApiResult<Json<Article>> {
-    require_admin(&state, &headers)?;
+
 
     if let Some(ref title) = input.title {
         article_service::update_article_title(&state.pool, &input.uri, title).await?;
@@ -228,10 +217,10 @@ pub struct MergeTagInput {
 
 pub async fn admin_merge_tag(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<MergeTagInput>,
 ) -> ApiResult<StatusCode> {
-    require_admin(&state, &headers)?;
+
 
     tag_service::merge_tag(&state.pool, &input.from, &input.into).await?;
     Ok(StatusCode::OK)
@@ -247,10 +236,10 @@ pub struct BanUserInput {
 
 pub async fn admin_ban_user(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<BanUserInput>,
 ) -> ApiResult<StatusCode> {
-    require_admin(&state, &headers)?;
+
     moderation_service::ban_user(&state.pool, &input.did, input.reason.as_deref()).await?;
 
     // Send in-app notification to the banned user with the reason
@@ -277,19 +266,19 @@ pub struct UnbanUserInput {
 
 pub async fn admin_unban_user(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<UnbanUserInput>,
 ) -> ApiResult<StatusCode> {
-    require_admin(&state, &headers)?;
+
     moderation_service::unban_user(&state.pool, &input.did).await?;
     Ok(StatusCode::OK)
 }
 
 pub async fn admin_list_banned_users(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
 ) -> ApiResult<Json<Vec<moderation_service::BannedUser>>> {
-    require_admin(&state, &headers)?;
+
     let users = moderation_service::list_banned_users(&state.pool).await?;
     Ok(Json(users))
 }
@@ -302,10 +291,10 @@ pub struct AdminDeleteArticleInput {
 
 pub async fn admin_delete_article(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<AdminDeleteArticleInput>,
 ) -> ApiResult<StatusCode> {
-    require_admin(&state, &headers)?;
+
 
     // Fetch article info before removing so we can notify the author
     let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
@@ -348,10 +337,10 @@ const VALID_VISIBILITIES: &[&str] = &["public", "cn_hidden", "removed"];
 
 pub async fn admin_set_visibility(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<SetVisibilityInput>,
 ) -> ApiResult<StatusCode> {
-    require_admin(&state, &headers)?;
+
 
     if !VALID_VISIBILITIES.contains(&input.visibility.as_str()) {
         return Err(AppError(fx_core::Error::BadRequest(
@@ -395,10 +384,10 @@ pub struct MergeQuestionsInput {
 
 pub async fn admin_merge_questions(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<MergeQuestionsInput>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    require_admin(&state, &headers)?;
+
 
     let moved = article_service::merge_questions(&state.pool, &input.from_uri, &input.into_uri).await?;
     Ok(Json(serde_json::json!({
@@ -411,9 +400,9 @@ pub async fn admin_merge_questions(
 
 pub async fn admin_list_appeals(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
 ) -> ApiResult<Json<Vec<appeal_service::Appeal>>> {
-    require_admin(&state, &headers)?;
+
     let appeals = appeal_service::list_pending_appeals(&state.pool).await?;
     Ok(Json(appeals))
 }
@@ -428,10 +417,10 @@ pub struct ResolveAppealInput {
 
 pub async fn admin_resolve_appeal(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<ResolveAppealInput>,
 ) -> ApiResult<Json<appeal_service::Appeal>> {
-    require_admin(&state, &headers)?;
+
 
     if input.status != "approved" && input.status != "rejected" {
         return Err(AppError(fx_core::Error::BadRequest(
@@ -492,10 +481,10 @@ pub struct ListReportsQuery {
 
 pub async fn admin_list_reports(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     axum::extract::Query(q): axum::extract::Query<ListReportsQuery>,
 ) -> ApiResult<Json<Vec<report_service::ReportWithNames>>> {
-    require_admin(&state, &headers)?;
+
     let reports = report_service::list_reports(
         &state.pool,
         q.status.as_deref(),
@@ -514,10 +503,10 @@ pub struct ResolveReportInput {
 
 pub async fn admin_resolve_report(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<ResolveReportInput>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    require_admin(&state, &headers)?;
+
     report_service::resolve_report(
         &state.pool,
         &input.id,
@@ -541,10 +530,10 @@ pub struct VerifyCredentialsInput {
 
 pub async fn admin_verify_credentials(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<VerifyCredentialsInput>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    require_admin(&state, &headers)?;
+
 
     let education = input.education.unwrap_or(serde_json::json!([]));
 
@@ -573,10 +562,10 @@ pub async fn admin_verify_credentials(
 
 pub async fn admin_revoke_credentials(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<serde_json::Value>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    require_admin(&state, &headers)?;
+
     let did = input["did"].as_str()
         .ok_or(AppError(fx_core::Error::BadRequest("did required".into())))?;
 
@@ -604,10 +593,10 @@ pub struct AdminCreateQuestionInput {
 
 pub async fn admin_create_question(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<AdminCreateQuestionInput>,
 ) -> ApiResult<(StatusCode, Json<Article>)> {
-    require_admin(&state, &headers)?;
+
     validate_create_article(&input.article)?;
 
     let did = platform_user_service::local_did(&input.as_handle);
@@ -640,10 +629,10 @@ pub struct AdminPostAnswerInput {
 
 pub async fn admin_post_answer(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<AdminPostAnswerInput>,
 ) -> ApiResult<(StatusCode, Json<Article>)> {
-    require_admin(&state, &headers)?;
+
     validate_create_article(&input.article)?;
 
     // Verify question exists
@@ -688,10 +677,10 @@ pub struct RevertBookEditInput {
 
 pub async fn admin_revert_book_edit(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    _admin: AdminAuth,
     Json(input): Json<RevertBookEditInput>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    require_admin(&state, &headers)?;
+
 
     let log: super::books::BookEditLog = sqlx::query_as(
         "SELECT l.id, l.book_id, l.editor_did, p.handle AS editor_handle, \

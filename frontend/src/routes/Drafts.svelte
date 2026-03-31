@@ -1,10 +1,9 @@
 <script lang="ts">
   import { listDrafts, deleteDraft, publishDraft } from '../lib/api';
-  import { t, getLocale, onLocaleChange } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import type { Draft } from '../lib/types';
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   let drafts = $state<Draft[]>([]);
   let loading = $state(true);

@@ -125,6 +125,73 @@ pub fn log_pds_error<E: std::fmt::Display>(op: &str, e: E) {
     tracing::warn!("PDS sync failed ({op}): {e}");
 }
 
+/// Create a record on the user's PDS. Returns the record URI on success, or None.
+pub async fn pds_create_record(
+    state: &crate::state::AppState,
+    token: &str,
+    collection: &str,
+    record: serde_json::Value,
+    rkey: Option<String>,
+    label: &str,
+) -> Option<String> {
+    let pds = pds_session(&state.pool, token).await?;
+    match state.at_client.create_record(
+        &pds.pds_url,
+        &pds.access_jwt,
+        &fx_atproto::client::CreateRecordInput {
+            repo: pds.did,
+            collection: collection.to_string(),
+            record,
+            rkey,
+        },
+    ).await {
+        Ok(output) => Some(output.uri),
+        Err(e) => { log_pds_error(label, e); None }
+    }
+}
+
+/// Delete a record from the user's PDS.
+pub async fn pds_delete_record(
+    state: &crate::state::AppState,
+    token: &str,
+    collection: &str,
+    rkey: String,
+    label: &str,
+) {
+    if let Some(pds) = pds_session(&state.pool, token).await {
+        if let Err(e) = state.at_client.delete_record(
+            &pds.pds_url,
+            &pds.access_jwt,
+            &fx_atproto::client::DeleteRecordInput {
+                repo: pds.did,
+                collection: collection.to_string(),
+                rkey,
+            },
+        ).await {
+            log_pds_error(label, e);
+        }
+    }
+}
+
+/// Requires admin secret header. Returns 401/403 if invalid.
+pub struct AdminAuth;
+
+impl FromRequestParts<AppState> for AdminAuth {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let secret = state.admin_secret.as_deref()
+            .ok_or(AppError(fx_core::Error::Forbidden { action: "admin not configured" }))?;
+        let provided = parts.headers.get("x-admin-secret")
+            .and_then(|v| v.to_str().ok())
+            .ok_or(AppError(fx_core::Error::Unauthorized))?;
+        if provided != secret {
+            return Err(AppError(fx_core::Error::Unauthorized));
+        }
+        Ok(AdminAuth)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

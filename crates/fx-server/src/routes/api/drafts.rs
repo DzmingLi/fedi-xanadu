@@ -11,7 +11,7 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use crate::auth::{Auth, WriteAuth, pds_session, log_pds_error};
+use crate::auth::{Auth, WriteAuth, pds_create_record, pds_delete_record};
 use fx_core::util::{tid, content_hash, uri_to_node_id, now_rfc3339};
 
 pub async fn list_drafts(
@@ -34,30 +34,16 @@ pub async fn save_draft(
     let _draft = draft_service::save_draft(&state.pool, &id, &user.did, &input).await?;
 
     // Sync to PDS
-    if let Some(pds) = pds_session(&state.pool, &user.token).await {
-        let record = serde_json::json!({
-            "$type": fx_atproto::lexicon::DRAFT,
-            "title": input.title,
-            "description": input.description.as_deref().unwrap_or(""),
-            "contentFormat": input.content_format,
-            "tags": input.tags,
-            "createdAt": now_rfc3339(),
-        });
-        match state.at_client.create_record(
-            &pds.pds_url,
-            &pds.access_jwt,
-            &fx_atproto::client::CreateRecordInput {
-                repo: pds.did,
-                collection: fx_atproto::lexicon::DRAFT.to_string(),
-                record,
-                rkey: Some(id.clone()),
-            },
-        ).await {
-            Ok(output) => {
-                let _ = draft_service::set_draft_at_uri(&state.pool, &id, &output.uri).await;
-            }
-            Err(e) => log_pds_error("create draft", e),
-        }
+    let record = serde_json::json!({
+        "$type": fx_atproto::lexicon::DRAFT,
+        "title": input.title,
+        "description": input.description.as_deref().unwrap_or(""),
+        "contentFormat": input.content_format,
+        "tags": input.tags,
+        "createdAt": now_rfc3339(),
+    });
+    if let Some(uri) = pds_create_record(&state, &user.token, fx_atproto::lexicon::DRAFT, record, Some(id.clone()), "create draft").await {
+        let _ = draft_service::set_draft_at_uri(&state.pool, &id, &uri).await;
     }
 
     // Re-fetch to get potential at_uri update
@@ -86,19 +72,7 @@ pub async fn delete_draft(
 
     // Delete from PDS
     if draft.at_uri.is_some() {
-        if let Some(pds) = pds_session(&state.pool, &user.token).await {
-            if let Err(e) = state.at_client.delete_record(
-                &pds.pds_url,
-                &pds.access_jwt,
-                &fx_atproto::client::DeleteRecordInput {
-                    repo: pds.did,
-                    collection: fx_atproto::lexicon::DRAFT.to_string(),
-                    rkey: id.clone(),
-                },
-            ).await {
-                log_pds_error("delete draft", e);
-            }
-        }
+        pds_delete_record(&state, &user.token, fx_atproto::lexicon::DRAFT, id.clone(), "delete draft").await;
     }
 
     draft_service::delete_draft(&state.pool, &id).await?;
@@ -152,39 +126,17 @@ pub async fn publish_draft(
     ).await?;
 
     // PDS: create article record, delete draft record
-    if let Some(pds) = pds_session(&state.pool, &user.token).await {
-        let record = serde_json::json!({
-            "$type": fx_atproto::lexicon::ARTICLE,
-            "title": draft.title,
-            "description": draft.description,
-            "contentFormat": draft.content_format,
-            "tags": tags,
-            "createdAt": now_rfc3339(),
-        });
-        if let Err(e) = state.at_client.create_record(
-            &pds.pds_url, &pds.access_jwt,
-            &fx_atproto::client::CreateRecordInput {
-                repo: pds.did.clone(),
-                collection: fx_atproto::lexicon::ARTICLE.to_string(),
-                record,
-                rkey: None,
-            },
-        ).await {
-            log_pds_error("publish article", e);
-        }
-
-        if draft.at_uri.is_some() {
-            if let Err(e) = state.at_client.delete_record(
-                &pds.pds_url, &pds.access_jwt,
-                &fx_atproto::client::DeleteRecordInput {
-                    repo: pds.did,
-                    collection: fx_atproto::lexicon::DRAFT.to_string(),
-                    rkey: id.clone(),
-                },
-            ).await {
-                log_pds_error("delete published draft", e);
-            }
-        }
+    let record = serde_json::json!({
+        "$type": fx_atproto::lexicon::ARTICLE,
+        "title": draft.title,
+        "description": draft.description,
+        "contentFormat": draft.content_format,
+        "tags": tags,
+        "createdAt": now_rfc3339(),
+    });
+    pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, None, "publish article").await;
+    if draft.at_uri.is_some() {
+        pds_delete_record(&state, &user.token, fx_atproto::lexicon::DRAFT, id.clone(), "delete published draft").await;
     }
 
     let article = article_service::get_article_any_visibility(&state.pool, &at_uri).await?;

@@ -11,9 +11,17 @@ use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use crate::auth::{WriteAuth, pds_session, log_pds_error};
+use crate::auth::{WriteAuth, pds_create_record};
 use fx_core::util::{content_hash, tid, uri_to_node_id, now_rfc3339};
 use super::UriQuery;
+
+/// Pre-compiled regex for extracting anchor IDs from HTML.
+static ANCHOR_ID_RE: std::sync::LazyLock<regex_lite::Regex> =
+    std::sync::LazyLock::new(|| regex_lite::Regex::new(r##"id="([^"]+)""##).unwrap());
+
+/// Pre-compiled regex for rewriting cross-chapter href links.
+static LINK_HREF_RE: std::sync::LazyLock<regex_lite::Regex> =
+    std::sync::LazyLock::new(|| regex_lite::Regex::new(r##"href="#([^"]+)""##).unwrap());
 
 #[derive(serde::Deserialize)]
 pub struct ListArticlesQuery {
@@ -332,7 +340,7 @@ async fn anchor_rewrite_series_render(
     // Collect all anchor IDs from all chapters: id -> article_uri
     let mut anchor_map: HashMap<String, String> = HashMap::new();
     for (uri, html) in &chapter_htmls {
-        for cap in regex_lite::Regex::new(r##"id="([^"]+)""##).ok()?.captures_iter(html) {
+        for cap in ANCHOR_ID_RE.captures_iter(html) {
             let anchor = cap.get(1)?.as_str().to_string();
             anchor_map.entry(anchor).or_insert_with(|| uri.clone());
         }
@@ -340,10 +348,8 @@ async fn anchor_rewrite_series_render(
 
     // Rewrite cross-chapter links in each chapter
     let mut rendered: HashMap<String, String> = HashMap::new();
-    let link_re = regex_lite::Regex::new(r##"href="#([^"]+)""##).ok()?;
-
     for (uri, html) in &chapter_htmls {
-        let rewritten = link_re.replace_all(html, |caps: &regex_lite::Captures| {
+        let rewritten = LINK_HREF_RE.replace_all(html, |caps: &regex_lite::Captures| {
             let anchor = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             if let Some(target_uri) = anchor_map.get(anchor) {
                 if target_uri != uri {
@@ -591,27 +597,15 @@ pub async fn create_article(
 
     // Skip PDS sync for restricted articles — content stays server-local only
     if !input.restricted.unwrap_or(false) {
-        if let Some(pds) = pds_session(&state.pool, &user.token).await {
-            let record = serde_json::json!({
-                "$type": fx_atproto::lexicon::ARTICLE,
-                "title": input.title,
-                "description": input.description.as_deref().unwrap_or(""),
-                "contentFormat": input.content_format,
-                "tags": input.tags,
-                "createdAt": now_rfc3339(),
-            });
-            if let Err(e) = state.at_client.create_record(
-                &pds.pds_url, &pds.access_jwt,
-                &fx_atproto::client::CreateRecordInput {
-                    repo: pds.did,
-                    collection: fx_atproto::lexicon::ARTICLE.to_string(),
-                    record,
-                    rkey: None,
-                },
-            ).await {
-                log_pds_error("create article", e);
-            }
-        }
+        let record = serde_json::json!({
+            "$type": fx_atproto::lexicon::ARTICLE,
+            "title": input.title,
+            "description": input.description.as_deref().unwrap_or(""),
+            "contentFormat": input.content_format,
+            "tags": input.tags,
+            "createdAt": now_rfc3339(),
+        });
+        pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, None, "create article").await;
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
@@ -865,25 +859,13 @@ pub async fn fork_article(
         default_visibility(user.phone_verified),
     ).await?;
 
-    if let Some(pds) = pds_session(&state.pool, &user.token).await {
-        let record = serde_json::json!({
-            "$type": fx_atproto::lexicon::FORK,
-            "source": input.uri,
-            "fork": fork_at_uri,
-            "createdAt": now_rfc3339(),
-        });
-        if let Err(e) = state.at_client.create_record(
-            &pds.pds_url, &pds.access_jwt,
-            &fx_atproto::client::CreateRecordInput {
-                repo: pds.did,
-                collection: fx_atproto::lexicon::FORK.to_string(),
-                record,
-                rkey: None,
-            },
-        ).await {
-            log_pds_error("create fork", e);
-        }
-    }
+    let record = serde_json::json!({
+        "$type": fx_atproto::lexicon::FORK,
+        "source": input.uri,
+        "fork": fork_at_uri,
+        "createdAt": now_rfc3339(),
+    });
+    pds_create_record(&state, &user.token, fx_atproto::lexicon::FORK, record, None, "create fork").await;
 
     if let Err(e) = notification_service::create_notification(
         &state.pool, &tid(), &source.did, &user.did,

@@ -6,7 +6,7 @@ use fx_core::services::vote_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use crate::auth::{WriteAuth, MaybeAuth, pds_session, log_pds_error};
+use crate::auth::{WriteAuth, MaybeAuth, pds_create_record};
 use fx_core::util::{tid, now_rfc3339};
 use super::UriQuery;
 
@@ -48,26 +48,13 @@ pub async fn cast_vote(
 
     // AT Protocol side-effect (only for non-zero votes)
     if value != 0 {
-        if let Some(pds) = pds_session(&state.pool, &user.token).await {
-            let record = serde_json::json!({
-                "$type": fx_atproto::lexicon::VOTE,
-                "subject": input.target_uri,
-                "value": value,
-                "createdAt": now_rfc3339(),
-            });
-            if let Err(e) = state.at_client.create_record(
-                &pds.pds_url,
-                &pds.access_jwt,
-                &fx_atproto::client::CreateRecordInput {
-                    repo: pds.did,
-                    collection: fx_atproto::lexicon::VOTE.to_string(),
-                    record,
-                    rkey: None,
-                },
-            ).await {
-                log_pds_error("create vote", e);
-            }
-        }
+        let record = serde_json::json!({
+            "$type": fx_atproto::lexicon::VOTE,
+            "subject": input.target_uri,
+            "value": value,
+            "createdAt": now_rfc3339(),
+        });
+        pds_create_record(&state, &user.token, fx_atproto::lexicon::VOTE, record, None, "create vote").await;
     }
 
     Ok(Json(VoteSummary {

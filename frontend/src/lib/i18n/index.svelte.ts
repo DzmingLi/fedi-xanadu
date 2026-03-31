@@ -46,8 +46,3 @@ export function t(key: string, ...args: (string | number)[]): string {
   if (args.length === 0) return raw;
   return raw.replace(/\{(\d+)\}/g, (_, i) => String(args[Number(i)] ?? ''));
 }
-
-// Compatibility shim -- no-op, Svelte 5 reactivity handles this.
-export function onLocaleChange(_fn: () => void): () => void {
-  return () => {};
-}

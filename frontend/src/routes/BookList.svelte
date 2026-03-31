@@ -1,11 +1,10 @@
 <script lang="ts">
   import { listBooks } from '../lib/api';
-  import { t, getLocale, onLocaleChange } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import type { Book } from '../lib/types';
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   let books = $state<Book[]>([]);
   let loading = $state(true);

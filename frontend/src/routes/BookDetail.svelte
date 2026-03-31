@@ -1,14 +1,13 @@
 <script lang="ts">
   import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
-  import { t, getLocale, onLocaleChange } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import PostCard from '../lib/components/PostCard.svelte';
   import type { BookDetail, BookEdition, BookChapter } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   let detail = $state<BookDetail | null>(null);
   let loading = $state(true);

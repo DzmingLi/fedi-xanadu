@@ -238,11 +238,13 @@ pub async fn get_book_reviews(
         "SELECT a.at_uri, a.did, p.handle AS author_handle, a.kind, a.title, a.description, \
          a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
          a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
-         COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
-         COALESCE((SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = a.at_uri), 0) AS bookmark_count, \
+         COALESCE(v.vote_score, 0) AS vote_score, \
+         COALESCE(b.bookmark_count, 0) AS bookmark_count, \
          a.created_at, a.updated_at \
          FROM articles a \
          LEFT JOIN profiles p ON a.did = p.did \
+         LEFT JOIN (SELECT target_uri, SUM(value) AS vote_score FROM votes GROUP BY target_uri) v ON v.target_uri = a.at_uri \
+         LEFT JOIN (SELECT article_uri, COUNT(*) AS bookmark_count FROM user_bookmarks GROUP BY article_uri) b ON b.article_uri = a.at_uri \
          WHERE a.book_id = $1 AND a.category = 'review' AND a.visibility = 'public' \
          ORDER BY vote_score DESC, a.created_at DESC \
          LIMIT $2 OFFSET $3",

@@ -30,8 +30,3 @@ export async function loadBlocklist(): Promise<void> {
 export function clearBlocklist() {
   blocked = new Set();
 }
-
-// Compatibility shim — no-op, Svelte 5 reactivity handles this.
-export function onBlocklistChange(_fn: () => void): () => void {
-  return () => {};
-}

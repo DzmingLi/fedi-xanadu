@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { t, getLocale, onLocaleChange } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
 
-  let locale = $state(getLocale());
-  $effect(() => onLocaleChange(() => { locale = getLocale(); }));
+  let locale = $derived(getLocale());
 
   interface RoadmapItem {
     title: Record<string, string>;
