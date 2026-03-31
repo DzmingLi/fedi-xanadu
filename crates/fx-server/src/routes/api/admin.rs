@@ -3,15 +3,15 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
 };
-use fx_core::content::{ContentFormat, ContentKind};
+use fx_core::content::ContentKind;
 use fx_core::models::{Article, CreateArticle};
 use fx_core::region::default_visibility;
-use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service, version_service};
+use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use fx_core::util::{content_hash, tid, uri_to_node_id};
+use fx_core::util::{content_hash, tid};
 
 fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
     let secret = state.admin_secret.as_deref()
@@ -79,40 +79,15 @@ pub async fn admin_create_article(
     require_admin(&state, &headers)?;
     validate_create_article(&input.article)?;
 
-    // Resolve handle → DID
     let did = platform_user_service::local_did(&input.as_handle);
-
     let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
 
-    // Init pijul repo and write source file
-    let node_id = uri_to_node_id(&at_uri);
-    state.pijul.init_repo(&node_id)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-
-    let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_render::format_extension(input.article.content_format.as_str());
-    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
-
-    // Pre-render HTML cache — reject upload if rendering fails
-    if input.article.content_format != ContentFormat::Html {
-        let rendered = super::articles::render_content(
-            input.article.content_format.as_str(), &input.article.content, &repo_path,
-        )?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
-    }
-
-    match state.pijul.record(&node_id, "Initial publish") {
-        Ok(Some(hash)) => {
-            let _ = version_service::record_version(
-                &state.pool, &at_uri, &hash, &did, "Initial publish", &input.article.content,
-            ).await;
-        }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
-    }
+    super::articles::publish_article_content(
+        &state, &at_uri, &did, &input.article.content, input.article.content_format,
+        input.article.series_id.as_deref(), "Initial publish",
+    ).await?;
 
     let hash = content_hash(&input.article.content);
-
     let translation_group = if let Some(ref source_uri) = input.article.translation_of {
         Some(article_service::resolve_translation_group(&state.pool, source_uri).await?)
     } else {
@@ -121,10 +96,13 @@ pub async fn admin_create_article(
 
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, translation_group,
-        default_visibility(true), ContentKind::Article, None, // admin is always verified
+        default_visibility(true), ContentKind::Article, None,
     ).await?;
 
-    // Auto-bookmark
+    if let Some(ref sid) = input.article.series_id {
+        series_service::add_series_article(&state.pool, sid, &at_uri).await?;
+    }
+
     let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
 
     Ok((StatusCode::CREATED, Json(article)))
@@ -233,29 +211,7 @@ pub async fn admin_update_article(
 
     if let Some(ref content) = input.content {
         let format = article_service::get_content_format(&state.pool, &input.uri).await?;
-
-        let node_id = uri_to_node_id(&input.uri);
-        let repo_path = state.pijul.repo_path(&node_id);
-        let src_ext = fx_render::format_extension(&format);
-        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
-
-        if format != "html" {
-            let rendered = super::articles::render_content(&format, content, &repo_path)?;
-            let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
-        }
-
-        let hash = content_hash(content);
-        article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;
-
-        match state.pijul.record(&node_id, "Admin update") {
-            Ok(Some(hash)) => {
-                let _ = version_service::record_version(
-                    &state.pool, &input.uri, &hash, "admin", "Admin update", content,
-                ).await;
-            }
-            Ok(None) => {}
-            Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
-        }
+        super::articles::update_article_content(&state, &input.uri, "admin", content, &format).await?;
     }
 
     let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
@@ -657,30 +613,10 @@ pub async fn admin_create_question(
     let did = platform_user_service::local_did(&input.as_handle);
     let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
 
-    let node_id = uri_to_node_id(&at_uri);
-    state.pijul.init_repo(&node_id)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-
-    let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_render::format_extension(input.article.content_format.as_str());
-    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
-
-    if input.article.content_format != ContentFormat::Html {
-        let rendered = super::articles::render_content(
-            input.article.content_format.as_str(), &input.article.content, &repo_path,
-        )?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
-    }
-
-    match state.pijul.record(&node_id, "Initial publish") {
-        Ok(Some(hash)) => {
-            let _ = version_service::record_version(
-                &state.pool, &at_uri, &hash, &did, "Initial publish", &input.article.content,
-            ).await;
-        }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
-    }
+    super::articles::publish_article_content(
+        &state, &at_uri, &did, &input.article.content, input.article.content_format,
+        None, "Initial publish",
+    ).await?;
 
     let hash = content_hash(&input.article.content);
 
@@ -719,30 +655,10 @@ pub async fn admin_post_answer(
     let did = platform_user_service::local_did(&input.as_handle);
     let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
 
-    let node_id = uri_to_node_id(&at_uri);
-    state.pijul.init_repo(&node_id)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-
-    let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_render::format_extension(input.article.content_format.as_str());
-    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.article.content).await?;
-
-    if input.article.content_format != ContentFormat::Html {
-        let rendered = super::articles::render_content(
-            input.article.content_format.as_str(), &input.article.content, &repo_path,
-        )?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
-    }
-
-    match state.pijul.record(&node_id, "Initial publish") {
-        Ok(Some(hash)) => {
-            let _ = version_service::record_version(
-                &state.pool, &at_uri, &hash, &did, "Initial publish", &input.article.content,
-            ).await;
-        }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
-    }
+    super::articles::publish_article_content(
+        &state, &at_uri, &did, &input.article.content, input.article.content_format,
+        None, "Initial publish",
+    ).await?;
 
     let hash = content_hash(&input.article.content);
 
