@@ -1045,29 +1045,59 @@ pub async fn update_article(
 
     if let Some(ref content) = input.content {
         let format = article_service::get_content_format(&state.pool, &input.uri).await?;
-
-        let node_id = uri_to_node_id(&input.uri);
-        let repo_path = state.pijul.repo_path(&node_id);
         let src_ext = fx_render::format_extension(&format);
-        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
 
-        if format != "html" {
-            let rendered = render_content(&format, content, &repo_path)?;
-            let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+        // Detect if article belongs to a series
+        let series_info = get_series_pijul_info(&state, &input.uri).await;
+
+        if let Some((series_node_id, chapter_id)) = series_info {
+            // Series article: write to series repo
+            let series_repo = state.pijul.series_repo_path(&series_node_id);
+            let chapter_path = series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}"));
+            tokio::fs::write(&chapter_path, content).await?;
+
+            if format != "html" {
+                let rendered = render_content(&format, content, &series_repo)?;
+                let cache_dir = series_repo.join("cache");
+                let _ = tokio::fs::create_dir_all(&cache_dir).await;
+                let _ = tokio::fs::write(cache_dir.join(format!("{chapter_id}.html")), &rendered).await;
+                // Invalidate series cache
+                let _ = tokio::fs::remove_file(cache_dir.join("series.cache")).await;
+            }
+
+            match state.pijul.record_series(&series_node_id, &format!("Update: {}", input.uri)) {
+                Ok(Some(hash)) => {
+                    let _ = version_service::record_version(
+                        &state.pool, &input.uri, &hash, &user.did, "Update article", content,
+                    ).await;
+                }
+                Ok(None) => {}
+                Err(e) => tracing::warn!("pijul record failed for series {series_node_id}: {e}"),
+            }
+        } else {
+            // Independent article: write to own repo
+            let node_id = uri_to_node_id(&input.uri);
+            let repo_path = state.pijul.repo_path(&node_id);
+            tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
+
+            if format != "html" {
+                let rendered = render_content(&format, content, &repo_path)?;
+                let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+            }
+
+            match state.pijul.record(&node_id, "Update article") {
+                Ok(Some(hash)) => {
+                    let _ = version_service::record_version(
+                        &state.pool, &input.uri, &hash, &user.did, "Update article", content,
+                    ).await;
+                }
+                Ok(None) => {}
+                Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
+            }
         }
 
         let hash = content_hash(content);
         article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;
-
-        match state.pijul.record(&node_id, "Update article") {
-            Ok(Some(hash)) => {
-                let _ = version_service::record_version(
-                    &state.pool, &input.uri, &hash, &user.did, "Update article", content,
-                ).await;
-            }
-            Ok(None) => {}
-            Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
-        }
     }
 
     let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
@@ -1089,11 +1119,31 @@ pub async fn delete_article(
     let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
     require_owner(Some(&owner), &user.did)?;
 
-    article_service::delete_article(&state.pool, &input.uri).await?;
+    // Clean up source files before deleting DB record (need series info while FK exists)
+    let series_info = get_series_pijul_info(&state, &input.uri).await;
+    if let Some((series_node_id, chapter_id)) = series_info {
+        // Remove chapter file and cache from series repo
+        let series_repo = state.pijul.series_repo_path(&series_node_id);
+        let chapters_dir = series_repo.join("chapters");
+        // Remove any file matching this chapter_id (any extension)
+        if let Ok(entries) = tokio::fs::read_dir(&chapters_dir).await {
+            let mut entries = entries;
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                if entry.file_name().to_string_lossy().starts_with(&chapter_id) {
+                    let _ = tokio::fs::remove_file(entry.path()).await;
+                }
+            }
+        }
+        let _ = tokio::fs::remove_file(series_repo.join("cache").join(format!("{chapter_id}.html"))).await;
+        let _ = tokio::fs::remove_file(series_repo.join("cache").join("series.cache")).await;
+    } else {
+        // Remove independent repo
+        let node_id = uri_to_node_id(&input.uri);
+        let repo_path = state.pijul.repo_path(&node_id);
+        let _ = tokio::fs::remove_dir_all(&repo_path).await;
+    }
 
-    let node_id = uri_to_node_id(&input.uri);
-    let repo_path = state.pijul.repo_path(&node_id);
-    let _ = tokio::fs::remove_dir_all(&repo_path).await;
+    article_service::delete_article(&state.pool, &input.uri).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

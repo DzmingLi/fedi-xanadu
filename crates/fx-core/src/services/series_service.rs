@@ -143,6 +143,7 @@ pub async fn create_series(
     lang: &str,
     translation_group: Option<String>,
     category: &str,
+    pijul_node_id: Option<&str>,
 ) -> crate::Result<SeriesRow> {
     // Auto-assign order_index: append after existing siblings
     let order_index: i32 = if parent_id.is_some() {
@@ -161,8 +162,8 @@ pub async fn create_series(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO series (id, title, description, long_description, parent_id, order_index, created_by, lang, translation_group, category) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+        "INSERT INTO series (id, title, description, long_description, parent_id, order_index, created_by, lang, translation_group, category, pijul_node_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     )
     .bind(id)
     .bind(title)
@@ -174,6 +175,7 @@ pub async fn create_series(
     .bind(lang)
     .bind(&translation_group)
     .bind(category)
+    .bind(pijul_node_id)
     .execute(&mut *tx)
     .await?;
 

@@ -164,6 +164,13 @@ pub async fn admin_create_series(
     };
 
     let category = input.category.as_deref().unwrap_or("general");
+
+    // Init pijul repo for all series
+    let node_id = format!("series_{id}");
+    if let Err(e) = state.pijul.init_series_repo(&node_id) {
+        tracing::warn!("failed to init series pijul repo: {e}");
+    }
+
     let row = series_service::create_series(
         &state.pool,
         &id,
@@ -176,6 +183,7 @@ pub async fn admin_create_series(
         lang,
         translation_group,
         category,
+        Some(&node_id),
     )
     .await?;
 

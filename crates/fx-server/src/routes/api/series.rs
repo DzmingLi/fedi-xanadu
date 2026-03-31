@@ -85,17 +85,9 @@ pub async fn create_series(
         lang,
         translation_group,
         category,
+        pijul_node_id.as_deref(),
     )
     .await?;
-
-    // Store pijul_node_id
-    if let Some(ref node_id) = pijul_node_id {
-        sqlx::query("UPDATE series SET pijul_node_id = $1 WHERE id = $2")
-            .bind(node_id)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
 
     Ok((StatusCode::CREATED, Json(row)))
 }
@@ -403,6 +395,7 @@ pub async fn fork_series(
 
     // Create forked series record
     let fork_title = format!("{} (fork)", original.series.title);
+    let fork_pijul = if original_pijul.is_some() { Some(fork_node_id.as_str()) } else { None };
     let row = series_service::create_series(
         &state.pool,
         &fork_id,
@@ -415,17 +408,9 @@ pub async fn fork_series(
         &original.series.lang,
         None,
         &original.series.category,
+        fork_pijul,
     )
     .await?;
-
-    // Store pijul_node_id
-    if original_pijul.is_some() {
-        sqlx::query("UPDATE series SET pijul_node_id = $1 WHERE id = $2")
-            .bind(&fork_node_id)
-            .bind(&fork_id)
-            .execute(&state.pool)
-            .await?;
-    }
 
     // Fork only clones the pijul repo. User calls /compile to create articles.
 
