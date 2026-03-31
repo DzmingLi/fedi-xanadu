@@ -87,7 +87,17 @@ impl PijulStore {
     /// Record all working copy changes as a new pijul change.
     pub fn record(&self, node_id: &str, message: &str) -> anyhow::Result<Option<String>> {
         let path = self.repo_path(node_id);
-        let repo = self.open_repo(&path)?;
+        self.record_at_path(&path, node_id, message)
+    }
+
+    /// Record all working copy changes in a series repo.
+    pub fn record_series(&self, series_node_id: &str, message: &str) -> anyhow::Result<Option<String>> {
+        let path = self.series_repo_path(series_node_id);
+        self.record_at_path(&path, series_node_id, message)
+    }
+
+    fn record_at_path(&self, path: &std::path::Path, node_id: &str, message: &str) -> anyhow::Result<Option<String>> {
+        let repo = self.open_repo(path)?;
 
         let txn = repo.pristine.arc_txn_begin()?;
         let channel_name = pijul_core::DEFAULT_CHANNEL;

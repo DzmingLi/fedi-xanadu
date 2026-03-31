@@ -293,6 +293,7 @@ mod tests {
             edition_id: None,
             tags: vec!["rust".into()],
             prereqs: vec![],
+            series_id: None,
         };
         assert!(validate_create_article(&input).is_ok());
     }
@@ -314,6 +315,7 @@ mod tests {
             edition_id: None,
             tags: vec!["".into()],
             prereqs: vec![],
+            series_id: None,
         };
         match validate_create_article(&input) {
             Err(crate::Error::Validation(errors)) => {

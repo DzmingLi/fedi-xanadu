@@ -54,6 +54,26 @@ pub async fn get_article_content(
     let format = article_service::get_content_format(&state.pool, &uri).await?;
     let src_ext = fx_render::format_extension(&format);
 
+    // Check if this is a compile-generated heading slice
+    let heading_info: Option<(String, String)> = sqlx::query_as(
+        "SELECT s.pijul_node_id, sa.heading_anchor \
+         FROM series_articles sa JOIN series s ON s.id = sa.series_id \
+         WHERE sa.article_uri = $1 AND sa.heading_anchor IS NOT NULL AND s.pijul_node_id IS NOT NULL",
+    )
+    .bind(&uri)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if let Some((node_id, anchor)) = heading_info {
+        // Heading slice: serve from series cache
+        let cache_path = state.pijul.series_repo_path(&node_id)
+            .join("cache")
+            .join(format!("{anchor}.html"));
+        let html = tokio::fs::read_to_string(&cache_path).await
+            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?;
+        return Ok(Json(ArticleContent { source: String::new(), html }));
+    }
+
     // Check if article is in a series with a pijul repo
     let series_info = get_series_pijul_info(&state, &uri).await;
 
@@ -401,29 +421,80 @@ pub async fn create_article(
     validate_create_article(&input)?;
 
     let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
-
-    let node_id = uri_to_node_id(&at_uri);
-    state.pijul.init_repo(&node_id)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-
-    let repo_path = state.pijul.repo_path(&node_id);
+    let chapter_id = at_uri.rsplit('/').next().unwrap();
     let src_ext = fx_render::format_extension(input.content_format.as_str());
-    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
 
-    if input.content_format != ContentFormat::Html {
-        let rendered_html = render_content(input.content_format.as_str(), &input.content, &repo_path)?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
+    // Verify series ownership if series_id is specified
+    if let Some(ref sid) = input.series_id {
+        let owner = series_service::get_series_owner(&state.pool, sid).await?;
+        require_owner(Some(&owner), &user.did)?;
     }
 
-    match state.pijul.record(&node_id, "Initial publish") {
-        Ok(Some(hash)) => {
-            let _ = version_service::record_version(
-                &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
-            ).await;
+    // Write source file: series repo or independent repo
+    let _repo_path = if let Some(ref sid) = input.series_id {
+        // Series article: write to series repo chapters/
+        let pijul_node_id: Option<String> = sqlx::query_scalar(
+            "SELECT pijul_node_id FROM series WHERE id = $1",
+        )
+        .bind(sid)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten();
+
+        let node_id = pijul_node_id.ok_or_else(|| {
+            AppError(fx_core::Error::BadRequest("Series has no pijul repo".into()))
+        })?;
+
+        let series_repo = state.pijul.series_repo_path(&node_id);
+        let chapter_path = series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}"));
+        tokio::fs::write(&chapter_path, &input.content).await?;
+
+        // Pre-render HTML cache
+        if input.content_format != ContentFormat::Html {
+            let rendered_html = render_content(input.content_format.as_str(), &input.content, &series_repo)?;
+            let cache_dir = series_repo.join("cache");
+            let _ = tokio::fs::create_dir_all(&cache_dir).await;
+            let _ = tokio::fs::write(cache_dir.join(format!("{chapter_id}.html")), &rendered_html).await;
         }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
-    }
+
+        // Record pijul version on series repo
+        match state.pijul.record_series(&node_id, &format!("Add chapter: {}", input.title)) {
+            Ok(Some(hash)) => {
+                let _ = version_service::record_version(
+                    &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
+                ).await;
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!("pijul record failed for series {node_id}: {e}"),
+        }
+
+        series_repo
+    } else {
+        // Independent article: create own repo
+        let node_id = uri_to_node_id(&at_uri);
+        state.pijul.init_repo(&node_id)
+            .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+
+        let repo_path = state.pijul.repo_path(&node_id);
+        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
+
+        if input.content_format != ContentFormat::Html {
+            let rendered_html = render_content(input.content_format.as_str(), &input.content, &repo_path)?;
+            let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
+        }
+
+        match state.pijul.record(&node_id, "Initial publish") {
+            Ok(Some(hash)) => {
+                let _ = version_service::record_version(
+                    &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
+                ).await;
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
+        }
+
+        repo_path
+    };
 
     let hash = content_hash(&input.content);
 
@@ -437,6 +508,11 @@ pub async fn create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, translation_group,
         default_visibility(user.phone_verified), ContentKind::Article, None,
     ).await?;
+
+    // Add to series if specified
+    if let Some(ref sid) = input.series_id {
+        series_service::add_series_article(&state.pool, sid, &at_uri).await?;
+    }
 
     // Skip PDS sync for restricted articles — content stays server-local only
     if !input.restricted.unwrap_or(false) {
@@ -838,22 +914,45 @@ pub async fn upload_image(
         return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
     }
 
-    let node_id = uri_to_node_id(&uri);
-    let repo_path = state.pijul.repo_path(&node_id);
-    let dest = repo_path.join(&safe_name);
+    // Determine target repo: series repo or independent article repo
+    let series_info = get_series_pijul_info(&state, &uri).await;
 
-    tokio::fs::write(&dest, &data).await?;
+    if let Some((series_node_id, _chapter_id)) = &series_info {
+        // Series article: write image to series repo root
+        let series_repo = state.pijul.series_repo_path(series_node_id);
+        let dest = series_repo.join(&safe_name);
+        tokio::fs::write(&dest, &data).await?;
 
-    let _ = tokio::fs::remove_file(repo_path.join("content.html")).await;
+        // Invalidate series cache
+        let _ = tokio::fs::remove_file(series_repo.join("cache").join("series.cache")).await;
 
-    match state.pijul.record(&node_id, &format!("Add image: {safe_name}")) {
-        Ok(Some(hash)) => {
-            let _ = version_service::record_version(
-                &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
-            ).await;
+        match state.pijul.record_series(series_node_id, &format!("Add image: {safe_name}")) {
+            Ok(Some(hash)) => {
+                let _ = version_service::record_version(
+                    &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
+                ).await;
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!("pijul record failed for series {series_node_id}: {e}"),
         }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
+    } else {
+        // Independent article: write to own repo
+        let node_id = uri_to_node_id(&uri);
+        let repo_path = state.pijul.repo_path(&node_id);
+        let dest = repo_path.join(&safe_name);
+        tokio::fs::write(&dest, &data).await?;
+
+        let _ = tokio::fs::remove_file(repo_path.join("content.html")).await;
+
+        match state.pijul.record(&node_id, &format!("Add image: {safe_name}")) {
+            Ok(Some(hash)) => {
+                let _ = version_service::record_version(
+                    &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
+                ).await;
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
+        }
     }
 
     Ok(Json(ImageUploadResponse { filename: safe_name }))

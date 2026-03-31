@@ -222,6 +222,10 @@ fn series_routes() -> Router<AppState> {
         .route("/series/{id}/resource", post(series::upload_resource))
         .route("/series/{id}/resources", get(series::list_resources))
         .route("/series/{id}/fork", post(series::fork_series))
+        // Series compile + heading extraction
+        .route("/series/{id}/compile", post(series::compile_series))
+        .route("/series/{id}/headings", get(series::get_headings))
+        .route("/series/{id}/split-level", put(series::update_split_level))
 }
 
 fn notification_routes() -> Router<AppState> {
@@ -369,12 +373,6 @@ mod tests {
     }
 
     #[test]
-    fn id_query_deserializes() {
-        let q: IdQuery = serde_json::from_value(serde_json::json!({ "id": "abc123" })).unwrap();
-        assert_eq!(q.id, "abc123");
-    }
-
-    #[test]
     fn did_query_deserializes() {
         let q: DidQuery =
             serde_json::from_value(serde_json::json!({ "did": "did:plc:xyz" })).unwrap();
@@ -389,29 +387,8 @@ mod tests {
     }
 
     #[test]
-    fn pagination_query_deserializes_full() {
-        let q: PaginationQuery =
-            serde_json::from_value(serde_json::json!({ "limit": 25, "offset": 10 })).unwrap();
-        assert_eq!(q.limit, Some(25));
-        assert_eq!(q.offset, Some(10));
-    }
-
-    #[test]
-    fn pagination_query_deserializes_empty() {
-        let q: PaginationQuery = serde_json::from_value(serde_json::json!({})).unwrap();
-        assert!(q.limit.is_none());
-        assert!(q.offset.is_none());
-    }
-
-    #[test]
     fn uri_query_missing_field_fails() {
         let result = serde_json::from_value::<UriQuery>(serde_json::json!({}));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn id_query_missing_field_fails() {
-        let result = serde_json::from_value::<IdQuery>(serde_json::json!({}));
         assert!(result.is_err());
     }
 

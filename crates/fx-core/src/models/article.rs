@@ -53,6 +53,8 @@ pub struct CreateArticle {
     pub edition_id: Option<String>,
     pub tags: Vec<String>,
     pub prereqs: Vec<ArticlePrereq>,
+    /// If set, the article belongs to this series and its source is stored in the series repo.
+    pub series_id: Option<String>,
 }
 
 // ---- Response ----

@@ -20,6 +20,8 @@ pub struct SeriesRow {
     pub lang: String,
     pub translation_group: Option<String>,
     pub category: String,
+    #[serde(default = "default_split_level")]
+    pub split_level: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +40,12 @@ pub struct SeriesListRow {
     pub category: String,
     pub article_count: i64,
     pub child_count: i64,
+    #[serde(default = "default_split_level")]
+    pub split_level: i32,
+}
+
+fn default_split_level() -> i32 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

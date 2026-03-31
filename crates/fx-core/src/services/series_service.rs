@@ -18,6 +18,7 @@ pub struct SeriesRow {
     pub lang: String,
     pub translation_group: Option<String>,
     pub category: String,
+    pub split_level: i32,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -35,6 +36,7 @@ pub struct SeriesListRow {
     pub lang: String,
     pub translation_group: Option<String>,
     pub category: String,
+    pub split_level: i32,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -46,6 +48,8 @@ pub struct SeriesArticleRow {
     pub description: String,
     pub lang: String,
     pub order_index: i32,
+    pub heading_title: Option<String>,
+    pub heading_anchor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -98,11 +102,24 @@ pub struct SeriesNavItem {
     pub title: String,
 }
 
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct SeriesHeadingRow {
+    pub id: i32,
+    pub series_id: String,
+    pub level: i32,
+    pub title: String,
+    pub anchor: String,
+    pub article_uri: Option<String>,
+    pub parent_heading_id: Option<i32>,
+    pub order_index: i32,
+}
+
 pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, s.long_description, \
                 s.parent_id, s.order_index, s.created_by, pu.handle AS author_handle, s.created_at, \
-                s.lang, s.translation_group, s.category \
+                s.lang, s.translation_group, s.category, s.split_level \
          FROM series s \
          LEFT JOIN platform_users pu ON s.created_by = pu.did \
          WHERE s.parent_id IS NULL \
@@ -173,7 +190,7 @@ pub async fn create_series(
     tx.commit().await?;
 
     let row = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category \
+        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -185,7 +202,7 @@ pub async fn create_series(
 
 pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesDetailResponse> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category \
+        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -198,7 +215,7 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
 
     let articles = sqlx::query_as::<_, SeriesArticleRow>(
         "SELECT sa.series_id, sa.article_uri, a.title, COALESCE(a.description, '') AS description, \
-                a.lang, sa.order_index \
+                a.lang, sa.order_index, sa.heading_title, sa.heading_anchor \
          FROM series_articles sa JOIN articles a ON sa.article_uri = a.at_uri \
          WHERE sa.series_id = $1 ORDER BY sa.order_index",
     )
@@ -214,7 +231,7 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
     .await?;
 
     let children = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category \
+        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
          FROM series WHERE parent_id = $1 ORDER BY order_index",
     )
     .bind(id)
@@ -274,7 +291,7 @@ pub async fn get_series_translations(pool: &PgPool, id: &str) -> crate::Result<V
     };
 
     let rows = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category \
+        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
          FROM series WHERE translation_group = $1 AND id != $2 ORDER BY lang",
     )
     .bind(&group)
@@ -418,10 +435,10 @@ pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<Seri
     // Fetch all series in the tree in one query using recursive CTE
     let all_series = sqlx::query_as::<_, SeriesRow>(
         "WITH RECURSIVE tree AS ( \
-             SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category \
+             SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
              FROM series WHERE id = $1 \
              UNION ALL \
-             SELECT s.id, s.title, s.description, s.long_description, s.parent_id, s.order_index, s.created_by, s.created_at, s.lang, s.translation_group, s.category \
+             SELECT s.id, s.title, s.description, s.long_description, s.parent_id, s.order_index, s.created_by, s.created_at, s.lang, s.translation_group, s.category, s.split_level \
              FROM series s JOIN tree t ON s.parent_id = t.id \
          ) SELECT * FROM tree",
     )
@@ -440,7 +457,7 @@ pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<Seri
     let series_ids: Vec<&str> = all_series.iter().map(|s| s.id.as_str()).collect();
     let all_articles = sqlx::query_as::<_, SeriesArticleRow>(
         "SELECT sa.series_id, sa.article_uri, a.title, COALESCE(a.description, '') AS description, \
-                a.lang, sa.order_index \
+                a.lang, sa.order_index, sa.heading_title, sa.heading_anchor \
          FROM series_articles sa JOIN articles a ON sa.article_uri = a.at_uri \
          WHERE sa.series_id = ANY($1) ORDER BY sa.order_index",
     )

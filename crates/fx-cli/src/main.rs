@@ -732,6 +732,7 @@ async fn main() -> Result<()> {
                 edition_id: None,
                 tags,
                 prereqs: vec![],
+                series_id: series.clone(),
             };
 
             let resp: serde_json::Value = client()

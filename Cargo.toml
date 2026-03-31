@@ -114,6 +114,7 @@ sanakirja = { version = "2.0.0-beta", default-features = false, features = ["crc
 sha2 = "0.9"
 syn = "2.0"
 tar = "0.4"
+ureq = "3"
 tempfile = "3.20"
 twox-hash = "1.6"
 whoami = { version = "1.6", default-features = false }

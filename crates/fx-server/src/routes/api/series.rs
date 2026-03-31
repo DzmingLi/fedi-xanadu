@@ -3,7 +3,9 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::StatusCode,
 };
-use fx_core::services::series_service;
+use fx_core::content::{ContentFormat, ContentKind, Category};
+use fx_core::models::*;
+use fx_core::services::{article_service, series_service};
 use fx_core::validation;
 
 use crate::error::{AppError, ApiResult, require_owner};
@@ -64,16 +66,12 @@ pub async fn create_series(
     };
 
     let category = input.category.as_deref().unwrap_or("general");
-    // Initialize pijul repo for the series (only for root series, not sub-series)
-    let pijul_node_id = if input.parent_id.is_none() {
-        let node_id = format!("series_{id}");
-        if let Err(e) = state.pijul.init_series_repo(&node_id) {
-            tracing::warn!("failed to init series pijul repo: {e}");
-        }
-        Some(node_id)
-    } else {
-        None
-    };
+    // Initialize pijul repo for all series (articles stored in series repo)
+    let node_id = format!("series_{id}");
+    if let Err(e) = state.pijul.init_series_repo(&node_id) {
+        tracing::warn!("failed to init series pijul repo: {e}");
+    }
+    let pijul_node_id = Some(node_id);
 
     let row = series_service::create_series(
         &state.pool,
@@ -429,8 +427,292 @@ pub async fn fork_series(
             .await?;
     }
 
-    // TODO: Create forked articles for each chapter and add to new series.
-    // For now, the pijul repo is forked but articles need to be created manually.
+    // Fork only clones the pijul repo. User calls /compile to create articles.
 
     Ok((StatusCode::CREATED, Json(row)))
+}
+
+// ---- Series compile: heading extraction + article sync ----
+
+#[derive(serde::Serialize)]
+pub struct CompileResult {
+    pub articles_created: usize,
+    pub articles_updated: usize,
+    pub total_headings: usize,
+}
+
+/// Compile a series: render all content, extract headings, create/update article slices.
+pub async fn compile_series(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Path(series_id): Path<String>,
+) -> ApiResult<Json<CompileResult>> {
+    // Verify ownership
+    let owner = series_service::get_series_owner(&state.pool, &series_id).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    // Load series
+    let series = series_service::get_series_detail(&state.pool, &series_id).await?;
+    let split_level = series.series.split_level as u32;
+
+    let pijul_node_id: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&series_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+
+    let node_id = pijul_node_id.ok_or_else(|| {
+        AppError(fx_core::Error::BadRequest("Series has no pijul repo".into()))
+    })?;
+
+    let series_repo = state.pijul.series_repo_path(&node_id);
+
+    // Determine content format from chapter files
+    let chapters_dir = series_repo.join("chapters");
+    let has_typst = chapters_dir.exists() && std::fs::read_dir(&chapters_dir)
+        .map(|entries| entries.flatten().any(|e| {
+            e.file_name().to_string_lossy().ends_with(".typ")
+        }))
+        .unwrap_or(false);
+    let has_markdown = chapters_dir.exists() && std::fs::read_dir(&chapters_dir)
+        .map(|entries| entries.flatten().any(|e| {
+            e.file_name().to_string_lossy().ends_with(".md")
+        }))
+        .unwrap_or(false);
+
+    // Render to full HTML
+    let repo = series_repo.clone();
+    let full_html = if has_typst || series_repo.join("main.typ").exists() {
+        tokio::task::spawn_blocking(move || {
+            fx_render::render_series_full_html(&repo)
+        }).await.map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))??
+    } else if has_markdown {
+        // Read all .md chapters
+        let mut md_chapters = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&chapters_dir) {
+            let mut files: Vec<_> = entries.flatten().filter(|e| {
+                e.file_name().to_string_lossy().ends_with(".md")
+            }).collect();
+            files.sort_by_key(|e| e.file_name());
+            for entry in files {
+                let content = tokio::fs::read_to_string(entry.path()).await?;
+                let uri = entry.file_name().to_string_lossy().to_string();
+                md_chapters.push((uri, content));
+            }
+        }
+        fx_render::render_markdown_series(&md_chapters)
+            .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?
+    } else {
+        return Err(AppError(fx_core::Error::BadRequest("No compilable content found".into())));
+    };
+
+    // Extract headings and split
+    let headings = fx_render::heading_extract::extract_headings(&full_html);
+    let slices = fx_render::heading_extract::split_at_level(&full_html, &headings, split_level);
+    let heading_tree = fx_render::heading_extract::build_heading_tree(&headings);
+
+    // Load existing heading-based articles
+    let existing: Vec<(String, String)> = sqlx::query_as(
+        "SELECT article_uri, heading_anchor FROM series_articles \
+         WHERE series_id = $1 AND heading_anchor IS NOT NULL",
+    )
+    .bind(&series_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let existing_map: std::collections::HashMap<String, String> = existing
+        .into_iter()
+        .map(|(uri, anchor)| (anchor, uri))
+        .collect();
+
+    let mut created = 0usize;
+    let mut updated = 0usize;
+
+    // Ensure cache dir exists
+    let cache_dir = series_repo.join("cache");
+    let _ = tokio::fs::create_dir_all(&cache_dir).await;
+
+    for (order, slice) in slices.iter().enumerate() {
+        if let Some(existing_uri) = existing_map.get(&slice.heading_anchor) {
+            // Update existing article
+            sqlx::query(
+                "UPDATE series_articles SET heading_title = $1, order_index = $2 \
+                 WHERE series_id = $3 AND article_uri = $4",
+            )
+            .bind(&slice.heading_title)
+            .bind(order as i32)
+            .bind(&series_id)
+            .bind(existing_uri)
+            .execute(&state.pool)
+            .await?;
+
+            // Update article title
+            sqlx::query("UPDATE articles SET title = $1 WHERE at_uri = $2")
+                .bind(&slice.heading_title)
+                .bind(existing_uri)
+                .execute(&state.pool)
+                .await?;
+
+            // Write cache
+            let _ = tokio::fs::write(
+                cache_dir.join(format!("{}.html", slice.heading_anchor)),
+                &slice.html,
+            ).await;
+
+            updated += 1;
+        } else {
+            // Create new article for this heading
+            let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
+
+            // Insert article record (minimal — content lives in series cache)
+            let hash = fx_core::util::content_hash(&slice.html);
+            let input = CreateArticle {
+                title: slice.heading_title.clone(),
+                description: None,
+                content: String::new(), // content is in cache
+                content_format: ContentFormat::Html,
+                lang: Some(series.series.lang.clone()),
+                license: None,
+                translation_of: None,
+                restricted: None,
+                category: Some(series.series.category.parse().unwrap_or(Category::General)),
+                book_id: None,
+                edition_id: None,
+                tags: vec![],
+                prereqs: vec![],
+                series_id: Some(series_id.clone()),
+            };
+            article_service::create_article(
+                &state.pool, &user.did, &at_uri, &input, &hash, None,
+                "public", ContentKind::Article, None,
+            ).await?;
+
+            // Insert series_articles with heading info
+            sqlx::query(
+                "INSERT INTO series_articles (series_id, article_uri, order_index, heading_title, heading_anchor) \
+                 VALUES ($1, $2, $3, $4, $5) ON CONFLICT (series_id, article_uri) DO UPDATE \
+                 SET heading_title = $4, heading_anchor = $5, order_index = $3",
+            )
+            .bind(&series_id)
+            .bind(&at_uri)
+            .bind(order as i32)
+            .bind(&slice.heading_title)
+            .bind(&slice.heading_anchor)
+            .execute(&state.pool)
+            .await?;
+
+            // Write cache
+            let _ = tokio::fs::write(
+                cache_dir.join(format!("{}.html", slice.heading_anchor)),
+                &slice.html,
+            ).await;
+
+            created += 1;
+        }
+    }
+
+    // Update series_headings table (full TOC)
+    sqlx::query("DELETE FROM series_headings WHERE series_id = $1")
+        .bind(&series_id)
+        .execute(&state.pool)
+        .await?;
+
+    fn insert_heading_tree(
+        nodes: &[fx_render::heading_extract::HeadingNode],
+        series_id: &str,
+        parent_id: Option<i32>,
+        order_start: &mut i32,
+        inserts: &mut Vec<(String, i32, String, String, Option<i32>, i32)>,
+    ) {
+        for node in nodes {
+            let order = *order_start;
+            *order_start += 1;
+            inserts.push((
+                series_id.to_string(),
+                node.level as i32,
+                node.title.clone(),
+                node.anchor.clone(),
+                parent_id,
+                order,
+            ));
+            // Children will reference parent, but we don't know the ID yet
+            // For simplicity, skip parent_heading_id linkage for now
+            insert_heading_tree(&node.children, series_id, None, order_start, inserts);
+        }
+    }
+
+    let mut inserts = Vec::new();
+    let mut order = 0i32;
+    insert_heading_tree(&heading_tree, &series_id, None, &mut order, &mut inserts);
+
+    for (sid, level, title, anchor, _parent, order_idx) in &inserts {
+        sqlx::query(
+            "INSERT INTO series_headings (series_id, level, title, anchor, order_index) \
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(sid)
+        .bind(level)
+        .bind(title)
+        .bind(anchor)
+        .bind(order_idx)
+        .execute(&state.pool)
+        .await?;
+    }
+
+    // Touch series cache marker
+    let _ = tokio::fs::write(series_repo.join("cache").join("series.cache"), "").await;
+
+    Ok(Json(CompileResult {
+        articles_created: created,
+        articles_updated: updated,
+        total_headings: headings.len(),
+    }))
+}
+
+// ---- Get headings (TOC) ----
+
+pub async fn get_headings(
+    State(state): State<AppState>,
+    Path(series_id): Path<String>,
+) -> ApiResult<Json<Vec<series_service::SeriesHeadingRow>>> {
+    let rows = sqlx::query_as::<_, series_service::SeriesHeadingRow>(
+        "SELECT id, series_id, level, title, anchor, article_uri, parent_heading_id, order_index \
+         FROM series_headings WHERE series_id = $1 ORDER BY order_index",
+    )
+    .bind(&series_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(Json(rows))
+}
+
+// ---- Update split level ----
+
+#[derive(serde::Deserialize)]
+pub struct UpdateSplitLevel {
+    split_level: i32,
+}
+
+pub async fn update_split_level(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Path(series_id): Path<String>,
+    Json(input): Json<UpdateSplitLevel>,
+) -> ApiResult<StatusCode> {
+    let owner = series_service::get_series_owner(&state.pool, &series_id).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    if !(1..=6).contains(&input.split_level) {
+        return Err(AppError(fx_core::Error::BadRequest("split_level must be 1-6".into())));
+    }
+
+    sqlx::query("UPDATE series SET split_level = $1 WHERE id = $2")
+        .bind(input.split_level)
+        .bind(&series_id)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }

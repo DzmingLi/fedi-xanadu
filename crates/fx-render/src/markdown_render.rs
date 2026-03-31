@@ -44,6 +44,19 @@ pub fn render_markdown_to_html(source: &str) -> anyhow::Result<String> {
     Ok(html_output)
 }
 
+/// Render a markdown series by concatenating all chapters.
+/// Each chapter is rendered individually and the results are joined.
+/// Returns the full HTML.
+pub fn render_markdown_series(chapters: &[(String, String)]) -> anyhow::Result<String> {
+    let mut full_html = String::new();
+    for (_uri, source) in chapters {
+        let chapter_html = render_markdown_to_html(source)?;
+        full_html.push_str(&chapter_html);
+        full_html.push('\n');
+    }
+    Ok(full_html)
+}
+
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")

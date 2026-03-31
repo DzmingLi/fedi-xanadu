@@ -25,6 +25,11 @@ impl AppState {
 
         std::fs::create_dir_all(&config.pijul_store_path)?;
 
+        // Initialize Typst package cache directory
+        let packages_dir = std::path::PathBuf::from(&config.pijul_store_path).join("typst-packages");
+        std::fs::create_dir_all(&packages_dir)?;
+        fx_render::set_packages_dir(packages_dir);
+
         tracing::info!("instance mode: {}", instance_mode.as_str());
 
         Ok(Self {
