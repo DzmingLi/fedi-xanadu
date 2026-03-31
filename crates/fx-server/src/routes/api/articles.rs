@@ -109,9 +109,18 @@ pub async fn get_article_content(
     } else if is_cached_fresh(&html_path, &src_path).await {
         tokio::fs::read_to_string(&html_path).await?
     } else {
-        let rendered = render_content(&format, &source, &repo)?;
-        let _ = tokio::fs::write(&html_path, &rendered).await;
-        rendered
+        match render_content(&format, &source, &repo) {
+            Ok(rendered) => {
+                let _ = tokio::fs::write(&html_path, &rendered).await;
+                rendered
+            }
+            Err(AppError(ref inner)) => {
+                tracing::warn!("render error, returning source as fallback: {inner}");
+                format!("<div class=\"render-error\"><p>渲染失败: {}</p><pre>{}</pre></div>",
+                    html_escape_str(&inner.to_string()),
+                    html_escape_str(&source))
+            }
+        }
     };
 
     Ok(Json(ArticleContent { source, html }))
@@ -390,6 +399,10 @@ async fn is_cached_fresh(cache: &std::path::Path, source: &std::path::Path) -> b
     let (Ok(c), Ok(s)) = (cache_meta, source_meta) else { return false };
     let (Ok(c_mod), Ok(s_mod)) = (c.modified(), s.modified()) else { return false };
     c_mod >= s_mod
+}
+
+fn html_escape_str(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 pub(super) fn render_content(format: &str, source: &str, repo_path: &std::path::Path) -> Result<String, AppError> {
