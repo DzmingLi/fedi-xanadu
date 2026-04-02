@@ -351,11 +351,35 @@ pub struct BookChapter {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct ChapterPrereq {
+    pub tag_id: String,
+    pub prereq_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct BookChapterWithTags {
+    pub id: String,
+    pub book_id: String,
+    pub parent_id: Option<String>,
+    pub title: String,
+    pub order_index: i32,
+    pub article_uri: Option<String>,
+    pub teaches: Vec<String>,
+    pub prereqs: Vec<ChapterPrereq>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct CreateChapter {
     pub title: String,
     pub parent_id: Option<String>,
     pub order_index: i32,
     pub article_uri: Option<String>,
+    #[serde(default)]
+    pub teaches: Vec<String>,
+    #[serde(default)]
+    pub prereqs: Vec<ChapterPrereq>,
 }
 
 pub async fn list_chapters(pool: &PgPool, book_id: &str) -> crate::Result<Vec<BookChapter>> {
@@ -368,30 +392,134 @@ pub async fn list_chapters(pool: &PgPool, book_id: &str) -> crate::Result<Vec<Bo
     Ok(rows)
 }
 
+pub async fn list_chapters_with_tags(pool: &PgPool, book_id: &str) -> crate::Result<Vec<BookChapterWithTags>> {
+    let chapters = list_chapters(pool, book_id).await?;
+    if chapters.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let ids: Vec<&str> = chapters.iter().map(|c| c.id.as_str()).collect();
+    let uris: Vec<String> = ids.iter().map(|id| format!("chapter:{id}")).collect();
+
+    #[derive(sqlx::FromRow)]
+    struct TeachRow { content_uri: String, tag_id: String }
+    let teaches_rows = sqlx::query_as::<_, TeachRow>(
+        "SELECT content_uri, tag_id FROM content_teaches WHERE content_uri = ANY($1) ORDER BY tag_id",
+    )
+    .bind(&uris)
+    .fetch_all(pool)
+    .await?;
+
+    #[derive(sqlx::FromRow)]
+    struct PrereqRow { content_uri: String, tag_id: String, prereq_type: String }
+    let prereq_rows = sqlx::query_as::<_, PrereqRow>(
+        "SELECT content_uri, tag_id, prereq_type FROM content_prereqs WHERE content_uri = ANY($1) ORDER BY tag_id",
+    )
+    .bind(&uris)
+    .fetch_all(pool)
+    .await?;
+
+    let mut teaches_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for row in teaches_rows {
+        teaches_map.entry(row.content_uri).or_default().push(row.tag_id);
+    }
+    let mut prereqs_map: std::collections::HashMap<String, Vec<ChapterPrereq>> = std::collections::HashMap::new();
+    for row in prereq_rows {
+        prereqs_map.entry(row.content_uri).or_default().push(ChapterPrereq { tag_id: row.tag_id, prereq_type: row.prereq_type });
+    }
+
+    Ok(chapters.into_iter().map(|c| {
+        let uri = format!("chapter:{}", c.id);
+        BookChapterWithTags {
+            teaches: teaches_map.remove(&uri).unwrap_or_default(),
+            prereqs: prereqs_map.remove(&uri).unwrap_or_default(),
+            id: c.id,
+            book_id: c.book_id,
+            parent_id: c.parent_id,
+            title: c.title,
+            order_index: c.order_index,
+            article_uri: c.article_uri,
+        }
+    }).collect())
+}
+
 pub async fn create_chapter(
     pool: &PgPool,
     id: &str,
     book_id: &str,
+    created_by: &str,
     input: &CreateChapter,
 ) -> crate::Result<BookChapter> {
+    let mut tx = pool.begin().await?;
+    let content_uri = format!("chapter:{id}");
+
     sqlx::query(
         "INSERT INTO book_chapters (id, book_id, parent_id, title, order_index, article_uri) \
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
-    .bind(id)
-    .bind(book_id)
-    .bind(&input.parent_id)
-    .bind(&input.title)
-    .bind(input.order_index)
-    .bind(&input.article_uri)
-    .execute(pool)
-    .await?;
+    .bind(id).bind(book_id).bind(&input.parent_id)
+    .bind(&input.title).bind(input.order_index).bind(&input.article_uri)
+    .execute(&mut *tx).await?;
+
+    sqlx::query("INSERT INTO content (uri, content_type) VALUES ($1, 'chapter') ON CONFLICT DO NOTHING")
+        .bind(&content_uri).execute(&mut *tx).await?;
+
+    for tag_id in &input.teaches {
+        sqlx::query("INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
+            .bind(tag_id).bind(tag_id).bind(created_by).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+            .bind(&content_uri).bind(tag_id).execute(&mut *tx).await?;
+    }
+    for p in &input.prereqs {
+        sqlx::query("INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
+            .bind(&p.tag_id).bind(&p.tag_id).bind(created_by).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+            .bind(&content_uri).bind(&p.tag_id).bind(&p.prereq_type).execute(&mut *tx).await?;
+    }
+
+    tx.commit().await?;
 
     let ch = sqlx::query_as::<_, BookChapter>("SELECT * FROM book_chapters WHERE id = $1")
-        .bind(id)
-        .fetch_one(pool)
-        .await?;
+        .bind(id).fetch_one(pool).await?;
     Ok(ch)
+}
+
+pub async fn set_chapter_tags(
+    pool: &PgPool,
+    chapter_id: &str,
+    created_by: &str,
+    teaches: &[String],
+    prereqs: &[ChapterPrereq],
+) -> crate::Result<()> {
+    let content_uri = format!("chapter:{chapter_id}");
+    let mut tx = pool.begin().await?;
+
+    // Ensure content row exists
+    sqlx::query("INSERT INTO content (uri, content_type) VALUES ($1, 'chapter') ON CONFLICT DO NOTHING")
+        .bind(&content_uri).execute(&mut *tx).await?;
+
+    // Replace teaches
+    sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
+        .bind(&content_uri).execute(&mut *tx).await?;
+    for tag_id in teaches {
+        sqlx::query("INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
+            .bind(tag_id).bind(tag_id).bind(created_by).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+            .bind(&content_uri).bind(tag_id).execute(&mut *tx).await?;
+    }
+
+    // Replace prereqs
+    sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
+        .bind(&content_uri).execute(&mut *tx).await?;
+    for p in prereqs {
+        sqlx::query("INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
+            .bind(&p.tag_id).bind(&p.tag_id).bind(created_by).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+            .bind(&content_uri).bind(&p.tag_id).bind(&p.prereq_type).execute(&mut *tx).await?;
+    }
+
+    tx.commit().await?;
+    Ok(())
 }
 
 pub async fn delete_chapter(pool: &PgPool, id: &str) -> crate::Result<()> {

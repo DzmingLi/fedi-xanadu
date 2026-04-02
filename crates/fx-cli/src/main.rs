@@ -481,6 +481,30 @@ enum BookCommand {
         /// Tags this chapter teaches (comma-separated)
         #[arg(long, value_delimiter = ',')]
         teaches: Vec<String>,
+        /// Prereq tags as "tag_id:required" or "tag_id:recommended" (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        prereqs: Vec<String>,
+    },
+    /// Upload a directory of chapters from a TOML manifest
+    ///
+    /// The TOML file describes chapters (with optional file paths to upload as articles).
+    /// Example manifest: see `fx book upload-chapters --help`.
+    #[command(name = "upload-chapters")]
+    UploadChapters {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+        /// Path to chapters TOML manifest
+        manifest: PathBuf,
+        /// Language for uploaded articles (default: zh)
+        #[arg(short, long, default_value = "zh")]
+        lang: String,
+        /// License for uploaded articles (default: CC-BY-SA-4.0)
+        #[arg(long, default_value = "CC-BY-SA-4.0")]
+        license: String,
+        /// Dry run — print what would happen without making changes
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -545,6 +569,64 @@ enum TreeCommand {
         uri: String,
     },
 }
+
+/// TOML manifest for uploading book chapters.
+///
+/// Example:
+/// ```toml
+/// [[chapter]]
+/// key = "ch1"
+/// title = "第一章：绪论"
+/// file = "ch01.typ"
+/// order = 0
+/// teaches = ["cat-intro"]
+///
+/// [[chapter]]
+/// key = "ch1-1"
+/// parent = "ch1"
+/// title = "1.1 基本定义"
+/// file = "ch01-01.typ"
+/// order = 0
+/// teaches = ["cat-def"]
+/// prereqs = [{ tag = "cat-intro", type = "required" }]
+/// ```
+#[derive(Serialize, Deserialize)]
+struct ChapterManifest {
+    #[serde(default, rename = "chapter")]
+    chapters: Vec<ChapterEntry>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChapterEntry {
+    /// Locally unique key for referencing as a parent
+    #[serde(default)]
+    key: String,
+    /// Title shown in the table of contents
+    title: String,
+    /// Path to a file to upload as an article (relative to the manifest file)
+    #[serde(default)]
+    file: Option<PathBuf>,
+    /// Key of the parent chapter (omit for top-level)
+    #[serde(default)]
+    parent: Option<String>,
+    /// Display order among siblings (0-based)
+    #[serde(default)]
+    order: i32,
+    /// Tag IDs this chapter teaches
+    #[serde(default)]
+    teaches: Vec<String>,
+    /// Prereq tags
+    #[serde(default)]
+    prereqs: Vec<ChapterPrereqEntry>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChapterPrereqEntry {
+    tag: String,
+    #[serde(default = "default_prereq_type")]
+    r#type: String,
+}
+fn default_prereq_type() -> String { "required".to_string() }
 
 /// TOML format for skill tree files
 #[derive(Serialize, Deserialize)]
@@ -1042,19 +1124,23 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             }
         }
 
-        BookCommand::AddChapter { book_id, title, parent_id, order, article_uri, teaches } => {
+        BookCommand::AddChapter { book_id, title, parent_id, order, article_uri, teaches, prereqs } => {
+            let token = config.token()?;
+            let prereqs_json: Vec<serde_json::Value> = prereqs.iter().map(|p| {
+                let (tag_id, prereq_type) = p.split_once(':').unwrap_or((p, "required"));
+                serde_json::json!({ "tag_id": tag_id, "prereq_type": prereq_type })
+            }).collect();
             let body = serde_json::json!({
-                "book_id": book_id,
-                "chapter": {
-                    "title": title,
-                    "parent_id": parent_id,
-                    "order_index": order,
-                    "article_uri": article_uri,
-                }
+                "title": title,
+                "parent_id": parent_id,
+                "order_index": order,
+                "article_uri": article_uri,
+                "teaches": teaches,
+                "prereqs": prereqs_json,
             });
 
             let resp: serde_json::Value = client()
-                .post(format!("{base}/books/chapters"))
+                .post(format!("{base}/books/{book_id}/chapters"))
                 .bearer_auth(token)
                 .json(&body)
                 .send().await?
@@ -1063,19 +1149,104 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
 
             let cid = resp["id"].as_str().unwrap_or("?");
             println!("Added chapter: {title} ({cid})");
+        }
 
-            // Set teaches tags for the chapter
-            for tag_id in &teaches {
-                let content_uri = format!("chapter:{cid}");
-                let _ = client()
-                    .post(format!("{base}/tags/teach"))
+        BookCommand::UploadChapters { book_id, manifest, lang, license, dry_run } => {
+            let token = config.token()?;
+            let manifest_dir = manifest.parent().unwrap_or(std::path::Path::new("."));
+            let manifest_text = std::fs::read_to_string(&manifest)
+                .with_context(|| format!("Cannot read {}", manifest.display()))?;
+            let cm: ChapterManifest = toml::from_str(&manifest_text)
+                .context("Invalid chapters TOML")?;
+
+            // key → created chapter ID
+            let mut key_to_id: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+            for (i, ch) in cm.chapters.iter().enumerate() {
+                let parent_id = ch.parent.as_ref().and_then(|k| key_to_id.get(k)).cloned();
+
+                // Upload article if file is specified
+                let article_uri: Option<String> = if let Some(ref rel_path) = ch.file {
+                    let abs_path = manifest_dir.join(rel_path);
+                    let content = std::fs::read_to_string(&abs_path)
+                        .with_context(|| format!("Cannot read {}", abs_path.display()))?;
+                    let ext = abs_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    let fmt = match ext { "typ" => "typst", "html" => "html", _ => "markdown" };
+
+                    if dry_run {
+                        println!("[dry-run] Would upload {} as article ({fmt})", abs_path.display());
+                        None
+                    } else {
+                        let article_body = serde_json::json!({
+                            "title": ch.title,
+                            "content": content,
+                            "content_format": fmt,
+                            "lang": lang,
+                            "license": license,
+                            "tags": [],
+                            "prereqs": [],
+                            "book_id": book_id,
+                        });
+                        let article_resp: serde_json::Value = client()
+                            .post(format!("{base}/articles"))
+                            .bearer_auth(token)
+                            .json(&article_body)
+                            .send().await
+                            .with_context(|| format!("Upload failed for chapter {}", i + 1))?
+                            .error_for_status()
+                            .with_context(|| format!("Server rejected chapter {} article", i + 1))?
+                            .json().await?;
+                        let uri = article_resp["at_uri"].as_str()
+                            .map(String::from)
+                            .context("No at_uri in article response")?;
+                        println!("  Uploaded article: {uri}");
+                        Some(uri)
+                    }
+                } else {
+                    None
+                };
+
+                let prereqs_json: Vec<serde_json::Value> = ch.prereqs.iter().map(|p| {
+                    serde_json::json!({ "tag_id": p.tag, "prereq_type": p.r#type })
+                }).collect();
+
+                let chapter_body = serde_json::json!({
+                    "title": ch.title,
+                    "parent_id": parent_id,
+                    "order_index": ch.order,
+                    "article_uri": article_uri,
+                    "teaches": ch.teaches,
+                    "prereqs": prereqs_json,
+                });
+
+                if dry_run {
+                    println!("[dry-run] Would create chapter: {} (order={}, parent={:?}, teaches={:?})",
+                        ch.title, ch.order, ch.parent, ch.teaches);
+                    if !ch.key.is_empty() {
+                        key_to_id.insert(ch.key.clone(), format!("dry-{}", i));
+                    }
+                    continue;
+                }
+
+                let chapter_resp: serde_json::Value = client()
+                    .post(format!("{base}/books/{book_id}/chapters"))
                     .bearer_auth(token)
-                    .json(&serde_json::json!({
-                        "content_uri": content_uri,
-                        "tag_id": tag_id,
-                    }))
-                    .send().await;
-                println!("  teaches: {tag_id}");
+                    .json(&chapter_body)
+                    .send().await
+                    .with_context(|| format!("Create chapter failed: {}", ch.title))?
+                    .error_for_status()
+                    .with_context(|| format!("Server rejected chapter: {}", ch.title))?
+                    .json().await?;
+
+                let cid = chapter_resp["id"].as_str().unwrap_or("?").to_string();
+                println!("Chapter: {} ({cid})", ch.title);
+                if !ch.key.is_empty() {
+                    key_to_id.insert(ch.key.clone(), cid);
+                }
+            }
+
+            if !dry_run {
+                println!("\nDone. {} chapter(s) created.", cm.chapters.len());
             }
         }
     }

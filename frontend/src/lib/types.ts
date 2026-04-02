@@ -191,6 +191,13 @@ export interface BookChapter {
   title: string;
   order_index: number;
   article_uri: string | null;
+  teaches: string[];
+  prereqs: ChapterPrereqEntry[];
+}
+
+export interface ChapterPrereqEntry {
+  tag_id: string;
+  prereq_type: 'required' | 'recommended';
 }
 
 export interface ChapterProgress {
@@ -211,6 +218,8 @@ export interface BookDetail {
   my_rating: number | null;
   my_reading_status: ReadingStatus | null;
   my_chapter_progress: ChapterProgress[];
+  tags: string[];
+  prereqs: string[];
 }
 
 export interface SeriesArticle {

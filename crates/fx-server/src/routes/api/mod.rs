@@ -332,6 +332,7 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/chapters", get(books::list_chapters).post(books::create_chapter))
         .route("/books/{id}/chapters/delete", delete(books::delete_chapter))
         .route("/books/{id}/chapters/progress", post(books::set_chapter_progress))
+        .route("/books/{id}/chapters/tags", put(books::update_chapter_tags))
         .route("/books/{id}/rate", post(books::rate_book))
         .route("/books/{id}/reading-status", post(books::set_reading_status).delete(books::remove_reading_status))
         .route("/books/{id}/history", get(books::get_edit_history))

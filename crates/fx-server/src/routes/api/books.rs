@@ -34,13 +34,15 @@ pub async fn list_books(
 pub struct BookDetail {
     pub book: book_service::Book,
     pub editions: Vec<book_service::BookEdition>,
-    pub chapters: Vec<book_service::BookChapter>,
+    pub chapters: Vec<book_service::BookChapterWithTags>,
     pub reviews: Vec<fx_core::models::Article>,
     pub review_count: usize,
     pub rating: book_service::BookRatingStats,
     pub my_rating: Option<i16>,
     pub my_reading_status: Option<book_service::ReadingStatus>,
     pub my_chapter_progress: Vec<book_service::ChapterProgress>,
+    pub tags: Vec<String>,
+    pub prereqs: Vec<String>,
 }
 
 pub async fn get_book(
@@ -50,7 +52,7 @@ pub async fn get_book(
 ) -> ApiResult<Json<BookDetail>> {
     let book = book_service::get_book(&state.pool, &id).await?;
     let editions = book_service::list_editions(&state.pool, &id).await?;
-    let chapters = book_service::list_chapters(&state.pool, &id).await?;
+    let chapters = book_service::list_chapters_with_tags(&state.pool, &id).await?;
     let reviews = book_service::get_book_reviews(&state.pool, &id, 100, 0).await?;
     let review_count = reviews.len();
     let rating = book_service::get_rating_stats(&state.pool, &id).await?;
@@ -62,7 +64,20 @@ pub async fn get_book(
     } else {
         (None, None, vec![])
     };
-    Ok(Json(BookDetail { book, editions, chapters, reviews, review_count, rating, my_rating, my_reading_status, my_chapter_progress }))
+    let content_uri = format!("book:{id}");
+    let tags: Vec<String> = sqlx::query_scalar(
+        "SELECT tag_id FROM content_teaches WHERE content_uri = $1 ORDER BY tag_id",
+    )
+    .bind(&content_uri)
+    .fetch_all(&state.pool)
+    .await?;
+    let prereqs: Vec<String> = sqlx::query_scalar(
+        "SELECT tag_id FROM content_prereqs WHERE content_uri = $1 ORDER BY tag_id",
+    )
+    .bind(&content_uri)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(BookDetail { book, editions, chapters, reviews, review_count, rating, my_rating, my_reading_status, my_chapter_progress, tags, prereqs }))
 }
 
 // --- Create book ---
@@ -273,12 +288,29 @@ pub async fn list_chapters(
 pub async fn create_chapter(
     State(state): State<AppState>,
     Path(book_id): Path<String>,
-    Auth(_user): Auth,
+    Auth(user): Auth,
     Json(input): Json<book_service::CreateChapter>,
 ) -> ApiResult<Json<book_service::BookChapter>> {
     let id = format!("ch-{}", tid());
-    let ch = book_service::create_chapter(&state.pool, &id, &book_id, &input).await?;
+    let ch = book_service::create_chapter(&state.pool, &id, &book_id, &user.did, &input).await?;
     Ok(Json(ch))
+}
+
+#[derive(serde::Deserialize)]
+pub struct UpdateChapterTagsInput {
+    pub chapter_id: String,
+    pub teaches: Vec<String>,
+    pub prereqs: Vec<book_service::ChapterPrereq>,
+}
+
+pub async fn update_chapter_tags(
+    State(state): State<AppState>,
+    Path(_book_id): Path<String>,
+    Auth(user): Auth,
+    Json(input): Json<UpdateChapterTagsInput>,
+) -> ApiResult<StatusCode> {
+    book_service::set_chapter_tags(&state.pool, &input.chapter_id, &user.did, &input.teaches, &input.prereqs).await?;
+    Ok(StatusCode::OK)
 }
 
 #[derive(serde::Deserialize)]

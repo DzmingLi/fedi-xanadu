@@ -4,12 +4,16 @@ import type {
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
-  BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter,
+  BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter, ChapterPrereqEntry,
   ArticleVersion, ArticleVersionFull, VersionDiff,
 } from './types';
-import { getToken } from './auth.svelte';
+import { getToken, setAuth } from './auth.svelte';
 
 const BASE = '/api';
+
+function handleUnauthorized(status: number) {
+  if (status === 401) setAuth(null);
+}
 
 function authHeaders(): Record<string, string> {
   const token = getToken();
@@ -21,6 +25,7 @@ function authHeaders(): Record<string, string> {
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: authHeaders(), signal });
   if (!res.ok) {
+    handleUnauthorized(res.status);
     if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
     throw new Error(`${res.status} ${res.statusText}`);
   }
@@ -35,6 +40,7 @@ async function post<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
     signal,
   });
   if (!res.ok) {
+    handleUnauthorized(res.status);
     if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
@@ -51,6 +57,7 @@ async function put<T>(path: string, body?: unknown, signal?: AbortSignal): Promi
     signal,
   });
   if (!res.ok) {
+    handleUnauthorized(res.status);
     if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
@@ -67,6 +74,7 @@ async function del<T>(path: string, body?: unknown, signal?: AbortSignal): Promi
     signal,
   });
   if (!res.ok) {
+    handleUnauthorized(res.status);
     if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
@@ -330,12 +338,14 @@ export const removeReadingStatus = (book_id: string) =>
 // Book chapters
 export const listChapters = (book_id: string) =>
   get<BookChapter[]>(`/books/${encodeURIComponent(book_id)}/chapters`);
-export const createChapter = (book_id: string, chapter: { title: string; parent_id?: string; order_index: number; article_uri?: string }) =>
+export const createChapter = (book_id: string, chapter: { title: string; parent_id?: string; order_index: number; article_uri?: string; teaches?: string[]; prereqs?: ChapterPrereqEntry[] }) =>
   post<BookChapter>(`/books/${encodeURIComponent(book_id)}/chapters`, chapter);
 export const deleteChapter = (book_id: string, chapter_id: string) =>
   del<void>(`/books/${encodeURIComponent(book_id)}/chapters/delete`, { chapter_id });
 export const setChapterProgress = (book_id: string, chapter_id: string, completed: boolean) =>
   post<void>(`/books/${encodeURIComponent(book_id)}/chapters/progress`, { chapter_id, completed });
+export const updateChapterTags = (book_id: string, chapter_id: string, teaches: string[], prereqs: ChapterPrereqEntry[]) =>
+  put<void>(`/books/${encodeURIComponent(book_id)}/chapters/tags`, { chapter_id, teaches, prereqs });
 
 // Members
 export const listMembers = () =>

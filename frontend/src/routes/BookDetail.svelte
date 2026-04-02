@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress } from '../lib/api';
+  import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { BookDetail, BookEdition, BookChapter } from '../lib/types';
+  import type { BookDetail, BookEdition, BookChapter, ChapterPrereqEntry } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
@@ -124,6 +124,155 @@
       editSaving = false;
     }
   }
+
+  // ---- Chapter management ----
+  let showChapterForm = $state(false);
+  let newChapterTitle = $state('');
+  let newChapterParentId = $state('');
+  let newChapterArticleUri = $state('');
+  let newChapterTeaches = $state<string[]>([]);
+  let newChapterPrereqs = $state<ChapterPrereqEntry[]>([]);
+  let newChapterTagInput = $state('');
+  let newChapterTagSuggestions = $state<{id:string,name:string}[]>([]);
+  let newChapterPrereqInput = $state('');
+  let newChapterPrereqSuggestions = $state<{id:string,name:string}[]>([]);
+  let newChapterPrereqType = $state<'required'|'recommended'>('required');
+  let chapterSaving = $state(false);
+
+  // Tag autocomplete for new chapter form
+  let tagSearchTimeout: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    clearTimeout(tagSearchTimeout);
+    const q = newChapterTagInput.trim();
+    if (!q) { newChapterTagSuggestions = []; return; }
+    tagSearchTimeout = setTimeout(async () => {
+      newChapterTagSuggestions = await searchTags(q).catch(() => []);
+    }, 150);
+  });
+
+  let prereqSearchTimeout: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    clearTimeout(prereqSearchTimeout);
+    const q = newChapterPrereqInput.trim();
+    if (!q) { newChapterPrereqSuggestions = []; return; }
+    prereqSearchTimeout = setTimeout(async () => {
+      newChapterPrereqSuggestions = await searchTags(q).catch(() => []);
+    }, 150);
+  });
+
+  function addChapterTeachTag(tagId: string) {
+    if (!newChapterTeaches.includes(tagId)) newChapterTeaches = [...newChapterTeaches, tagId];
+    newChapterTagInput = '';
+    newChapterTagSuggestions = [];
+  }
+  function removeChapterTeachTag(tagId: string) {
+    newChapterTeaches = newChapterTeaches.filter(t => t !== tagId);
+  }
+  function addChapterPrereq(tagId: string) {
+    if (!newChapterPrereqs.find(p => p.tag_id === tagId)) {
+      newChapterPrereqs = [...newChapterPrereqs, { tag_id: tagId, prereq_type: newChapterPrereqType }];
+    }
+    newChapterPrereqInput = '';
+    newChapterPrereqSuggestions = [];
+  }
+  function removeChapterPrereq(tagId: string) {
+    newChapterPrereqs = newChapterPrereqs.filter(p => p.tag_id !== tagId);
+  }
+
+  async function submitNewChapter() {
+    if (!newChapterTitle.trim()) return;
+    chapterSaving = true;
+    try {
+      const rootChapters = detail?.chapters.filter(c => !c.parent_id) ?? [];
+      await createChapter(id, {
+        title: newChapterTitle.trim(),
+        parent_id: newChapterParentId || undefined,
+        order_index: rootChapters.length,
+        article_uri: newChapterArticleUri.trim() || undefined,
+        teaches: newChapterTeaches,
+        prereqs: newChapterPrereqs,
+      });
+      newChapterTitle = '';
+      newChapterParentId = '';
+      newChapterArticleUri = '';
+      newChapterTeaches = [];
+      newChapterPrereqs = [];
+      showChapterForm = false;
+      await load();
+    } catch { /* */ } finally {
+      chapterSaving = false;
+    }
+  }
+
+  async function removeChapter(chapterId: string) {
+    await deleteChapter(id, chapterId).catch(() => {});
+    await load();
+  }
+
+  // Per-chapter tag editing
+  let editingChapterId = $state<string | null>(null);
+  let editChapterTeaches = $state<string[]>([]);
+  let editChapterPrereqs = $state<ChapterPrereqEntry[]>([]);
+  let editChapterTagInput = $state('');
+  let editChapterTagSuggestions = $state<{id:string,name:string}[]>([]);
+  let editChapterPrereqInput = $state('');
+  let editChapterPrereqSuggestions = $state<{id:string,name:string}[]>([]);
+  let editChapterPrereqType = $state<'required'|'recommended'>('required');
+
+  let editTagSearchTimeout: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    clearTimeout(editTagSearchTimeout);
+    const q = editChapterTagInput.trim();
+    if (!q) { editChapterTagSuggestions = []; return; }
+    editTagSearchTimeout = setTimeout(async () => {
+      editChapterTagSuggestions = await searchTags(q).catch(() => []);
+    }, 150);
+  });
+
+  let editPrereqSearchTimeout: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    clearTimeout(editPrereqSearchTimeout);
+    const q = editChapterPrereqInput.trim();
+    if (!q) { editChapterPrereqSuggestions = []; return; }
+    editPrereqSearchTimeout = setTimeout(async () => {
+      editChapterPrereqSuggestions = await searchTags(q).catch(() => []);
+    }, 150);
+  });
+
+  function openChapterTagEdit(ch: BookChapter) {
+    editingChapterId = ch.id;
+    editChapterTeaches = [...ch.teaches];
+    editChapterPrereqs = ch.prereqs.map(p => ({ ...p }));
+    editChapterTagInput = '';
+    editChapterPrereqInput = '';
+  }
+  function closeChapterTagEdit() { editingChapterId = null; }
+
+  function addEditTeachTag(tagId: string) {
+    if (!editChapterTeaches.includes(tagId)) editChapterTeaches = [...editChapterTeaches, tagId];
+    editChapterTagInput = '';
+    editChapterTagSuggestions = [];
+  }
+  function removeEditTeachTag(tagId: string) {
+    editChapterTeaches = editChapterTeaches.filter(t => t !== tagId);
+  }
+  function addEditPrereq(tagId: string) {
+    if (!editChapterPrereqs.find(p => p.tag_id === tagId)) {
+      editChapterPrereqs = [...editChapterPrereqs, { tag_id: tagId, prereq_type: editChapterPrereqType }];
+    }
+    editChapterPrereqInput = '';
+    editChapterPrereqSuggestions = [];
+  }
+  function removeEditPrereq(tagId: string) {
+    editChapterPrereqs = editChapterPrereqs.filter(p => p.tag_id !== tagId);
+  }
+
+  async function saveChapterTags() {
+    if (!editingChapterId) return;
+    await updateChapterTags(id, editingChapterId, editChapterTeaches, editChapterPrereqs).catch(() => {});
+    await load();
+    editingChapterId = null;
+  }
 </script>
 
 {#if loading}
@@ -145,6 +294,18 @@
           <p class="authors">{detail.book.authors.join(', ')}</p>
           {#if detail.book.description}
             <p class="description">{detail.book.description}</p>
+          {/if}
+
+          <!-- Tags -->
+          {#if detail.tags.length > 0 || detail.prereqs.length > 0}
+            <div class="book-tags">
+              {#each detail.tags as tag}
+                <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches">{tag}</a>
+              {/each}
+              {#each detail.prereqs as prereq}
+                <a href="#/tag?id={encodeURIComponent(prereq)}" class="tag-badge prereq">{prereq}</a>
+              {/each}
+            </div>
           {/if}
 
           <!-- Rating display -->
@@ -255,11 +416,94 @@
       </div>
 
       <!-- Chapters / Table of Contents -->
-      {#if detail.chapters.length > 0}
-        {@const progressMap = new Map(detail.my_chapter_progress.map(p => [p.chapter_id, p.completed]))}
-        {@const rootChapters = detail.chapters.filter(c => !c.parent_id)}
-        <div class="chapters-section">
+      <div class="chapters-section">
+        <div class="chapters-header">
           <h2>{t('books.tableOfContents')}</h2>
+          {#if getAuth()}
+            <button class="add-chapter-btn" onclick={() => { showChapterForm = !showChapterForm; }}>
+              {showChapterForm ? '取消' : '+ 添加章节'}
+            </button>
+          {/if}
+        </div>
+
+        <!-- Add chapter form -->
+        {#if showChapterForm}
+          <div class="chapter-form">
+            <input class="chapter-input" bind:value={newChapterTitle} placeholder="章节标题" />
+            <input class="chapter-input" bind:value={newChapterArticleUri} placeholder="关联文章 URI（可选）" />
+            <select class="chapter-input" bind:value={newChapterParentId}>
+              <option value="">顶层章节</option>
+              {#each (detail?.chapters ?? []).filter(c => !c.parent_id) as ch}
+                <option value={ch.id}>{ch.title}</option>
+              {/each}
+            </select>
+
+            <!-- Teaches tags -->
+            <div class="tag-editor">
+              <div class="tag-editor-label">教授知识点</div>
+              <div class="tag-list">
+                {#each newChapterTeaches as tag}
+                  <span class="tag-badge teaches">
+                    {tag}
+                    <button class="tag-remove" onclick={() => removeChapterTeachTag(tag)}>×</button>
+                  </span>
+                {/each}
+              </div>
+              <div class="tag-input-wrap">
+                <input class="tag-input" bind:value={newChapterTagInput} placeholder="输入 tag..." />
+                {#if newChapterTagSuggestions.length > 0}
+                  <ul class="tag-suggestions">
+                    {#each newChapterTagSuggestions as s}
+                      <li><button onclick={() => addChapterTeachTag(s.id)}>{s.name || s.id}</button></li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
+              {#if newChapterTagInput.trim()}
+                <button class="tag-add-btn" onclick={() => addChapterTeachTag(newChapterTagInput.trim())}>添加</button>
+              {/if}
+            </div>
+
+            <!-- Prereq tags -->
+            <div class="tag-editor">
+              <div class="tag-editor-label">前置知识</div>
+              <div class="tag-list">
+                {#each newChapterPrereqs as p}
+                  <span class="tag-badge prereq">
+                    {p.tag_id}
+                    <span class="prereq-type-label">{p.prereq_type === 'required' ? '必须' : '推荐'}</span>
+                    <button class="tag-remove" onclick={() => removeChapterPrereq(p.tag_id)}>×</button>
+                  </span>
+                {/each}
+              </div>
+              <div class="tag-input-wrap">
+                <select class="prereq-type-select" bind:value={newChapterPrereqType}>
+                  <option value="required">必须</option>
+                  <option value="recommended">推荐</option>
+                </select>
+                <input class="tag-input" bind:value={newChapterPrereqInput} placeholder="输入前置 tag..." />
+                {#if newChapterPrereqSuggestions.length > 0}
+                  <ul class="tag-suggestions">
+                    {#each newChapterPrereqSuggestions as s}
+                      <li><button onclick={() => addChapterPrereq(s.id)}>{s.name || s.id}</button></li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
+              {#if newChapterPrereqInput.trim()}
+                <button class="tag-add-btn" onclick={() => addChapterPrereq(newChapterPrereqInput.trim())}>添加</button>
+              {/if}
+            </div>
+
+            <button class="action-btn primary" onclick={submitNewChapter} disabled={chapterSaving || !newChapterTitle.trim()}>
+              {chapterSaving ? '保存中…' : '保存章节'}
+            </button>
+          </div>
+        {/if}
+
+        {#if detail.chapters.length > 0}
+          {@const progressMap = new Map(detail.my_chapter_progress.map(p => [p.chapter_id, p.completed]))}
+          {@const rootChapters = detail.chapters.filter(c => !c.parent_id)}
           {#each rootChapters as ch}
             {@const children = detail.chapters.filter(c => c.parent_id === ch.id)}
             <div class="chapter-item">
@@ -276,7 +520,82 @@
                 {:else}
                   <span class="chapter-title">{ch.title}</span>
                 {/if}
+                <!-- Chapter tags display -->
+                {#each ch.teaches as tag}
+                  <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
+                {/each}
+                {#each ch.prereqs as p}
+                  <span class="tag-badge prereq sm" title="{p.prereq_type === 'required' ? '必须前置' : '推荐前置'}">{p.tag_id}</span>
+                {/each}
+                {#if getAuth()}
+                  <button class="chapter-edit-tags-btn" onclick={() => editingChapterId === ch.id ? closeChapterTagEdit() : openChapterTagEdit(ch)}>
+                    {editingChapterId === ch.id ? '收起' : '编辑 tag'}
+                  </button>
+                  <button class="chapter-delete-btn" onclick={() => removeChapter(ch.id)}>删除</button>
+                {/if}
               </div>
+
+              <!-- Inline tag editor for this chapter -->
+              {#if editingChapterId === ch.id}
+                <div class="chapter-tag-editor">
+                  <div class="tag-editor">
+                    <div class="tag-editor-label">教授知识点</div>
+                    <div class="tag-list">
+                      {#each editChapterTeaches as tag}
+                        <span class="tag-badge teaches">
+                          {tag} <button class="tag-remove" onclick={() => removeEditTeachTag(tag)}>×</button>
+                        </span>
+                      {/each}
+                    </div>
+                    <div class="tag-input-wrap">
+                      <input class="tag-input" bind:value={editChapterTagInput} placeholder="输入 tag..." />
+                      {#if editChapterTagSuggestions.length > 0}
+                        <ul class="tag-suggestions">
+                          {#each editChapterTagSuggestions as s}
+                            <li><button onclick={() => addEditTeachTag(s.id)}>{s.name || s.id}</button></li>
+                          {/each}
+                        </ul>
+                      {/if}
+                    </div>
+                    {#if editChapterTagInput.trim()}
+                      <button class="tag-add-btn" onclick={() => addEditTeachTag(editChapterTagInput.trim())}>添加</button>
+                    {/if}
+                  </div>
+                  <div class="tag-editor">
+                    <div class="tag-editor-label">前置知识</div>
+                    <div class="tag-list">
+                      {#each editChapterPrereqs as p}
+                        <span class="tag-badge prereq">
+                          {p.tag_id} <span class="prereq-type-label">{p.prereq_type === 'required' ? '必须' : '推荐'}</span>
+                          <button class="tag-remove" onclick={() => removeEditPrereq(p.tag_id)}>×</button>
+                        </span>
+                      {/each}
+                    </div>
+                    <div class="tag-input-wrap">
+                      <select class="prereq-type-select" bind:value={editChapterPrereqType}>
+                        <option value="required">必须</option>
+                        <option value="recommended">推荐</option>
+                      </select>
+                      <input class="tag-input" bind:value={editChapterPrereqInput} placeholder="输入前置 tag..." />
+                      {#if editChapterPrereqSuggestions.length > 0}
+                        <ul class="tag-suggestions">
+                          {#each editChapterPrereqSuggestions as s}
+                            <li><button onclick={() => addEditPrereq(s.id)}>{s.name || s.id}</button></li>
+                          {/each}
+                        </ul>
+                      {/if}
+                    </div>
+                    {#if editChapterPrereqInput.trim()}
+                      <button class="tag-add-btn" onclick={() => addEditPrereq(editChapterPrereqInput.trim())}>添加</button>
+                    {/if}
+                  </div>
+                  <div class="chapter-tag-editor-actions">
+                    <button class="action-btn primary" onclick={saveChapterTags}>保存</button>
+                    <button class="action-btn" onclick={closeChapterTagEdit}>取消</button>
+                  </div>
+                </div>
+              {/if}
+
               {#if children.length > 0}
                 <div class="chapter-children">
                   {#each children as sub}
@@ -293,14 +612,87 @@
                       {:else}
                         <span class="chapter-title">{sub.title}</span>
                       {/if}
+                      {#each sub.teaches as tag}
+                        <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
+                      {/each}
+                      {#each sub.prereqs as p}
+                        <span class="tag-badge prereq sm">{p.tag_id}</span>
+                      {/each}
+                      {#if getAuth()}
+                        <button class="chapter-edit-tags-btn" onclick={() => editingChapterId === sub.id ? closeChapterTagEdit() : openChapterTagEdit(sub)}>
+                          {editingChapterId === sub.id ? '收起' : '编辑 tag'}
+                        </button>
+                        <button class="chapter-delete-btn" onclick={() => removeChapter(sub.id)}>删除</button>
+                      {/if}
                     </div>
+                    {#if editingChapterId === sub.id}
+                      <div class="chapter-tag-editor sub">
+                        <div class="tag-editor">
+                          <div class="tag-editor-label">教授知识点</div>
+                          <div class="tag-list">
+                            {#each editChapterTeaches as tag}
+                              <span class="tag-badge teaches">
+                                {tag} <button class="tag-remove" onclick={() => removeEditTeachTag(tag)}>×</button>
+                              </span>
+                            {/each}
+                          </div>
+                          <div class="tag-input-wrap">
+                            <input class="tag-input" bind:value={editChapterTagInput} placeholder="输入 tag..." />
+                            {#if editChapterTagSuggestions.length > 0}
+                              <ul class="tag-suggestions">
+                                {#each editChapterTagSuggestions as s}
+                                  <li><button onclick={() => addEditTeachTag(s.id)}>{s.name || s.id}</button></li>
+                                {/each}
+                              </ul>
+                            {/if}
+                          </div>
+                          {#if editChapterTagInput.trim()}
+                            <button class="tag-add-btn" onclick={() => addEditTeachTag(editChapterTagInput.trim())}>添加</button>
+                          {/if}
+                        </div>
+                        <div class="tag-editor">
+                          <div class="tag-editor-label">前置知识</div>
+                          <div class="tag-list">
+                            {#each editChapterPrereqs as p}
+                              <span class="tag-badge prereq">
+                                {p.tag_id} <span class="prereq-type-label">{p.prereq_type === 'required' ? '必须' : '推荐'}</span>
+                                <button class="tag-remove" onclick={() => removeEditPrereq(p.tag_id)}>×</button>
+                              </span>
+                            {/each}
+                          </div>
+                          <div class="tag-input-wrap">
+                            <select class="prereq-type-select" bind:value={editChapterPrereqType}>
+                              <option value="required">必须</option>
+                              <option value="recommended">推荐</option>
+                            </select>
+                            <input class="tag-input" bind:value={editChapterPrereqInput} placeholder="输入前置 tag..." />
+                            {#if editChapterPrereqSuggestions.length > 0}
+                              <ul class="tag-suggestions">
+                                {#each editChapterPrereqSuggestions as s}
+                                  <li><button onclick={() => addEditPrereq(s.id)}>{s.name || s.id}</button></li>
+                                {/each}
+                              </ul>
+                            {/if}
+                          </div>
+                          {#if editChapterPrereqInput.trim()}
+                            <button class="tag-add-btn" onclick={() => addEditPrereq(editChapterPrereqInput.trim())}>添加</button>
+                          {/if}
+                        </div>
+                        <div class="chapter-tag-editor-actions">
+                          <button class="action-btn primary" onclick={saveChapterTags}>保存</button>
+                          <button class="action-btn" onclick={closeChapterTagEdit}>取消</button>
+                        </div>
+                      </div>
+                    {/if}
                   {/each}
                 </div>
               {/if}
             </div>
           {/each}
-        </div>
-      {/if}
+        {:else if !showChapterForm}
+          <p class="empty">暂无章节目录</p>
+        {/if}
+      </div>
 
       <!-- Reviews -->
       <div class="reviews-section">
@@ -719,6 +1111,107 @@
     background: none; cursor: pointer; transition: all 0.15s;
   }
   .report-dispute-btn:hover { color: #c33; border-color: #c33; }
+
+  /* Book tags */
+  .book-tags {
+    display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px;
+  }
+  .tag-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 12px; font-size: 12px;
+    text-decoration: none; transition: opacity 0.15s;
+  }
+  .tag-badge.teaches { background: var(--accent-light, #e8f4fd); color: var(--accent); }
+  .tag-badge.prereq { background: #fdf2e8; color: #b06000; }
+  .tag-badge.sm { font-size: 11px; padding: 1px 6px; }
+  .tag-badge:hover { opacity: 0.8; }
+  .tag-remove {
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-size: 13px; line-height: 1; color: inherit; opacity: 0.6;
+  }
+  .tag-remove:hover { opacity: 1; }
+  .prereq-type-label { font-size: 10px; opacity: 0.75; }
+
+  /* Chapters header row */
+  .chapters-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+  }
+  .chapters-header h2 { margin: 0; }
+  .add-chapter-btn {
+    font-size: 12px; padding: 4px 10px;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: none; cursor: pointer; color: var(--text-secondary);
+    transition: all 0.15s;
+  }
+  .add-chapter-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* Add chapter form */
+  .chapter-form {
+    padding: 12px; margin-bottom: 12px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-card, var(--bg));
+  }
+  .chapter-form h4 { margin: 0 0 8px; font-size: 14px; }
+  .chapter-input {
+    width: 100%; padding: 6px 8px; margin-bottom: 8px;
+    border: 1px solid var(--border); border-radius: 4px;
+    font-size: 13px; background: var(--bg); color: var(--text);
+    box-sizing: border-box;
+  }
+  .chapter-input:focus { outline: none; border-color: var(--accent); }
+
+  /* Tag editor */
+  .tag-editor { margin-top: 8px; }
+  .tag-editor-label { font-size: 12px; font-weight: 500; margin-bottom: 4px; color: var(--text-secondary); }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+  .tag-input-wrap { position: relative; display: flex; gap: 4px; align-items: center; }
+  .tag-input {
+    flex: 1; padding: 4px 6px;
+    border: 1px solid var(--border); border-radius: 4px;
+    font-size: 12px; background: var(--bg); color: var(--text);
+  }
+  .tag-suggestions {
+    position: absolute; top: 100%; left: 0; z-index: 10; list-style: none;
+    margin: 0; padding: 4px 0; min-width: 160px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  .tag-suggestions li button {
+    display: block; width: 100%; text-align: left;
+    padding: 4px 10px; font-size: 12px;
+    background: none; border: none; cursor: pointer; color: var(--text);
+  }
+  .tag-suggestions li button:hover { background: var(--bg-hover, #f5f5f5); }
+  .tag-add-btn {
+    font-size: 12px; padding: 3px 8px;
+    border: 1px solid var(--accent); border-radius: 4px;
+    background: none; cursor: pointer; color: var(--accent); white-space: nowrap;
+  }
+  .prereq-type-select {
+    padding: 4px 6px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: var(--bg); color: var(--text);
+  }
+
+  /* Per-chapter tag editor */
+  .chapter-edit-tags-btn, .chapter-delete-btn {
+    font-size: 11px; padding: 2px 7px;
+    border: 1px solid var(--border); border-radius: 3px;
+    background: none; cursor: pointer; color: var(--text-hint);
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .chapter-edit-tags-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .chapter-delete-btn:hover { color: #c33; border-color: #c33; }
+  .chapter-tag-editor {
+    padding: 10px 12px 12px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-card, var(--bg));
+    margin: 4px 0 8px;
+  }
+  .chapter-tag-editor.sub { margin-left: 24px; }
+  .chapter-tag-editor-actions {
+    display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end;
+  }
 
   /* Chapters */
   .chapters-section {
