@@ -5,7 +5,7 @@ import type {
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
   BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter, ChapterPrereqEntry,
-  ArticleVersion, ArticleVersionFull, VersionDiff,
+  ArticleVersion, ArticleVersionInfo, ArticleVersionFull, VersionDiff,
 } from './types';
 import { getToken, setAuth } from './auth.svelte';
 
@@ -108,9 +108,10 @@ export const getTranslations = (uri: string) => get<Article[]>(`/articles/transl
 export const getArticleFull = (uri: string) => get<ArticleFullResponse>(`/articles/full?uri=${encodeURIComponent(uri)}`);
 
 // Version history
-export const getArticleHistory = (uri: string) => get<ArticleVersion[]>(`/articles/by-uri/history?uri=${encodeURIComponent(uri)}`);
+export const getArticleHistory = (uri: string) => get<ArticleVersionInfo[]>(`/articles/by-uri/history?uri=${encodeURIComponent(uri)}`);
 export const getArticleVersion = (uri: string, id: number) => get<ArticleVersionFull>(`/articles/by-uri/version?uri=${encodeURIComponent(uri)}&id=${id}`);
 export const getArticleDiff = (uri: string, from: number, to: number) => get<VersionDiff>(`/articles/by-uri/diff?uri=${encodeURIComponent(uri)}&from=${from}&to=${to}`);
+export const unrecordArticleChange = (uri: string, version_id: number) => post<void>(`/articles/by-uri/unrecord`, { uri, version_id });
 
 // Questions & Answers
 export const listQuestions = (limit = 50, offset = 0) => get<Article[]>(`/questions?limit=${limit}&offset=${offset}`);
@@ -235,6 +236,10 @@ export const createReport = (target_did: string, kind: string, reason: string, t
 // Fork
 export const forkArticle = (uri: string, targetFormat?: string) => post<Article>('/articles/fork', { uri, target_format: targetFormat });
 
+// Cross-fork apply
+export const applyChange = (data: { source_uri: string; target_uri: string; change_hash: string }) =>
+  post<{ has_conflicts: boolean; content: string }>('/articles/apply-change', data);
+
 // Format conversion
 export const convertContent = (content: string, from: string, to: string) =>
   post<{ content: string }>('/articles/convert', { content, from, to });
@@ -271,7 +276,7 @@ export const getMyCommentVotes = (uri: string) =>
   get<MyCommentVote[]>(`/comments/my-votes?uri=${encodeURIComponent(uri)}`);
 
 // Article edit/delete
-export const updateArticle = (uri: string, data: { title?: string; description?: string; content?: string }) =>
+export const updateArticle = (uri: string, data: { title?: string; description?: string; content?: string; commit_message?: string }) =>
   put<Article>('/articles/update', { uri, ...data });
 export const deleteArticle = (uri: string) =>
   del<void>('/articles/delete', { uri });

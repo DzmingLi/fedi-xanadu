@@ -258,6 +258,17 @@ pub async fn get_article_prereqs(pool: &PgPool, uri: &str) -> crate::Result<Vec<
     Ok(rows)
 }
 
+/// If this article is a fork, returns the source article's URI.
+pub async fn get_fork_source(pool: &PgPool, forked_uri: &str) -> crate::Result<Option<String>> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT source_uri FROM forks WHERE forked_uri = $1 LIMIT 1",
+    )
+    .bind(forked_uri)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| r.0))
+}
+
 pub async fn get_article_forks(pool: &PgPool, uri: &str) -> crate::Result<Vec<ForkWithTitle>> {
     let rows = sqlx::query_as::<_, ForkWithTitle>(
         "SELECT f.fork_uri, f.forked_uri, f.vote_score, a.title, a.did, p.handle AS author_handle \

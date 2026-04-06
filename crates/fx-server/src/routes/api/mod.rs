@@ -143,6 +143,8 @@ fn article_routes() -> Router<AppState> {
         .route("/articles/by-uri/history", get(articles::get_article_history))
         .route("/articles/by-uri/version", get(articles::get_article_version))
         .route("/articles/by-uri/diff", get(articles::get_article_diff))
+        .route("/articles/by-uri/unrecord", post(articles::unrecord_article_change))
+        .route("/articles/apply-change", post(articles::apply_change))
 }
 
 fn vote_routes() -> Router<AppState> {

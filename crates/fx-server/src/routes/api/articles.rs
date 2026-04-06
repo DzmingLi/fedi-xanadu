@@ -424,6 +424,7 @@ pub(super) async fn publish_article_content(
     state: &AppState,
     at_uri: &str,
     did: &str,
+    token: &str,
     content: &str,
     format: ContentFormat,
     series_id: Option<&str>,
@@ -458,11 +459,12 @@ pub(super) async fn publish_article_content(
             let _ = tokio::fs::write(cache_dir.join(format!("{chapter_id}.html")), &rendered).await;
         }
 
-        match state.pijul.record_series(&node_id, message) {
-            Ok(Some(hash)) => {
+        match state.pijul.record_series(&node_id, message, Some(did)) {
+            Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, at_uri, &hash, did, message, content,
                 ).await;
+                publish_pijul_ref_update(state, token, at_uri, did, &hash, &new_state).await;
             }
             Ok(None) => {}
             Err(e) => tracing::warn!("pijul record failed for series {node_id}: {e}"),
@@ -482,11 +484,12 @@ pub(super) async fn publish_article_content(
             let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
         }
 
-        match state.pijul.record(&node_id, message) {
-            Ok(Some(hash)) => {
+        match state.pijul.record(&node_id, message, Some(did)) {
+            Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, at_uri, &hash, did, message, content,
                 ).await;
+                publish_pijul_ref_update(state, token, at_uri, did, &hash, &new_state).await;
             }
             Ok(None) => {}
             Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
@@ -496,13 +499,37 @@ pub(super) async fn publish_article_content(
     }
 }
 
+/// Publish a sh.tangled.pijul.refUpdate record to the user's PDS.
+/// Best-effort: failures are logged but do not block the request.
+pub(super) async fn publish_pijul_ref_update(
+    state: &AppState,
+    token: &str,
+    article_at_uri: &str,
+    did: &str,
+    change_hash: &str,
+    new_state: &str,
+) {
+    use crate::auth::pds_create_record;
+    let record = serde_json::json!({
+        "$type": fx_atproto::lexicon::PIJUL_REF_UPDATE,
+        "repo": article_at_uri,
+        "channel": "main",
+        "newState": new_state,
+        "changes": [change_hash],
+        "committerDid": did,
+    });
+    pds_create_record(state, token, fx_atproto::lexicon::PIJUL_REF_UPDATE, record, None, "pijul refUpdate").await;
+}
+
 /// Shared: update article content in the correct repo (series or independent).
 pub(super) async fn update_article_content(
     state: &AppState,
     uri: &str,
     did: &str,
+    token: Option<&str>,
     content: &str,
     format: &str,
+    message: &str,
 ) -> Result<(), AppError> {
     let src_ext = fx_render::format_extension(format);
     let series_info = get_series_pijul_info(state, uri).await;
@@ -522,11 +549,14 @@ pub(super) async fn update_article_content(
             let _ = tokio::fs::remove_file(cache_dir.join("series.cache")).await;
         }
 
-        match state.pijul.record_series(&series_node_id, &format!("Update: {uri}")) {
-            Ok(Some(hash)) => {
+        match state.pijul.record_series(&series_node_id, message, Some(did)) {
+            Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
-                    &state.pool, uri, &hash, did, "Update article", content,
+                    &state.pool, uri, &hash, did, message, content,
                 ).await;
+                if let Some(tok) = token {
+                    publish_pijul_ref_update(state, tok, uri, did, &hash, &new_state).await;
+                }
             }
             Ok(None) => {}
             Err(e) => tracing::warn!("pijul record failed for series {series_node_id}: {e}"),
@@ -541,11 +571,14 @@ pub(super) async fn update_article_content(
             let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
         }
 
-        match state.pijul.record(&node_id, "Update article") {
-            Ok(Some(hash)) => {
+        match state.pijul.record(&node_id, message, Some(did)) {
+            Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
-                    &state.pool, uri, &hash, did, "Update article", content,
+                    &state.pool, uri, &hash, did, message, content,
                 ).await;
+                if let Some(tok) = token {
+                    publish_pijul_ref_update(state, tok, uri, did, &hash, &new_state).await;
+                }
             }
             Ok(None) => {}
             Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
@@ -573,7 +606,7 @@ pub async fn create_article(
     }
 
     publish_article_content(
-        &state, &at_uri, &user.did, &input.content, input.content_format,
+        &state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
         input.series_id.as_deref(), "Initial publish",
     ).await?;
 
@@ -621,6 +654,7 @@ pub struct ArticleFullResponse {
     content: ArticleContent,
     prereqs: Vec<ArticlePrereqRow>,
     forks: Vec<ForkWithTitle>,
+    fork_source: Option<String>,
     votes: ArticleVoteSummary,
     series_context: Vec<fx_core::services::series_service::SeriesContextItem>,
     translations: Vec<Article>,
@@ -701,11 +735,14 @@ pub async fn get_article_full(
         (0, false, false)
     };
 
+    let fork_source = article_service::get_fork_source(&state.pool, &uri).await.unwrap_or(None);
+
     Ok(Json(ArticleFullResponse {
         article,
         content,
         prereqs,
         forks,
+        fork_source,
         votes: ArticleVoteSummary {
             score: vote_summary.score,
             upvotes: vote_summary.upvotes,
@@ -983,11 +1020,12 @@ pub async fn upload_image(
         // Invalidate series cache
         let _ = tokio::fs::remove_file(series_repo.join("cache").join("series.cache")).await;
 
-        match state.pijul.record_series(series_node_id, &format!("Add image: {safe_name}")) {
-            Ok(Some(hash)) => {
+        match state.pijul.record_series(series_node_id, &format!("Add image: {safe_name}"), Some(&user.did)) {
+            Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
                 ).await;
+                publish_pijul_ref_update(&state, &user.token, &uri, &user.did, &hash, &new_state).await;
             }
             Ok(None) => {}
             Err(e) => tracing::warn!("pijul record failed for series {series_node_id}: {e}"),
@@ -1001,11 +1039,12 @@ pub async fn upload_image(
 
         let _ = tokio::fs::remove_file(repo_path.join("content.html")).await;
 
-        match state.pijul.record(&node_id, &format!("Add image: {safe_name}")) {
-            Ok(Some(hash)) => {
+        match state.pijul.record(&node_id, &format!("Add image: {safe_name}"), Some(&user.did)) {
+            Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
                 ).await;
+                publish_pijul_ref_update(&state, &user.token, &uri, &user.did, &hash, &new_state).await;
             }
             Ok(None) => {}
             Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
@@ -1068,6 +1107,7 @@ pub struct UpdateArticleInput {
     pub title: Option<String>,
     pub description: Option<String>,
     pub content: Option<String>,
+    pub commit_message: Option<String>,
 }
 
 pub async fn update_article(
@@ -1102,7 +1142,8 @@ pub async fn update_article(
 
     if let Some(ref content) = input.content {
         let format = article_service::get_content_format(&state.pool, &input.uri).await?;
-        update_article_content(&state, &input.uri, &user.did, content, &format).await?;
+        let msg = input.commit_message.as_deref().unwrap_or("Update article");
+        update_article_content(&state, &input.uri, &user.did, Some(&user.token), content, &format, msg).await?;
     }
 
     let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
@@ -1234,12 +1275,27 @@ pub async fn search_articles(
 
 // --- Version history ---
 
+#[derive(serde::Serialize)]
+pub struct ArticleVersionInfo {
+    #[serde(flatten)]
+    pub version: version_service::ArticleVersion,
+    pub unrecordable: bool,
+}
+
 pub async fn get_article_history(
     State(state): State<AppState>,
     Query(q): Query<UriQuery>,
-) -> ApiResult<Json<Vec<version_service::ArticleVersion>>> {
+) -> ApiResult<Json<Vec<ArticleVersionInfo>>> {
     let versions = version_service::list_versions(&state.pool, &q.uri).await?;
-    Ok(Json(versions))
+    let node_id = uri_to_node_id(&q.uri);
+    let result = versions
+        .into_iter()
+        .map(|v| {
+            let unrecordable = state.pijul.is_unrecordable(&node_id, &v.change_hash);
+            ArticleVersionInfo { version: v, unrecordable }
+        })
+        .collect();
+    Ok(Json(result))
 }
 
 #[derive(serde::Deserialize)]
@@ -1269,4 +1325,128 @@ pub async fn get_article_diff(
 ) -> ApiResult<Json<version_service::VersionDiff>> {
     let diff = version_service::diff_versions(&state.pool, &q.uri, q.from, q.to).await?;
     Ok(Json(diff))
+}
+
+// --- Unrecord the latest change for an article ---
+
+#[derive(serde::Deserialize)]
+pub struct UnrecordInput {
+    pub uri: String,
+    pub version_id: i32,
+}
+
+pub async fn unrecord_article_change(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<UnrecordInput>,
+) -> ApiResult<StatusCode> {
+    let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    let version = version_service::get_version(&state.pool, &input.uri, input.version_id).await?;
+
+    // Perform pijul unrecord — fails with BadRequest if other changes depend on this one
+    let node_id = uri_to_node_id(&input.uri);
+    state.pijul.unrecord_change(&node_id, &version.change_hash)
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("depended upon") {
+                AppError(fx_core::Error::BadRequest(
+                    "该修改有后继依赖，无法撤销".into(),
+                ))
+            } else {
+                AppError(fx_core::Error::Internal(msg))
+            }
+        })?;
+
+    // Read the restored content from the working copy
+    let src_ext = article_service::get_content_format(&state.pool, &input.uri).await?;
+    let ext = fx_render::format_extension(&src_ext);
+    let content = state.pijul.get_file_content(&node_id, &format!("content.{ext}"))
+        .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
+    let content_str = String::from_utf8_lossy(&content).to_string();
+
+    // Re-render and update DB content hash
+    let repo_path = state.pijul.repo_path(&node_id);
+    if src_ext != "html" {
+        if let Ok(rendered) = render_content(&src_ext, &content_str, &repo_path) {
+            let _ = tokio::fs::write(repo_path.join("content.html"), rendered).await;
+        }
+    }
+    let hash = content_hash(&content_str);
+    article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;
+
+    // Remove the version row
+    version_service::delete_version(&state.pool, input.version_id).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// --- Cross-fork apply ---
+
+#[derive(serde::Deserialize)]
+pub struct ApplyChangeInput {
+    pub source_uri: String,
+    pub target_uri: String,
+    pub change_hash: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct ApplyChangeOutput {
+    pub has_conflicts: bool,
+    pub content: String,
+}
+
+/// Apply a pijul change from one article repo (typically a fork) to another
+/// (typically the original). The target article owner must be the caller.
+pub async fn apply_change(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<ApplyChangeInput>,
+) -> ApiResult<Json<ApplyChangeOutput>> {
+    // Only the target article owner can apply changes to it.
+    let owner = article_service::get_article_owner(&state.pool, &input.target_uri).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    let source_node_id = uri_to_node_id(&input.source_uri);
+    let target_node_id = uri_to_node_id(&input.target_uri);
+
+    // Apply the change (copies change file + dependencies, then applies).
+    state.pijul.apply(&source_node_id, &target_node_id, &input.change_hash)
+        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+
+    // Read the updated working copy.
+    let src_ext = article_service::get_content_format(&state.pool, &input.target_uri).await?;
+    let ext = fx_render::format_extension(&src_ext);
+    let content_bytes = state.pijul.get_file_content(&target_node_id, &format!("content.{ext}"))
+        .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
+    let content = String::from_utf8_lossy(&content_bytes).to_string();
+
+    // Check for pijul conflict markers.
+    let has_conflicts = content.contains(">>>>>>>") || content.contains("<<<<<<<");
+
+    // Re-render HTML cache.
+    let repo_path = state.pijul.repo_path(&target_node_id);
+    if src_ext != "html" {
+        if let Ok(rendered) = render_content(&src_ext, &content, &repo_path) {
+            let _ = tokio::fs::write(repo_path.join("content.html"), rendered).await;
+        }
+    }
+
+    // Record a new version if no conflicts (conflicts need manual resolution first).
+    if !has_conflicts {
+        let message = format!("Applied change {} from {}", &input.change_hash[..12.min(input.change_hash.len())], &input.source_uri);
+        // Record the apply as a pijul change.
+        if let Some((hash, _merkle)) = state.pijul.record(&target_node_id, &message, Some(&user.did))
+            .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))? {
+            version_service::record_version(
+                &state.pool, &input.target_uri, &hash, &user.did, &message, &content,
+            ).await?;
+        }
+
+        let hash = content_hash(&content);
+        article_service::update_article_content_hash(&state.pool, &input.target_uri, &hash).await?;
+    }
+
+    Ok(Json(ApplyChangeOutput { has_conflicts, content }))
 }

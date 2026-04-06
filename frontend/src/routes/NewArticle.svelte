@@ -2,6 +2,7 @@
   import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook } from '../lib/api';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getLangPrefs } from '../lib/langPrefs.svelte';
+  import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
   import type { Tag, Article, BookEdition, ContentFormat, Category, PrereqType } from '../lib/types';
 
   let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
@@ -10,6 +11,19 @@
   let currentDraftId = $state(initialDraftId);
   let savingDraft = $state(false);
   let draftSaved = $state(false);
+  let autoSaveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Auto-save draft 2 s after any content change (new articles only, not edits of published ones)
+  $effect(() => {
+    // Touch reactive state to subscribe
+    const _t = title, _d = description, _c = content, _f = contentFormat, _l = lang;
+    if (isEditing || forkSource || !_t.trim()) return;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+      if (!savingDraft) handleSaveDraft();
+    }, 2000);
+    return () => clearTimeout(autoSaveTimer);
+  });
 
   let tags = $state<Tag[]>([]);
   let allArticles = $state<Article[]>([]);
@@ -21,6 +35,7 @@
   let license = $state('CC-BY-SA-4.0');
   let restricted = $state(false);
   let translationOf = $state('');
+  let commitMessage = $state('');
   let category = $state<Category>((initialCategory || 'general') as Category);
   let bookId = $state(initialBookId || '');
   let editionId = $state('');
@@ -401,8 +416,24 @@
           title: title.trim(),
           description: description.trim(),
           content: content.trim(),
+          commit_message: commitMessage.trim() || undefined,
         });
         window.location.hash = `#/article?uri=${encodeURIComponent(article.at_uri)}`;
+      } else if (forkSource) {
+        // Fork via pijul: creates a proper fork with pijul repo copy + DB fork record
+        const targetFormat = contentFormat !== originalFormat ? contentFormat : undefined;
+        const forked = await forkArticle(forkSource, targetFormat);
+
+        // If user modified content beyond the format conversion, apply edits
+        if (hasChanges) {
+          await updateArticle(forked.at_uri, {
+            title: title.trim(),
+            description: description.trim() || undefined,
+            content: content.trim(),
+            commit_message: 'Initial fork edits',
+          });
+        }
+        window.location.hash = `#/article?uri=${encodeURIComponent(forked.at_uri)}`;
       } else {
         const article = await createArticle({
           title: title.trim(),
@@ -564,7 +595,11 @@
       </label>
     </div>
   </div>
-  <textarea id="content" bind:value={content} placeholder={contentFormat === 'markdown' ? '# My Article\n\nSome text with $x^2$ math' : contentFormat === 'html' ? '<!DOCTYPE html>\n<html>\n<body>\n  <h1>My Article</h1>\n</body>\n</html>' : '= My Article'}></textarea>
+  {#if contentFormat === 'markdown'}
+    <MarkdownEditor bind:value={content} placeholder="# 我的文章&#10;&#10;正文..." />
+  {:else}
+    <textarea id="content" bind:value={content} placeholder={contentFormat === 'html' ? '<!DOCTYPE html>\n<html>\n<body>\n  <h1>My Article</h1>\n</body>\n</html>' : '= My Article'}></textarea>
+  {/if}
 </div>
 
 {#if !isEditing && !forkSource}
@@ -703,6 +738,16 @@
     </button>
   </div>
 {:else}
+  {#if isEditing}
+  <div class="form-group commit-msg-row">
+    <input
+      class="commit-msg-input"
+      bind:value={commitMessage}
+      placeholder="变更说明（可选，如"修正错别字"、"补充例题"）"
+      maxlength={200}
+    />
+  </div>
+  {/if}
   <div class="submit-row">
     {#if !isEditing}
       <button class="btn btn-draft" onclick={handleSaveDraft} disabled={savingDraft}>
@@ -727,6 +772,17 @@
 {/if}
 
 <style>
+  .commit-msg-row { margin-bottom: 0.75rem; }
+  .commit-msg-input {
+    width: 100%;
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+  }
+  .commit-msg-input::placeholder { color: var(--text-hint); }
   .content-label-row {
     display: flex;
     align-items: center;

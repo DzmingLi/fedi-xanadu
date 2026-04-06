@@ -291,6 +291,7 @@ export interface ArticleFullResponse {
   content: ArticleContent;
   prereqs: ArticlePrereqRow[];
   forks: ForkWithTitle[];
+  fork_source: string | null;
   votes: VoteSummary;
   series_context: SeriesContextItem[];
   translations: Article[];
@@ -447,6 +448,10 @@ export interface ArticleVersion {
   editor_did: string;
   message: string;
   created_at: string;
+}
+
+export interface ArticleVersionInfo extends ArticleVersion {
+  unrecordable: boolean;
 }
 
 export interface ArticleVersionFull extends ArticleVersion {

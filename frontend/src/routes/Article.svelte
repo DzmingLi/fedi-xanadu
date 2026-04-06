@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport } from '../lib/api';
+  import ArticleHistory from '../lib/components/ArticleHistory.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import { tagName } from '../lib/display';
   import { isBlocked, addBlocked } from '../lib/blocklist.svelte';
@@ -13,6 +14,7 @@
   let content = $state<ArticleContent | null>(null);
   let prereqs = $state<ArticlePrereqRow[]>([]);
   let forks = $state<ForkWithTitle[]>([]);
+  let forkSource = $state<string | null>(null);
   let translations = $state<Article[]>([]);
   let error = $state('');
   let bookmarks = $state<BookmarkWithTitle[]>([]);
@@ -79,6 +81,7 @@
       content = data.content;
       prereqs = data.prereqs;
       forks = data.forks;
+      forkSource = data.fork_source;
       votes = { target_uri: uri, score: data.votes.score, upvotes: data.votes.upvotes, downvotes: data.votes.downvotes };
       seriesContext = data.series_context;
       translations = data.translations;
@@ -605,6 +608,16 @@ try {
         </div>
       {/if}
 
+      <!-- Version history -->
+      {#if isOwner || forkSource}
+        <details class="history-section">
+          <summary>{t('article.versionHistory')}</summary>
+          <div class="history-wrap">
+            <ArticleHistory {uri} {isOwner} applyTargetUri={forkSource || ''} />
+          </div>
+        </details>
+      {/if}
+
       <!-- Comments -->
       <CommentThread bind:this={commentThread} contentUri={uri} {contentEl} />
 
@@ -1082,6 +1095,25 @@ try {
     cursor: pointer;
   }
   .report-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Version history */
+  .history-section {
+    margin-top: 24px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .history-section summary {
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    background: var(--bg-hover);
+    user-select: none;
+  }
+  .history-section summary:hover { color: var(--text-primary); }
+  .history-section[open] summary { border-bottom: 1px solid var(--border); }
+  .history-wrap { padding: 0; }
 
   /* Access control panel */
   .access-panel {
