@@ -158,6 +158,7 @@ export default {
   'newArticle.recommended': 'Recommended',
   'newArticle.suggested': 'Suggested',
   'newArticle.addPrereq': 'Add',
+  'newArticle.commitPlaceholder': 'Change description (optional, e.g. "fix typo", "add examples")',
   'newArticle.converting': 'Converting format...',
   'newArticle.convertError': 'Format conversion failed',
   'newArticle.publishing': 'Publishing...',

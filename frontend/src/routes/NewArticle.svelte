@@ -739,7 +739,7 @@
     <input
       class="commit-msg-input"
       bind:value={commitMessage}
-      placeholder="变更说明（可选，如"修正错别字"、"补充例题"）"
+      placeholder={t('newArticle.commitPlaceholder')}
       maxlength={200}
     />
   </div>

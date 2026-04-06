@@ -158,6 +158,7 @@ export default {
   'newArticle.recommended': 'Recommandé',
   'newArticle.suggested': 'Suggéré',
   'newArticle.addPrereq': 'Ajouter',
+  'newArticle.commitPlaceholder': 'Description du changement (optionnel)',
   'newArticle.converting': 'Conversion en cours...',
   'newArticle.convertError': 'Échec de la conversion',
   'newArticle.publishing': 'Publication...',
