@@ -349,6 +349,10 @@ export default {
   'qa.answerCount': '{0} 个回答',
   'qa.myQuestions': '我的提问',
   'qa.myAnswers': '我的回答',
+  'qa.titlePlaceholder': '你的问题是什么？',
+  'qa.contentPlaceholder': '详细描述你的问题（可选）...',
+  'qa.translations': '其他语言版本',
+  'qa.translationTitle': '翻译标题',
   'notification.newAnswer': '回答了你的问题',
   'profile.questions': '问答',
 

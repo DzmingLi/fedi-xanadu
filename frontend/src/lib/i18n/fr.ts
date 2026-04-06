@@ -349,6 +349,10 @@ export default {
   'qa.answerCount': '{0} réponses',
   'qa.myQuestions': 'Mes questions',
   'qa.myAnswers': 'Mes réponses',
+  'qa.titlePlaceholder': 'Quelle est votre question ?',
+  'qa.contentPlaceholder': 'Décrivez votre question en détail (optionnel)...',
+  'qa.translations': 'Autres versions linguistiques',
+  'qa.translationTitle': 'Titre traduit',
   'notification.newAnswer': 'a répondu à votre question',
   'profile.questions': 'Q&R',
 

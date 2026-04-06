@@ -1,9 +1,10 @@
 <script lang="ts">
   import { createQuestion, searchTags } from '../lib/api';
-  import { t, getLocale } from '../lib/i18n/index.svelte';
+  import { t, getLocale, LANG_NAMES } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import { toast } from '../lib/components/Toast.svelte';
   import type { Tag, ContentFormat } from '../lib/types';
+  import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
 
   let locale = $derived(getLocale());
 
@@ -16,6 +17,27 @@
   let tagQuery = $state('');
   let tagResults = $state<Tag[]>([]);
   let publishing = $state(false);
+
+  // Translation versions
+  interface LangVersion {
+    lang: string;
+    title: string;
+    content: string;
+    contentFormat: ContentFormat;
+  }
+  let extraLangs = $state<LangVersion[]>([]);
+
+  function addLangVersion() {
+    const allLangs = Object.keys(LANG_NAMES);
+    const usedLangs = new Set([lang, ...extraLangs.map(l => l.lang)]);
+    const available = allLangs.filter(l => !usedLangs.has(l));
+    if (available.length === 0) return;
+    extraLangs = [...extraLangs, { lang: available[0], title: '', content: '', contentFormat }];
+  }
+
+  function removeLangVersion(idx: number) {
+    extraLangs = extraLangs.filter((_, i) => i !== idx);
+  }
 
   let tagTimer: ReturnType<typeof setTimeout>;
 
@@ -46,7 +68,7 @@
   }
 
   async function submit() {
-    if (!title.trim() || !content.trim()) {
+    if (!title.trim()) {
       toast(t('newArticle.fillRequired'), 'error');
       return;
     }
@@ -55,12 +77,32 @@
       const q = await createQuestion({
         title: title.trim(),
         description: description.trim() || undefined,
-        content: content.trim(),
+        content: content.trim() || undefined,
         content_format: contentFormat,
         lang,
         tags,
         prereqs: [],
       });
+
+      // Create translation versions
+      for (const lv of extraLangs) {
+        if (!lv.title.trim()) continue;
+        try {
+          await createQuestion({
+            title: lv.title.trim(),
+            description: undefined,
+            content: lv.content.trim() || undefined,
+            content_format: lv.contentFormat,
+            lang: lv.lang,
+            translation_of: q.at_uri,
+            tags,
+            prereqs: [],
+          });
+        } catch (e: any) {
+          console.warn(`Failed to create ${lv.lang} translation:`, e);
+        }
+      }
+
       window.location.hash = `#/question?uri=${encodeURIComponent(q.at_uri)}`;
     } catch (e: any) {
       toast(e.message || 'Failed', 'error');
@@ -75,8 +117,8 @@
   <h1 class="page-title">{t('qa.askQuestion')}</h1>
 
   <div class="form-group">
-    <label>{t('newArticle.titleLabel')}</label>
-    <input bind:value={title} type="text" placeholder="你的问题是什么？" />
+    <label>{t('newArticle.titleLabel')} *</label>
+    <input bind:value={title} type="text" placeholder={t('qa.titlePlaceholder')} />
   </div>
 
   <div class="form-group">
@@ -96,16 +138,20 @@
     <div class="form-group">
       <label>{t('newArticle.langLabel')}</label>
       <select bind:value={lang}>
-        <option value="zh">中文</option>
-        <option value="en">English</option>
-        <option value="fr">Français</option>
+        {#each Object.entries(LANG_NAMES) as [code, name]}
+          <option value={code}>{name}</option>
+        {/each}
       </select>
     </div>
   </div>
 
   <div class="form-group">
     <label>{t('newArticle.contentLabel')}</label>
-    <textarea bind:value={content} rows="10" placeholder="详细描述你的问题..."></textarea>
+    {#if contentFormat === 'markdown'}
+      <MarkdownEditor bind:value={content} placeholder={t('qa.contentPlaceholder')} />
+    {:else}
+      <textarea bind:value={content} rows="10" placeholder={t('qa.contentPlaceholder')}></textarea>
+    {/if}
   </div>
 
   <div class="form-group">
@@ -132,6 +178,43 @@
         {/each}
       </div>
     {/if}
+  </div>
+
+  <!-- Translation versions -->
+  <div class="form-group">
+    <div class="lang-header">
+      <span class="form-label">{t('qa.translations')}</span>
+      <button type="button" class="btn-add-lang" onclick={addLangVersion}>
+        + {t('newArticle.addLangVersion')}
+      </button>
+    </div>
+    {#each extraLangs as lv, idx}
+      <div class="lang-row">
+        <select bind:value={extraLangs[idx].lang}>
+          {#each Object.entries(LANG_NAMES) as [code, name]}
+            <option value={code} disabled={code === lang || extraLangs.some((l, i) => i !== idx && l.lang === code)}>{name}</option>
+          {/each}
+        </select>
+        <input
+          bind:value={extraLangs[idx].title}
+          type="text"
+          placeholder={t('qa.translationTitle')}
+          class="lang-title-input"
+        />
+        <select bind:value={extraLangs[idx].contentFormat}>
+          <option value="markdown">Markdown</option>
+          <option value="typst">Typst</option>
+          <option value="html">HTML</option>
+        </select>
+        <button type="button" class="lang-remove" onclick={() => removeLangVersion(idx)}>&times;</button>
+      </div>
+      <textarea
+        bind:value={extraLangs[idx].content}
+        rows="4"
+        placeholder={t('qa.contentPlaceholder')}
+        class="lang-textarea"
+      ></textarea>
+    {/each}
   </div>
 
   <div class="form-actions">
@@ -242,6 +325,65 @@
   }
   .tag-option:hover {
     background: var(--bg-hover);
+  }
+
+  /* Translation section */
+  .lang-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .form-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .btn-add-lang {
+    font-size: 12px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 8px;
+    cursor: pointer;
+    color: var(--text-secondary);
+  }
+  .btn-add-lang:hover { background: var(--bg-hover); }
+  .lang-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .lang-row select { width: auto; padding: 4px 8px; font-size: 12px; }
+  .lang-title-input {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+  }
+  .lang-remove {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-hint);
+    padding: 0 4px;
+  }
+  .lang-textarea {
+    width: 100%;
+    font-family: var(--font-mono, monospace);
+    font-size: 13px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+    resize: vertical;
+    margin-bottom: 12px;
   }
 
   .form-actions {
