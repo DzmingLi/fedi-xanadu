@@ -312,7 +312,7 @@ pub async fn upload_resource(
     }
 
     // Record the change
-    if let Err(e) = state.pijul.record(&node_id, "Upload shared resource") {
+    if let Err(e) = state.pijul.record(&node_id, "Upload shared resource", Some(&user.did)) {
         tracing::warn!("pijul record failed for series resource: {e}");
     }
 

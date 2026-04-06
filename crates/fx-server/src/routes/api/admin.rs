@@ -72,7 +72,7 @@ pub async fn admin_create_article(
     let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
 
     super::articles::publish_article_content(
-        &state, &at_uri, &did, &input.article.content, input.article.content_format,
+        &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
         input.article.series_id.as_deref(), "Initial publish",
     ).await?;
 
@@ -200,7 +200,7 @@ pub async fn admin_update_article(
 
     if let Some(ref content) = input.content {
         let format = article_service::get_content_format(&state.pool, &input.uri).await?;
-        super::articles::update_article_content(&state, &input.uri, "admin", content, &format).await?;
+        super::articles::update_article_content(&state, &input.uri, "admin", None, content, &format, "Admin update").await?;
     }
 
     let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
@@ -603,7 +603,7 @@ pub async fn admin_create_question(
     let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
 
     super::articles::publish_article_content(
-        &state, &at_uri, &did, &input.article.content, input.article.content_format,
+        &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
         None, "Initial publish",
     ).await?;
 
@@ -645,7 +645,7 @@ pub async fn admin_post_answer(
     let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
 
     super::articles::publish_article_content(
-        &state, &at_uri, &did, &input.article.content, input.article.content_format,
+        &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
         None, "Initial publish",
     ).await?;
 

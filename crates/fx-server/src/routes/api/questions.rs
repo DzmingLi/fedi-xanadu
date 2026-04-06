@@ -71,11 +71,12 @@ pub async fn create_question(
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
 
-    match state.pijul.record(&node_id, "Initial publish") {
-        Ok(Some(hash)) => {
+    match state.pijul.record(&node_id, "Initial publish", Some(&user.did)) {
+        Ok(Some((hash, new_state))) => {
             let _ = version_service::record_version(
                 &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
             ).await;
+            super::articles::publish_pijul_ref_update(&state, &user.token, &at_uri, &user.did, &hash, &new_state).await;
         }
         Ok(None) => {}
         Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
@@ -127,11 +128,12 @@ pub async fn post_answer(
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
 
-    match state.pijul.record(&node_id, "Initial publish") {
-        Ok(Some(hash)) => {
+    match state.pijul.record(&node_id, "Initial publish", Some(&user.did)) {
+        Ok(Some((hash, new_state))) => {
             let _ = version_service::record_version(
                 &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
             ).await;
+            super::articles::publish_pijul_ref_update(&state, &user.token, &at_uri, &user.did, &hash, &new_state).await;
         }
         Ok(None) => {}
         Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),

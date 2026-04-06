@@ -219,6 +219,14 @@ fn parse_hunk_header(line: &str) -> Option<DiffHunk> {
     })
 }
 
+pub async fn delete_version(pool: &PgPool, version_id: i32) -> crate::Result<()> {
+    sqlx::query("DELETE FROM article_versions WHERE id = $1")
+        .bind(version_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 fn parse_range(s: &str) -> (usize, usize) {
     if let Some((start, count)) = s.split_once(',') {
         (

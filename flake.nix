@@ -15,7 +15,7 @@
       nixosModule = { config, lib, pkgs, ... }:
         let
           cfg = config.services.fedi-xanadu;
-          pkg = self.packages.${pkgs.system}.default;
+          pkg = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         in {
           options.services.fedi-xanadu = {
             enable = lib.mkEnableOption "Fedi-Xanadu knowledge sharing platform";
@@ -193,7 +193,7 @@
       homeManagerModule = { config, lib, pkgs, ... }:
         let
           cfg = config.programs.fx;
-          pkg = self.packages.${pkgs.system}.fx-cli;
+          pkg = self.packages.${pkgs.stdenv.hostPlatform.system}.fx-cli;
         in {
           options.programs.fx = {
             enable = lib.mkEnableOption "fx CLI for Fedi-Xanadu";

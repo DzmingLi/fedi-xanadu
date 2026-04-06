@@ -85,18 +85,20 @@ impl PijulStore {
     }
 
     /// Record all working copy changes as a new pijul change.
-    pub fn record(&self, node_id: &str, message: &str) -> anyhow::Result<Option<String>> {
+    /// Returns `Some((change_hash, new_merkle_state))` or `None` if nothing changed.
+    pub fn record(&self, node_id: &str, message: &str, author_did: Option<&str>) -> anyhow::Result<Option<(String, String)>> {
         let path = self.repo_path(node_id);
-        self.record_at_path(&path, node_id, message)
+        self.record_at_path(&path, node_id, message, author_did)
     }
 
     /// Record all working copy changes in a series repo.
-    pub fn record_series(&self, series_node_id: &str, message: &str) -> anyhow::Result<Option<String>> {
+    /// Returns `Some((change_hash, new_merkle_state))` or `None` if nothing changed.
+    pub fn record_series(&self, series_node_id: &str, message: &str, author_did: Option<&str>) -> anyhow::Result<Option<(String, String)>> {
         let path = self.series_repo_path(series_node_id);
-        self.record_at_path(&path, series_node_id, message)
+        self.record_at_path(&path, series_node_id, message, author_did)
     }
 
-    fn record_at_path(&self, path: &std::path::Path, node_id: &str, message: &str) -> anyhow::Result<Option<String>> {
+    fn record_at_path(&self, path: &std::path::Path, node_id: &str, message: &str, author_did: Option<&str>) -> anyhow::Result<Option<(String, String)>> {
         let repo = self.open_repo(path)?;
 
         let txn = repo.pristine.arc_txn_begin()?;
@@ -164,6 +166,10 @@ impl PijulStore {
             hasher.finish()
         };
 
+        let unhashed = author_did.map(|did| {
+            serde_json::json!({ "identity": { "did": did } })
+        });
+
         let mut change = pijul_core::change::LocalChange {
             offsets: pijul_core::change::Offsets::default(),
             hashed: pijul_core::change::Hashed {
@@ -178,7 +184,7 @@ impl PijulStore {
                     ..Default::default()
                 },
             },
-            unhashed: None,
+            unhashed,
             contents,
         };
 
@@ -190,11 +196,117 @@ impl PijulStore {
             t.apply_local_change(&channel, &change, &hash, &rec.updatables)?;
         }
 
+        // Capture Merkle state after applying the change
+        let new_state = {
+            let t = txn.read();
+            let ch = channel.read();
+            t.reverse_log(&*ch, None)
+                .ok()
+                .and_then(|mut iter| iter.next())
+                .and_then(|r| r.ok())
+                .map(|(_, (_, mrk))| pijul_core::Merkle::from(mrk).to_base32())
+                .unwrap_or_default()
+        };
+
         txn.commit()?;
 
         let hash_str = hash.to_base32();
         tracing::info!("recorded change {} for {}: {message}", hash_str, node_id);
-        Ok(Some(hash_str))
+        Ok(Some((hash_str, new_state)))
+    }
+
+    /// Unrecord a change by its base32 hash from the main channel.
+    ///
+    /// Fails if any other change in the channel depends on this one
+    /// (pijul returns `ChangeIsDependedUpon`).
+    pub fn unrecord_change(&self, node_id: &str, change_hash_b32: &str) -> anyhow::Result<()> {
+        let path = self.repo_path(node_id);
+        let hash = pijul_core::Hash::from_base32(change_hash_b32.as_bytes())
+            .ok_or_else(|| anyhow::anyhow!("Invalid change hash: {change_hash_b32}"))?;
+
+        let repo = self.open_repo(&path)?;
+        let txn = repo.pristine.arc_txn_begin()?;
+
+        let channel = {
+            let t = txn.read();
+            t.load_channel(pijul_core::DEFAULT_CHANNEL)?
+                .ok_or_else(|| anyhow::anyhow!("No main channel"))?
+        };
+
+        // Check hash is actually in the channel
+        let change_id = {
+            let t = txn.read();
+            t.has_change(&channel, &hash)?
+                .ok_or_else(|| anyhow::anyhow!("Change {} not in channel", change_hash_b32))?
+        };
+        let _ = change_id;
+
+        {
+            let mut t = txn.write();
+            t.unrecord(&repo.changes, &channel, &hash, 0, &repo.working_copy)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+        }
+
+        // Output restored working copy
+        pijul_core::output::output_repository_no_pending(
+            &repo.working_copy,
+            &repo.changes,
+            &txn,
+            &channel,
+            "",
+            true,
+            None,
+            1,
+            0,
+        ).map_err(|e| anyhow::anyhow!("Failed to output working copy: {:?}", e))?;
+
+        txn.commit()?;
+        tracing::info!("unrecorded change {} from {}", change_hash_b32, node_id);
+        Ok(())
+    }
+
+    /// Check whether a change can be unrecorded (no other change in the channel depends on it).
+    pub fn is_unrecordable(&self, node_id: &str, change_hash_b32: &str) -> bool {
+        let path = self.repo_path(node_id);
+        let hash = match pijul_core::Hash::from_base32(change_hash_b32.as_bytes()) {
+            Some(h) => h,
+            None => return false,
+        };
+        let repo = match self.open_repo(&path) {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+        let txn = match repo.pristine.txn_begin() {
+            Ok(t) => t,
+            Err(_) => return false,
+        };
+        let channel = match txn.load_channel(pijul_core::DEFAULT_CHANNEL) {
+            Ok(Some(ch)) => ch,
+            _ => return false,
+        };
+
+        // A change is unrecordable if no change in the channel lists it as a dependency
+        let ch = channel.read();
+        let log_iter = match txn.log(&*ch, 0) {
+            Ok(i) => i,
+            Err(_) => return false,
+        };
+        for entry in log_iter {
+            let (_, (candidate_hash, _)) = match entry {
+                Ok(e) => e,
+                Err(_) => return false,
+            };
+            let candidate: pijul_core::Hash = candidate_hash.into();
+            if candidate == hash {
+                continue;
+            }
+            if let Ok(change) = repo.changes.get_change(&candidate) {
+                if change.hashed.dependencies.contains(&hash) {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     /// Fork an existing repo by copying the entire directory.
