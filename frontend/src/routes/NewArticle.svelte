@@ -103,7 +103,7 @@
       if (name.endsWith('.md') || name.endsWith('.markdown')) fmt = 'markdown';
       else if (name.endsWith('.typ') || name.endsWith('.typst')) fmt = 'typst';
       else if (name.endsWith('.html') || name.endsWith('.htm')) fmt = 'html';
-      else if (name.endsWith('.tex') || name.endsWith('.latex')) fmt = 'tex';
+
       extraLangs[idx] = { ...extraLangs[idx], content: text, contentFormat: fmt };
     } catch (err: any) {
       error = err.message;
@@ -352,12 +352,10 @@
         contentFormat = 'typst';
       } else if (name.endsWith('.html') || name.endsWith('.htm')) {
         contentFormat = 'html';
-      } else if (name.endsWith('.tex') || name.endsWith('.latex')) {
-        contentFormat = 'tex';
       }
       // Use filename (without extension) as title if title is empty
       if (!title.trim()) {
-        title = file.name.replace(/\.(md|markdown|typ|typst|html|htm|tex|latex)$/i, '');
+        title = file.name.replace(/\.(md|markdown|typ|typst|html|htm)$/i, '');
       }
     } catch (err: any) {
       error = err.message;
@@ -574,7 +572,6 @@
     <select id="format" value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
       <option value="typst">Typst</option>
       <option value="markdown">Markdown + KaTeX</option>
-      <option value="tex">LaTeX</option>
       <option value="html">HTML</option>
     </select>
     {#if converting}<span class="converting-hint">{t('newArticle.converting')}</span>{/if}
@@ -583,10 +580,10 @@
 
 <div class="form-group">
   <div class="content-label-row">
-    <label for="content">{t('newArticle.contentLabel')} ({contentFormat === 'markdown' ? 'Markdown' : contentFormat === 'html' ? 'HTML' : contentFormat === 'tex' ? 'LaTeX' : 'Typst'})</label>
+    <label for="content">{t('newArticle.contentLabel')} ({contentFormat === 'markdown' ? 'Markdown' : contentFormat === 'html' ? 'HTML' : 'Typst'})</label>
     <div class="upload-btns">
       <label class="upload-btn" class:disabled={loadingFile}>
-        <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm,.tex,.latex" onchange={handleFileLoad} hidden />
+        <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm," onchange={handleFileLoad} hidden />
         {loadingFile ? t('newArticle.readingFile') : t('newArticle.uploadFile')}
       </label>
       <label class="upload-btn" class:disabled={uploadingImage}>
@@ -621,11 +618,10 @@
         <select bind:value={extraLangs[idx].contentFormat}>
           <option value="typst">Typst</option>
           <option value="markdown">Markdown</option>
-          <option value="tex">LaTeX</option>
-          <option value="html">HTML</option>
+              <option value="html">HTML</option>
         </select>
         <label class="upload-btn">
-          <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm,.tex,.latex" onchange={(e) => handleLangFileLoad(idx, e)} hidden />
+          <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm," onchange={(e) => handleLangFileLoad(idx, e)} hidden />
           {t('newArticle.uploadFile')}
         </label>
         <button type="button" class="lang-remove" onclick={() => removeLangVersion(idx)}>&times;</button>

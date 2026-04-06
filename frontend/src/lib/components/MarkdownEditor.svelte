@@ -1,0 +1,376 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { EditorState, type Transaction } from 'prosemirror-state';
+  import { EditorView } from 'prosemirror-view';
+  import { Schema } from 'prosemirror-model';
+  import { schema as basicSchema } from 'prosemirror-schema-basic';
+  import { addListNodes } from 'prosemirror-schema-list';
+  import { exampleSetup } from 'prosemirror-example-setup';
+  import { defaultMarkdownParser, defaultMarkdownSerializer, MarkdownParser } from 'prosemirror-markdown';
+  import { tableNodes, columnResizing, tableEditing, goToNextCell, addColumnAfter, addColumnBefore, deleteColumn, addRowAfter, addRowBefore, deleteRow, mergeCells, splitCell, toggleHeaderRow, toggleHeaderColumn, toggleHeaderCell } from 'prosemirror-tables';
+  import { keymap } from 'prosemirror-keymap';
+  import { t } from '../i18n/index.svelte';
+
+  let { value = $bindable(''), placeholder = '' }: { value: string; placeholder?: string } = $props();
+
+  let container: HTMLDivElement;
+  let view: EditorView | null = null;
+  let updating = false;
+  let fullscreen = $state(false);
+
+  // Build schema with table nodes
+  const baseNodes = addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block');
+  const tNodes = tableNodes({
+    tableGroup: 'block',
+    cellContent: 'block+',
+    cellAttributes: {},
+  });
+  const mdSchema = new Schema({
+    nodes: (baseNodes as any)
+      .append(tNodes),
+    marks: basicSchema.spec.marks,
+  });
+
+  const mdParser = new MarkdownParser(mdSchema, defaultMarkdownParser.tokenizer, {
+    ...defaultMarkdownParser.tokens,
+  });
+
+  function parseMarkdown(text: string) {
+    try {
+      return mdParser.parse(text) ?? mdSchema.topNodeType.createAndFill()!;
+    } catch {
+      return mdSchema.topNodeType.createAndFill()!;
+    }
+  }
+
+  function insertTable() {
+    if (!view) return;
+    const { state, dispatch } = view;
+    const { table, table_row, table_cell, table_header } = mdSchema.nodes;
+    const headerCells = [0, 1, 2].map(() => table_header.createAndFill()!);
+    const bodyCells = [0, 1, 2].map(() => table_cell.createAndFill()!);
+    const headerRow = table_row.create(null, headerCells);
+    const bodyRow = table_row.create(null, bodyCells);
+    const tbl = table.create(null, [headerRow, bodyRow]);
+    dispatch(state.tr.replaceSelectionWith(tbl));
+    view.focus();
+  }
+
+  function toggleFullscreen() {
+    fullscreen = !fullscreen;
+    // Re-focus editor after toggling
+    setTimeout(() => view?.focus(), 50);
+  }
+
+  onMount(() => {
+    const state = EditorState.create({
+      doc: parseMarkdown(value),
+      plugins: [
+        ...exampleSetup({ schema: mdSchema }),
+        columnResizing(),
+        tableEditing(),
+        keymap({
+          'Tab': goToNextCell(1),
+          'Shift-Tab': goToNextCell(-1),
+        }),
+      ],
+    });
+
+    view = new EditorView(container, {
+      state,
+      dispatchTransaction(tr: Transaction) {
+        if (!view) return;
+        const newState = view.state.apply(tr);
+        view.updateState(newState);
+        if (!updating && tr.docChanged) {
+          updating = true;
+          value = defaultMarkdownSerializer.serialize(newState.doc);
+          updating = false;
+        }
+      },
+    });
+
+    // Escape exits fullscreen
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && fullscreen) {
+        fullscreen = false;
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      view?.destroy();
+      view = null;
+    };
+  });
+
+  // Sync external value changes into the editor
+  $effect(() => {
+    if (!view || updating) return;
+    const current = defaultMarkdownSerializer.serialize(view.state.doc);
+    if (value !== current) {
+      updating = true;
+      const newDoc = parseMarkdown(value);
+      const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, newDoc.content);
+      view.dispatch(tr);
+      updating = false;
+    }
+  });
+</script>
+
+<div class="md-editor-wrapper" class:fullscreen>
+  <div class="md-toolbar">
+    <button type="button" class="toolbar-btn" onclick={insertTable} title={t('editor.insertTable')}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1" y="2" width="14" height="12" rx="1"/>
+        <line x1="1" y1="6" x2="15" y2="6"/>
+        <line x1="1" y1="10" x2="15" y2="10"/>
+        <line x1="6" y1="2" x2="6" y2="14"/>
+        <line x1="11" y1="2" x2="11" y2="14"/>
+      </svg>
+    </button>
+    <div class="toolbar-spacer"></div>
+    <button type="button" class="toolbar-btn" onclick={toggleFullscreen} title={fullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}>
+      {#if fullscreen}
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <polyline points="6,2 6,6 2,6"/><polyline points="10,14 10,10 14,10"/>
+          <polyline points="14,6 10,6 10,2"/><polyline points="2,10 6,10 6,14"/>
+        </svg>
+      {:else}
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <polyline points="2,6 2,2 6,2"/><polyline points="14,10 14,14 10,14"/>
+          <polyline points="10,2 14,2 14,6"/><polyline points="6,14 2,14 2,10"/>
+        </svg>
+      {/if}
+    </button>
+  </div>
+  <div class="md-editor" bind:this={container}></div>
+  {#if !value && placeholder}
+    <div class="md-placeholder">{placeholder}</div>
+  {/if}
+</div>
+
+<style>
+  .md-editor-wrapper {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-white);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .md-editor-wrapper.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    border-radius: 0;
+    border: none;
+  }
+
+  .md-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 2px 4px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-white);
+    gap: 2px;
+  }
+
+  .toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 6px;
+    border: none;
+    background: none;
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--text-primary);
+  }
+  .toolbar-btn:hover {
+    background: var(--bg-hover, #f0f0f0);
+  }
+
+  .toolbar-spacer {
+    flex: 1;
+  }
+
+  .md-editor {
+    flex: 1;
+    min-height: 300px;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.7;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .fullscreen .md-editor {
+    min-height: 0;
+  }
+
+  .md-placeholder {
+    position: absolute;
+    color: var(--text-hint);
+    font-size: 14px;
+    pointer-events: none;
+    padding: 8px 12px;
+    top: 72px; /* below toolbar + menubar */
+  }
+
+  /* ProseMirror core styles */
+  .md-editor :global(.ProseMirror) {
+    padding: 10px 14px;
+    min-height: 280px;
+    outline: none;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .fullscreen .md-editor :global(.ProseMirror) {
+    min-height: 0;
+    height: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px 32px;
+  }
+
+  .md-editor :global(.ProseMirror p) { margin: 0 0 0.6em; }
+
+  .md-editor :global(.ProseMirror h1),
+  .md-editor :global(.ProseMirror h2),
+  .md-editor :global(.ProseMirror h3),
+  .md-editor :global(.ProseMirror h4) {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    margin: 0.8em 0 0.3em;
+  }
+  .md-editor :global(.ProseMirror h1) { font-size: 1.5em; }
+  .md-editor :global(.ProseMirror h2) { font-size: 1.25em; }
+  .md-editor :global(.ProseMirror h3) { font-size: 1.1em; }
+
+  .md-editor :global(.ProseMirror code) {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.88em;
+    background: var(--bg-hover, #f5f5f5);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .md-editor :global(.ProseMirror pre) {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.88em;
+    background: var(--bg-hover, #f5f5f5);
+    padding: 10px 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0.5em 0;
+  }
+  .md-editor :global(.ProseMirror pre code) { background: none; padding: 0; }
+
+  .md-editor :global(.ProseMirror blockquote) {
+    border-left: 3px solid var(--accent);
+    margin: 0.5em 0;
+    padding-left: 1em;
+    color: var(--text-secondary);
+  }
+
+  .md-editor :global(.ProseMirror ul),
+  .md-editor :global(.ProseMirror ol) { padding-left: 1.5em; margin: 0.4em 0; }
+  .md-editor :global(.ProseMirror li) { margin-bottom: 0.2em; }
+
+  .md-editor :global(.ProseMirror hr) {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1em 0;
+  }
+
+  .md-editor :global(.ProseMirror-focused) { outline: none; }
+
+  /* Table styles */
+  .md-editor :global(table) {
+    border-collapse: collapse;
+    margin: 0.5em 0;
+    width: auto;
+    overflow: auto;
+    table-layout: fixed;
+  }
+  .md-editor :global(th),
+  .md-editor :global(td) {
+    border: 1px solid var(--border, #ddd);
+    padding: 6px 10px;
+    min-width: 60px;
+    vertical-align: top;
+    position: relative;
+  }
+  .md-editor :global(th) {
+    background: var(--bg-hover, #f5f5f5);
+    font-weight: 600;
+  }
+  .md-editor :global(.selectedCell) {
+    background: rgba(95, 155, 101, 0.15);
+  }
+  .md-editor :global(.column-resize-handle) {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--accent, #4a7);
+    cursor: col-resize;
+    z-index: 20;
+  }
+
+  /* Menu bar (from prosemirror-example-setup) */
+  .md-editor :global(.ProseMirror-menubar-wrapper) { border: none; }
+
+  .md-editor :global(.ProseMirror-menubar) {
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-white);
+    padding: 4px 8px;
+    min-height: 32px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    align-items: center;
+  }
+
+  .md-editor :global(.ProseMirror-menu-active) {
+    background: var(--accent);
+    color: white;
+    border-radius: 2px;
+  }
+
+  .md-editor :global(.ProseMirror-icon) {
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 2px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .md-editor :global(.ProseMirror-icon:hover) { background: var(--bg-hover); }
+  .md-editor :global(.ProseMirror-icon svg) { fill: currentColor; width: 16px; height: 16px; }
+
+  .md-editor :global(.ProseMirror-menuseparator) {
+    border-right: 1px solid var(--border);
+    height: 16px;
+    margin: 0 4px;
+  }
+
+  .md-editor :global(.ProseMirror-tooltip) {
+    background: #333;
+    color: white;
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 3px;
+  }
+
+  .md-editor :global(.ProseMirror ::selection) {
+    background: rgba(95, 155, 101, 0.25);
+  }
+</style>
