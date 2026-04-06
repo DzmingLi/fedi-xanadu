@@ -8,10 +8,6 @@ members = [
     "crates/fx-render",
     "crates/fx-cli",
     "crates/fx-client",
-    "vendor/pijul-core",
-    "vendor/pijul-repository",
-    "vendor/pijul-config",
-    "vendor/pijul-macros",
 ]
 resolver = "3"
 
@@ -72,11 +68,11 @@ clap = { version = "4", features = ["derive", "env"] }
 toml = { version = "0.8", features = ["preserve_order"] }
 figment = { version = "0.10", features = ["toml", "env"] }
 
-# Pijul vendored dependencies
-pijul-core = { path = "vendor/pijul-core", version = "1.0.0-beta.10" }
-pijul-repository = { path = "vendor/pijul-repository", version = "1.0.0-beta.10" }
-pijul-config = { path = "vendor/pijul-config", version = "1.0.0-beta.10" }
-pijul-macros = { path = "vendor/pijul-macros", version = "1.0.0-beta.10" }
+# Pijul (AT Protocol ecosystem fork)
+pijul-core = { package = "pijul-at-core", version = "1.0.0-beta.11" }
+pijul-repository = { package = "pijul-at-repository", version = "1.0.0-beta.11" }
+pijul-config = { package = "pijul-at-config", version = "1.0.0-beta.11" }
+pijul-macros = { package = "pijul-at-macros", version = "1.0.0-beta.11" }
 
 # Pijul transitive dependencies
 adler32 = "1.2"

@@ -1100,29 +1100,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_filter"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e90c2accc4b07a8456ea0debdc2e7587bdd890680d71173a15d4ae604f6eef"
-dependencies = [
- "log",
- "regex",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.11.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0621c04f2196ac3f488dd583365b9c09be011a4ab8b9f37248ffcc8f6198b56a"
-dependencies = [
- "anstream",
- "anstyle",
- "env_filter",
- "jiff",
- "log",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1490,9 +1467,9 @@ name = "fx-pijul"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "pijul-config",
- "pijul-core",
- "pijul-repository",
+ "pijul-at-config",
+ "pijul-at-core",
+ "pijul-at-repository",
  "rand 0.10.0",
  "serde_json",
  "tempfile",
@@ -3125,15 +3102,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5be167a7af36ee22fe3115051bc51f6e6c7054c9348e28deb4f49bd6f705a315"
 
 [[package]]
-name = "pijul-config"
-version = "1.0.0-beta.10"
+name = "pijul-at-config"
+version = "1.0.0-beta.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d96cf316f41737b7d079ba4b8445c8ec5dedff5bb9a89a960af44fc91103f5"
 dependencies = [
  "anyhow",
  "dialoguer",
  "dirs-next",
  "figment",
  "log",
- "pijul-core",
+ "pijul-at-core",
  "serde",
  "serde_derive",
  "toml",
@@ -3141,12 +3120,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "pijul-core"
-version = "1.0.0-beta.10"
+name = "pijul-at-core"
+version = "1.0.0-beta.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a330ddb2c4bab8d89ac97154996259fae495920a1dbf7e34264bd3152bb9b2a"
 dependencies = [
  "adler32",
  "aes",
- "anyhow",
  "bincode",
  "bitflags 2.11.0",
  "blake3",
@@ -3160,8 +3140,6 @@ dependencies = [
  "diffs",
  "ed25519-dalek",
  "encoding_rs",
- "env_logger",
- "flate2",
  "generic-array",
  "getrandom 0.2.17",
  "hmac 0.11.0",
@@ -3174,17 +3152,14 @@ dependencies = [
  "parking_lot 0.12.5",
  "path-slash",
  "pbkdf2",
- "pijul-macros",
- "quickcheck",
+ "pijul-at-macros",
  "rand 0.10.0",
- "rand_chacha 0.10.0",
  "regex",
  "sanakirja",
  "serde",
  "serde_derive",
  "serde_json",
  "sha2 0.9.9",
- "tar",
  "tempfile",
  "thiserror 2.0.18",
  "toml",
@@ -3193,8 +3168,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "pijul-macros"
-version = "1.0.0-beta.10"
+name = "pijul-at-macros"
+version = "1.0.0-beta.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c97a4c54d02405af805eb535651f9502d382996ae667156d7580f1cb4419273b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3202,13 +3179,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "pijul-repository"
-version = "1.0.0-beta.10"
+name = "pijul-at-repository"
+version = "1.0.0-beta.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a79b152119109f18653cdc0d0f9d1b7f28ce0ee7332723a74cebcd1d50138903"
 dependencies = [
  "anyhow",
  "log",
- "pijul-config",
- "pijul-core",
+ "pijul-at-config",
+ "pijul-at-core",
  "rlimit",
  "toml",
 ]
@@ -3479,17 +3458,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quickcheck"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95c589f335db0f6aaa168a7cd27b1fc6920f5e1470c804f814d9cd6e62a0f70b"
-dependencies = [
- "env_logger",
- "log",
- "rand 0.10.0",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3583,16 +3551,6 @@ checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
 dependencies = [
  "ppv-lite86",
  "rand_core 0.9.5",
-]
-
-[[package]]
-name = "rand_chacha"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e6af7f3e25ded52c41df4e0b1af2d047e45896c2f3281792ed68a1c243daedb"
-dependencies = [
- "ppv-lite86",
- "rand_core 0.10.0",
 ]
 
 [[package]]
