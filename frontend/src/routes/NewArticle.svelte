@@ -733,23 +733,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v6m0 6v6m9-9h-6m-6 0H3"/></svg>
           </button>
 
-          <select class="toolbar-select" value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
-            <option value="markdown">Markdown</option>
-            <option value="typst">Typst</option>
-            <option value="html">HTML</option>
-          </select>
-          {#if converting}<span class="converting-hint">{t('newArticle.converting')}</span>{/if}
-
           <div class="toolbar-spacer"></div>
-
-          <label class="toolbar-btn" class:disabled={loadingFile}>
-            <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm," onchange={handleFileLoad} hidden />
-            {loadingFile ? t('newArticle.readingFile') : t('newArticle.uploadFile')}
-          </label>
-          <label class="toolbar-btn" class:disabled={uploadingImage}>
-            <input type="file" accept="image/*" onchange={handleImageUpload} hidden />
-            {uploadingImage ? t('newArticle.uploading') : t('newArticle.uploadImage')}
-          </label>
 
           <button
             class="toolbar-icon"
@@ -774,6 +758,25 @@
       <!-- Right: Settings Sidebar -->
       {#if sidebarOpen}
         <aside class="settings-sidebar">
+          <div class="sb-field" style="padding: 8px 12px; border-bottom: 1px solid var(--border);">
+            <label>{t('newArticle.formatLabel')}</label>
+            <select value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
+              <option value="markdown">Markdown + KaTeX</option>
+              <option value="typst">Typst</option>
+              <option value="html">HTML</option>
+            </select>
+            {#if converting}<span class="converting-hint">{t('newArticle.converting')}</span>{/if}
+          </div>
+          <div class="sb-uploads">
+            <label class="sb-upload-btn" class:disabled={loadingFile}>
+              <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm," onchange={handleFileLoad} hidden />
+              {loadingFile ? t('newArticle.readingFile') : t('newArticle.uploadFile')}
+            </label>
+            <label class="sb-upload-btn" class:disabled={uploadingImage}>
+              <input type="file" accept="image/*" onchange={handleImageUpload} hidden />
+              {uploadingImage ? t('newArticle.uploading') : t('newArticle.uploadImage')}
+            </label>
+          </div>
           <details open>
             <summary>{t('editor.basicInfo')}</summary>
             <div class="sb-field">
@@ -1012,8 +1015,14 @@
 
   /* === Title area === */
   .editor-title-area {
-    padding: 12px 24px 0;
+    padding: 12px 0 0;
     flex-shrink: 0;
+    max-width: 760px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+    padding-left: 1rem;
+    padding-right: 1rem;
   }
   .fork-hint {
     font-size: 13px;
@@ -1274,19 +1283,23 @@
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
+    background: var(--bg-page);
   }
   .editor-textarea {
     flex: 1;
     width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
     border: none;
     outline: none;
     resize: none;
     font-family: var(--font-mono, monospace);
     font-size: 13px;
     line-height: 1.5;
-    padding: 1rem;
+    padding: 2rem 1rem;
     color: var(--text-primary);
-    background: var(--bg-white);
+    background: var(--bg-page);
+    box-sizing: border-box;
   }
 
   /* === Settings Sidebar (right) === */
@@ -1298,6 +1311,25 @@
     font-size: 13px;
     background: var(--bg-white);
   }
+  .sb-uploads {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sb-upload-btn {
+    flex: 1;
+    text-align: center;
+    font-size: 12px;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 5px 8px;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .sb-upload-btn:hover { background: rgba(95,155,101,0.08); }
+  .sb-upload-btn.disabled { opacity: 0.5; pointer-events: none; }
   .settings-sidebar details {
     border-bottom: 1px solid var(--border);
   }

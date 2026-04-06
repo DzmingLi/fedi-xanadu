@@ -166,6 +166,7 @@
     min-height: 0;
     border: none;
     border-radius: 0;
+    background: var(--bg-page);
   }
 
   .md-editor-wrapper.fullscreen {
@@ -250,12 +251,19 @@
     hyphens: auto;
   }
 
+  .fill-height .md-editor :global(.ProseMirror) {
+    min-height: 0;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+
   .fullscreen .md-editor :global(.ProseMirror) {
     min-height: 0;
     height: 100%;
-    max-width: 800px;
+    max-width: 760px;
     margin: 0 auto;
-    padding: 2rem 32px;
+    padding: 2rem 1rem;
   }
 
   .md-editor :global(.ProseMirror p) { margin: 1em 0; overflow-wrap: break-word; }
