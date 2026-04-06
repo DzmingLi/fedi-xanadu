@@ -203,9 +203,6 @@
   .md-editor {
     flex: 1;
     min-height: 300px;
-    font-family: var(--font-sans);
-    font-size: 14px;
-    line-height: 1.7;
     overflow-y: auto;
     position: relative;
   }
@@ -217,19 +214,29 @@
   .md-placeholder {
     position: absolute;
     color: var(--text-hint);
-    font-size: 14px;
+    font-size: 12pt;
+    font-family: var(--font-serif);
     pointer-events: none;
-    padding: 8px 12px;
-    top: 72px; /* below toolbar + menubar */
+    padding: 1.5rem 14px;
+    top: 64px;
   }
 
-  /* ProseMirror core styles */
+  /*
+   * ProseMirror editing area — mirrors .content from app.css
+   * so the editor looks identical to the rendered article.
+   */
   .md-editor :global(.ProseMirror) {
-    padding: 10px 14px;
+    padding: 1.5rem 14px;
     min-height: 280px;
     outline: none;
     white-space: pre-wrap;
     word-wrap: break-word;
+    font-family: var(--font-serif);
+    font-size: 12pt;
+    line-height: 1.45;
+    color: var(--text-primary);
+    text-align: justify;
+    hyphens: auto;
   }
 
   .fullscreen .md-editor :global(.ProseMirror) {
@@ -237,52 +244,60 @@
     height: 100%;
     max-width: 800px;
     margin: 0 auto;
-    padding: 20px 32px;
+    padding: 2rem 32px;
   }
 
-  .md-editor :global(.ProseMirror p) { margin: 0 0 0.6em; }
+  .md-editor :global(.ProseMirror p) { margin: 1em 0; overflow-wrap: break-word; }
 
-  .md-editor :global(.ProseMirror h1),
-  .md-editor :global(.ProseMirror h2),
-  .md-editor :global(.ProseMirror h3),
-  .md-editor :global(.ProseMirror h4) {
+  .md-editor :global(.ProseMirror h1) {
     font-family: var(--font-serif);
-    font-weight: 500;
-    margin: 0.8em 0 0.3em;
+    font-size: 2rem;
+    font-weight: 400;
+    margin: 2em 0 0.5em;
   }
-  .md-editor :global(.ProseMirror h1) { font-size: 1.5em; }
-  .md-editor :global(.ProseMirror h2) { font-size: 1.25em; }
-  .md-editor :global(.ProseMirror h3) { font-size: 1.1em; }
+  .md-editor :global(.ProseMirror h2) {
+    font-family: var(--font-serif);
+    font-size: 1.6rem;
+    font-weight: 400;
+    margin: 1.75em 0 0.5em;
+    padding-bottom: 0.25em;
+    border-bottom: 1px solid var(--border);
+  }
+  .md-editor :global(.ProseMirror h3) {
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.5em 0 0.4em;
+  }
 
   .md-editor :global(.ProseMirror code) {
-    font-family: var(--font-mono, monospace);
-    font-size: 0.88em;
-    background: var(--bg-hover, #f5f5f5);
-    padding: 1px 4px;
+    font-size: 0.9em;
+    padding: 0.15em 0.35em;
+    background: var(--bg-gray, #f5f5f5);
     border-radius: 3px;
   }
 
   .md-editor :global(.ProseMirror pre) {
-    font-family: var(--font-mono, monospace);
-    font-size: 0.88em;
-    background: var(--bg-hover, #f5f5f5);
-    padding: 10px 12px;
-    border-radius: 4px;
     overflow-x: auto;
-    margin: 0.5em 0;
+    padding: 1em;
+    margin: 1em 0;
+    background: var(--bg-gray, #f5f5f5);
+    border-radius: 4px;
+    font-size: 0.9em;
+    line-height: 1.5;
   }
-  .md-editor :global(.ProseMirror pre code) { background: none; padding: 0; }
+  .md-editor :global(.ProseMirror pre code) { padding: 0; background: none; }
 
   .md-editor :global(.ProseMirror blockquote) {
-    border-left: 3px solid var(--accent);
-    margin: 0.5em 0;
-    padding-left: 1em;
+    margin: 1em 0;
+    padding: 0.5em 1em;
+    border-left: 3px solid var(--border-strong);
     color: var(--text-secondary);
   }
 
   .md-editor :global(.ProseMirror ul),
-  .md-editor :global(.ProseMirror ol) { padding-left: 1.5em; margin: 0.4em 0; }
-  .md-editor :global(.ProseMirror li) { margin-bottom: 0.2em; }
+  .md-editor :global(.ProseMirror ol) { padding-left: 1.5em; margin: 0.75em 0; }
+  .md-editor :global(.ProseMirror li) { margin: 0.25em 0; }
 
   .md-editor :global(.ProseMirror hr) {
     border: none;
@@ -290,27 +305,34 @@
     margin: 1em 0;
   }
 
+  .md-editor :global(.ProseMirror img) { max-width: 100%; height: auto; }
+
   .md-editor :global(.ProseMirror-focused) { outline: none; }
 
-  /* Table styles */
+  /* Table styles — mirrors .content table from app.css */
   .md-editor :global(table) {
     border-collapse: collapse;
-    margin: 0.5em 0;
+    margin: 1.25em auto;
+    font-size: 0.95em;
     width: auto;
     overflow: auto;
-    table-layout: fixed;
   }
   .md-editor :global(th),
   .md-editor :global(td) {
-    border: 1px solid var(--border, #ddd);
-    padding: 6px 10px;
+    border: 1px solid var(--border-strong);
+    padding: 0.5em 0.875em;
     min-width: 60px;
+    text-align: left;
     vertical-align: top;
     position: relative;
   }
   .md-editor :global(th) {
-    background: var(--bg-hover, #f5f5f5);
+    background: rgba(0, 0, 0, 0.03);
     font-weight: 600;
+    font-family: var(--font-sans);
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
   }
   .md-editor :global(.selectedCell) {
     background: rgba(95, 155, 101, 0.15);
