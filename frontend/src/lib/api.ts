@@ -133,7 +133,7 @@ export const getMyVote = (uri: string) => get<{ value: number }>(`/votes/my?uri=
 export const listSkills = () => get<UserSkill[]>('/skills');
 export const lightSkill = (tag_id: string, status: 'mastered' | 'learning' = 'mastered') =>
   post<void>('/skills', { tag_id, status });
-export const unlightSkill = (tag_id: string) => post<void>('/skills/unlight', { tag_id });
+export const unlightSkill = (tag_id: string) => del<void>('/skills/unlight', { tag_id });
 
 // Tag tree
 export const getTagTree = () => get<TagTreeEntry[]>('/tag-tree');
