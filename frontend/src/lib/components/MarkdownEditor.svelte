@@ -131,19 +131,6 @@
       </svg>
     </button>
     <div class="toolbar-spacer"></div>
-    <button type="button" class="toolbar-btn" onclick={toggleFullscreen} title={fullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}>
-      {#if fullscreen}
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <polyline points="6,2 6,6 2,6"/><polyline points="10,14 10,10 14,10"/>
-          <polyline points="14,6 10,6 10,2"/><polyline points="2,10 6,10 6,14"/>
-        </svg>
-      {:else}
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <polyline points="2,6 2,2 6,2"/><polyline points="14,10 14,14 10,14"/>
-          <polyline points="10,2 14,2 14,6"/><polyline points="6,14 2,14 2,10"/>
-        </svg>
-      {/if}
-    </button>
   </div>
   <div class="md-editor" bind:this={container}></div>
   {#if !value && placeholder}

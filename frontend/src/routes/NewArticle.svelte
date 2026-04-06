@@ -65,6 +65,7 @@
   let selectedVersionId = $state<number | null>(null);
   let recordMessage = $state('');
   let recording = $state(false);
+  let showRecordInput = $state(false);
   let loadingHistory = $state(false);
 
   async function loadHistory() {
@@ -115,22 +116,50 @@
   }
 
   async function doRecord() {
-    if (!savedArticleUri) return;
+    if (!title.trim() || !content.trim()) {
+      error = t('newArticle.fillRequired');
+      return;
+    }
     recording = true;
     error = '';
     try {
-      // Save first if there are unsaved changes
-      if (content !== lastSavedContent) {
-        await saveArticle(savedArticleUri, {
-          title: title.trim(),
-          description: description.trim(),
-          content: content.trim(),
-        });
-        lastSavedContent = content;
-      }
       const msg = recordMessage.trim() || 'Update';
-      versionHistory = await recordArticle(savedArticleUri, msg);
+
+      if (!savedArticleUri) {
+        // New article: publish first, which auto-records the initial change
+        const article = await createArticle({
+          title: title.trim(),
+          description: description.trim() || undefined,
+          content: content.trim(),
+          content_format: contentFormat,
+          lang: lang || getLocale(),
+          license: restricted ? 'All-Rights-Reserved' : (license || undefined),
+          translation_of: translationOf || undefined,
+          restricted: restricted || undefined,
+          category: category || undefined,
+          book_id: bookId || undefined,
+          edition_id: editionId || undefined,
+          tags: selectedTags,
+          prereqs,
+        });
+        savedArticleUri = article.at_uri;
+        lastSavedContent = content;
+        isEditing = true;
+        await loadHistory();
+      } else {
+        // Existing article: save + record
+        if (content !== lastSavedContent) {
+          await saveArticle(savedArticleUri, {
+            title: title.trim(),
+            description: description.trim(),
+            content: content.trim(),
+          });
+          lastSavedContent = content;
+        }
+        versionHistory = await recordArticle(savedArticleUri, msg);
+      }
       recordMessage = '';
+      showRecordInput = false;
     } catch (e: any) {
       error = e.message;
     } finally {
@@ -961,7 +990,7 @@
         <button class="btn btn-outline" onclick={doSave} disabled={saving || !hasUnsavedChanges}>
           {saving ? t('newArticle.saving') : t('common.save')}
         </button>
-      {:else}
+      {:else if !forkSource}
         <button class="btn btn-draft" onclick={handleSaveDraft} disabled={savingDraft}>
           {savingDraft
             ? t('newArticle.saving')
@@ -975,23 +1004,36 @@
 
       <div class="footer-spacer"></div>
 
-      {#if isEditing}
-        <input
-          class="commit-input"
-          bind:value={commitMessage}
-          placeholder={t('newArticle.commitPlaceholder')}
-          maxlength={200}
-        />
-      {/if}
-
       {#if forkSource}
         <button class="btn btn-outline" onclick={previewDiff}>
           {t('newArticle.previewDiff')}
         </button>
+        <button class="btn btn-primary" onclick={previewDiff} disabled={submitting}>
+          {submitting ? t('newArticle.publishing') : t('newArticle.publish')}
+        </button>
+      {:else}
+        <!-- Record button with popup input -->
+        <div class="record-group">
+          {#if showRecordInput}
+            <div class="record-popup">
+              <input
+                class="record-msg-input"
+                bind:value={recordMessage}
+                placeholder={t('version.recordPlaceholder')}
+                maxlength={200}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doRecord(); } if (e.key === 'Escape') { showRecordInput = false; } }}
+              />
+              <button class="btn btn-primary btn-sm" onclick={doRecord} disabled={recording || (!title.trim() || !content.trim())}>
+                {recording ? '...' : t('version.record')}
+              </button>
+            </div>
+          {/if}
+          <button class="btn btn-record" onclick={() => { showRecordInput = !showRecordInput; }} disabled={recording}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            {t('version.record')}
+          </button>
+        </div>
       {/if}
-      <button class="btn btn-primary" onclick={forkSource ? previewDiff : submit} disabled={submitting}>
-        {submitting ? t('newArticle.publishing') : t('newArticle.publish')}
-      </button>
     </div>
   {/if}
 </div>
@@ -1572,16 +1614,6 @@
   .footer-status { font-size: 12px; }
   .status-unsaved { color: #d97706; }
   .status-saved { color: var(--text-hint); }
-  .commit-input {
-    width: 200px;
-    padding: 5px 8px;
-    font-size: 12px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: var(--bg-white);
-    color: var(--text-primary);
-  }
-  .commit-input::placeholder { color: var(--text-hint); }
 
   .btn {
     padding: 6px 16px;
@@ -1618,6 +1650,58 @@
   }
   .btn-draft:hover { border-color: var(--accent); color: var(--accent); }
   .btn-draft:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Record button group */
+  .record-group {
+    position: relative;
+  }
+  .record-popup {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 8px;
+    display: flex;
+    gap: 6px;
+    padding: 10px;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    min-width: 320px;
+    z-index: 20;
+  }
+  .record-msg-input {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+    outline: none;
+  }
+  .record-msg-input:focus { border-color: var(--accent); }
+  .record-msg-input::placeholder { color: var(--text-hint); }
+  .btn-sm {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+  }
+  .btn-record {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 18px;
+    font-size: 13px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-record:hover:not(:disabled) { opacity: 0.9; }
+  .btn-record:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* === Fork diff overlay === */
   .diff-overlay {
