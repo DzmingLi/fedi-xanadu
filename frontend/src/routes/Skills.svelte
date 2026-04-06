@@ -179,19 +179,23 @@
 
   // --- Actions ---
   async function setSkillStatus(tagId: string, status: 'learning' | 'mastered' | 'none') {
-    if (status === 'none') {
-      await unlightSkill(tagId);
-      skillMap.delete(tagId);
-    } else {
-      await lightSkill(tagId, status);
-      if (status === 'mastered') {
-        const s = await listSkills();
-        skillMap = new Map(s.map(sk => [sk.tag_id, sk.status]));
-        return;
+    try {
+      if (status === 'none') {
+        await unlightSkill(tagId);
+        skillMap.delete(tagId);
+      } else {
+        await lightSkill(tagId, status);
+        if (status === 'mastered') {
+          const s = await listSkills();
+          skillMap = new Map(s.map(sk => [sk.tag_id, sk.status]));
+          return;
+        }
+        skillMap.set(tagId, status);
       }
-      skillMap.set(tagId, status);
+      skillMap = new Map(skillMap);
+    } catch (e: any) {
+      console.error('setSkillStatus failed:', e);
     }
-    skillMap = new Map(skillMap);
   }
 
   async function addTagSkill(tagId: string, tagName?: string) {

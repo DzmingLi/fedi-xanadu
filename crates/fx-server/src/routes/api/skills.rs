@@ -51,7 +51,7 @@ pub async fn delete_skill(
     }
 
     skill_service::delete_skill(&state.pool, &user.did, &input.tag_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- User Tag Tree ---
