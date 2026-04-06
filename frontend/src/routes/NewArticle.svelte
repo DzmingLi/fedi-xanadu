@@ -30,7 +30,7 @@
   let title = $state('');
   let description = $state('');
   let content = $state('');
-  let contentFormat = $state<ContentFormat>(getLangPrefs()?.default_format || 'typst');
+  let contentFormat = $state<ContentFormat>(getLangPrefs()?.default_format || 'markdown');
   let lang = $state(getLangPrefs()?.native_lang || getLocale());
   let license = $state('CC-BY-SA-4.0');
   let restricted = $state(false);
