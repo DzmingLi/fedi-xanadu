@@ -521,7 +521,9 @@ pub(super) async fn publish_pijul_ref_update(
     pds_create_record(state, token, fx_atproto::lexicon::PIJUL_REF_UPDATE, record, None, "pijul refUpdate").await;
 }
 
-/// Shared: update article content in the correct repo (series or independent).
+/// Shared: write article content to the correct repo (series or independent),
+/// render HTML, and optionally record a pijul change.
+/// When `record` is false, only the working copy and DB are updated (no pijul change).
 pub(super) async fn update_article_content(
     state: &AppState,
     uri: &str,
@@ -530,6 +532,18 @@ pub(super) async fn update_article_content(
     content: &str,
     format: &str,
     message: &str,
+) -> Result<(), AppError> {
+    save_article_content(state, uri, content, format).await?;
+    record_pijul_change(state, uri, did, token, content, message).await?;
+    Ok(())
+}
+
+/// Write article content to working copy and render HTML, without recording a pijul change.
+pub(super) async fn save_article_content(
+    state: &AppState,
+    uri: &str,
+    content: &str,
+    format: &str,
 ) -> Result<(), AppError> {
     let src_ext = fx_render::format_extension(format);
     let series_info = get_series_pijul_info(state, uri).await;
@@ -548,7 +562,34 @@ pub(super) async fn update_article_content(
             let _ = tokio::fs::write(cache_dir.join(format!("{chapter_id}.html")), &rendered).await;
             let _ = tokio::fs::remove_file(cache_dir.join("series.cache")).await;
         }
+    } else {
+        let node_id = uri_to_node_id(uri);
+        let repo_path = state.pijul.repo_path(&node_id);
+        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
 
+        if format != "html" {
+            let rendered = render_content(format, content, &repo_path)?;
+            let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+        }
+    }
+
+    let hash = content_hash(content);
+    article_service::update_article_content_hash(&state.pool, uri, &hash).await?;
+    Ok(())
+}
+
+/// Record the current working copy state as a pijul change and store version metadata.
+pub(super) async fn record_pijul_change(
+    state: &AppState,
+    uri: &str,
+    did: &str,
+    token: Option<&str>,
+    content: &str,
+    message: &str,
+) -> Result<(), AppError> {
+    let series_info = get_series_pijul_info(state, uri).await;
+
+    if let Some((series_node_id, _chapter_id)) = series_info {
         match state.pijul.record_series(&series_node_id, message, Some(did)) {
             Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
@@ -563,14 +604,6 @@ pub(super) async fn update_article_content(
         }
     } else {
         let node_id = uri_to_node_id(uri);
-        let repo_path = state.pijul.repo_path(&node_id);
-        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
-
-        if format != "html" {
-            let rendered = render_content(format, content, &repo_path)?;
-            let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
-        }
-
         match state.pijul.record(&node_id, message, Some(did)) {
             Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
@@ -584,9 +617,6 @@ pub(super) async fn update_article_content(
             Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
         }
     }
-
-    let hash = content_hash(content);
-    article_service::update_article_content_hash(&state.pool, uri, &hash).await?;
     Ok(())
 }
 
@@ -1108,7 +1138,12 @@ pub struct UpdateArticleInput {
     pub description: Option<String>,
     pub content: Option<String>,
     pub commit_message: Option<String>,
+    /// When false, only saves content to working copy without creating a pijul change.
+    #[serde(default = "default_true")]
+    pub record: bool,
 }
+
+fn default_true() -> bool { true }
 
 pub async fn update_article(
     State(state): State<AppState>,
@@ -1142,12 +1177,66 @@ pub async fn update_article(
 
     if let Some(ref content) = input.content {
         let format = article_service::get_content_format(&state.pool, &input.uri).await?;
-        let msg = input.commit_message.as_deref().unwrap_or("Update article");
-        update_article_content(&state, &input.uri, &user.did, Some(&user.token), content, &format, msg).await?;
+        if input.record {
+            let msg = input.commit_message.as_deref().unwrap_or("Update article");
+            update_article_content(&state, &input.uri, &user.did, Some(&user.token), content, &format, msg).await?;
+        } else {
+            save_article_content(&state, &input.uri, content, &format).await?;
+        }
     }
 
     let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
     Ok(Json(article))
+}
+
+// --- Record article change (explicit) ---
+
+#[derive(serde::Deserialize)]
+pub struct RecordArticleInput {
+    pub uri: String,
+    pub message: String,
+}
+
+pub async fn record_article(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<RecordArticleInput>,
+) -> ApiResult<Json<Vec<ArticleVersionInfo>>> {
+    let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    // Read current content from working copy
+    let format = article_service::get_content_format(&state.pool, &input.uri).await?;
+    let src_ext = fx_render::format_extension(&format);
+    let series_info = get_series_pijul_info(&state, &input.uri).await;
+
+    let content = if let Some((series_node_id, chapter_id)) = &series_info {
+        let series_repo = state.pijul.series_repo_path(series_node_id);
+        let path = series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}"));
+        tokio::fs::read_to_string(&path).await
+            .map_err(|e| AppError(fx_core::Error::Internal(format!("read working copy: {e}"))))?
+    } else {
+        let node_id = uri_to_node_id(&input.uri);
+        let repo_path = state.pijul.repo_path(&node_id);
+        let path = repo_path.join(format!("content.{src_ext}"));
+        tokio::fs::read_to_string(&path).await
+            .map_err(|e| AppError(fx_core::Error::Internal(format!("read working copy: {e}"))))?
+    };
+
+    let msg = if input.message.trim().is_empty() { "Update" } else { input.message.trim() };
+    record_pijul_change(&state, &input.uri, &user.did, Some(&user.token), &content, msg).await?;
+
+    // Return updated history
+    let versions = version_service::list_versions(&state.pool, &input.uri).await?;
+    let node_id = uri_to_node_id(&input.uri);
+    let result = versions
+        .into_iter()
+        .map(|v| {
+            let unrecordable = state.pijul.is_unrecordable(&node_id, &v.change_hash);
+            ArticleVersionInfo { version: v, unrecordable }
+        })
+        .collect();
+    Ok(Json(result))
 }
 
 // --- Delete article ---

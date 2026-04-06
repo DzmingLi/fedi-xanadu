@@ -476,6 +476,27 @@ export default {
   'profile.tabQA': '问答',
   'profile.tabBookmarks': '收藏',
 
+  // Editor layout
+  'editor.settings': '设置',
+  'editor.basicInfo': '基本信息',
+
+  // Version panel
+  'version.diff': '变更',
+  'version.history': '历史',
+  'version.noChanges': '无变更',
+  'version.noHistory': '暂无记录',
+  'version.record': '记录',
+  'version.recordPlaceholder': '变更说明...',
+  'version.unrecord': '撤销此记录',
+  'version.confirmUnrecord': '确定要撤销此记录？撤销后内容会回退到上一版本。',
+  'version.togglePanel': '版本面板',
+  'version.unsaved': '未保存',
+  'version.saved': '已保存',
+
+  // Series sidebar
+  'series.tableOfContents': '目录',
+  'series.collapseSidebar': '收起目录',
+
   // Roadmap
   'roadmap.title': '路线图',
   'roadmap.subtitle': '计划实现的功能',

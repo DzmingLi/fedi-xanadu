@@ -6,9 +6,10 @@
   import { isBlocked, addBlocked } from '../lib/blocklist.svelte';
   import { t, LANG_NAMES } from '../lib/i18n/index.svelte';
   import CommentThread from '../lib/components/CommentThread.svelte';
+  import SeriesSidebar from '../lib/components/SeriesSidebar.svelte';
   import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, BookmarkWithTitle, VoteSummary, SeriesContextItem, AccessGrant } from '../lib/types';
 
-  let { uri }: { uri: string } = $props();
+  let { uri, seriesId = '' }: { uri: string; seriesId?: string } = $props();
 
   let article = $state<Article | null>(null);
   let content = $state<ArticleContent | null>(null);
@@ -391,7 +392,10 @@ try {
 {:else if !article}
   <p class="meta">Loading...</p>
 {:else}
-  <div class="article-layout">
+  {#if seriesId}
+    <SeriesSidebar {seriesId} currentUri={uri} />
+  {/if}
+  <div class="article-layout" class:has-series-sidebar={!!seriesId}>
     <!-- Left floating TOC + forks -->
     {#if tocItems.length > 0 || topForks.length > 0}
       <aside class="toc-box">
@@ -428,19 +432,21 @@ try {
       </aside>
     {/if}
 
-    <!-- Series navigation arrows (fixed on sides) -->
+    <!-- Series navigation arrows (fixed on sides, hidden when sidebar is shown) -->
+    {#if !seriesId}
     {#each seriesContext as ctx}
       {#if ctx.prev.length > 0}
-        <a href="#/article?uri={encodeURIComponent(ctx.prev[0].article_uri)}" class="series-nav series-prev" title={t('article.seriesPrev', ctx.prev[0].title)}>
+        <a href="#/article?uri={encodeURIComponent(ctx.prev[0].article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="series-nav series-prev" title={t('article.seriesPrev', ctx.prev[0].title)}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
         </a>
       {/if}
       {#if ctx.next.length > 0}
-        <a href="#/article?uri={encodeURIComponent(ctx.next[0].article_uri)}" class="series-nav series-next" title={t('article.seriesNext', ctx.next[0].title)}>
+        <a href="#/article?uri={encodeURIComponent(ctx.next[0].article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="series-nav series-next" title={t('article.seriesNext', ctx.next[0].title)}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </a>
       {/if}
     {/each}
+    {/if}
 
     <!-- Main article -->
     <article>
@@ -452,10 +458,10 @@ try {
             <span class="series-pos">{t('article.seriesCount', ctx.total)}</span>
             <div class="series-nav-inline">
               {#each ctx.prev as p}
-                <a href="#/article?uri={encodeURIComponent(p.article_uri)}" class="nav-link prev">← {p.title}</a>
+                <a href="#/article?uri={encodeURIComponent(p.article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="nav-link prev">← {p.title}</a>
               {/each}
               {#each ctx.next as n}
-                <a href="#/article?uri={encodeURIComponent(n.article_uri)}" class="nav-link next">{n.title} →</a>
+                <a href="#/article?uri={encodeURIComponent(n.article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="nav-link next">{n.title} →</a>
               {/each}
             </div>
           </div>
@@ -629,6 +635,10 @@ try {
 
   .article-layout {
     position: relative;
+  }
+  .article-layout.has-series-sidebar {
+    flex: 1;
+    min-width: 0;
   }
 
   /* Series navigation */

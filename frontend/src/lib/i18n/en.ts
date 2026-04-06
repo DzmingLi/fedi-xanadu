@@ -476,6 +476,27 @@ export default {
   'profile.tabQA': 'Q&A',
   'profile.tabBookmarks': 'Bookmarks',
 
+  // Editor layout
+  'editor.settings': 'Settings',
+  'editor.basicInfo': 'Basic Info',
+
+  // Version panel
+  'version.diff': 'Changes',
+  'version.history': 'History',
+  'version.noChanges': 'No changes',
+  'version.noHistory': 'No history yet',
+  'version.record': 'Record',
+  'version.recordPlaceholder': 'Change description...',
+  'version.unrecord': 'Unrecord this change',
+  'version.confirmUnrecord': 'Unrecord this change? Content will revert to the previous version.',
+  'version.togglePanel': 'Version panel',
+  'version.unsaved': 'Unsaved',
+  'version.saved': 'Saved',
+
+  // Series sidebar
+  'series.tableOfContents': 'Table of Contents',
+  'series.collapseSidebar': 'Collapse sidebar',
+
   // Roadmap
   'roadmap.title': 'Roadmap',
   'roadmap.subtitle': 'Planned features',

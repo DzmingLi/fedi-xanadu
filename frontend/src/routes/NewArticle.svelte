@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook } from '../lib/api';
+  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveArticle, recordArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, getArticleHistory, getArticleDiff, unrecordArticleChange } from '../lib/api';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getLangPrefs } from '../lib/langPrefs.svelte';
   import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
-  import type { Tag, Article, BookEdition, ContentFormat, Category, PrereqType } from '../lib/types';
+  import type { Tag, Article, BookEdition, ContentFormat, Category, PrereqType, ArticleVersionInfo, VersionDiff } from '../lib/types';
 
   let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
   let isEditing = $state(false);
@@ -53,6 +53,145 @@
   let converting = $state(false);
   let originalFormat = $state<ContentFormat | ''>(''); // Track source format for fork conversion
 
+  // --- UI state ---
+  let sidebarOpen = $state(false);
+  let versionPanelOpen = $state(true);
+  let lastSavedContent = $state(''); // For diff computation in version panel
+  let saving = $state(false);
+
+  // --- Version panel state ---
+  let versionHistory = $state<ArticleVersionInfo[]>([]);
+  let selectedVersionDiff = $state<VersionDiff | null>(null);
+  let selectedVersionId = $state<number | null>(null);
+  let recordMessage = $state('');
+  let recording = $state(false);
+  let loadingHistory = $state(false);
+
+  async function loadHistory() {
+    if (!savedArticleUri) return;
+    loadingHistory = true;
+    try {
+      versionHistory = await getArticleHistory(savedArticleUri);
+    } catch { /* ok */ }
+    loadingHistory = false;
+  }
+
+  async function selectVersion(v: ArticleVersionInfo) {
+    if (selectedVersionId === v.id) {
+      selectedVersionId = null;
+      selectedVersionDiff = null;
+      return;
+    }
+    selectedVersionId = v.id;
+    const idx = versionHistory.findIndex(h => h.id === v.id);
+    if (idx < 0) return;
+    // Find previous version
+    const prev = idx + 1 < versionHistory.length ? versionHistory[idx + 1] : null;
+    if (!prev) {
+      selectedVersionDiff = null;
+      return;
+    }
+    try {
+      selectedVersionDiff = await getArticleDiff(savedArticleUri, prev.id, v.id);
+    } catch {
+      selectedVersionDiff = null;
+    }
+  }
+
+  async function doUnrecord(v: ArticleVersionInfo) {
+    if (!confirm(t('version.confirmUnrecord'))) return;
+    try {
+      await unrecordArticleChange(savedArticleUri, v.id);
+      await loadHistory();
+      // Reload content from server after unrecord
+      const c = await getArticleContent(savedArticleUri);
+      content = c.source;
+      lastSavedContent = c.source;
+      selectedVersionId = null;
+      selectedVersionDiff = null;
+    } catch (e: any) {
+      error = e.message;
+    }
+  }
+
+  async function doRecord() {
+    if (!savedArticleUri) return;
+    recording = true;
+    error = '';
+    try {
+      // Save first if there are unsaved changes
+      if (content !== lastSavedContent) {
+        await saveArticle(savedArticleUri, {
+          title: title.trim(),
+          description: description.trim(),
+          content: content.trim(),
+        });
+        lastSavedContent = content;
+      }
+      const msg = recordMessage.trim() || 'Update';
+      versionHistory = await recordArticle(savedArticleUri, msg);
+      recordMessage = '';
+    } catch (e: any) {
+      error = e.message;
+    } finally {
+      recording = false;
+    }
+  }
+
+  async function doSave() {
+    if (!savedArticleUri || saving) return;
+    saving = true;
+    error = '';
+    try {
+      await saveArticle(savedArticleUri, {
+        title: title.trim(),
+        description: description.trim(),
+        content: content.trim(),
+      });
+      lastSavedContent = content;
+    } catch (e: any) {
+      error = e.message;
+    } finally {
+      saving = false;
+    }
+  }
+
+  // Simple line-based diff for the version panel (current changes)
+  interface DiffLine { type: 'same' | 'add' | 'del'; text: string; }
+  function computeSimpleDiff(oldText: string, newText: string): DiffLine[] {
+    const oldLines = oldText.split('\n');
+    const newLines = newText.split('\n');
+    const result: DiffLine[] = [];
+    const m = oldLines.length, n = newLines.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = oldLines[i-1] === newLines[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+    let i = m, j = n;
+    const ops: DiffLine[] = [];
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && oldLines[i-1] === newLines[j-1]) {
+        ops.push({ type: 'same', text: oldLines[i-1] }); i--; j--;
+      } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+        ops.push({ type: 'add', text: newLines[j-1] }); j--;
+      } else {
+        ops.push({ type: 'del', text: oldLines[i-1] }); i--;
+      }
+    }
+    return ops.reverse();
+  }
+
+  let currentDiffLines = $derived(
+    savedArticleUri && content !== lastSavedContent
+      ? computeSimpleDiff(lastSavedContent, content)
+      : (!savedArticleUri && content.trim())
+        ? content.split('\n').map(l => ({ type: 'add' as const, text: l }))
+        : []
+  );
+  let addCount = $derived(currentDiffLines.filter(l => l.type === 'add').length);
+  let delCount = $derived(currentDiffLines.filter(l => l.type === 'del').length);
+  let hasUnsavedChanges = $derived(savedArticleUri ? content !== lastSavedContent : false);
+
   async function handleFormatChange(newFormat: ContentFormat) {
     const oldFormat = contentFormat;
     contentFormat = newFormat;
@@ -64,7 +203,7 @@
       content = result.content;
     } catch (e: any) {
       error = `${t('newArticle.convertError')}: ${e.message}`;
-      contentFormat = oldFormat; // revert on failure
+      contentFormat = oldFormat;
     } finally {
       converting = false;
     }
@@ -77,15 +216,12 @@
     contentFormat: ContentFormat;
   }
   let extraLangs = $state<LangVersion[]>([]);
-  let showAddLang = $state(false);
 
   function addLangVersion() {
-    // Pick first unused language
     const usedLangs = new Set([lang, ...extraLangs.map(l => l.lang)]);
     const available = ['en', 'zh', 'ja', 'ko', 'fr', 'de'].filter(l => !usedLangs.has(l));
     if (available.length === 0) return;
     extraLangs = [...extraLangs, { lang: available[0], content: '', contentFormat }];
-    showAddLang = false;
   }
 
   function removeLangVersion(idx: number) {
@@ -103,7 +239,6 @@
       if (name.endsWith('.md') || name.endsWith('.markdown')) fmt = 'markdown';
       else if (name.endsWith('.typ') || name.endsWith('.typst')) fmt = 'typst';
       else if (name.endsWith('.html') || name.endsWith('.htm')) fmt = 'html';
-
       extraLangs[idx] = { ...extraLangs[idx], content: text, contentFormat: fmt };
     } catch (err: any) {
       error = err.message;
@@ -129,7 +264,6 @@
   function addNewTag() {
     const val = newTagInput.trim();
     if (!val) return;
-    // If matches an existing tag, use that
     const existing = tags.find(t => t.id === val || t.name.toLowerCase() === val.toLowerCase());
     const tagId = existing ? existing.id : val;
     if (!selectedTags.includes(tagId)) {
@@ -156,10 +290,12 @@
         title = a.title;
         description = a.description || '';
         content = c.source;
+        lastSavedContent = c.source;
         contentFormat = a.content_format;
         lang = a.lang || 'zh';
         license = a.license || 'CC-BY-SA-4.0';
       });
+      loadHistory();
     } else if (initialDraftId) {
       listDrafts().then(drafts => {
         const d = drafts.find(d => d.id === initialDraftId);
@@ -216,7 +352,6 @@
     const file = input.files?.[0];
     if (!file) return;
 
-    // Need a saved article to upload to. If no savedArticleUri, create article first.
     if (!savedArticleUri) {
       if (!title.trim() || !content.trim()) {
         error = t('newArticle.fillTitleContent');
@@ -241,6 +376,9 @@
           prereqs,
         });
         savedArticleUri = article.at_uri;
+        lastSavedContent = content;
+        isEditing = true;
+        loadHistory();
       } catch (err: any) {
         error = err.message;
         uploadingImage = false;
@@ -252,7 +390,6 @@
     error = '';
     try {
       const result = await uploadImage(savedArticleUri, file);
-      // Insert image reference at cursor position
       const ref = contentFormat === 'markdown'
         ? `![${result.filename}](${result.filename})`
         : `#image("${result.filename}")`;
@@ -265,48 +402,15 @@
     }
   }
 
-  // Simple line-based diff for preview
-  interface DiffLine { type: 'same' | 'add' | 'del'; text: string; }
-  function computeDiff(oldText: string, newText: string): DiffLine[] {
-    const oldLines = oldText.split('\n');
-    const newLines = newText.split('\n');
-    const result: DiffLine[] = [];
-
-    // Simple LCS-based diff
-    const m = oldLines.length, n = newLines.length;
-    // Use O(n) space DP for LCS length, then backtrack
-    const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
-    for (let i = 1; i <= m; i++)
-      for (let j = 1; j <= n; j++)
-        dp[i][j] = oldLines[i-1] === newLines[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
-
-    let i = m, j = n;
-    const ops: DiffLine[] = [];
-    while (i > 0 || j > 0) {
-      if (i > 0 && j > 0 && oldLines[i-1] === newLines[j-1]) {
-        ops.push({ type: 'same', text: oldLines[i-1] });
-        i--; j--;
-      } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
-        ops.push({ type: 'add', text: newLines[j-1] });
-        j--;
-      } else {
-        ops.push({ type: 'del', text: oldLines[i-1] });
-        i--;
-      }
-    }
-    return ops.reverse();
-  }
-
+  // Fork diff (reused from original)
   let diffLines = $derived(
-    forkSource && showDiff ? computeDiff(originalContent, content) : []
+    forkSource && showDiff ? computeSimpleDiff(originalContent, content) : []
   );
 
-  // Collapse unchanged lines, showing only 3 lines of context around changes
   interface DiffHunk { lines: DiffLine[]; collapsed?: number; }
   let diffHunks = $derived.by((): DiffHunk[] => {
     if (diffLines.length === 0) return [];
     const CONTEXT = 3;
-    // Mark which lines are "near" a change
     const show = new Uint8Array(diffLines.length);
     for (let i = 0; i < diffLines.length; i++) {
       if (diffLines[i].type !== 'same') {
@@ -333,7 +437,7 @@
     }
     return hunks;
   });
-  let hasChanges = $derived(forkSource ? content !== originalContent : true);
+  let hasForkChanges = $derived(forkSource ? content !== originalContent : true);
 
   async function handleFileLoad(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -344,7 +448,6 @@
     try {
       const text = await file.text();
       content = text;
-      // Auto-detect format from extension
       const name = file.name.toLowerCase();
       if (name.endsWith('.md') || name.endsWith('.markdown')) {
         contentFormat = 'markdown';
@@ -353,7 +456,6 @@
       } else if (name.endsWith('.html') || name.endsWith('.htm')) {
         contentFormat = 'html';
       }
-      // Use filename (without extension) as title if title is empty
       if (!title.trim()) {
         title = file.name.replace(/\.(md|markdown|typ|typst|html|htm)$/i, '');
       }
@@ -418,12 +520,10 @@
         });
         window.location.hash = `#/article?uri=${encodeURIComponent(article.at_uri)}`;
       } else if (forkSource) {
-        // Fork via pijul: creates a proper fork with pijul repo copy + DB fork record
         const targetFormat = contentFormat !== originalFormat ? contentFormat : undefined;
         const forked = await forkArticle(forkSource, targetFormat);
 
-        // If user modified content beyond the format conversion, apply edits
-        if (hasChanges) {
+        if (hasForkChanges) {
           await updateArticle(forked.at_uri, {
             title: title.trim(),
             description: description.trim() || undefined,
@@ -449,7 +549,6 @@
           prereqs,
         });
 
-        // Create extra language versions as translations
         for (const lv of extraLangs) {
           if (!lv.content.trim()) continue;
           try {
@@ -479,384 +578,790 @@
       submitting = false;
     }
   }
+
+  function formatDate(iso: string): string {
+    const d = new Date(iso);
+    return `${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+  }
+
 </script>
 
-<h1>{isEditing ? t('newArticle.editTitle') : forkSource ? t('newArticle.forkTitle') : t('newArticle.title')}</h1>
-
-{#if forkSource}
-  <p class="fork-hint">{t('newArticle.forkHint')}</p>
-{/if}
-
-{#if error}
-  <p class="error-msg">{error}</p>
-{/if}
-
-<div class="form-group">
-  <label for="title">{t('newArticle.titleLabel')}</label>
-  <input id="title" bind:value={title} placeholder={t('newArticle.titleLabel')} />
-</div>
-
-<div class="form-group">
-  <label for="description">{t('newArticle.descLabel')}</label>
-  <input id="description" bind:value={description} placeholder={t('newArticle.descPlaceholder')} />
-</div>
-
-<div class="form-row">
-  <div class="form-group" style="flex:1">
-    <label for="lang">{t('newArticle.langLabel')}</label>
-    <select id="lang" bind:value={lang}>
-      <option value="zh">中文</option>
-      <option value="en">English</option>
-      <option value="ja">日本語</option>
-      <option value="ko">한국어</option>
-      <option value="fr">Français</option>
-      <option value="de">Deutsch</option>
-    </select>
-  </div>
-  <div class="form-group" style="flex:1">
-    <label for="license">{t('newArticle.licenseLabel')}</label>
-    <select id="license" bind:value={license} disabled={restricted}>
-      <option value="CC-BY-NC-SA-4.0">CC BY-NC-SA 4.0</option>
-      <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
-      <option value="CC-BY-4.0">CC BY 4.0</option>
-      <option value="CC-BY-NC-4.0">CC BY-NC 4.0</option>
-      <option value="CC-BY-NC-ND-4.0">CC BY-NC-ND 4.0</option>
-      <option value="CC0-1.0">CC0 (Public Domain)</option>
-      <option value="MIT">MIT</option>
-      <option value="Apache-2.0">Apache 2.0</option>
-      <option value="GFDL-1.3">GFDL 1.3</option>
-      <option value="All-Rights-Reserved">All Rights Reserved</option>
-    </select>
-    <label class="restricted-check">
-      <input type="checkbox" bind:checked={restricted} />
-      {t('newArticle.restricted')}
-    </label>
-  </div>
-  <div class="form-group" style="flex:1">
-    <label for="category">{t('newArticle.categoryLabel')}</label>
-    <select id="category" bind:value={category}>
-      <option value="general">{t('category.general')}</option>
-      <option value="lecture">{t('category.lecture')}</option>
-      <option value="paper">{t('category.paper')}</option>
-      <option value="review">{t('category.review')}</option>
-    </select>
-  </div>
-  <div class="form-group" style="flex:2">
-    <label for="translation-of">{t('newArticle.translationOf')}</label>
-    <select id="translation-of" bind:value={translationOf}>
-      <option value="">{t('newArticle.originalArticle')}</option>
-      {#each allArticles as a}
-        <option value={a.at_uri}>[{a.lang}] {a.title}</option>
-      {/each}
-    </select>
-  </div>
-</div>
-
-{#if category === 'review' && bookEditions.length > 0}
-<div class="form-row">
-  <div class="form-group" style="flex:1">
-    <label for="edition">{t('newArticle.editionLabel')}</label>
-    <select id="edition" bind:value={editionId}>
-      <option value="">{t('newArticle.noEdition')}</option>
-      {#each bookEditions as ed}
-        <option value={ed.id}>{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''}{ed.publisher ? `, ${ed.publisher}` : ''})</option>
-      {/each}
-    </select>
-  </div>
-</div>
-{/if}
-
-<div class="form-row">
-  <div class="form-group" style="flex:1">
-    <label for="format">{t('newArticle.formatLabel')}</label>
-    <select id="format" value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
-      <option value="typst">Typst</option>
-      <option value="markdown">Markdown + KaTeX</option>
-      <option value="html">HTML</option>
-    </select>
-    {#if converting}<span class="converting-hint">{t('newArticle.converting')}</span>{/if}
-  </div>
-</div>
-
-<div class="form-group">
-  <div class="content-label-row">
-    <label for="content">{t('newArticle.contentLabel')} ({contentFormat === 'markdown' ? 'Markdown' : contentFormat === 'html' ? 'HTML' : 'Typst'})</label>
-    <div class="upload-btns">
-      <label class="upload-btn" class:disabled={loadingFile}>
-        <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm," onchange={handleFileLoad} hidden />
-        {loadingFile ? t('newArticle.readingFile') : t('newArticle.uploadFile')}
-      </label>
-      <label class="upload-btn" class:disabled={uploadingImage}>
-        <input type="file" accept="image/*" onchange={handleImageUpload} hidden />
-        {uploadingImage ? t('newArticle.uploading') : t('newArticle.uploadImage')}
-      </label>
-    </div>
-  </div>
-  {#if contentFormat === 'markdown'}
-    <MarkdownEditor bind:value={content} placeholder="# 我的文章&#10;&#10;正文..." />
-  {:else}
-    <textarea id="content" bind:value={content} placeholder={contentFormat === 'html' ? '<!DOCTYPE html>\n<html>\n<body>\n  <h1>My Article</h1>\n</body>\n</html>' : '= My Article'}></textarea>
+<div class="editor-page">
+  {#if error}
+    <div class="error-banner">{error}</div>
   {/if}
-</div>
 
-{#if !isEditing && !forkSource}
-<div class="form-group">
-  <div class="lang-versions-header">
-    <span class="form-label">{t('newArticle.langVersions')}</span>
-    <button type="button" class="btn-add-lang" onclick={addLangVersion}>
-      + {t('newArticle.addLangVersion')}
-    </button>
-  </div>
-  {#each extraLangs as lv, idx}
-    <div class="lang-version-block">
-      <div class="lang-version-header">
-        <select bind:value={extraLangs[idx].lang}>
-          {#each [['zh', '中文'], ['en', 'English'], ['ja', '日本語'], ['ko', '한국어'], ['fr', 'Français'], ['de', 'Deutsch']] as [code, name]}
-            <option value={code} disabled={code === lang || extraLangs.some((l, i) => i !== idx && l.lang === code)}>{name}</option>
-          {/each}
-        </select>
-        <select bind:value={extraLangs[idx].contentFormat}>
-          <option value="typst">Typst</option>
-          <option value="markdown">Markdown</option>
-              <option value="html">HTML</option>
-        </select>
-        <label class="upload-btn">
-          <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm," onchange={(e) => handleLangFileLoad(idx, e)} hidden />
-          {t('newArticle.uploadFile')}
-        </label>
-        <button type="button" class="lang-remove" onclick={() => removeLangVersion(idx)}>&times;</button>
+  {#if showDiff && forkSource}
+    <!-- Fork diff overlay -->
+    <div class="diff-overlay">
+      <div class="diff-header">
+        <h3>{t('newArticle.diffPreview')}</h3>
+        <button class="btn-outline" onclick={() => showDiff = false}>{t('newArticle.backToEdit')}</button>
       </div>
-      <textarea
-        bind:value={extraLangs[idx].content}
-        placeholder={t('newArticle.versionContent', lv.lang)}
-        class="lang-textarea"
-      ></textarea>
-    </div>
-  {/each}
-</div>
-{/if}
-
-<div class="form-group">
-  <label for="tag-input">{t('newArticle.tagsLabel')}</label>
-  <div class="tag-input-row">
-    <input
-      id="tag-input"
-      type="text"
-      bind:value={newTagInput}
-      placeholder={t('newArticle.tagInput')}
-      onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTag(); } }}
-      onfocus={() => showTagSuggestions = true}
-      onblur={() => setTimeout(() => showTagSuggestions = false, 200)}
-      oninput={() => showTagSuggestions = true}
-    />
-    <button type="button" class="tag-add-btn" onclick={addNewTag}>{t('common.add')}</button>
-    {#if showTagSuggestions && tagSuggestionList.length > 0}
-      <div class="tag-suggestions">
-        {#each tagSuggestionList as s}
-          <button type="button" onmousedown={() => { toggleTag(s.id); newTagInput = ''; showTagSuggestions = false; }}>
-            {s.name} {#if s.name !== s.id}<span class="sg-id">({s.id})</span>{/if}
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </div>
-  {#if selectedTags.length > 0}
-    <div class="selected-tags">
-      {#each selectedTags as tagId}
-        <span class="tag lit">{getTagName(tagId)} <button type="button" class="tag-remove" onclick={() => toggleTag(tagId)}>&times;</button></span>
-      {/each}
-    </div>
-  {/if}
-  <div class="tag-picker">
-    {#each tags.filter(t => !selectedTags.includes(t.id)).slice(0, 20) as t}
-      <button
-        type="button"
-        class="tag"
-        onclick={() => toggleTag(t.id)}
-      >{t.name}</button>
-    {/each}
-  </div>
-</div>
-
-<div class="form-group">
-  <label for="prereq-select">{t('newArticle.prereqsLabel')}</label>
-  <p class="form-hint">{t('newArticle.prereqsHint')}</p>
-
-  {#if prereqs.length > 0}
-    <div class="prereq-list">
-      {#each prereqs as p}
-        <div class="prereq-item">
-          <span class="tag {p.prereq_type}">{getTagName(p.tag_id)}</span>
-          <span class="prereq-type-label">{p.prereq_type}</span>
-          <button class="prereq-remove" onclick={() => removePrereq(p.tag_id)} title={t('common.remove')}>&times;</button>
+      {#if !hasForkChanges}
+        <p class="diff-empty">{t('newArticle.noChanges')}</p>
+      {:else}
+        <div class="diff-stats">
+          <span class="diff-add-count">+{diffLines.filter(l => l.type === 'add').length}</span>
+          <span class="diff-del-count">-{diffLines.filter(l => l.type === 'del').length}</span>
         </div>
-      {/each}
-    </div>
-  {/if}
-
-  <div class="prereq-add">
-    <select id="prereq-select" bind:value={prereqTagId}>
-      <option value="">{t('newArticle.selectTag')}</option>
-      {#each tags.filter(t => !prereqs.some(p => p.tag_id === t.id)) as t}
-        <option value={t.id}>{t.name}</option>
-      {/each}
-    </select>
-    <select bind:value={prereqType}>
-      <option value="required">{t('newArticle.required')}</option>
-      <option value="recommended">{t('newArticle.recommended')}</option>
-      <option value="suggested">{t('newArticle.suggested')}</option>
-    </select>
-    <button class="prereq-add-btn" onclick={addPrereq} disabled={!prereqTagId}>{t('newArticle.addPrereq')}</button>
-  </div>
-</div>
-
-{#if showDiff && forkSource}
-  <div class="diff-preview">
-    <div class="diff-header">
-      <h3>{t('newArticle.diffPreview')}</h3>
-      <button class="diff-close" onclick={() => showDiff = false}>{t('newArticle.backToEdit')}</button>
-    </div>
-    {#if !hasChanges}
-      <p class="diff-empty">{t('newArticle.noChanges')}</p>
-    {:else}
-      <div class="diff-stats">
-        <span class="diff-add">+{diffLines.filter(l => l.type === 'add').length}</span>
-        <span class="diff-del">-{diffLines.filter(l => l.type === 'del').length}</span>
-      </div>
-      <pre class="diff-content">{#each diffHunks as hunk}{#if hunk.collapsed}<span class="line-collapse">⋯ {t('newArticle.linesUnchanged', hunk.collapsed)} ⋯</span>
+        <pre class="diff-content">{#each diffHunks as hunk}{#if hunk.collapsed}<span class="line-collapse">... {t('newArticle.linesUnchanged', hunk.collapsed)} ...</span>
 {:else}{#each hunk.lines as line}{#if line.type === 'add'}<span class="line-add">+{line.text}</span>
 {:else if line.type === 'del'}<span class="line-del">-{line.text}</span>
 {:else}<span class="line-same"> {line.text}</span>
 {/if}{/each}{/if}{/each}</pre>
-    {/if}
-    <button class="btn btn-primary" onclick={submit} disabled={submitting || !hasChanges}>
-      {submitting ? t('newArticle.publishing') : t('newArticle.confirmFork')}
-    </button>
-  </div>
-{:else}
-  {#if isEditing}
-  <div class="form-group commit-msg-row">
-    <input
-      class="commit-msg-input"
-      bind:value={commitMessage}
-      placeholder={t('newArticle.commitPlaceholder')}
-      maxlength={200}
-    />
-  </div>
+      {/if}
+      <div class="diff-actions">
+        <button class="btn btn-primary" onclick={submit} disabled={submitting || !hasForkChanges}>
+          {submitting ? t('newArticle.publishing') : t('newArticle.confirmFork')}
+        </button>
+      </div>
+    </div>
+  {:else}
+    <!-- Title area -->
+    <div class="editor-title-area">
+      {#if forkSource}
+        <div class="fork-hint">{t('newArticle.forkHint')}</div>
+      {/if}
+      <input
+        class="title-input"
+        bind:value={title}
+        placeholder={t('newArticle.titleLabel')}
+      />
+      <input
+        class="desc-input"
+        bind:value={description}
+        placeholder={t('newArticle.descPlaceholder')}
+      />
+    </div>
+
+    <!-- Main body: version panel + editor + settings sidebar -->
+    <div class="editor-body">
+      <!-- Left: Version Panel -->
+      {#if versionPanelOpen}
+        <aside class="version-panel">
+          <div class="vp-section">
+            <div class="vp-section-header" role="button" tabindex="0">
+              <span>{t('version.diff')}</span>
+              {#if addCount > 0 || delCount > 0}
+                <span class="vp-diff-stats">
+                  <span class="diff-add-count">+{addCount}</span>
+                  <span class="diff-del-count">-{delCount}</span>
+                </span>
+              {/if}
+            </div>
+            <div class="vp-diff-content">
+              {#if currentDiffLines.length === 0}
+                <p class="vp-empty">{t('version.noChanges')}</p>
+              {:else}
+                <pre class="vp-diff">{#each currentDiffLines.filter(l => l.type !== 'same') as line}{#if line.type === 'add'}<span class="line-add">+{line.text}</span>
+{:else}<span class="line-del">-{line.text}</span>
+{/if}{/each}</pre>
+              {/if}
+            </div>
+          </div>
+
+          {#if savedArticleUri}
+            <div class="vp-section">
+              <div class="vp-section-header">
+                <span>{t('version.history')}</span>
+                <span class="vp-count">{versionHistory.length}</span>
+              </div>
+              <div class="vp-history-list">
+                {#if loadingHistory}
+                  <p class="vp-empty">...</p>
+                {:else if versionHistory.length === 0}
+                  <p class="vp-empty">{t('version.noHistory')}</p>
+                {:else}
+                  {#each versionHistory as v (v.id)}
+                    <button
+                      class="vp-history-item"
+                      class:selected={selectedVersionId === v.id}
+                      onclick={() => selectVersion(v)}
+                    >
+                      <span class="vp-h-msg">{v.message}</span>
+                      <span class="vp-h-meta">
+                        {formatDate(v.created_at)}
+                        <code>{v.change_hash.slice(0, 8)}</code>
+                      </span>
+                      {#if v.unrecordable}
+                        <button
+                          class="vp-unrecord"
+                          onclick={(e) => { e.stopPropagation(); doUnrecord(v); }}
+                          title={t('version.unrecord')}
+                        >&times;</button>
+                      {/if}
+                    </button>
+                  {/each}
+                {/if}
+              </div>
+
+              {#if selectedVersionDiff}
+                <div class="vp-version-diff">
+                  <pre class="vp-diff">{#each selectedVersionDiff.hunks as hunk}{#each hunk.lines as line}{#if line.kind === 'add'}<span class="line-add">+{line.content}</span>
+{:else if line.kind === 'remove'}<span class="line-del">-{line.content}</span>
+{:else}<span class="line-ctx"> {line.content}</span>
+{/if}{/each}{/each}</pre>
+                </div>
+              {/if}
+            </div>
+
+            <div class="vp-record">
+              <input
+                class="vp-record-input"
+                bind:value={recordMessage}
+                placeholder={t('version.recordPlaceholder')}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doRecord(); } }}
+              />
+              <button class="vp-record-btn" onclick={doRecord} disabled={recording}>
+                {recording ? '...' : t('version.record')}
+              </button>
+            </div>
+          {/if}
+        </aside>
+      {/if}
+
+      <!-- Center: Editor -->
+      <div class="editor-main">
+        <div class="editor-toolbar">
+          <button
+            class="toolbar-icon"
+            onclick={() => versionPanelOpen = !versionPanelOpen}
+            title={t('version.togglePanel')}
+            class:active={versionPanelOpen}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v6m0 6v6m9-9h-6m-6 0H3"/></svg>
+          </button>
+
+          <select class="toolbar-select" value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
+            <option value="markdown">Markdown</option>
+            <option value="typst">Typst</option>
+            <option value="html">HTML</option>
+          </select>
+          {#if converting}<span class="converting-hint">{t('newArticle.converting')}</span>{/if}
+
+          <div class="toolbar-spacer"></div>
+
+          <label class="toolbar-btn" class:disabled={loadingFile}>
+            <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm," onchange={handleFileLoad} hidden />
+            {loadingFile ? t('newArticle.readingFile') : t('newArticle.uploadFile')}
+          </label>
+          <label class="toolbar-btn" class:disabled={uploadingImage}>
+            <input type="file" accept="image/*" onchange={handleImageUpload} hidden />
+            {uploadingImage ? t('newArticle.uploading') : t('newArticle.uploadImage')}
+          </label>
+
+          <button
+            class="toolbar-icon"
+            onclick={() => sidebarOpen = !sidebarOpen}
+            title={t('editor.settings')}
+            class:active={sidebarOpen}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          </button>
+        </div>
+
+        <!-- Editor content area -->
+        <div class="editor-content">
+          {#if contentFormat === 'markdown'}
+            <MarkdownEditor bind:value={content} placeholder="# 我的文章&#10;&#10;正文..." fillHeight={true} />
+          {:else}
+            <textarea class="editor-textarea" bind:value={content} placeholder={contentFormat === 'html' ? '<!DOCTYPE html>...' : '= My Article'}></textarea>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Right: Settings Sidebar -->
+      {#if sidebarOpen}
+        <aside class="settings-sidebar">
+          <details open>
+            <summary>{t('editor.basicInfo')}</summary>
+            <div class="sb-field">
+              <label>{t('newArticle.langLabel')}</label>
+              <select bind:value={lang}>
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </div>
+            <div class="sb-field">
+              <label>{t('newArticle.licenseLabel')}</label>
+              <select bind:value={license} disabled={restricted}>
+                <option value="CC-BY-NC-SA-4.0">CC BY-NC-SA 4.0</option>
+                <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
+                <option value="CC-BY-4.0">CC BY 4.0</option>
+                <option value="CC-BY-NC-4.0">CC BY-NC 4.0</option>
+                <option value="CC-BY-NC-ND-4.0">CC BY-NC-ND 4.0</option>
+                <option value="CC0-1.0">CC0</option>
+                <option value="MIT">MIT</option>
+                <option value="Apache-2.0">Apache 2.0</option>
+                <option value="GFDL-1.3">GFDL 1.3</option>
+                <option value="All-Rights-Reserved">All Rights Reserved</option>
+              </select>
+              <label class="check-label">
+                <input type="checkbox" bind:checked={restricted} />
+                {t('newArticle.restricted')}
+              </label>
+            </div>
+            <div class="sb-field">
+              <label>{t('newArticle.categoryLabel')}</label>
+              <select bind:value={category}>
+                <option value="general">{t('category.general')}</option>
+                <option value="lecture">{t('category.lecture')}</option>
+                <option value="paper">{t('category.paper')}</option>
+                <option value="review">{t('category.review')}</option>
+              </select>
+            </div>
+            {#if category === 'review' && bookEditions.length > 0}
+              <div class="sb-field">
+                <label>{t('newArticle.editionLabel')}</label>
+                <select bind:value={editionId}>
+                  <option value="">{t('newArticle.noEdition')}</option>
+                  {#each bookEditions as ed}
+                    <option value={ed.id}>{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
+          </details>
+
+          <details>
+            <summary>{t('newArticle.translationOf')}</summary>
+            <div class="sb-field">
+              <select bind:value={translationOf}>
+                <option value="">{t('newArticle.originalArticle')}</option>
+                {#each allArticles as a}
+                  <option value={a.at_uri}>[{a.lang}] {a.title}</option>
+                {/each}
+              </select>
+            </div>
+          </details>
+
+          <details>
+            <summary>{t('newArticle.tagsLabel')}</summary>
+            <div class="sb-field">
+              <div class="tag-input-row">
+                <input
+                  type="text"
+                  bind:value={newTagInput}
+                  placeholder={t('newArticle.tagInput')}
+                  onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTag(); } }}
+                  onfocus={() => showTagSuggestions = true}
+                  onblur={() => setTimeout(() => showTagSuggestions = false, 200)}
+                  oninput={() => showTagSuggestions = true}
+                />
+                <button class="tag-add-btn" onclick={addNewTag}>{t('common.add')}</button>
+                {#if showTagSuggestions && tagSuggestionList.length > 0}
+                  <div class="tag-suggestions">
+                    {#each tagSuggestionList as s}
+                      <button type="button" onmousedown={() => { toggleTag(s.id); newTagInput = ''; showTagSuggestions = false; }}>
+                        {s.name} {#if s.name !== s.id}<span class="sg-id">({s.id})</span>{/if}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+              {#if selectedTags.length > 0}
+                <div class="selected-tags">
+                  {#each selectedTags as tagId}
+                    <span class="tag lit">{getTagName(tagId)} <button class="tag-remove" onclick={() => toggleTag(tagId)}>&times;</button></span>
+                  {/each}
+                </div>
+              {/if}
+              <div class="tag-picker">
+                {#each tags.filter(t => !selectedTags.includes(t.id)).slice(0, 15) as t}
+                  <button class="tag" onclick={() => toggleTag(t.id)}>{t.name}</button>
+                {/each}
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>{t('newArticle.prereqsLabel')}</summary>
+            <p class="sb-hint">{t('newArticle.prereqsHint')}</p>
+            {#if prereqs.length > 0}
+              <div class="prereq-list">
+                {#each prereqs as p}
+                  <div class="prereq-item">
+                    <span class="tag {p.prereq_type}">{getTagName(p.tag_id)}</span>
+                    <span class="prereq-type-label">{p.prereq_type}</span>
+                    <button class="prereq-remove" onclick={() => removePrereq(p.tag_id)}>&times;</button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            <div class="prereq-add">
+              <select bind:value={prereqTagId}>
+                <option value="">{t('newArticle.selectTag')}</option>
+                {#each tags.filter(t => !prereqs.some(p => p.tag_id === t.id)) as t}
+                  <option value={t.id}>{t.name}</option>
+                {/each}
+              </select>
+              <select bind:value={prereqType}>
+                <option value="required">{t('newArticle.required')}</option>
+                <option value="recommended">{t('newArticle.recommended')}</option>
+                <option value="suggested">{t('newArticle.suggested')}</option>
+              </select>
+              <button class="prereq-add-btn" onclick={addPrereq} disabled={!prereqTagId}>{t('newArticle.addPrereq')}</button>
+            </div>
+          </details>
+
+          {#if !isEditing && !forkSource}
+            <details>
+              <summary>{t('newArticle.langVersions')}</summary>
+              <button class="btn-add-lang" onclick={addLangVersion}>+ {t('newArticle.addLangVersion')}</button>
+              {#each extraLangs as lv, idx}
+                <div class="lang-version-block">
+                  <div class="lang-version-header">
+                    <select bind:value={extraLangs[idx].lang}>
+                      {#each [['zh', '中文'], ['en', 'English'], ['ja', '日本語'], ['ko', '한국어'], ['fr', 'Français'], ['de', 'Deutsch']] as [code, name]}
+                        <option value={code} disabled={code === lang || extraLangs.some((l, i) => i !== idx && l.lang === code)}>{name}</option>
+                      {/each}
+                    </select>
+                    <select bind:value={extraLangs[idx].contentFormat}>
+                      <option value="typst">Typst</option>
+                      <option value="markdown">Markdown</option>
+                      <option value="html">HTML</option>
+                    </select>
+                    <label class="toolbar-btn">
+                      <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm," onchange={(e) => handleLangFileLoad(idx, e)} hidden />
+                      {t('newArticle.uploadFile')}
+                    </label>
+                    <button class="lang-remove" onclick={() => removeLangVersion(idx)}>&times;</button>
+                  </div>
+                  <textarea
+                    bind:value={extraLangs[idx].content}
+                    placeholder={t('newArticle.versionContent', lv.lang)}
+                    class="lang-textarea"
+                  ></textarea>
+                </div>
+              {/each}
+            </details>
+          {/if}
+        </aside>
+      {/if}
+    </div>
+
+    <!-- Footer -->
+    <div class="editor-footer">
+      {#if isEditing}
+        <span class="footer-status">
+          {#if hasUnsavedChanges}
+            <span class="status-unsaved">{t('version.unsaved')}</span>
+          {:else}
+            <span class="status-saved">{t('version.saved')}</span>
+          {/if}
+        </span>
+        <button class="btn btn-outline" onclick={doSave} disabled={saving || !hasUnsavedChanges}>
+          {saving ? t('newArticle.saving') : t('common.save')}
+        </button>
+      {:else}
+        <button class="btn btn-draft" onclick={handleSaveDraft} disabled={savingDraft}>
+          {savingDraft
+            ? t('newArticle.saving')
+            : draftSaved
+              ? t('newArticle.saved')
+              : currentDraftId
+                ? t('newArticle.updateDraft')
+                : t('newArticle.saveDraft')}
+        </button>
+      {/if}
+
+      <div class="footer-spacer"></div>
+
+      {#if isEditing}
+        <input
+          class="commit-input"
+          bind:value={commitMessage}
+          placeholder={t('newArticle.commitPlaceholder')}
+          maxlength={200}
+        />
+      {/if}
+
+      {#if forkSource}
+        <button class="btn btn-outline" onclick={previewDiff}>
+          {t('newArticle.previewDiff')}
+        </button>
+      {/if}
+      <button class="btn btn-primary" onclick={forkSource ? previewDiff : submit} disabled={submitting}>
+        {submitting ? t('newArticle.publishing') : t('newArticle.publish')}
+      </button>
+    </div>
   {/if}
-  <div class="submit-row">
-    {#if !isEditing}
-      <button class="btn btn-draft" onclick={handleSaveDraft} disabled={savingDraft}>
-        {savingDraft
-          ? t('newArticle.saving')
-          : draftSaved
-            ? t('newArticle.saved')
-            : currentDraftId
-              ? t('newArticle.updateDraft')
-              : t('newArticle.saveDraft')}
-      </button>
-    {/if}
-    {#if forkSource}
-      <button class="btn btn-secondary" onclick={previewDiff}>
-        {t('newArticle.previewDiff')}
-      </button>
-    {/if}
-    <button class="btn btn-primary" onclick={forkSource ? previewDiff : submit} disabled={submitting}>
-      {submitting ? t('newArticle.publishing') : t('newArticle.publish')}
-    </button>
-  </div>
-{/if}
+</div>
 
 <style>
-  .commit-msg-row { margin-bottom: 0.75rem; }
-  .commit-msg-input {
-    width: 100%;
-    font-size: 13px;
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-white);
-    color: var(--text-primary);
+  /* === Page layout === */
+  .editor-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
   }
-  .commit-msg-input::placeholder { color: var(--text-hint); }
-  .content-label-row {
+
+  .error-banner {
+    background: #fef2f2;
+    color: #dc2626;
+    padding: 8px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid #fecaca;
+  }
+
+  /* === Title area === */
+  .editor-title-area {
+    padding: 12px 24px 0;
+    flex-shrink: 0;
+  }
+  .fork-hint {
+    font-size: 13px;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .title-input {
+    display: block;
+    width: 100%;
+    border: none;
+    font-family: var(--font-serif);
+    font-size: 1.8rem;
+    font-weight: 400;
+    outline: none;
+    padding: 0;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+    background: transparent;
+  }
+  .title-input::placeholder { color: var(--text-hint); }
+  .desc-input {
+    display: block;
+    width: 100%;
+    border: none;
+    font-size: 14px;
+    outline: none;
+    padding: 0 0 8px;
+    color: var(--text-secondary);
+    background: transparent;
+    border-bottom: 1px solid var(--border);
+  }
+  .desc-input::placeholder { color: var(--text-hint); }
+
+  /* === Main body === */
+  .editor-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* === Version Panel (left) === */
+  .version-panel {
+    width: 260px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    font-size: 13px;
+    background: var(--bg-white);
+  }
+  .vp-section {
+    border-bottom: 1px solid var(--border);
+  }
+  .vp-section-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 4px;
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-hint);
+    background: var(--bg-hover, #fafafa);
   }
-  .content-label-row label:first-child { margin-bottom: 0; }
-  .converting-hint {
-    font-size: 12px;
-    color: var(--accent);
-    margin-left: 8px;
-  }
-  .upload-btns {
+  .vp-diff-stats {
     display: flex;
     gap: 6px;
+    font-weight: 500;
   }
-  .upload-btn {
+  .vp-count {
+    background: var(--bg-gray, #eee);
+    border-radius: 8px;
+    padding: 0 6px;
+    font-size: 11px;
+  }
+  .vp-empty {
+    padding: 12px;
+    color: var(--text-hint);
+    font-size: 12px;
+    text-align: center;
+    margin: 0;
+  }
+  .vp-diff-content {
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .vp-diff, .vp-version-diff pre {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 0;
+    padding: 4px 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .vp-version-diff {
+    max-height: 200px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+  }
+  .vp-history-list {
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .vp-history-item {
+    display: block;
+    width: 100%;
+    padding: 6px 12px;
+    border: none;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    font-size: 12px;
+    transition: background 0.1s;
+  }
+  .vp-history-item:hover { background: var(--bg-hover, #f5f5f5); }
+  .vp-history-item.selected { background: rgba(95, 155, 101, 0.08); }
+  .vp-h-msg {
+    display: block;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+  }
+  .vp-h-meta {
+    display: flex;
+    gap: 6px;
+    color: var(--text-hint);
+    font-size: 11px;
+    margin-top: 2px;
+  }
+  .vp-h-meta code {
+    font-size: 10px;
+    background: var(--bg-gray, #eee);
+    padding: 0 3px;
+    border-radius: 2px;
+  }
+  .vp-unrecord {
+    position: absolute;
+    right: 6px;
+    top: 6px;
+    background: none;
+    border: none;
+    color: var(--text-hint);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    border-radius: 2px;
+  }
+  .vp-unrecord:hover { color: #dc2626; background: #fef2f2; }
+
+  .vp-record {
+    display: flex;
+    gap: 4px;
+    padding: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .vp-record-input {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+  }
+  .vp-record-input::placeholder { color: var(--text-hint); }
+  .vp-record-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .vp-record-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Shared diff line styles */
+  .line-add { display: block; background: #e6ffec; color: #22863a; padding: 0 8px; }
+  .line-del { display: block; background: #ffebe9; color: #cb2431; padding: 0 8px; }
+  .line-same, .line-ctx { display: block; padding: 0 8px; color: var(--text-hint); }
+  .line-collapse {
+    display: block; padding: 4px 8px; color: var(--text-hint);
+    background: var(--bg-hover); text-align: center; font-style: italic;
+    font-size: 11px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    margin: 2px 0;
+  }
+
+  /* === Editor main === */
+  .editor-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-white);
+    flex-shrink: 0;
+  }
+  .toolbar-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 6px;
+    border: none;
+    background: none;
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--text-hint);
+    transition: all 0.15s;
+  }
+  .toolbar-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .toolbar-icon.active { color: var(--accent); background: rgba(95,155,101,0.1); }
+  .toolbar-select {
+    padding: 3px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+  }
+  .converting-hint {
+    font-size: 11px;
+    color: var(--accent);
+  }
+  .toolbar-spacer { flex: 1; }
+  .toolbar-btn {
     font-size: 12px;
     color: var(--accent);
     cursor: pointer;
-    padding: 3px 10px;
+    padding: 3px 8px;
     border: 1px solid var(--accent);
     border-radius: 3px;
     transition: all 0.15s;
   }
-  .upload-btn:hover { background: rgba(95,155,101,0.08); }
-  .upload-btn.disabled { opacity: 0.5; pointer-events: none; }
-  .fork-hint {
-    font-size: 14px;
-    color: var(--accent);
-    margin: 0 0 16px;
-  }
-  .form-row {
+  .toolbar-btn:hover { background: rgba(95,155,101,0.08); }
+  .toolbar-btn.disabled { opacity: 0.5; pointer-events: none; }
+
+  .editor-content {
+    flex: 1;
     display: flex;
-    gap: 12px;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
   }
-  .error-msg {
-    color: #dc2626;
-    margin-bottom: 1rem;
+  .editor-textarea {
+    flex: 1;
+    width: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: var(--font-mono, monospace);
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 1rem;
+    color: var(--text-primary);
+    background: var(--bg-white);
   }
-  .form-group {
-    margin-bottom: 1.25rem;
+
+  /* === Settings Sidebar (right) === */
+  .settings-sidebar {
+    width: 300px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    font-size: 13px;
+    background: var(--bg-white);
   }
-  .restricted-check {
-    display: flex;
+  .settings-sidebar details {
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-sidebar summary {
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg-hover, #fafafa);
+  }
+  .settings-sidebar summary:hover { color: var(--text-primary); }
+  .sb-field {
+    padding: 6px 12px;
+  }
+  .sb-field label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-hint);
+    margin-bottom: 3px;
+  }
+  .sb-field select, .sb-field input[type="text"] {
+    width: 100%;
+    padding: 4px 8px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+  }
+  .sb-hint {
+    font-size: 11px;
+    color: var(--text-hint);
+    padding: 4px 12px 0;
+    margin: 0;
+  }
+  .check-label {
+    display: flex !important;
     align-items: center;
     gap: 6px;
     margin-top: 6px;
-    font-size: 13px;
+    font-size: 12px !important;
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--text-secondary) !important;
   }
-  .form-hint {
-    font-size: 12px;
-    color: var(--text-hint);
-    margin: 2px 0 8px;
-  }
+
+  /* Tags inside sidebar */
   .tag-input-row {
     position: relative;
     display: flex;
-    gap: 6px;
-    margin-bottom: 8px;
+    gap: 4px;
+    margin-bottom: 6px;
   }
-  .tag-input-row input {
-    flex: 1;
-    padding: 6px 10px;
-    font-size: 13px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-family: var(--font-sans);
-  }
+  .tag-input-row input { flex: 1; }
   .tag-add-btn {
-    padding: 6px 14px;
-    font-size: 13px;
+    padding: 4px 10px;
+    font-size: 12px;
     background: var(--accent);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 3px;
     cursor: pointer;
     white-space: nowrap;
   }
@@ -864,39 +1369,39 @@
     position: absolute;
     top: 100%;
     left: 0;
-    right: 60px;
+    right: 40px;
     background: var(--bg-white);
     border: 1px solid var(--border);
     border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     z-index: 10;
-    max-height: 200px;
+    max-height: 150px;
     overflow-y: auto;
   }
   .tag-suggestions button {
     display: block;
     width: 100%;
-    padding: 6px 10px;
+    padding: 4px 8px;
     border: none;
     background: none;
     text-align: left;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
   }
   .tag-suggestions button:hover { background: var(--bg-gray, #f5f5f5); }
-  .sg-id { color: var(--text-hint); font-size: 11px; }
+  .sg-id { color: var(--text-hint); font-size: 10px; }
   .selected-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 8px;
+    gap: 4px;
+    margin-bottom: 6px;
   }
-  .selected-tags .tag { display: inline-flex; align-items: center; gap: 4px; }
+  .selected-tags .tag { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
   .tag-remove {
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     color: inherit;
     padding: 0;
     line-height: 1;
@@ -906,28 +1411,28 @@
   .tag-picker {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
+    gap: 3px;
   }
-  .tag-picker .tag {
-    cursor: pointer;
-  }
+  .tag-picker .tag { cursor: pointer; font-size: 11px; }
 
+  /* Prereqs inside sidebar */
   .prereq-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    margin-bottom: 8px;
+    gap: 3px;
+    padding: 4px 12px;
   }
   .prereq-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 8px;
+    gap: 6px;
+    padding: 3px 6px;
     background: var(--bg-hover);
     border-radius: 3px;
+    font-size: 12px;
   }
   .prereq-type-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-hint);
     margin-left: auto;
   }
@@ -936,50 +1441,36 @@
     border: none;
     cursor: pointer;
     color: var(--text-hint);
-    font-size: 16px;
-    padding: 0 4px;
+    font-size: 14px;
+    padding: 0 2px;
     line-height: 1;
-    transition: color 0.15s;
   }
-  .prereq-remove:hover {
-    color: #dc2626;
-  }
-
+  .prereq-remove:hover { color: #dc2626; }
   .prereq-add {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     align-items: center;
+    padding: 6px 12px;
   }
   .prereq-add select {
-    padding: 5px 8px;
-    font-size: 13px;
+    padding: 3px 6px;
+    font-size: 12px;
     border: 1px solid var(--border);
     border-radius: 3px;
     background: var(--bg-white);
-    font-family: var(--font-sans);
   }
   .prereq-add-btn {
-    padding: 5px 12px;
-    font-size: 13px;
+    padding: 3px 10px;
+    font-size: 12px;
     background: var(--accent);
     color: white;
     border: none;
     border-radius: 3px;
     cursor: pointer;
   }
-  .prereq-add-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+  .prereq-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Language versions */
-  .lang-versions-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-  }
-  .lang-versions-header .form-label { margin-bottom: 0; font-weight: 500; }
+  /* Language versions inside sidebar */
   .btn-add-lang {
     font-size: 12px;
     color: var(--accent);
@@ -988,25 +1479,27 @@
     border-radius: 3px;
     padding: 3px 10px;
     cursor: pointer;
-    transition: all 0.15s;
+    margin: 6px 12px;
+    display: block;
   }
   .btn-add-lang:hover { background: rgba(95,155,101,0.08); }
   .lang-version-block {
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px;
-    margin-bottom: 10px;
+    border-radius: 4px;
+    padding: 8px;
+    margin: 6px 12px;
     background: var(--bg-hover, #fafafa);
   }
   .lang-version-header {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
   }
   .lang-version-header select {
-    padding: 4px 8px;
-    font-size: 13px;
+    padding: 3px 6px;
+    font-size: 12px;
     border: 1px solid var(--border);
     border-radius: 3px;
     background: var(--bg-white);
@@ -1015,7 +1508,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 18px;
+    font-size: 16px;
     color: var(--text-hint);
     padding: 0 4px;
     line-height: 1;
@@ -1024,58 +1517,83 @@
   .lang-remove:hover { color: #dc2626; }
   .lang-textarea {
     width: 100%;
-    min-height: 150px;
-    padding: 8px;
+    min-height: 100px;
+    padding: 6px;
     font-family: var(--font-mono, monospace);
-    font-size: 13px;
+    font-size: 12px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 3px;
     resize: vertical;
   }
 
-  /* Submit row */
-  .submit-row {
+  /* === Footer === */
+  .editor-footer {
     display: flex;
     gap: 8px;
     align-items: center;
+    padding: 8px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-white);
+    flex-shrink: 0;
+  }
+  .footer-spacer { flex: 1; }
+  .footer-status { font-size: 12px; }
+  .status-unsaved { color: #d97706; }
+  .status-saved { color: var(--text-hint); }
+  .commit-input {
+    width: 200px;
+    padding: 5px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+  }
+  .commit-input::placeholder { color: var(--text-hint); }
+
+  .btn {
+    padding: 6px 16px;
+    font-size: 13px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+  }
+  .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+  .btn-outline {
+    background: var(--bg-white);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+  .btn-outline:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .btn-draft {
-    padding: 8px 20px;
-    font-size: 14px;
+    padding: 6px 16px;
+    font-size: 13px;
     border: 1px dashed var(--border);
     border-radius: 4px;
     background: var(--bg-white);
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.15s;
   }
-  .btn-draft:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
+  .btn-draft:hover { border-color: var(--accent); color: var(--accent); }
   .btn-draft:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-secondary {
-    padding: 8px 20px;
-    font-size: 14px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-white);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn-secondary:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
 
-  /* Diff preview */
-  .diff-preview {
-    margin-top: 1rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 16px;
-    background: var(--bg-white);
+  /* === Fork diff overlay === */
+  .diff-overlay {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto;
   }
   .diff-header {
     display: flex;
@@ -1089,35 +1607,16 @@
     font-size: 16px;
     margin: 0;
   }
-  .diff-close {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    padding: 4px 12px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .diff-close:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-  .diff-stats {
-    font-size: 13px;
-    margin-bottom: 8px;
-    display: flex;
-    gap: 12px;
-  }
-  .diff-add { color: #22863a; }
-  .diff-del { color: #cb2431; }
+  .diff-stats { font-size: 13px; margin-bottom: 8px; display: flex; gap: 12px; }
+  .diff-add-count { color: #22863a; }
+  .diff-del-count { color: #cb2431; }
   .diff-empty {
     color: var(--text-hint);
     text-align: center;
     padding: 2rem 0;
   }
   .diff-content {
-    font-family: var(--font-mono, 'SF Mono', 'Fira Code', monospace);
+    font-family: var(--font-mono, monospace);
     font-size: 12px;
     line-height: 1.5;
     overflow-x: auto;
@@ -1129,33 +1628,15 @@
     margin: 0 0 12px;
     background: #fafafa;
   }
-  .diff-content :global(.line-add) {
-    display: block;
-    background: #e6ffec;
-    color: #22863a;
-    padding: 0 8px;
+  .diff-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
-  .diff-content :global(.line-del) {
-    display: block;
-    background: #ffebe9;
-    color: #cb2431;
-    padding: 0 8px;
-  }
-  .diff-content :global(.line-same) {
-    display: block;
-    padding: 0 8px;
-    color: var(--text-secondary);
-  }
-  .diff-content :global(.line-collapse) {
-    display: block;
-    padding: 4px 8px;
-    color: var(--text-hint);
-    background: var(--bg-hover);
-    text-align: center;
-    font-style: italic;
-    font-size: 12px;
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    margin: 2px 0;
+
+  /* === Responsive === */
+  @media (max-width: 900px) {
+    .version-panel { display: none; }
+    .settings-sidebar { display: none; }
   }
 </style>

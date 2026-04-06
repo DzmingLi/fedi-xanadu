@@ -137,12 +137,12 @@
           {#each prereqMap.get(article.article_uri)! as pUri}
             {@const pArticle = articleByUri.get(pUri)}
             {#if pArticle}
-              <a href="#/article?uri={encodeURIComponent(pUri)}" class="prereq-link">{pArticle.title}</a>
+              <a href="#/article?uri={encodeURIComponent(pUri)}&series_id={encodeURIComponent(id)}" class="prereq-link">{pArticle.title}</a>
             {/if}
           {/each}
         </div>
       {/if}
-      <a href="#/article?uri={encodeURIComponent(article.article_uri)}" class="item-title">
+      <a href="#/article?uri={encodeURIComponent(article.article_uri)}&series_id={encodeURIComponent(id)}" class="item-title">
         {article.title}
       </a>
       {#if article.description}

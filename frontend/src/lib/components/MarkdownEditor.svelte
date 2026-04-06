@@ -11,7 +11,7 @@
   import { keymap } from 'prosemirror-keymap';
   import { t } from '../i18n/index.svelte';
 
-  let { value = $bindable(''), placeholder = '' }: { value: string; placeholder?: string } = $props();
+  let { value = $bindable(''), placeholder = '', fillHeight = false }: { value: string; placeholder?: string; fillHeight?: boolean } = $props();
 
   let container: HTMLDivElement;
   let view: EditorView | null = null;
@@ -119,7 +119,7 @@
   });
 </script>
 
-<div class="md-editor-wrapper" class:fullscreen>
+<div class="md-editor-wrapper" class:fullscreen class:fill-height={fillHeight}>
   <div class="md-toolbar">
     <button type="button" class="toolbar-btn" onclick={insertTable} title={t('editor.insertTable')}>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -159,6 +159,13 @@
     background: var(--bg-white);
     display: flex;
     flex-direction: column;
+  }
+
+  .md-editor-wrapper.fill-height {
+    flex: 1;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
   }
 
   .md-editor-wrapper.fullscreen {
@@ -205,6 +212,10 @@
     min-height: 300px;
     overflow-y: auto;
     position: relative;
+  }
+
+  .fill-height .md-editor {
+    min-height: 0;
   }
 
   .fullscreen .md-editor {
@@ -349,7 +360,8 @@
   }
 
   /* Menu bar (from prosemirror-example-setup) */
-  .md-editor :global(.ProseMirror-menubar-wrapper) { border: none; }
+  .md-editor :global(.ProseMirror-menubar-wrapper) { border: none; display: flex; flex-direction: column; flex: 1; }
+  .fill-height .md-editor :global(.ProseMirror-menubar-wrapper) { min-height: 0; }
 
   .md-editor :global(.ProseMirror-menubar) {
     border-bottom: 1px solid var(--border);

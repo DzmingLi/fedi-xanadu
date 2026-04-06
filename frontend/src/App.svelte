@@ -66,12 +66,12 @@
     <mod.default />
   {/await}
 {:else if route.page === 'article'}
-  <div class="top-nav">
+  <div class={route.params.series_id ? 'top-nav-series' : 'top-nav'}>
     <NavBar />
   </div>
-  <div class="container article-view">
+  <div class={route.params.series_id ? 'container-series' : 'container article-view'}>
     {#await lazyArticle() then mod}
-      <mod.default uri={route.params.uri || ''} />
+      <mod.default uri={route.params.uri || ''} seriesId={route.params.series_id || ''} />
     {/await}
   </div>
 {:else if route.page === 'home'}
@@ -85,6 +85,15 @@
       <RightSidebar />
     </div>
   </div>
+{:else if route.page === 'new'}
+  <div class="editor-nav">
+    <NavBar />
+  </div>
+  <div class="editor-container">
+    {#await lazyNewArticle() then mod}
+      <mod.default forkOf={route.params.fork_of || ''} editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} />
+    {/await}
+  </div>
 {:else if route.page !== 'book'}
   <div class="top-nav">
     <NavBar />
@@ -93,10 +102,6 @@
     {#if route.page === 'tag'}
       {#await lazyTagDetail() then mod}
         <mod.default id={route.params.id || ''} />
-      {/await}
-    {:else if route.page === 'new'}
-      {#await lazyNewArticle() then mod}
-        <mod.default forkOf={route.params.fork_of || ''} editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} />
       {/await}
     {:else if route.page === 'about'}
       {#await lazyAbout() then mod}
@@ -182,6 +187,29 @@
 {/if}
 
 <style>
+  .editor-nav {
+    padding: 0 1rem;
+    max-width: 100%;
+  }
+  .editor-container {
+    max-width: 100%;
+    height: calc(100vh - 3.5rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .top-nav-series {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+  .container-series {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 1rem;
+    display: flex;
+    gap: 0;
+  }
   .top-nav {
     max-width: 760px;
     margin: 0 auto;

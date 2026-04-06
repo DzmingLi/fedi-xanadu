@@ -144,6 +144,7 @@ fn article_routes() -> Router<AppState> {
         .route("/articles/by-uri/version", get(articles::get_article_version))
         .route("/articles/by-uri/diff", get(articles::get_article_diff))
         .route("/articles/by-uri/unrecord", post(articles::unrecord_article_change))
+        .route("/articles/by-uri/record", post(articles::record_article))
         .route("/articles/apply-change", post(articles::apply_change))
 }
 

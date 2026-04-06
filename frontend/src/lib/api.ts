@@ -276,8 +276,14 @@ export const getMyCommentVotes = (uri: string) =>
   get<MyCommentVote[]>(`/comments/my-votes?uri=${encodeURIComponent(uri)}`);
 
 // Article edit/delete
-export const updateArticle = (uri: string, data: { title?: string; description?: string; content?: string; commit_message?: string }) =>
+export const updateArticle = (uri: string, data: { title?: string; description?: string; content?: string; commit_message?: string; record?: boolean }) =>
   put<Article>('/articles/update', { uri, ...data });
+/** Save content to working copy without creating a pijul change. */
+export const saveArticle = (uri: string, data: { title?: string; description?: string; content?: string }) =>
+  put<Article>('/articles/update', { uri, ...data, record: false });
+/** Explicitly record the current working copy as a pijul change. Returns updated history. */
+export const recordArticle = (uri: string, message: string) =>
+  post<ArticleVersionInfo[]>('/articles/by-uri/record', { uri, message });
 export const deleteArticle = (uri: string) =>
   del<void>('/articles/delete', { uri });
 
