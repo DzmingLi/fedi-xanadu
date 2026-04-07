@@ -752,27 +752,22 @@
 
       <!-- Center: Editor -->
       <div class="editor-main">
-        <div class="editor-toolbar">
-          <button
-            class="toolbar-icon"
-            onclick={() => versionPanelOpen = !versionPanelOpen}
-            title={t('version.togglePanel')}
-            class:active={versionPanelOpen}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v6m0 6v6m9-9h-6m-6 0H3"/></svg>
-          </button>
-
-          <div class="toolbar-spacer"></div>
-
-          <button
-            class="toolbar-icon"
-            onclick={() => sidebarOpen = !sidebarOpen}
-            title={t('editor.settings')}
-            class:active={sidebarOpen}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-          </button>
-        </div>
+        <!-- Version panel toggle tab on left edge -->
+        <button
+          class="version-tab"
+          class:open={versionPanelOpen}
+          onclick={() => versionPanelOpen = !versionPanelOpen}
+          title={t('version.togglePanel')}
+          aria-label={t('version.togglePanel')}
+        >
+          <svg width="10" height="18" viewBox="0 0 10 18" fill="currentColor">
+            {#if versionPanelOpen}
+              <polyline points="8,2 2,9 8,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            {:else}
+              <polyline points="2,2 8,9 2,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            {/if}
+          </svg>
+        </button>
 
         <!-- Editor content area -->
         <div class="editor-content">
@@ -782,6 +777,23 @@
             <textarea class="editor-textarea" bind:value={content} placeholder={contentFormat === 'html' ? '<!DOCTYPE html>...' : '= My Article'}></textarea>
           {/if}
         </div>
+
+        <!-- Sidebar toggle tab on right edge -->
+        <button
+          class="sidebar-tab"
+          class:open={sidebarOpen}
+          onclick={() => sidebarOpen = !sidebarOpen}
+          title={t('editor.settings')}
+          aria-label={t('editor.settings')}
+        >
+          <svg width="10" height="18" viewBox="0 0 10 18" fill="currentColor">
+            {#if sidebarOpen}
+              <polyline points="2,2 8,9 2,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            {:else}
+              <polyline points="8,2 2,9 8,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            {/if}
+          </svg>
+        </button>
       </div>
 
       <!-- Right: Settings Sidebar -->
@@ -1273,6 +1285,42 @@
     flex-direction: column;
     min-width: 0;
     overflow: hidden;
+    position: relative;
+  }
+
+  .sidebar-tab, .version-tab {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 16px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 0;
+  }
+  .sidebar-tab:hover, .version-tab:hover {
+    background: var(--bg-hover, #f0f0f0);
+    color: var(--text-primary);
+  }
+
+  .sidebar-tab {
+    right: 0;
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+    box-shadow: -1px 0 4px rgba(0,0,0,0.06);
+  }
+
+  .version-tab {
+    left: 0;
+    border-left: none;
+    border-radius: 0 4px 4px 0;
+    box-shadow: 1px 0 4px rgba(0,0,0,0.06);
   }
 
   .editor-toolbar {
