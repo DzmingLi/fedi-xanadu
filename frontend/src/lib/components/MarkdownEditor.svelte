@@ -220,6 +220,12 @@
     top: 64px;
   }
 
+  .fill-height .md-placeholder {
+    left: max(1rem, calc(50% - 364px));
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
   /*
    * ProseMirror editing area — mirrors .content from app.css
    * so the editor looks identical to the rendered article.
