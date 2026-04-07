@@ -257,12 +257,29 @@
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" ];
         };
+
+        # Rust source only — excludes frontend/, docs/, vendor/, scripts/
+        # so that frontend-only changes don't invalidate the Rust build cache.
+        rustSrc = pkgs.lib.cleanSourceWith {
+          src = pkgs.lib.cleanSource ./.;
+          filter = path: _type:
+            let rel = pkgs.lib.removePrefix (toString ./. + "/") path;
+            in !(builtins.any (prefix: pkgs.lib.hasPrefix prefix rel) [
+              "frontend/" "docs/" "vendor/" "scripts/" "crates/frontend/"
+            ]);
+        };
+
+        # Pre-built frontend assets as a standalone derivation (just a file copy).
+        # Only rebuilds when frontend/dist changes; Rust derivation is unaffected.
+        frontendDist = pkgs.runCommand "fedi-xanadu-frontend-dist" {} ''
+          cp -r ${./frontend/dist} $out
+        '';
       in
       {
         packages.fx-cli = pkgs.rustPlatform.buildRustPackage {
           pname = "fx-cli";
           version = "0.1.0";
-          src = pkgs.lib.cleanSource ./.;
+          src = rustSrc;
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = with pkgs; [ pkg-config ];
           buildInputs = with pkgs; [ openssl postgresql ];
@@ -278,7 +295,7 @@
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "fedi-xanadu";
           version = "0.1.0";
-          src = pkgs.lib.cleanSource ./.;
+          src = rustSrc;
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = with pkgs; [ pkg-config makeWrapper ];
           buildInputs = with pkgs; [ openssl postgresql ];
@@ -287,7 +304,7 @@
 
           postInstall = ''
             mkdir -p $out/share/fedi-xanadu/frontend
-            cp -r $src/frontend/dist $out/share/fedi-xanadu/frontend/dist
+            cp -r ${frontendDist} $out/share/fedi-xanadu/frontend/dist
             cp -r $src/migrations_pg $out/share/fedi-xanadu/migrations_pg
             if [ -d "$src/static" ]; then
               cp -r $src/static $out/share/fedi-xanadu/static
