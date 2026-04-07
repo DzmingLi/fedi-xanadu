@@ -4,6 +4,7 @@
   import { addListNodes } from 'prosemirror-schema-list';
   import { tableNodes } from 'prosemirror-tables';
   import { inputRules, InputRule, textblockTypeInputRule, wrappingInputRule } from 'prosemirror-inputrules';
+  import { Plugin } from 'prosemirror-state';
   import { type NodeView } from 'prosemirror-view';
   import type { EditorView } from 'prosemirror-view';
 
@@ -157,16 +158,52 @@
     destroy() { this._view = null; }
   }
 
+  // ── Math inline creation via keydown ─────────────────────────────────────
+  // Intercepts the closing $ key BEFORE insertion so we never dispatch a
+  // replaceWith inside an in-progress input event (which freezes the editor
+  // and also doesn't fire at all when a Chinese IME is active).
+  const mathKeyPlugin = new Plugin({
+    props: {
+      handleKeyDown(view, e) {
+        // Only handle a plain $ key (not during IME composition).
+        if (e.key !== '$' || e.isComposing) return false;
+        const sel = view.state.selection;
+        const cursor = (sel as any).$cursor;
+        if (!cursor || cursor.parent.type.name !== 'paragraph') return false;
+        // Text in the current paragraph up to the cursor.
+        const textBefore = cursor.parent.textBetween(0, cursor.parentOffset, null, '\ufffc');
+        // Match the last unmatched $…: everything after the last $ sign.
+        const m = /\$([^$\n]{1,200})$/.exec(textBefore);
+        if (!m) return false;
+        const formula = m[1].trim();
+        if (!formula) return false;
+        // Replace "$formula" (the opening $ + content, without closing $)
+        // with a math_inline node. The closing $ is consumed by returning true.
+        const start = cursor.pos - m[0].length;
+        view.dispatch(
+          view.state.tr.replaceWith(start, cursor.pos, typstSchema.nodes.math_inline.create({ formula }))
+        );
+        return true;
+      },
+    },
+  });
+
   // ── Input rules ──────────────────────────────────────────────────────────
-  export const typstPlugins = [inputRules({ rules: [
-    textblockTypeInputRule(/^(={1,6})\s$/, typstSchema.nodes.heading, (m: RegExpMatchArray) => ({ level: m[1].length })),
-    wrappingInputRule(/^\+\s$/, typstSchema.nodes.ordered_list),
-    new InputRule(/\$([^$\n]{1,200})\$$/, (state, match, start, end) => {
-      const formula = match[1].trim();
-      if (!formula) return null;
-      return state.tr.replaceWith(start, end, typstSchema.nodes.math_inline.create({ formula }));
-    }),
-  ]})];
+  // The $ InputRule below is a fallback for paste / non-keydown paths.
+  // For live typing the mathKeyPlugin above takes precedence (and returns true
+  // before the $ is inserted, so the InputRule never sees it).
+  export const typstPlugins = [
+    mathKeyPlugin,
+    inputRules({ rules: [
+      textblockTypeInputRule(/^(={1,6})\s$/, typstSchema.nodes.heading, (m: RegExpMatchArray) => ({ level: m[1].length })),
+      wrappingInputRule(/^\+\s$/, typstSchema.nodes.ordered_list),
+      new InputRule(/\$([^$\n]{1,200})\$$/, (state, match, start, end) => {
+        const formula = match[1].trim();
+        if (!formula) return null;
+        return state.tr.replaceWith(start, end, typstSchema.nodes.math_inline.create({ formula }));
+      }),
+    ]}),
+  ];
 
   export const typstNodeViews = {
     math_inline: (node: PNode, ev: EditorView, gp: any) => new MathNodeView(node, ev, gp),
