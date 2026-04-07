@@ -273,21 +273,6 @@
         # Full Rust source (used as base for per-package filters below).
         rustSrc = stripNonRust (pkgs.lib.cleanSource ./.);
 
-        # fx-cli only needs its own crate + shared lib crates.
-        # Exclude server-only crate src/ so server changes don't bust the CLI cache.
-        fxCliSrc = pkgs.lib.cleanSourceWith {
-          src = rustSrc;
-          filter = path: _type:
-            let rel = pkgs.lib.removePrefix (toString ./. + "/") path;
-            in !(builtins.any (prefix: pkgs.lib.hasPrefix prefix rel) [
-              "crates/fx-server/src"
-              "crates/fx-pijul/src"
-              "crates/fx-atproto/src"
-              "crates/fx-render/src"
-              "crates/fx-search/src"
-            ]);
-        };
-
         # Server excludes the CLI src/ so CLI-only changes don't bust the server cache.
         serverSrc = pkgs.lib.cleanSourceWith {
           src = rustSrc;
@@ -329,7 +314,7 @@
         packages.fx-cli = pkgs.rustPlatform.buildRustPackage {
           pname = "fx-cli";
           version = "0.1.0";
-          src = fxCliSrc;
+          src = rustSrc;
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = with pkgs; [ pkg-config ];
           buildInputs = with pkgs; [ openssl postgresql ];
