@@ -207,10 +207,14 @@
 
   .fill-height .md-editor {
     min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .fullscreen .md-editor {
     min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .md-placeholder {
@@ -243,23 +247,28 @@
     font-size: 12pt;
     line-height: 1.45;
     color: var(--text-primary);
-    text-align: justify;
+    text-align: left;
     hyphens: auto;
   }
 
   .fill-height .md-editor :global(.ProseMirror) {
+    flex: 1;
     min-height: 0;
     max-width: 760px;
     margin: 0 auto;
     padding: 2rem 1rem;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .fullscreen .md-editor :global(.ProseMirror) {
+    flex: 1;
     min-height: 0;
-    height: 100%;
     max-width: 760px;
     margin: 0 auto;
     padding: 2rem 1rem;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .md-editor :global(.ProseMirror p) { margin: 1em 0; overflow-wrap: break-word; }
