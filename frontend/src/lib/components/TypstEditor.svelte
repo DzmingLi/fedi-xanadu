@@ -1,37 +1,36 @@
-<script lang="ts">
+<script module lang="ts">
   import { Schema, type Node as PNode } from 'prosemirror-model';
   import { schema as basicSchema } from 'prosemirror-schema-basic';
   import { addListNodes } from 'prosemirror-schema-list';
   import { tableNodes } from 'prosemirror-tables';
   import { inputRules, InputRule, textblockTypeInputRule, wrappingInputRule } from 'prosemirror-inputrules';
-  import { EditorView, type NodeView } from 'prosemirror-view';
-  import ProseEditorBase from './ProseEditorBase.svelte';
+  import { type NodeView } from 'prosemirror-view';
+  import type { EditorView } from 'prosemirror-view';
 
-  let { value = $bindable(''), placeholder = '', fillHeight = false }: {
-    value: string; placeholder?: string; fillHeight?: boolean;
-  } = $props();
+  // ── Module-level singletons ──────────────────────────────────────────────
 
-  // ── Schema ──────────────────────────────────────────────────────────────
   const baseNodes = addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block');
-  const typstSchema = new Schema({
-    nodes: (baseNodes as any).append(tableNodes({ tableGroup: 'block', cellContent: 'block+', cellAttributes: {} })).append({
-      math_inline: {
-        group: 'inline', inline: true, atom: true,
-        attrs: { formula: { default: '' } },
-        parseDOM: [{ tag: 'span[data-math]', getAttrs: (d: any) => ({ formula: d.dataset.math }) }],
-        toDOM: (n: PNode) => ['span', { 'data-math': n.attrs.formula, class: 'typst-math-inline' }],
-      },
-      math_block: {
-        group: 'block', atom: true,
-        attrs: { formula: { default: '' } },
-        parseDOM: [{ tag: 'div[data-math-block]', getAttrs: (d: any) => ({ formula: d.dataset.mathBlock }) }],
-        toDOM: (n: PNode) => ['div', { 'data-math-block': n.attrs.formula, class: 'typst-math-block' }],
-      },
-    }),
+  export const typstSchema = new Schema({
+    nodes: (baseNodes as any)
+      .append(tableNodes({ tableGroup: 'block', cellContent: 'block+', cellAttributes: {} }))
+      .append({
+        math_inline: {
+          group: 'inline', inline: true, atom: true,
+          attrs: { formula: { default: '' } },
+          parseDOM: [{ tag: 'span[data-math]', getAttrs: (d: any) => ({ formula: d.dataset.math }) }],
+          toDOM: (n: PNode) => ['span', { 'data-math': n.attrs.formula, class: 'typst-math-inline' }],
+        },
+        math_block: {
+          group: 'block', atom: true,
+          attrs: { formula: { default: '' } },
+          parseDOM: [{ tag: 'div[data-math-block]', getAttrs: (d: any) => ({ formula: d.dataset.mathBlock }) }],
+          toDOM: (n: PNode) => ['div', { 'data-math-block': n.attrs.formula, class: 'typst-math-block' }],
+        },
+      }),
     marks: basicSchema.spec.marks,
   });
 
-  // ── Math rendering cache ─────────────────────────────────────────────────
+  // ── Math rendering cache (shared across all TypstEditor instances) ────────
   const mathCache = new Map<string, string>();
 
   async function fetchMathHtml(formula: string, display: boolean): Promise<string> {
@@ -54,8 +53,9 @@
       : `<span class="math-fallback">$${formula}$</span>`;
   }
 
-  // ── Math NodeView — renders via Typst backend, click-to-edit ─────────────
-  class MathNodeView implements NodeView {
+  // ── MathNodeView — no closure over component scope ────────────────────────
+  // Receives schema via typstSchema (module-level) and fetchMathHtml (module-level).
+  export class MathNodeView implements NodeView {
     dom: HTMLElement;
     private _display: boolean;
     private _formula: string;
@@ -77,7 +77,9 @@
 
     private _renderMath() {
       const f = this._formula, d = this._display, dom = this.dom;
-      dom.innerHTML = d ? `<span class="math-source">$ ${f} $</span>` : `<span class="math-source">$${f}$</span>`;
+      dom.innerHTML = d
+        ? `<span class="math-source">$ ${f} $</span>`
+        : `<span class="math-source">$${f}$</span>`;
       fetchMathHtml(f, d).then(html => {
         if (!this._editing && this._formula === f) dom.innerHTML = html;
       });
@@ -94,8 +96,9 @@
         ta.value = this._formula;
         ta.rows = Math.max(2, this._formula.split('\n').length + 1);
         ta.addEventListener('keydown', e => {
-          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this._commitEdit(ta.value); }
-          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); this._commitEdit(ta.value); }
+          if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+            e.preventDefault(); e.stopPropagation(); this._commitEdit(ta.value);
+          }
           e.stopPropagation();
         });
         ta.addEventListener('blur', () => this._commitEdit(ta.value));
@@ -108,7 +111,9 @@
         inp.className = 'math-edit-input';
         inp.value = this._formula;
         inp.addEventListener('keydown', e => {
-          if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this._commitEdit(inp.value); }
+          if (e.key === 'Enter' || e.key === 'Escape') {
+            e.preventDefault(); e.stopPropagation(); this._commitEdit(inp.value);
+          }
           e.stopPropagation();
         });
         inp.addEventListener('blur', () => this._commitEdit(inp.value));
@@ -127,7 +132,9 @@
       if (trimmed !== this._formula && this._view) {
         const pos = typeof this._getPos === 'function' ? this._getPos() : undefined;
         if (pos !== undefined) {
-          const nodeType = this._display ? typstSchema.nodes.math_block : typstSchema.nodes.math_inline;
+          const nodeType = this._display
+            ? typstSchema.nodes.math_block
+            : typstSchema.nodes.math_inline;
           this._view.dispatch(this._view.state.tr.setNodeMarkup(pos, nodeType, { formula: trimmed }));
           return;
         }
@@ -137,7 +144,8 @@
     }
 
     update(node: PNode) {
-      if (node.type !== (this._display ? typstSchema.nodes.math_block : typstSchema.nodes.math_inline)) return false;
+      const expectedType = this._display ? typstSchema.nodes.math_block : typstSchema.nodes.math_inline;
+      if (node.type !== expectedType) return false;
       const f = node.attrs.formula;
       if (f !== this._formula) { this._formula = f; if (!this._editing) this._renderMath(); }
       return true;
@@ -150,7 +158,7 @@
   }
 
   // ── Input rules ──────────────────────────────────────────────────────────
-  const plugins = [inputRules({ rules: [
+  export const typstPlugins = [inputRules({ rules: [
     textblockTypeInputRule(/^(={1,6})\s$/, typstSchema.nodes.heading, (m: RegExpMatchArray) => ({ level: m[1].length })),
     wrappingInputRule(/^\+\s$/, typstSchema.nodes.ordered_list),
     new InputRule(/\$([^$\n]{1,200})\$$/, (state, match, start, end) => {
@@ -160,7 +168,7 @@
     }),
   ]})];
 
-  const nodeViews = {
+  export const typstNodeViews = {
     math_inline: (node: PNode, ev: EditorView, gp: any) => new MathNodeView(node, ev, gp),
     math_block:  (node: PNode, ev: EditorView, gp: any) => new MathNodeView(node, ev, gp),
   };
@@ -181,22 +189,39 @@
 
   function serializeBlock(node: PNode): string {
     switch (node.type.name) {
-      case 'paragraph': { let s = ''; node.forEach(c => { s += serializeInline(c); }); return s + '\n'; }
-      case 'heading':   { let s = ''; node.forEach(c => { s += serializeInline(c); }); return '='.repeat(node.attrs.level) + ' ' + s + '\n'; }
+      case 'paragraph': {
+        let s = ''; node.forEach(c => { s += serializeInline(c); }); return s + '\n';
+      }
+      case 'heading': {
+        let s = ''; node.forEach(c => { s += serializeInline(c); });
+        return '='.repeat(node.attrs.level) + ' ' + s + '\n';
+      }
       case 'bullet_list': {
         let out = '';
-        node.forEach(item => { let s = ''; item.forEach(c => { if (c.type.name === 'paragraph') c.forEach(i => { s += serializeInline(i); }); }); out += `- ${s}\n`; });
+        node.forEach(item => {
+          let s = '';
+          item.forEach(c => { if (c.type.name === 'paragraph') c.forEach(i => { s += serializeInline(i); }); });
+          out += `- ${s}\n`;
+        });
         return out;
       }
       case 'ordered_list': {
         let out = '';
-        node.forEach(item => { let s = ''; item.forEach(c => { if (c.type.name === 'paragraph') c.forEach(i => { s += serializeInline(i); }); }); out += `+ ${s}\n`; });
+        node.forEach(item => {
+          let s = '';
+          item.forEach(c => { if (c.type.name === 'paragraph') c.forEach(i => { s += serializeInline(i); }); });
+          out += `+ ${s}\n`;
+        });
         return out;
       }
-      case 'blockquote': { let s = ''; node.forEach(c => { if (c.type.name === 'paragraph') c.forEach(i => { s += serializeInline(i); }); }); return `#quote[${s}]\n`; }
-      case 'code_block': return '```\n' + node.textContent + '\n```\n';
+      case 'blockquote': {
+        let s = '';
+        node.forEach(c => { if (c.type.name === 'paragraph') c.forEach(i => { s += serializeInline(i); }); });
+        return `#quote[${s}]\n`;
+      }
+      case 'code_block':      return '```\n' + node.textContent + '\n```\n';
       case 'horizontal_rule': return '---\n';
-      case 'math_block': return '$\n' + node.attrs.formula + '\n$\n';
+      case 'math_block':      return '$\n' + node.attrs.formula + '\n$\n';
       case 'table': {
         const firstRow = node.firstChild;
         if (!firstRow) return '';
@@ -209,7 +234,7 @@
     }
   }
 
-  function serialize(doc: PNode): string {
+  export function serializeTypst(doc: PNode): string {
     let out = '';
     doc.forEach(block => { out += serializeBlock(block) + '\n'; });
     return out.replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
@@ -236,7 +261,7 @@
     return nodes.length ? nodes : [typstSchema.text(' ')];
   }
 
-  function parse(text: string): PNode {
+  export function parseTypst(text: string): PNode {
     try {
       const blocks: PNode[] = [];
       const lines = text.split('\n');
@@ -248,12 +273,18 @@
         if (hm) { blocks.push(typstSchema.nodes.heading.create({ level: hm[1].length }, parseInline(hm[2]))); i++; continue; }
         if (/^- /.test(line)) {
           const items: PNode[] = [];
-          while (i < lines.length && /^- /.test(lines[i])) { items.push(typstSchema.nodes.list_item.create(null, [typstSchema.nodes.paragraph.create(null, parseInline(lines[i].slice(2)))])); i++; }
+          while (i < lines.length && /^- /.test(lines[i])) {
+            items.push(typstSchema.nodes.list_item.create(null, [typstSchema.nodes.paragraph.create(null, parseInline(lines[i].slice(2)))]));
+            i++;
+          }
           blocks.push(typstSchema.nodes.bullet_list.create(null, items)); continue;
         }
         if (/^\+ /.test(line)) {
           const items: PNode[] = [];
-          while (i < lines.length && /^\+ /.test(lines[i])) { items.push(typstSchema.nodes.list_item.create(null, [typstSchema.nodes.paragraph.create(null, parseInline(lines[i].slice(2)))])); i++; }
+          while (i < lines.length && /^\+ /.test(lines[i])) {
+            items.push(typstSchema.nodes.list_item.create(null, [typstSchema.nodes.paragraph.create(null, parseInline(lines[i].slice(2)))]));
+            i++;
+          }
           blocks.push(typstSchema.nodes.ordered_list.create(null, items)); continue;
         }
         if (line.trim() === '```') {
@@ -289,24 +320,56 @@
   }
 </script>
 
+<script lang="ts">
+  import ProseEditorBase, { type ToolbarItem } from './ProseEditorBase.svelte';
+  import type { EditorView } from 'prosemirror-view';
+
+  let { value = $bindable(''), placeholder = '', fillHeight = false }: {
+    value: string; placeholder?: string; fillHeight?: boolean;
+  } = $props();
+
+  // ── Math insert toolbar items ────────────────────────────────────────────
+  const mathToolbarItems: ToolbarItem[] = [
+    {
+      icon: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><text x="2" y="10" font-size="9" font-family="serif" fill="currentColor" stroke="none">∑</text><line x1="9" y1="4" x2="13" y2="4"/><line x1="9" y1="7" x2="13" y2="7"/><line x1="9" y1="10" x2="13" y2="10"/></svg>',
+      title: '插入行内公式 ($…$)',
+      run(view: EditorView) {
+        const { state, dispatch } = view;
+        const node = typstSchema.nodes.math_inline.create({ formula: '' });
+        dispatch(state.tr.replaceSelectionWith(node));
+      },
+    },
+    {
+      icon: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="3" width="12" height="8" rx="1"/><text x="4" y="10" font-size="7" font-family="serif" fill="currentColor" stroke="none">∫</text></svg>',
+      title: '插入块级公式 ($$…$$)',
+      run(view: EditorView) {
+        const { state, dispatch } = view;
+        const node = typstSchema.nodes.math_block.create({ formula: '' });
+        dispatch(state.tr.replaceSelectionWith(node));
+      },
+    },
+  ];
+</script>
+
 <ProseEditorBase
   bind:value
   {placeholder}
   {fillHeight}
   schema={typstSchema}
-  {plugins}
-  {nodeViews}
-  {serialize}
-  {parse}
+  plugins={typstPlugins}
+  nodeViews={typstNodeViews}
+  serialize={serializeTypst}
+  parse={parseTypst}
   headingPrefixes={['= ', '== ', '=== ']}
+  toolbarItems={mathToolbarItems}
 />
 
 <style>
-  /* ── Typst math nodes — rendered via backend, click-to-edit ── */
+  /* ── Typst math nodes ── */
   :global(.typst-math-inline-view) { display: inline-block; vertical-align: middle; cursor: pointer; border-radius: 3px; padding: 0 2px; }
   :global(.typst-math-block-view)  { display: block; border-radius: 4px; margin: 0.75em 0; text-align: center; cursor: pointer; }
   :global(.typst-math-inline-view.selected),
-  :global(.typst-math-block-view.selected)  { outline: 2px solid var(--accent, #4a7); outline-offset: 2px; background: rgba(95, 155, 101, 0.06); }
+  :global(.typst-math-block-view.selected) { outline: 2px solid var(--accent, #4a7); outline-offset: 2px; background: rgba(95, 155, 101, 0.06); }
   :global(.math-source),
   :global(.math-fallback) { font-family: var(--font-mono, monospace); font-size: 0.88em; color: #2a6b4a; background: rgba(42, 107, 74, 0.07); border-radius: 3px; padding: 0 4px; }
   :global(.typst-math-inline-view.editing) { outline: 2px solid var(--accent, #4a7); outline-offset: 2px; background: rgba(95, 155, 101, 0.06); display: inline-flex; align-items: center; }
