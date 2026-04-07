@@ -258,14 +258,14 @@
           extensions = [ "rust-src" "rust-analyzer" ];
         };
 
-        # Rust source only — excludes frontend/, docs/, vendor/, scripts/
+        # Rust source only — excludes frontend/, docs/, scripts/
         # so that frontend-only changes don't invalidate the Rust build cache.
         rustSrc = pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
           filter = path: _type:
             let rel = pkgs.lib.removePrefix (toString ./. + "/") path;
             in !(builtins.any (prefix: pkgs.lib.hasPrefix prefix rel) [
-              "frontend/" "docs/" "vendor/" "scripts/" "crates/frontend/"
+              "frontend/" "docs/" "scripts/" "crates/frontend/"
             ]);
         };
 
