@@ -760,7 +760,7 @@
           title={t('version.togglePanel')}
           aria-label={t('version.togglePanel')}
         >
-          <svg width="10" height="18" viewBox="0 0 10 18" fill="currentColor">
+          <svg width="12" height="22" viewBox="0 0 10 18" fill="currentColor">
             {#if versionPanelOpen}
               <polyline points="8,2 2,9 8,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             {:else}
@@ -786,7 +786,7 @@
           title={t('editor.settings')}
           aria-label={t('editor.settings')}
         >
-          <svg width="10" height="18" viewBox="0 0 10 18" fill="currentColor">
+          <svg width="12" height="22" viewBox="0 0 10 18" fill="currentColor">
             {#if sidebarOpen}
               <polyline points="2,2 8,9 2,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             {:else}
@@ -1293,8 +1293,8 @@
     top: 50%;
     transform: translateY(-50%);
     z-index: 10;
-    width: 16px;
-    height: 48px;
+    width: 20px;
+    height: 64px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1303,24 +1303,25 @@
     cursor: pointer;
     color: var(--text-secondary);
     padding: 0;
+    transition: background 0.15s, color 0.15s;
   }
   .sidebar-tab:hover, .version-tab:hover {
-    background: var(--bg-hover, #f0f0f0);
-    color: var(--text-primary);
+    background: var(--accent-light, #e8f2e8);
+    color: var(--accent, #4a7);
   }
 
   .sidebar-tab {
     right: 0;
     border-right: none;
-    border-radius: 4px 0 0 4px;
-    box-shadow: -1px 0 4px rgba(0,0,0,0.06);
+    border-radius: 6px 0 0 6px;
+    box-shadow: -2px 0 6px rgba(0,0,0,0.08);
   }
 
   .version-tab {
     left: 0;
     border-left: none;
-    border-radius: 0 4px 4px 0;
-    box-shadow: 1px 0 4px rgba(0,0,0,0.06);
+    border-radius: 0 6px 6px 0;
+    box-shadow: 2px 0 6px rgba(0,0,0,0.08);
   }
 
   .editor-toolbar {

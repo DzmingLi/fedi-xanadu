@@ -6,7 +6,7 @@
   import { schema as basicSchema } from 'prosemirror-schema-basic';
   import { addListNodes } from 'prosemirror-schema-list';
   import { exampleSetup } from 'prosemirror-example-setup';
-  import { defaultMarkdownParser, defaultMarkdownSerializer, MarkdownParser } from 'prosemirror-markdown';
+  import { defaultMarkdownParser, defaultMarkdownSerializer, MarkdownParser, MarkdownSerializer } from 'prosemirror-markdown';
   import { tableNodes, columnResizing, tableEditing, goToNextCell, addColumnAfter, addColumnBefore, deleteColumn, addRowAfter, addRowBefore, deleteRow, mergeCells, splitCell, toggleHeaderRow, toggleHeaderColumn, toggleHeaderCell } from 'prosemirror-tables';
   import { keymap } from 'prosemirror-keymap';
   import { t } from '../i18n/index.svelte';
@@ -34,6 +34,34 @@
   const mdParser = new MarkdownParser(mdSchema, defaultMarkdownParser.tokenizer, {
     ...defaultMarkdownParser.tokens,
   });
+
+  // Extended serializer that handles table nodes (defaultMarkdownSerializer throws on unknown nodes)
+  const mdSerializer = new MarkdownSerializer(
+    {
+      ...defaultMarkdownSerializer.nodes,
+      table(state, node) {
+        const rows: string[][] = [];
+        node.forEach(row => {
+          const cells: string[] = [];
+          row.forEach(cell => {
+            cells.push(cell.textContent.replace(/\|/g, '\\|').replace(/\n/g, ' '));
+          });
+          rows.push(cells);
+        });
+        if (rows.length === 0) return;
+        state.write('| ' + rows[0].join(' | ') + ' |\n');
+        state.write('| ' + rows[0].map(() => '---').join(' | ') + ' |\n');
+        for (let i = 1; i < rows.length; i++) {
+          state.write('| ' + rows[i].join(' | ') + ' |\n');
+        }
+        state.write('\n');
+      },
+      table_row() {},
+      table_cell() {},
+      table_header() {},
+    },
+    defaultMarkdownSerializer.marks,
+  );
 
   function parseMarkdown(text: string) {
     try {
@@ -84,11 +112,25 @@
         view.updateState(newState);
         if (!updating && tr.docChanged) {
           updating = true;
-          value = defaultMarkdownSerializer.serialize(newState.doc);
+          try { value = mdSerializer.serialize(newState.doc); } catch {}
           updating = false;
         }
       },
     });
+
+    // Inject table button into ProseMirror menubar
+    const menubar = container.querySelector('.ProseMirror-menubar');
+    if (menubar) {
+      const sep = document.createElement('span');
+      sep.className = 'ProseMirror-menuseparator';
+      menubar.appendChild(sep);
+      const btn = document.createElement('span');
+      btn.className = 'ProseMirror-icon table-menu-btn';
+      btn.title = t('editor.insertTable');
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="12" rx="1"/><line x1="1" y1="6" x2="15" y2="6"/><line x1="1" y1="10" x2="15" y2="10"/><line x1="6" y1="2" x2="6" y2="14"/><line x1="11" y1="2" x2="11" y2="14"/></svg>`;
+      btn.addEventListener('mousedown', (e) => { e.preventDefault(); insertTable(); });
+      menubar.appendChild(btn);
+    }
 
     // Escape exits fullscreen
     const handleKey = (e: KeyboardEvent) => {
@@ -108,7 +150,7 @@
   // Sync external value changes into the editor
   $effect(() => {
     if (!view || updating) return;
-    const current = defaultMarkdownSerializer.serialize(view.state.doc);
+    const current = mdSerializer.serialize(view.state.doc);
     if (value !== current) {
       updating = true;
       const newDoc = parseMarkdown(value);
@@ -120,18 +162,6 @@
 </script>
 
 <div class="md-editor-wrapper" class:fullscreen class:fill-height={fillHeight}>
-  <div class="md-toolbar">
-    <button type="button" class="toolbar-btn" onclick={insertTable} title={t('editor.insertTable')}>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="1" y="2" width="14" height="12" rx="1"/>
-        <line x1="1" y1="6" x2="15" y2="6"/>
-        <line x1="1" y1="10" x2="15" y2="10"/>
-        <line x1="6" y1="2" x2="6" y2="14"/>
-        <line x1="11" y1="2" x2="11" y2="14"/>
-      </svg>
-    </button>
-    <div class="toolbar-spacer"></div>
-  </div>
   <div class="md-editor" bind:this={container}></div>
   {#if !value && placeholder}
     <div class="md-placeholder">{placeholder}</div>
@@ -167,33 +197,6 @@
     border: none;
   }
 
-  .md-toolbar {
-    display: flex;
-    align-items: center;
-    padding: 2px 4px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-white);
-    gap: 2px;
-  }
-
-  .toolbar-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px 6px;
-    border: none;
-    background: none;
-    border-radius: 3px;
-    cursor: pointer;
-    color: var(--text-primary);
-  }
-  .toolbar-btn:hover {
-    background: var(--bg-hover, #f0f0f0);
-  }
-
-  .toolbar-spacer {
-    flex: 1;
-  }
 
   .md-editor {
     flex: 1;
@@ -217,7 +220,7 @@
     font-family: var(--font-serif);
     pointer-events: none;
     padding: 1.5rem 14px;
-    top: 64px;
+    top: 40px;
   }
 
   .fill-height .md-placeholder {
@@ -339,7 +342,6 @@
     position: relative;
   }
   .md-editor :global(th) {
-    background: rgba(0, 0, 0, 0.03);
     font-weight: 600;
     font-family: var(--font-sans);
     font-size: 0.85em;
