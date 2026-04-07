@@ -15,12 +15,14 @@
   import { EditorState, Plugin, TextSelection, type Transaction, type Command } from 'prosemirror-state';
   import { EditorView } from 'prosemirror-view';
   import { type Schema, type Node as PNode, type MarkType, type NodeType } from 'prosemirror-model';
-  import { buildInputRules, buildKeymap } from 'prosemirror-example-setup';
+  import { buildKeymap } from 'prosemirror-example-setup';
+  import { inputRules, wrappingInputRule, textblockTypeInputRule, smartQuotes, ellipsis } from 'prosemirror-inputrules';
   import { columnResizing, tableEditing, goToNextCell } from 'prosemirror-tables';
   import { keymap } from 'prosemirror-keymap';
   import { baseKeymap, toggleMark, setBlockType, wrapIn } from 'prosemirror-commands';
   import { history, undo, redo, undoDepth, redoDepth } from 'prosemirror-history';
   import { wrapInList } from 'prosemirror-schema-list';
+  import type { Schema as SchemaType } from 'prosemirror-model';
 
   let {
     value = $bindable(''),
@@ -98,6 +100,18 @@
   let canUndo      = $derived(editorState ? undoDepth(editorState) > 0 : false);
   let canRedo      = $derived(editorState ? redoDepth(editorState) > 0 : false);
 
+  // ── Input rules (no heading rule — use toolbar H1/H2/H3 buttons instead) ──
+  // Heading input rules (# + space) caused editor freeze due to the interaction
+  // between setBlockType transactions and ProseMirror's DOM reconciliation.
+  function buildEditorInputRules(s: SchemaType) {
+    const rules = [...smartQuotes, ellipsis];
+    if (s.nodes.blockquote)    rules.push(wrappingInputRule(/^\s*>\s$/, s.nodes.blockquote));
+    if (s.nodes.ordered_list)  rules.push(wrappingInputRule(/^(\d+)\.\s$/, s.nodes.ordered_list, m => ({ order: +m[1] }), (match, node) => node.childCount + node.attrs.order === +match[1]));
+    if (s.nodes.bullet_list)   rules.push(wrappingInputRule(/^\s*([-+*])\s$/, s.nodes.bullet_list));
+    if (s.nodes.code_block)    rules.push(textblockTypeInputRule(/^```$/, s.nodes.code_block));
+    return inputRules({ rules });
+  }
+
   // ── Heading plugin: active prefix via CSS + level editing via keyboard ────
   const headingPlugin = new Plugin({
     props: {
@@ -151,7 +165,7 @@
   onMount(() => {
     const allPlugins = [
       ...plugins,
-      buildInputRules(schema),
+      buildEditorInputRules(schema),
       keymap(buildKeymap(schema)),
       keymap(baseKeymap),
       history(),
@@ -178,7 +192,7 @@
         }
         // Defer toolbar state update: avoid Svelte DOM flush conflicting with
         // ProseMirror's own DOM reconciliation in the same synchronous frame.
-        queueMicrotask(() => { if (view) editorState = view.state; });
+        requestAnimationFrame(() => { if (view) editorState = view.state; });
       },
     });
     queueMicrotask(() => { editorState = initialState; });
