@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { EditorState, Plugin, type Transaction } from 'prosemirror-state';
-  import { EditorView, type NodeView } from 'prosemirror-view';
+  import { EditorState, Plugin, TextSelection, type Transaction } from 'prosemirror-state';
+  import { EditorView } from 'prosemirror-view';
   import { type Schema, type Node as PNode } from 'prosemirror-model';
   import { exampleSetup } from 'prosemirror-example-setup';
   import { columnResizing, tableEditing, goToNextCell } from 'prosemirror-tables';
@@ -35,133 +35,48 @@
   let updating = false;
   let fullscreen = $state(false);
 
-  // Derive the single prefix character ('# ' → '#', '= ' → '=', '' → '')
+  // The prefix character derived from headingPrefixes ('# ' → '#', '= ' → '=')
   const prefixChar = headingPrefixes[0]?.trimEnd()[0] ?? '';
 
-  // ── HeadingView NodeView ─────────────────────────────────────────────────
-  // Renders heading as <hN> with an editable prefix span before the content.
-  // The prefix is hidden by default; headingFocusPlugin shows it via CSS when
-  // the cursor is inside. Editing the prefix chars changes the heading level.
-  class HeadingView implements NodeView {
-    dom: HTMLElement;
-    contentDOM: HTMLElement;
-    private prefixEl: HTMLSpanElement | null = null;
-    private _node: PNode;
-    private readonly _view: EditorView;
-    private readonly _getPos: (() => number | undefined) | boolean;
+  // ── Heading plugin: show active prefix + handle level edits via keyboard ──
+  // No NodeView needed — use handleKeyDown so ProseMirror's event loop is clean.
+  //   • Backspace at col 0  → decrease level (or convert to paragraph)
+  //   • Type '#'/'=' at col 0 → increase level (char is consumed, not inserted)
+  // The visible '## ' prefix is CSS ::before on [data-heading-active].
+  const headingPlugin = new Plugin({
+    props: {
+      handleKeyDown(editorView, e) {
+        const { state } = editorView;
+        const sel = state.selection;
+        if (!(sel instanceof TextSelection)) return false;
+        const cursor = (sel as TextSelection).$cursor;
+        if (!cursor || cursor.parent.type.name !== 'heading') return false;
+        if (cursor.parentOffset !== 0) return false;
 
-    constructor(node: PNode, editorView: EditorView, getPos: (() => number | undefined) | boolean) {
-      this._node = node;
-      this._view = editorView;
-      this._getPos = getPos;
+        const level  = cursor.parent.attrs.level as number;
+        const pos    = cursor.before();
+        const end    = pos + cursor.parent.nodeSize;
 
-      const level = node.attrs.level as number;
-
-      // Use the real hN element so existing font/margin CSS applies
-      this.dom = document.createElement(`h${level}`);
-      this.dom.className = 'heading-view';
-
-      if (prefixChar) {
-        this.prefixEl = document.createElement('span');
-        this.prefixEl.className = 'heading-prefix-editable';
-        this.prefixEl.contentEditable = 'true';
-        this.prefixEl.spellcheck = false;
-        this.prefixEl.setAttribute('data-prefix', '');
-        this.prefixEl.textContent = prefixChar.repeat(level) + ' ';
-
-        this.prefixEl.addEventListener('input', () => this._onPrefixInput());
-        this.prefixEl.addEventListener('keydown', e => this._onPrefixKeydown(e));
-        this.dom.appendChild(this.prefixEl);
-      }
-
-      // ProseMirror manages content inside this span
-      this.contentDOM = document.createElement('span');
-      this.contentDOM.className = 'heading-content-dom';
-      this.dom.appendChild(this.contentDOM);
-    }
-
-    private _onPrefixInput() {
-      const text = this.prefixEl?.textContent ?? '';
-      const pos = typeof this._getPos === 'function' ? this._getPos() : undefined;
-      if (pos === undefined) return;
-
-      // Count leading prefix chars
-      let count = 0;
-      for (const ch of text) {
-        if (ch === prefixChar) count++;
-        else break;
-      }
-
-      if (count === 0) {
-        // No prefix chars left → convert to paragraph
-        const tr = this._view.state.tr.setBlockType(
-          pos, pos + this._node.nodeSize,
-          this._view.state.schema.nodes.paragraph
-        );
-        this._view.dispatch(tr);
-      } else {
-        const newLevel = Math.min(count, 6);
-        if (newLevel !== this._node.attrs.level) {
-          this._view.dispatch(
-            this._view.state.tr.setNodeMarkup(pos, null, { level: newLevel })
-          );
+        if (e.key === 'Backspace') {
+          if (level <= 1) {
+            editorView.dispatch(state.tr.setBlockType(pos, end, state.schema.nodes.paragraph));
+          } else {
+            editorView.dispatch(state.tr.setNodeMarkup(pos, null, { level: level - 1 }));
+          }
+          return true;
         }
-      }
-    }
 
-    private _onPrefixKeydown(e: KeyboardEvent) {
-      e.stopPropagation(); // Keep PM from interpreting prefix keystrokes
-
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        // Move focus into the actual content
-        const sel = window.getSelection();
-        const range = document.createRange();
-        const first = this.contentDOM.firstChild ?? this.contentDOM;
-        range.setStart(first, 0);
-        range.collapse(true);
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      }
-
-      if (e.key === 'ArrowRight') {
-        // Jump to content when at end of prefix
-        const sel = window.getSelection();
-        if (sel && sel.focusOffset === (this.prefixEl?.textContent?.length ?? 0)) {
-          e.preventDefault();
-          const range = document.createRange();
-          const first = this.contentDOM.firstChild ?? this.contentDOM;
-          range.setStart(first, 0);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
+        // Typing the prefix char at col 0 increases level (and doesn't insert the char)
+        if (prefixChar && e.key === prefixChar && level < 6) {
+          editorView.dispatch(state.tr.setNodeMarkup(pos, null, { level: level + 1 }));
+          return true;
         }
-      }
-    }
 
-    update(node: PNode) {
-      if (node.type.name !== 'heading') return false;
-      // If the level changed, return false to let PM recreate with the right hN tag
-      if (node.attrs.level !== this._node.attrs.level) return false;
-      this._node = node;
-      // Sync prefix text only when the prefix span isn't actively focused
-      if (this.prefixEl && document.activeElement !== this.prefixEl) {
-        this.prefixEl.textContent = prefixChar.repeat(node.attrs.level) + ' ';
-      }
-      return true;
-    }
+        return false;
+      },
+    },
 
-    stopEvent(e: Event) {
-      return !!this.prefixEl?.contains(e.target as Node);
-    }
-
-    ignoreMutation(m: MutationRecord) {
-      return !!this.prefixEl?.contains(m.target as Node);
-    }
-  }
-
-  // ── Plugin: mark the heading containing the cursor ───────────────────────
-  const headingFocusPlugin = new Plugin({
+    // DOM side-effect: mark the heading containing the cursor with data-heading-active
     view(editorView) {
       function update() {
         editorView.dom.querySelectorAll('[data-heading-active]').forEach(el => {
@@ -203,19 +118,13 @@
         columnResizing(),
         tableEditing(),
         keymap({ 'Tab': goToNextCell(1), 'Shift-Tab': goToNextCell(-1) }),
-        headingFocusPlugin,
+        headingPlugin,
       ],
     });
 
-    // Heading NodeView always active; merge with format-specific nodeViews
-    const allNodeViews = {
-      heading: (node: PNode, ev: EditorView, gp: any) => new HeadingView(node, ev, gp),
-      ...nodeViews,
-    };
-
     view = new EditorView(container, {
       state: editorState,
-      nodeViews: allNodeViews,
+      nodeViews,
       dispatchTransaction(tr: Transaction) {
         if (!view) return;
         const newState = view.state.apply(tr);
@@ -271,6 +180,7 @@
   class="md-editor-wrapper"
   class:fill-height={fillHeight}
   class:fullscreen
+  style="--h1-prefix: '{headingPrefixes[0]}'; --h2-prefix: '{headingPrefixes[1]}'; --h3-prefix: '{headingPrefixes[2]}';"
 >
   <div class="md-editor" bind:this={container}></div>
   {#if !value && placeholder}
@@ -365,28 +275,14 @@
 
   .md-editor :global(.ProseMirror p) { margin: 1em 0; overflow-wrap: break-word; }
 
-  /* Heading styles — applied to real h1/h2/h3 elements created by HeadingView */
   .md-editor :global(.ProseMirror h1) { font-family: var(--font-serif); font-size: 2rem; font-weight: 400; margin: 2em 0 0.5em; }
   .md-editor :global(.ProseMirror h2) { font-family: var(--font-serif); font-size: 1.6rem; font-weight: 400; margin: 1.75em 0 0.5em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
   .md-editor :global(.ProseMirror h3) { font-family: var(--font-serif); font-size: 1.2rem; font-weight: 600; margin: 1.5em 0 0.4em; }
 
-  /* Editable prefix span — hidden by default, shown when heading is active */
-  .md-editor :global(.heading-prefix-editable) {
-    display: none;
-    font-family: var(--font-mono, monospace);
-    font-size: 0.62em;
-    font-weight: 400;
-    color: var(--text-hint);
-    vertical-align: middle;
-    margin-right: 0.15em;
-    outline: none;
-    caret-color: var(--accent, #4a7);
-    white-space: nowrap;
-  }
-  /* Show prefix when cursor is inside the heading */
-  .md-editor :global([data-heading-active] .heading-prefix-editable) {
-    display: inline;
-  }
+  /* Prefix visible only when cursor is inside — via CSS var set per-editor */
+  .md-editor :global(.ProseMirror h1[data-heading-active])::before { content: var(--h1-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.55em; font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
+  .md-editor :global(.ProseMirror h2[data-heading-active])::before { content: var(--h2-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.6em;  font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
+  .md-editor :global(.ProseMirror h3[data-heading-active])::before { content: var(--h3-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.7em;  font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
 
   .md-editor :global(.ProseMirror code) { font-size: 0.9em; padding: 0.15em 0.35em; background: var(--bg-gray, #f5f5f5); border-radius: 3px; }
   .md-editor :global(.ProseMirror pre) { overflow-x: auto; padding: 1em; margin: 1em 0; background: var(--bg-gray, #f5f5f5); border-radius: 4px; font-size: 0.9em; line-height: 1.5; }
