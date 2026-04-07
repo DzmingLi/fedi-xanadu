@@ -820,8 +820,15 @@
               </select>
             </div>
             <div class="sb-field">
+              <label class="check-label">
+                <input type="checkbox" bind:checked={restricted} />
+                {t('newArticle.restricted')}
+              </label>
+            </div>
+            {#if !restricted}
+            <div class="sb-field">
               <label>{t('newArticle.licenseLabel')}</label>
-              <select bind:value={license} disabled={restricted}>
+              <select bind:value={license}>
                 <option value="CC-BY-NC-SA-4.0">CC BY-NC-SA 4.0</option>
                 <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
                 <option value="CC-BY-4.0">CC BY 4.0</option>
@@ -833,11 +840,8 @@
                 <option value="GFDL-1.3">GFDL 1.3</option>
                 <option value="All-Rights-Reserved">All Rights Reserved</option>
               </select>
-              <label class="check-label">
-                <input type="checkbox" bind:checked={restricted} />
-                {t('newArticle.restricted')}
-              </label>
             </div>
+            {/if}
             <div class="sb-field">
               <label>{t('newArticle.categoryLabel')}</label>
               <select bind:value={category}>
