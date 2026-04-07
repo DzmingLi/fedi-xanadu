@@ -53,7 +53,6 @@
   let editorState = $state<EditorState | null>(null);
   let updating = false;
   let lastSyncedValue = '';
-  let fullscreen = $state(false);
 
   const prefixChar = headingPrefixes[0]?.trimEnd()[0] ?? '';
 
@@ -100,15 +99,14 @@
   let canUndo      = $derived(editorState ? undoDepth(editorState) > 0 : false);
   let canRedo      = $derived(editorState ? redoDepth(editorState) > 0 : false);
 
-  // ── Input rules (no heading rule — use toolbar H1/H2/H3 buttons instead) ──
-  // Heading input rules (# + space) caused editor freeze due to the interaction
-  // between setBlockType transactions and ProseMirror's DOM reconciliation.
+  // ── Input rules ──────────────────────────────────────────────────────────
   function buildEditorInputRules(s: SchemaType) {
     const rules = [...smartQuotes, ellipsis];
     if (s.nodes.blockquote)    rules.push(wrappingInputRule(/^\s*>\s$/, s.nodes.blockquote));
     if (s.nodes.ordered_list)  rules.push(wrappingInputRule(/^(\d+)\.\s$/, s.nodes.ordered_list, m => ({ order: +m[1] }), (match, node) => node.childCount + node.attrs.order === +match[1]));
     if (s.nodes.bullet_list)   rules.push(wrappingInputRule(/^\s*([-+*])\s$/, s.nodes.bullet_list));
     if (s.nodes.code_block)    rules.push(textblockTypeInputRule(/^```$/, s.nodes.code_block));
+    if (s.nodes.heading)       rules.push(textblockTypeInputRule(/^(#{1,6})\s$/, s.nodes.heading, (m: RegExpMatchArray) => ({ level: m[1].length })));
     return inputRules({ rules });
   }
 
@@ -185,36 +183,43 @@
         if (!view) return;
         const newState = view.state.apply(tr);
         view.updateState(newState);
-        if (!updating && tr.docChanged) {
-          updating = true;
-          try { value = serialize(newState.doc); lastSyncedValue = value; } catch {}
-          updating = false;
-        }
-        // Defer toolbar state update: avoid Svelte DOM flush conflicting with
-        // ProseMirror's own DOM reconciliation in the same synchronous frame.
-        requestAnimationFrame(() => { if (view) editorState = view.state; });
+        // Defer ALL Svelte state updates to after ProseMirror finishes its DOM
+        // reconciliation. Doing synchronous Svelte updates inside dispatch
+        // triggers a Svelte flush that conflicts with ProseMirror's own DOM
+        // mutations, causing the editor to freeze (e.g. after '# ' input rule).
+        requestAnimationFrame(() => {
+          if (!view) return;
+          editorState = view.state;
+          if (tr.docChanged && !updating) {
+            updating = true;
+            try {
+              const newValue = serialize(view.state.doc);
+              if (newValue !== lastSyncedValue) {
+                value = newValue;
+                lastSyncedValue = newValue;
+              }
+            } catch {}
+            updating = false;
+          }
+        });
       },
     });
-    queueMicrotask(() => { editorState = initialState; });
+    requestAnimationFrame(() => { editorState = initialState; });
 
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && fullscreen) fullscreen = false;
-    };
-    document.addEventListener('keydown', handleKey);
     return () => {
-      document.removeEventListener('keydown', handleKey);
       view?.destroy();
       view = null;
     };
   });
 
-  // Only sync when value changes from outside (not from dispatchTransaction)
+  // Sync external value changes into the editor (e.g. file upload, format conversion)
   $effect(() => {
     if (!view || updating || value === lastSyncedValue) return;
-    // Normalize both sides to avoid infinite loops from serialization differences
     let normalized: string;
     try { normalized = serialize(parse(value)); } catch { normalized = value; }
     const current = serialize(view.state.doc);
+    // Update lastSyncedValue BEFORE dispatch to prevent re-entry via RAF
+    lastSyncedValue = value;
     if (normalized !== current) {
       updating = true;
       const newDoc = parse(value);
@@ -222,14 +227,12 @@
       view.dispatch(tr);
       updating = false;
     }
-    lastSyncedValue = value;
   });
 </script>
 
 <div
   class="md-editor-wrapper"
   class:fill-height={fillHeight}
-  class:fullscreen
   style="--h1-prefix: '{headingPrefixes[0]}'; --h2-prefix: '{headingPrefixes[1]}'; --h3-prefix: '{headingPrefixes[2]}';"
 >
   <!-- ── Toolbar ── -->
@@ -340,14 +343,6 @@
       {/each}
     {/if}
 
-    <span class="tb-spacer"></span>
-    <button class="tb-btn" class:active={fullscreen} onmousedown={(e) => { e.preventDefault(); fullscreen = !fullscreen; }} title="全屏">
-      {#if fullscreen}
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 1.5H1.5v3M8.5 1.5h3v3M8.5 11.5h3v-3M4.5 11.5h-3v-3"/></svg>
-      {:else}
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 4.5v-3h3M8.5 1.5h3v3M11.5 8.5v3h-3M4.5 11.5h-3v-3"/></svg>
-      {/if}
-    </button>
   </div>
 
   <div class="md-editor" bind:this={container}></div>
@@ -372,14 +367,6 @@
     border-radius: 0;
     background: var(--bg-page);
   }
-  .md-editor-wrapper.fullscreen {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 9999;
-    border-radius: 0;
-    border: none;
-  }
-
   /* ── Toolbar ── */
   .prose-toolbar {
     display: flex;
@@ -426,7 +413,6 @@
   .tb-btn i { font-style: italic; }
   .tb-btn code { font-family: var(--font-mono, monospace); font-size: 13px; }
   .tb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
-  .tb-spacer { flex: 1; }
 
   /* ── Editor area ── */
   .md-editor {
@@ -435,8 +421,7 @@
     overflow-y: auto;
     position: relative;
   }
-  .fill-height .md-editor,
-  .fullscreen .md-editor {
+  .fill-height .md-editor {
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -480,16 +465,6 @@
     width: 100%;
     box-sizing: border-box;
   }
-  .fullscreen .md-editor :global(.ProseMirror) {
-    flex: 1;
-    min-height: 0;
-    max-width: 760px;
-    margin: 0 auto;
-    padding: 2rem 1rem;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
   .md-editor :global(.ProseMirror p)  { margin: 1em 0; overflow-wrap: break-word; }
 
   .md-editor :global(.ProseMirror h1) { font-family: var(--font-serif); font-size: 2rem;   font-weight: 400; margin: 2em 0 0.5em; }
