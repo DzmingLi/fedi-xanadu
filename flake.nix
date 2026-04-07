@@ -301,6 +301,29 @@
         frontendDist = pkgs.runCommand "fedi-xanadu-frontend-dist" {} ''
           cp -r ${./frontend/dist} $out
         '';
+
+        # Migrations as a standalone derivation.
+        migrationsDrv = pkgs.runCommand "fedi-xanadu-migrations" {} ''
+          cp -r ${./migrations_pg} $out
+        '';
+
+        # Rust binary only — no frontendDist dependency so frontend changes
+        # don't invalidate this derivation and trigger a full Rust recompile.
+        rustBinary = pkgs.rustPlatform.buildRustPackage {
+          pname = "fedi-xanadu-bin";
+          version = "0.1.0";
+          src = serverSrc;
+          cargoLock.lockFile = ./Cargo.lock;
+          nativeBuildInputs = with pkgs; [ pkg-config ];
+          buildInputs = with pkgs; [ openssl postgresql ];
+          doCheck = false;
+          env.SQLX_OFFLINE = "true";
+          cargoBuildFlags = [ "--package" "fx-server" ];
+
+          postInstall = ''
+            rm -f $out/bin/fx-cli 2>/dev/null || true
+          '';
+        };
       in
       {
         packages.fx-cli = pkgs.rustPlatform.buildRustPackage {
@@ -319,28 +342,20 @@
           '';
         };
 
-        packages.default = pkgs.rustPlatform.buildRustPackage {
-          pname = "fedi-xanadu";
-          version = "0.1.0";
-          src = serverSrc;
-          cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = with pkgs; [ pkg-config makeWrapper ];
-          buildInputs = with pkgs; [ openssl postgresql ];
-          doCheck = false;
-          env.SQLX_OFFLINE = "true";
-          cargoBuildFlags = [ "--package" "fx-server" ];
-
-          postInstall = ''
-            mkdir -p $out/share/fedi-xanadu/frontend
-            cp -r ${frontendDist} $out/share/fedi-xanadu/frontend/dist
-            cp -r $src/migrations_pg $out/share/fedi-xanadu/migrations_pg
-            if [ -d "$src/static" ]; then
-              cp -r $src/static $out/share/fedi-xanadu/static
-            fi
-            wrapProgram $out/bin/fedi-xanadu \
-              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.pandoc ]}
-          '';
-        };
+        # Final package: assemble binary + frontend + migrations.
+        # This runCommand is fast — no Rust compilation here.
+        # Frontend changes only rebuild frontendDist + this tiny assembly step.
+        packages.default = pkgs.runCommand "fedi-xanadu" {
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+        } ''
+          mkdir -p $out/bin $out/share/fedi-xanadu/frontend
+          cp ${rustBinary}/bin/fedi-xanadu $out/bin/fedi-xanadu
+          chmod +x $out/bin/fedi-xanadu
+          wrapProgram $out/bin/fedi-xanadu \
+            --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.pandoc ]}
+          cp -r ${frontendDist} $out/share/fedi-xanadu/frontend/dist
+          cp -r ${migrationsDrv} $out/share/fedi-xanadu/migrations_pg
+        '';
 
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [

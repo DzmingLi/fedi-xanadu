@@ -13,7 +13,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { EditorState, Plugin, TextSelection, type Transaction, type Command } from 'prosemirror-state';
-  import { EditorView } from 'prosemirror-view';
+  import { EditorView, Decoration, DecorationSet } from 'prosemirror-view';
   import { type Schema, type Node as PNode, type MarkType, type NodeType } from 'prosemirror-model';
   import { buildKeymap } from 'prosemirror-example-setup';
   import { inputRules, wrappingInputRule, textblockTypeInputRule, smartQuotes, ellipsis } from 'prosemirror-inputrules';
@@ -53,8 +53,6 @@
   let editorState = $state<EditorState | null>(null);
   let updating = false;
   let lastSyncedValue = '';
-
-  const prefixChar = headingPrefixes[0]?.trimEnd()[0] ?? '';
 
   // ── State query helpers ───────────────────────────────────────────────────
   function isMarkActive(st: EditorState, markType: MarkType): boolean {
@@ -110,57 +108,97 @@
     return inputRules({ rules });
   }
 
-  // ── Heading plugin: active prefix via CSS + level editing via keyboard ────
-  const headingPlugin = new Plugin({
-    props: {
-      handleKeyDown(editorView, e) {
-        const { state } = editorView;
-        const sel = state.selection;
-        if (!(sel instanceof TextSelection)) return false;
-        const cursor = (sel as TextSelection).$cursor;
-        if (!cursor || cursor.parent.type.name !== 'heading') return false;
-        if (cursor.parentOffset !== 0) return false;
+  // ── Heading system: Typora-style focus→source / blur→rendered ────────────
+  // Returns a plugin (decoration-based focus tracking) + nodeViews map.
+  // Using a NodeView means ProseMirror's own decoration system communicates
+  // focus state to the heading — no querySelectorAll or external setAttribute.
+  function buildHeadingSystem(): { plugins: Plugin[]; nodeViews: Record<string, any> } {
+    if (!schema.nodes.heading) return { plugins: [], nodeViews: {} };
 
-        const level = cursor.parent.attrs.level as number;
-        const pos   = cursor.before();
-        const end   = pos + cursor.parent.nodeSize;
-
-        if (e.key === 'Backspace') {
-          if (level <= 1) {
-            editorView.dispatch(state.tr.setBlockType(pos, end, state.schema.nodes.paragraph));
-          } else {
-            editorView.dispatch(state.tr.setNodeMarkup(pos, null, { level: level - 1 }));
+    // Decorates the heading node that currently contains the cursor.
+    const focusPlugin = new Plugin({
+      props: {
+        decorations(state) {
+          const anchor = state.selection.$from;
+          for (let d = anchor.depth; d >= 0; d--) {
+            const n = anchor.node(d);
+            if (n.type.name === 'heading') {
+              const start = anchor.before(d);
+              return DecorationSet.create(state.doc, [
+                Decoration.node(start, start + n.nodeSize, {}, { hFocused: true }),
+              ]);
+            }
           }
-          return true;
-        }
-        if (prefixChar && e.key === prefixChar && level < 6) {
-          editorView.dispatch(state.tr.setNodeMarkup(pos, null, { level: level + 1 }));
-          return true;
-        }
-        return false;
+          return DecorationSet.empty;
+        },
       },
-    },
-    view(editorView) {
-      function update() {
-        editorView.dom.querySelectorAll('[data-heading-active]').forEach(el => {
-          (el as Element).removeAttribute('data-heading-active');
-        });
-        const { from } = editorView.state.selection;
-        const pos = editorView.state.doc.resolve(from);
-        for (let d = pos.depth; d >= 0; d--) {
-          if (pos.node(d).type.name === 'heading') {
-            const dom = editorView.nodeDOM(pos.before(d));
-            if (dom instanceof Element) dom.setAttribute('data-heading-active', '');
-            break;
-          }
-        }
-      }
-      update();
-      return { update };
-    },
-  });
+    });
+
+    // Backspace at column 0 of a heading: demote level or convert to paragraph.
+    const keyPlugin = new Plugin({
+      props: {
+        handleKeyDown(editorView, e) {
+          if (e.key !== 'Backspace') return false;
+          const sel = editorView.state.selection;
+          if (!(sel instanceof TextSelection)) return false;
+          const cursor = sel.$cursor;
+          if (!cursor || cursor.parent.type.name !== 'heading') return false;
+          if (cursor.parentOffset !== 0) return false;
+          const level = cursor.parent.attrs.level as number;
+          const pos   = cursor.before();
+          const end   = pos + cursor.parent.nodeSize;
+          editorView.dispatch(
+            level <= 1
+              ? editorView.state.tr.setBlockType(pos, end, editorView.state.schema.nodes.paragraph)
+              : editorView.state.tr.setNodeMarkup(pos, null, { level: level - 1 }),
+          );
+          return true;
+        },
+      },
+    });
+
+    // NodeView for heading nodes.
+    // Source mode (cursor inside): shows prefix span + editable text inline.
+    // Rendered mode (cursor outside): shows styled heading block, prefix hidden.
+    const headingNodeView = (node: PNode) => {
+      const level = node.attrs.level as number;
+
+      const dom = document.createElement('div');
+      dom.className = `hed hed-${level}`;
+
+      const prefixEl = document.createElement('span');
+      prefixEl.className = 'hed-pfx';
+      prefixEl.setAttribute('contenteditable', 'false');
+      prefixEl.textContent = headingPrefixes[level - 1] ?? '#'.repeat(level) + ' ';
+
+      const contentDOM = document.createElement('span');
+      contentDOM.className = 'hed-txt';
+
+      dom.append(prefixEl, contentDOM);
+
+      return {
+        dom,
+        contentDOM,
+        update(updNode: PNode, decs: readonly any[]) {
+          if (updNode.type.name !== 'heading') return false;
+          const newLevel = updNode.attrs.level as number;
+          dom.className = `hed hed-${newLevel}`;
+          prefixEl.textContent = headingPrefixes[newLevel - 1] ?? '#'.repeat(newLevel) + ' ';
+          dom.classList.toggle('hed-on', decs.some((d: any) => d.spec?.hFocused));
+          return true;
+        },
+      };
+    };
+
+    return {
+      plugins: [focusPlugin, keyPlugin],
+      nodeViews: { heading: headingNodeView },
+    };
+  }
 
   onMount(() => {
+    const headingSys = buildHeadingSystem();
+
     const allPlugins = [
       ...plugins,
       buildEditorInputRules(schema),
@@ -170,7 +208,7 @@
       columnResizing(),
       tableEditing(),
       keymap({ 'Tab': goToNextCell(1), 'Shift-Tab': goToNextCell(-1) }),
-      headingPlugin,
+      ...headingSys.plugins,
     ];
 
     const initialState = EditorState.create({ doc: parse(value), plugins: allPlugins });
@@ -178,7 +216,7 @@
 
     view = new EditorView(container, {
       state: initialState,
-      nodeViews,
+      nodeViews: { ...headingSys.nodeViews, ...nodeViews },
       dispatchTransaction(tr: Transaction) {
         if (!view) return;
         const newState = view.state.apply(tr);
@@ -230,11 +268,7 @@
   });
 </script>
 
-<div
-  class="md-editor-wrapper"
-  class:fill-height={fillHeight}
-  style="--h1-prefix: '{headingPrefixes[0]}'; --h2-prefix: '{headingPrefixes[1]}'; --h3-prefix: '{headingPrefixes[2]}';"
->
+<div class="md-editor-wrapper" class:fill-height={fillHeight}>
   <!-- ── Toolbar ── -->
   <div class="prose-toolbar" class:fill-height={fillHeight}>
     <button class="tb-btn" onmousedown={(e) => { e.preventDefault(); runCmd(undo); }} title="撤销 (Ctrl+Z)" disabled={!canUndo}>
@@ -467,14 +501,42 @@
   }
   .md-editor :global(.ProseMirror p)  { margin: 1em 0; overflow-wrap: break-word; }
 
-  .md-editor :global(.ProseMirror h1) { font-family: var(--font-serif); font-size: 2rem;   font-weight: 400; margin: 2em 0 0.5em; }
-  .md-editor :global(.ProseMirror h2) { font-family: var(--font-serif); font-size: 1.6rem; font-weight: 400; margin: 1.75em 0 0.5em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
-  .md-editor :global(.ProseMirror h3) { font-family: var(--font-serif); font-size: 1.2rem; font-weight: 600; margin: 1.5em 0 0.4em; }
+  /* ── Heading NodeView (Typora-style: source when focused, rendered when not) ── */
+  /* Base: block display, cursor indicates editable */
+  .md-editor :global(.hed) { display: block; cursor: text; }
 
-  /* Heading prefix — only when cursor is inside the heading */
-  .md-editor :global(.ProseMirror h1[data-heading-active])::before { content: var(--h1-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.55em; font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
-  .md-editor :global(.ProseMirror h2[data-heading-active])::before { content: var(--h2-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.6em;  font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
-  .md-editor :global(.ProseMirror h3[data-heading-active])::before { content: var(--h3-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.7em;  font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
+  /* Source mode — cursor is inside the heading */
+  .md-editor :global(.hed.hed-on) {
+    display: flex;
+    align-items: baseline;
+    font-family: var(--font-mono, monospace);
+    font-size: 1rem;
+    font-weight: 400;
+    background: var(--bg-gray, #f3f4f6);
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin: 0.25em 0;
+    border-bottom: none;
+  }
+  /* Prefix: hidden when rendered, visible in source mode */
+  .md-editor :global(.hed-pfx) { display: none; }
+  .md-editor :global(.hed.hed-on .hed-pfx) {
+    display: inline;
+    color: var(--text-hint);
+    margin-right: 0.4em;
+    white-space: pre;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  /* Text span fills remaining width */
+  .md-editor :global(.hed-txt) { flex: 1; min-width: 0; }
+
+  /* Rendered heading styles by level (when NOT in source mode) */
+  .md-editor :global(.hed-1:not(.hed-on)) { font-family: var(--font-serif); font-size: 2rem;   font-weight: 400; margin: 2em 0 0.5em; }
+  .md-editor :global(.hed-2:not(.hed-on)) { font-family: var(--font-serif); font-size: 1.6rem; font-weight: 400; margin: 1.75em 0 0.5em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+  .md-editor :global(.hed-3:not(.hed-on)) { font-family: var(--font-serif); font-size: 1.2rem; font-weight: 600; margin: 1.5em 0 0.4em; }
+  .md-editor :global(.hed-4:not(.hed-on)) { font-family: var(--font-serif); font-size: 1rem;   font-weight: 600; margin: 1.25em 0 0.3em; }
+  .md-editor :global(.hed-5:not(.hed-on)), .md-editor :global(.hed-6:not(.hed-on)) { font-family: var(--font-serif); font-size: 0.9rem; font-weight: 600; margin: 1em 0 0.25em; text-transform: uppercase; letter-spacing: 0.04em; }
 
   .md-editor :global(.ProseMirror code)      { font-size: 0.9em; padding: 0.15em 0.35em; background: var(--bg-gray, #f5f5f5); border-radius: 3px; }
   .md-editor :global(.ProseMirror pre)       { overflow-x: auto; padding: 1em; margin: 1em 0; background: var(--bg-gray, #f5f5f5); border-radius: 4px; font-size: 0.9em; line-height: 1.5; }
