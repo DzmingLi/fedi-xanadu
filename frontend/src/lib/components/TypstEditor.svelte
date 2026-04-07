@@ -172,8 +172,8 @@
         if (!cursor || cursor.parent.type.name !== 'paragraph') return false;
         // Text in the current paragraph up to the cursor.
         const textBefore = cursor.parent.textBetween(0, cursor.parentOffset, null, '\ufffc');
-        // Empty paragraph → create a display math block and enter editing mode.
-        if (textBefore === '') {
+        // $$ or "$ " (dollar + space/newline before closing $) → display math block.
+        if (textBefore === '$' || /\$\s+$/.test(textBefore)) {
           const state = view.state;
           const nodePos = cursor.before();
           const nodeEnd = nodePos + cursor.parent.nodeSize;
