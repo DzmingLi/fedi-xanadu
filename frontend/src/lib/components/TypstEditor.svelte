@@ -4,7 +4,7 @@
   import { addListNodes } from 'prosemirror-schema-list';
   import { tableNodes } from 'prosemirror-tables';
   import { inputRules, InputRule, textblockTypeInputRule, wrappingInputRule } from 'prosemirror-inputrules';
-  import { Plugin } from 'prosemirror-state';
+  import { Plugin, NodeSelection } from 'prosemirror-state';
   import { type NodeView } from 'prosemirror-view';
   import type { EditorView } from 'prosemirror-view';
 
@@ -172,6 +172,16 @@
         if (!cursor || cursor.parent.type.name !== 'paragraph') return false;
         // Text in the current paragraph up to the cursor.
         const textBefore = cursor.parent.textBetween(0, cursor.parentOffset, null, '\ufffc');
+        // Empty paragraph → create a display math block and enter editing mode.
+        if (textBefore === '') {
+          const state = view.state;
+          const nodePos = cursor.before();
+          const nodeEnd = nodePos + cursor.parent.nodeSize;
+          const block = typstSchema.nodes.math_block.create({ formula: '' });
+          const tr = state.tr.replaceWith(nodePos, nodeEnd, block);
+          view.dispatch(tr.setSelection(NodeSelection.create(tr.doc, nodePos)));
+          return true;
+        }
         // Match the last unmatched $…: everything after the last $ sign.
         const m = /\$([^$\n]{1,200})$/.exec(textBefore);
         if (!m) return false;
