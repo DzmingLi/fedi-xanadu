@@ -375,6 +375,13 @@
     align-items: center;
   }
 
+  .fill-height .md-editor :global(.ProseMirror-menubar) {
+    background: var(--bg-page);
+    border-bottom-color: transparent;
+    padding-left: max(1rem, calc(50% - 364px));
+    padding-right: max(1rem, calc(50% - 364px));
+  }
+
   .md-editor :global(.ProseMirror-menu-active) {
     background: var(--accent);
     color: white;
