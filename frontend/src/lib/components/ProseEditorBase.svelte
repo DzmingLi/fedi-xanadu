@@ -171,15 +171,17 @@
         if (!view) return;
         const newState = view.state.apply(tr);
         view.updateState(newState);
-        editorState = newState;
         if (!updating && tr.docChanged) {
           updating = true;
           try { value = serialize(newState.doc); lastSyncedValue = value; } catch {}
           updating = false;
         }
+        // Defer toolbar state update: avoid Svelte DOM flush conflicting with
+        // ProseMirror's own DOM reconciliation in the same synchronous frame.
+        queueMicrotask(() => { if (view) editorState = view.state; });
       },
     });
-    editorState = initialState;
+    queueMicrotask(() => { editorState = initialState; });
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && fullscreen) fullscreen = false;
