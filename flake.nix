@@ -258,15 +258,42 @@
           extensions = [ "rust-src" "rust-analyzer" ];
         };
 
-        # Rust source only — excludes frontend/, docs/, scripts/
-        # so that frontend-only changes don't invalidate the Rust build cache.
-        rustSrc = pkgs.lib.cleanSourceWith {
-          src = pkgs.lib.cleanSource ./.;
+        # Strip non-Rust directories from the source tree.
+        # Cargo workspace resolution needs all Cargo.toml files, but not src/ of
+        # crates that aren't being compiled — so we can filter those for cache isolation.
+        stripNonRust = src: pkgs.lib.cleanSourceWith {
+          inherit src;
           filter = path: _type:
             let rel = pkgs.lib.removePrefix (toString ./. + "/") path;
             in !(builtins.any (prefix: pkgs.lib.hasPrefix prefix rel) [
               "frontend/" "docs/" "scripts/" "crates/frontend/"
             ]);
+        };
+
+        # Full Rust source (used as base for per-package filters below).
+        rustSrc = stripNonRust (pkgs.lib.cleanSource ./.);
+
+        # fx-cli only needs its own crate + shared lib crates.
+        # Exclude server-only crate src/ so server changes don't bust the CLI cache.
+        fxCliSrc = pkgs.lib.cleanSourceWith {
+          src = rustSrc;
+          filter = path: _type:
+            let rel = pkgs.lib.removePrefix (toString ./. + "/") path;
+            in !(builtins.any (prefix: pkgs.lib.hasPrefix prefix rel) [
+              "crates/fx-server/src"
+              "crates/fx-pijul/src"
+              "crates/fx-atproto/src"
+              "crates/fx-render/src"
+              "crates/fx-search/src"
+            ]);
+        };
+
+        # Server excludes the CLI src/ so CLI-only changes don't bust the server cache.
+        serverSrc = pkgs.lib.cleanSourceWith {
+          src = rustSrc;
+          filter = path: _type:
+            let rel = pkgs.lib.removePrefix (toString ./. + "/") path;
+            in !(pkgs.lib.hasPrefix "crates/fx-cli/src" rel);
         };
 
         # Pre-built frontend assets as a standalone derivation (just a file copy).
@@ -279,7 +306,7 @@
         packages.fx-cli = pkgs.rustPlatform.buildRustPackage {
           pname = "fx-cli";
           version = "0.1.0";
-          src = rustSrc;
+          src = fxCliSrc;
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = with pkgs; [ pkg-config ];
           buildInputs = with pkgs; [ openssl postgresql ];
@@ -295,7 +322,7 @@
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "fedi-xanadu";
           version = "0.1.0";
-          src = rustSrc;
+          src = serverSrc;
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = with pkgs; [ pkg-config makeWrapper ];
           buildInputs = with pkgs; [ openssl postgresql ];
