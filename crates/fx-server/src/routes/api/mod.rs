@@ -1,5 +1,6 @@
 mod admin;
 mod appeals;
+mod render;
 pub(crate) mod articles;
 mod auth;
 mod blocks;
@@ -91,6 +92,7 @@ pub fn routes() -> Router<AppState> {
         .merge(report_routes())
         .merge(member_routes())
         .merge(book_routes())
+        .merge(render_routes())
 }
 
 // --- Grouped sub-routers ---
@@ -325,6 +327,11 @@ fn member_routes() -> Router<AppState> {
         .route("/members", get(members::list_members).post(members::add_member))
         .route("/members/remove", delete(members::remove_member))
         .route("/members/check", get(members::check_membership))
+}
+
+fn render_routes() -> Router<AppState> {
+    Router::new()
+        .route("/render/typst-snippet", post(render::render_typst_snippet))
 }
 
 fn book_routes() -> Router<AppState> {

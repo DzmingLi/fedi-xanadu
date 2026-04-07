@@ -3,6 +3,7 @@
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getLangPrefs } from '../lib/langPrefs.svelte';
   import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
+  import TypstEditor from '../lib/components/TypstEditor.svelte';
   import type { Tag, Article, BookEdition, ContentFormat, Category, PrereqType, ArticleVersionInfo, VersionDiff } from '../lib/types';
 
   let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
@@ -54,7 +55,7 @@
   let originalFormat = $state<ContentFormat | ''>(''); // Track source format for fork conversion
 
   // --- UI state ---
-  let sidebarOpen = $state(false);
+  let sidebarOpen = $state(true);
   let versionPanelOpen = $state(true);
   let lastSavedContent = $state(''); // For diff computation in version panel
   let saving = $state(false);
@@ -773,8 +774,10 @@
         <div class="editor-content">
           {#if contentFormat === 'markdown'}
             <MarkdownEditor bind:value={content} placeholder="# 我的文章&#10;&#10;正文..." fillHeight={true} />
+          {:else if contentFormat === 'typst'}
+            <TypstEditor bind:value={content} placeholder="= 我的文章&#10;&#10;正文..." fillHeight={true} />
           {:else}
-            <textarea class="editor-textarea" bind:value={content} placeholder={contentFormat === 'html' ? '<!DOCTYPE html>...' : '= My Article'}></textarea>
+            <textarea class="editor-textarea" bind:value={content} placeholder="<!DOCTYPE html>..."></textarea>
           {/if}
         </div>
 
@@ -804,13 +807,13 @@
             <select value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
               <option value="markdown">Markdown + KaTeX</option>
               <option value="typst">Typst</option>
-              <option value="html">HTML</option>
+              {#if contentFormat === 'html'}<option value="html">HTML (只读)</option>{/if}
             </select>
             {#if converting}<span class="converting-hint">{t('newArticle.converting')}</span>{/if}
           </div>
           <div class="sb-uploads">
             <label class="sb-upload-btn" class:disabled={loadingFile}>
-              <input type="file" accept=".md,.markdown,.typ,.typst,.html,.htm," onchange={handleFileLoad} hidden />
+              <input type="file" accept=".md,.markdown,.typ,.typst" onchange={handleFileLoad} hidden />
               {loadingFile ? t('newArticle.readingFile') : t('newArticle.uploadFile')}
             </label>
             <label class="sb-upload-btn" class:disabled={uploadingImage}>
@@ -1073,7 +1076,7 @@
 
   /* === Title area === */
   .editor-title-area {
-    padding: 12px 0 0;
+    padding: 6px 0 0;
     flex-shrink: 0;
     max-width: 760px;
     margin: 0 auto;

@@ -367,3 +367,7 @@ export const removeMember = (member_did: string) =>
   post<void>('/members/remove', { member_did });
 export const checkMembership = (author_did: string) =>
   get<{ is_member: boolean }>(`/members/check?author_did=${encodeURIComponent(author_did)}`);
+
+// Typst rendering
+export const renderTypstSnippet = (formula: string, display: boolean) =>
+  post<{ html: string }>('/render/typst-snippet', { formula, display });

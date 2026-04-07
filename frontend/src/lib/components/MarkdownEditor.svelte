@@ -256,7 +256,7 @@
     min-height: 0;
     max-width: 760px;
     margin: 0 auto;
-    padding: 2rem 1rem;
+    padding: 0.75rem 1rem 2rem;
     width: 100%;
     box-sizing: border-box;
   }
@@ -293,6 +293,11 @@
     font-weight: 600;
     margin: 1.5em 0 0.4em;
   }
+
+  /* Heading level prefix — visible always so user knows the level */
+  .md-editor :global(.ProseMirror h1)::before { content: '# '; font-family: var(--font-mono, monospace); font-size: 0.55em; font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
+  .md-editor :global(.ProseMirror h2)::before { content: '## '; font-family: var(--font-mono, monospace); font-size: 0.6em; font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
+  .md-editor :global(.ProseMirror h3)::before { content: '### '; font-family: var(--font-mono, monospace); font-size: 0.7em; font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
 
   .md-editor :global(.ProseMirror code) {
     font-size: 0.9em;
