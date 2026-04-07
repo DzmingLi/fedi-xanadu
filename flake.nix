@@ -328,6 +328,7 @@
           buildInputs = with pkgs; [ openssl postgresql ];
           doCheck = false;
           env.SQLX_OFFLINE = "true";
+          cargoBuildFlags = [ "--package" "fx-server" ];
 
           postInstall = ''
             mkdir -p $out/share/fedi-xanadu/frontend
