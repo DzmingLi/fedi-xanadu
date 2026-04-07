@@ -98,24 +98,27 @@
   let canRedo      = $derived(editorState ? redoDepth(editorState) > 0 : false);
 
   // ── Input rules ──────────────────────────────────────────────────────────
+  // Heading creation is intentionally NOT here — it's handled in keydown so we
+  // never dispatch a block-type transaction during an in-progress input event.
   function buildEditorInputRules(s: SchemaType) {
     const rules = [...smartQuotes, ellipsis];
     if (s.nodes.blockquote)    rules.push(wrappingInputRule(/^\s*>\s$/, s.nodes.blockquote));
     if (s.nodes.ordered_list)  rules.push(wrappingInputRule(/^(\d+)\.\s$/, s.nodes.ordered_list, m => ({ order: +m[1] }), (match, node) => node.childCount + node.attrs.order === +match[1]));
     if (s.nodes.bullet_list)   rules.push(wrappingInputRule(/^\s*([-+*])\s$/, s.nodes.bullet_list));
     if (s.nodes.code_block)    rules.push(textblockTypeInputRule(/^```$/, s.nodes.code_block));
-    if (s.nodes.heading)       rules.push(textblockTypeInputRule(/^(#{1,6})\s$/, s.nodes.heading, (m: RegExpMatchArray) => ({ level: m[1].length })));
     return inputRules({ rules });
   }
 
   // ── Heading system: Typora-style focus→source / blur→rendered ────────────
-  // Returns a plugin (decoration-based focus tracking) + nodeViews map.
-  // Using a NodeView means ProseMirror's own decoration system communicates
-  // focus state to the heading — no querySelectorAll or external setAttribute.
   function buildHeadingSystem(): { plugins: Plugin[]; nodeViews: Record<string, any> } {
     if (!schema.nodes.heading) return { plugins: [], nodeViews: {} };
 
-    // Decorates the heading node that currently contains the cursor.
+    // Derive the prefix character (e.g. '#' for markdown, '=' for Typst).
+    const prefixChar = headingPrefixes[0]?.trimEnd()[0] ?? '#';
+    // Matches a line that is entirely N prefix chars (N = 1–6), no spaces.
+    const prefixOnlyRe = new RegExp(`^[${prefixChar}]{1,6}$`);
+
+    // Decorates the heading node currently containing the cursor.
     const focusPlugin = new Plugin({
       props: {
         decorations(state) {
@@ -134,56 +137,82 @@
       },
     });
 
-    // Backspace at column 0 of a heading: demote level or convert to paragraph.
+    // Key handlers:
+    //   Space in a paragraph whose entire content is N prefix chars → create heading.
+    //     Handled in keydown (before char insertion) to avoid re-entrant DOM mutation
+    //     that textblockTypeInputRule causes during the browser's input event.
+    //   Backspace at column 0 of a heading → demote level or convert to paragraph.
     const keyPlugin = new Plugin({
       props: {
         handleKeyDown(editorView, e) {
-          if (e.key !== 'Backspace') return false;
-          const sel = editorView.state.selection;
+          const { state } = editorView;
+          const sel = state.selection;
           if (!(sel instanceof TextSelection)) return false;
           const cursor = sel.$cursor;
-          if (!cursor || cursor.parent.type.name !== 'heading') return false;
-          if (cursor.parentOffset !== 0) return false;
-          const level = cursor.parent.attrs.level as number;
-          const pos   = cursor.before();
-          const end   = pos + cursor.parent.nodeSize;
-          editorView.dispatch(
-            level <= 1
-              ? editorView.state.tr.setBlockType(pos, end, editorView.state.schema.nodes.paragraph)
-              : editorView.state.tr.setNodeMarkup(pos, null, { level: level - 1 }),
-          );
-          return true;
+          if (!cursor) return false;
+
+          // ── Space: create heading ─────────────────────────────────────────
+          if (e.key === ' ' && cursor.parent.type.name === 'paragraph') {
+            const text = cursor.parent.textContent;
+            // Only fire when the cursor is at the end of the prefix chars and
+            // there is nothing else in the block (matches "## " but before space).
+            if (cursor.parentOffset === text.length && prefixOnlyRe.test(text)) {
+              const level = text.length;
+              const nodePos = cursor.before();
+              const nodeEnd = nodePos + cursor.parent.nodeSize;
+              // Replace the whole paragraph (including prefix text) with an
+              // empty heading of the correct level. No text is left behind.
+              const emptyHeading = state.schema.nodes.heading.createAndFill({ level });
+              if (emptyHeading) {
+                editorView.dispatch(state.tr.replaceWith(nodePos, nodeEnd, emptyHeading));
+                return true;
+              }
+            }
+          }
+
+          // ── Backspace at col 0: demote heading ────────────────────────────
+          if (e.key === 'Backspace' && cursor.parent.type.name === 'heading') {
+            if (cursor.parentOffset !== 0) return false;
+            const level = cursor.parent.attrs.level as number;
+            const nodePos = cursor.before();
+            const nodeEnd = nodePos + cursor.parent.nodeSize;
+            editorView.dispatch(
+              level <= 1
+                ? state.tr.setBlockType(nodePos, nodeEnd, state.schema.nodes.paragraph)
+                : state.tr.setNodeMarkup(nodePos, null, { level: level - 1 }),
+            );
+            return true;
+          }
+
+          return false;
         },
       },
     });
 
-    // NodeView for heading nodes.
-    // Source mode (cursor inside): shows prefix span + editable text inline.
-    // Rendered mode (cursor outside): shows styled heading block, prefix hidden.
+    // NodeView: renders heading as styled block when cursor is outside,
+    // or as a source-mode line (with prefix hint) when cursor is inside.
+    // The prefix is a CSS ::before pseudo-element (data-pfx attribute) so
+    // there is no contenteditable="false" node trapping the cursor.
     const headingNodeView = (node: PNode) => {
-      const level = node.attrs.level as number;
+      const getPrefix = (level: number) =>
+        headingPrefixes[level - 1] ?? prefixChar.repeat(level) + ' ';
 
       const dom = document.createElement('div');
-      dom.className = `hed hed-${level}`;
-
-      const prefixEl = document.createElement('span');
-      prefixEl.className = 'hed-pfx';
-      prefixEl.setAttribute('contenteditable', 'false');
-      prefixEl.textContent = headingPrefixes[level - 1] ?? '#'.repeat(level) + ' ';
+      dom.className = `hed hed-${node.attrs.level}`;
+      dom.setAttribute('data-pfx', getPrefix(node.attrs.level));
 
       const contentDOM = document.createElement('span');
       contentDOM.className = 'hed-txt';
-
-      dom.append(prefixEl, contentDOM);
+      dom.appendChild(contentDOM);
 
       return {
         dom,
         contentDOM,
         update(updNode: PNode, decs: readonly any[]) {
           if (updNode.type.name !== 'heading') return false;
-          const newLevel = updNode.attrs.level as number;
-          dom.className = `hed hed-${newLevel}`;
-          prefixEl.textContent = headingPrefixes[newLevel - 1] ?? '#'.repeat(newLevel) + ' ';
+          const lv = updNode.attrs.level as number;
+          dom.className = `hed hed-${lv}`;
+          dom.setAttribute('data-pfx', getPrefix(lv));
           dom.classList.toggle('hed-on', decs.some((d: any) => d.spec?.hFocused));
           return true;
         },
@@ -502,13 +531,10 @@
   .md-editor :global(.ProseMirror p)  { margin: 1em 0; overflow-wrap: break-word; }
 
   /* ── Heading NodeView (Typora-style: source when focused, rendered when not) ── */
-  /* Base: block display, cursor indicates editable */
   .md-editor :global(.hed) { display: block; cursor: text; }
 
-  /* Source mode — cursor is inside the heading */
+  /* Source mode: monospace line with prefix hint via ::before (no DOM node) */
   .md-editor :global(.hed.hed-on) {
-    display: flex;
-    align-items: baseline;
     font-family: var(--font-mono, monospace);
     font-size: 1rem;
     font-weight: 400;
@@ -518,20 +544,16 @@
     margin: 0.25em 0;
     border-bottom: none;
   }
-  /* Prefix: hidden when rendered, visible in source mode */
-  .md-editor :global(.hed-pfx) { display: none; }
-  .md-editor :global(.hed.hed-on .hed-pfx) {
-    display: inline;
+  .md-editor :global(.hed.hed-on::before) {
+    content: attr(data-pfx);
     color: var(--text-hint);
-    margin-right: 0.4em;
-    white-space: pre;
-    flex-shrink: 0;
+    font-family: var(--font-mono, monospace);
     user-select: none;
+    pointer-events: none;
   }
-  /* Text span fills remaining width */
-  .md-editor :global(.hed-txt) { flex: 1; min-width: 0; }
+  .md-editor :global(.hed-txt) { display: inline; }
 
-  /* Rendered heading styles by level (when NOT in source mode) */
+  /* Rendered heading styles by level */
   .md-editor :global(.hed-1:not(.hed-on)) { font-family: var(--font-serif); font-size: 2rem;   font-weight: 400; margin: 2em 0 0.5em; }
   .md-editor :global(.hed-2:not(.hed-on)) { font-family: var(--font-serif); font-size: 1.6rem; font-weight: 400; margin: 1.75em 0 0.5em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
   .md-editor :global(.hed-3:not(.hed-on)) { font-family: var(--font-serif); font-size: 1.2rem; font-weight: 600; margin: 1.5em 0 0.4em; }
