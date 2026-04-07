@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { EditorState, type Plugin, type Transaction } from 'prosemirror-state';
+  import { EditorState, Plugin, type Transaction } from 'prosemirror-state';
   import { EditorView } from 'prosemirror-view';
   import { type Schema, type Node as PNode } from 'prosemirror-model';
   import { exampleSetup } from 'prosemirror-example-setup';
@@ -35,6 +35,28 @@
   let updating = false;
   let fullscreen = $state(false);
 
+  // Plugin: highlight the heading the cursor is currently inside
+  const headingFocusPlugin = new Plugin({
+    view(editorView) {
+      function update() {
+        editorView.dom.querySelectorAll('[data-heading-active]').forEach(el => {
+          (el as Element).removeAttribute('data-heading-active');
+        });
+        const { from } = editorView.state.selection;
+        const pos = editorView.state.doc.resolve(from);
+        for (let d = pos.depth; d >= 0; d--) {
+          if (pos.node(d).type.name === 'heading') {
+            const dom = editorView.nodeDOM(pos.before(d));
+            if (dom instanceof Element) dom.setAttribute('data-heading-active', '');
+            break;
+          }
+        }
+      }
+      update();
+      return { update };
+    },
+  });
+
   function insertTable() {
     if (!view) return;
     const { state, dispatch } = view;
@@ -56,6 +78,7 @@
         columnResizing(),
         tableEditing(),
         keymap({ 'Tab': goToNextCell(1), 'Shift-Tab': goToNextCell(-1) }),
+        headingFocusPlugin,
       ],
     });
 
@@ -216,10 +239,10 @@
   .md-editor :global(.ProseMirror h2) { font-family: var(--font-serif); font-size: 1.6rem; font-weight: 400; margin: 1.75em 0 0.5em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
   .md-editor :global(.ProseMirror h3) { font-family: var(--font-serif); font-size: 1.2rem; font-weight: 600; margin: 1.5em 0 0.4em; }
 
-  /* Heading level prefix via CSS variables — set by each editor wrapper */
-  .md-editor :global(.ProseMirror h1)::before { content: var(--h1-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.55em; font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
-  .md-editor :global(.ProseMirror h2)::before { content: var(--h2-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.6em;  font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
-  .md-editor :global(.ProseMirror h3)::before { content: var(--h3-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.7em;  font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
+  /* Heading level prefix — only visible when cursor is inside (data-heading-active) */
+  .md-editor :global(.ProseMirror h1[data-heading-active])::before { content: var(--h1-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.55em; font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
+  .md-editor :global(.ProseMirror h2[data-heading-active])::before { content: var(--h2-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.6em;  font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
+  .md-editor :global(.ProseMirror h3[data-heading-active])::before { content: var(--h3-prefix, ''); font-family: var(--font-mono, monospace); font-size: 0.7em;  font-weight: 400; color: var(--text-hint); vertical-align: middle; margin-right: 0.1em; }
 
   .md-editor :global(.ProseMirror code) { font-size: 0.9em; padding: 0.15em 0.35em; background: var(--bg-gray, #f5f5f5); border-radius: 3px; }
   .md-editor :global(.ProseMirror pre) { overflow-x: auto; padding: 1em; margin: 1em 0; background: var(--bg-gray, #f5f5f5); border-radius: 4px; font-size: 0.9em; line-height: 1.5; }
