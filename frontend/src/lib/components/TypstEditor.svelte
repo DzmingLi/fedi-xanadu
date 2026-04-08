@@ -37,6 +37,18 @@
   // ── Math rendering cache ─────────────────────────────────────────────────────
   const mathCache = new Map<string, string>();
 
+  // Typst wraps all output in <p>…</p>. Strip it so we can safely set
+  // innerHTML on either a <span> (inline) or <div> (block) without invalid
+  // nesting — a <p> inside a <span> causes the browser to eject the <span>
+  // content entirely, making the rendered element appear empty.
+  function stripPWrapper(html: string): string {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const first = tmp.firstElementChild;
+    if (first && first.tagName === 'P') return first.innerHTML;
+    return html;
+  }
+
   async function fetchMathHtml(formula: string, display: boolean): Promise<string> {
     const key = `${display ? 'B' : 'I'}:${formula}`;
     if (mathCache.has(key)) return mathCache.get(key)!;
@@ -48,8 +60,9 @@
       });
       if (res.ok) {
         const { html } = await res.json();
-        mathCache.set(key, html);
-        return html;
+        const stripped = stripPWrapper(html);
+        mathCache.set(key, stripped);
+        return stripped;
       }
       console.warn('[math] render API returned', res.status, 'for formula:', formula);
     } catch (err) {
