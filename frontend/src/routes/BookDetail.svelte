@@ -22,6 +22,16 @@
   let readingStatus = $state('');
   let readingProgress = $state(0);
 
+  // Chapter progress (reactive, keyed by chapter_id)
+  let chapterDone = $state(new Map<string, boolean>());
+
+  async function toggleChapter(chapterId: string) {
+    const next = !chapterDone.get(chapterId);
+    chapterDone.set(chapterId, next);
+    chapterDone = new Map(chapterDone); // trigger reactivity
+    try { await setChapterProgress(id, chapterId, next); } catch { /* revert on error */ chapterDone.set(chapterId, !next); chapterDone = new Map(chapterDone); }
+  }
+
   // Edit history
   interface EditLog { id: string; editor_did: string; editor_handle: string | null; summary: string; created_at: string; }
   let editHistory = $state<EditLog[]>([]);
@@ -39,6 +49,7 @@
       myRating = detail.my_rating || 0;
       readingStatus = detail.my_reading_status?.status || '';
       readingProgress = detail.my_reading_status?.progress || 0;
+      chapterDone = new Map(detail.my_chapter_progress.map(p => [p.chapter_id, p.completed]));
       getBookEditHistory(id).then(h => { editHistory = h; }).catch(() => {});
     } catch { /* */ }
     loading = false;
@@ -502,12 +513,19 @@
         {/if}
 
         {#if detail.chapters.length > 0}
-          {@const progressMap = new Map(detail.my_chapter_progress.map(p => [p.chapter_id, p.completed]))}
           {@const rootChapters = detail.chapters.filter(c => !c.parent_id)}
           {#each rootChapters as ch}
             {@const children = detail.chapters.filter(c => c.parent_id === ch.id)}
             <div class="chapter-item">
               <div class="chapter-row">
+                {#if getAuth()}
+                  <button
+                    class="chapter-check"
+                    class:done={chapterDone.get(ch.id)}
+                    onclick={() => toggleChapter(ch.id)}
+                    title={chapterDone.get(ch.id) ? '标为未读' : '标为已读'}
+                  ></button>
+                {/if}
                 <div class="chapter-content">
                   {#if ch.article_uri}
                     <a href="#/article?uri={encodeURIComponent(ch.article_uri)}" class="chapter-title">{ch.title}</a>
@@ -599,6 +617,14 @@
                 <div class="chapter-children">
                   {#each children as sub}
                     <div class="chapter-row sub">
+                      {#if getAuth()}
+                        <button
+                          class="chapter-check"
+                          class:done={chapterDone.get(sub.id)}
+                          onclick={() => toggleChapter(sub.id)}
+                          title={chapterDone.get(sub.id) ? '标为未读' : '标为已读'}
+                        ></button>
+                      {/if}
                       <div class="chapter-content">
                         {#if sub.article_uri}
                           <a href="#/article?uri={encodeURIComponent(sub.article_uri)}" class="chapter-title">{sub.title}</a>
@@ -1240,6 +1266,37 @@
   .chapter-row.sub {
     padding-left: 24px;
     font-size: 13px;
+  }
+  .chapter-check {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: none;
+    cursor: pointer;
+    padding: 0;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+  }
+  .chapter-check:hover {
+    border-color: var(--accent);
+  }
+  .chapter-check.done {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .chapter-check.done::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 5px;
+    height: 9px;
+    border: 2px solid white;
+    border-top: none;
+    border-left: none;
+    transform: rotate(45deg);
   }
   .chapter-content {
     flex: 1;
