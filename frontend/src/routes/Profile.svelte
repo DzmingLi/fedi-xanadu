@@ -92,7 +92,7 @@
     series: Series | null;
     articles: Article[];
   }
-  let allArticleGroups = $derived((): ArticleGroup[] => {
+  let allArticleGroups = $derived.by((): ArticleGroup[] => {
     const deduped = deduplicateByTranslation(articles, locale);
     const groups: ArticleGroup[] = [];
     const assignedUris = new Set<string>();
@@ -262,19 +262,17 @@
   }
 </script>
 
-{#snippet seriesTree(s: Series, depth: number, totalArticles?: number)}
-  {@const children = childSeriesMap.get(s.id) || []}
-  {@const directArticleUris = seriesArticleMap.get(s.id) || []}
-  {@const hasChildren = children.length > 0 || directArticleUris.length > 0}
+{#snippet seriesTree(s: Series, _depth: number, totalArticles?: number)}
+  {@const articleUris = seriesArticleMap.get(s.id) || []}
+  {@const count = totalArticles ?? articleUris.length}
   {@const isExpanded = expandedSeries.has(s.id)}
-  {@const count = totalArticles ?? countDescendantArticles(s.id)}
 
-  <div class="series-tree-node" style="margin-left: {depth * 20}px">
+  <div class="series-tree-node">
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="series-tree-card" onclick={(e) => hasChildren ? toggleExpand(e, s.id) : null}>
+    <div class="series-tree-card" onclick={(e) => count > 0 ? toggleExpand(e, s.id) : null}>
       <div class="series-tree-top">
-        {#if hasChildren}
+        {#if count > 0}
           <span class="expand-arrow" class:expanded={isExpanded}>&#9654;</span>
         {:else}
           <span class="expand-arrow-placeholder"></span>
@@ -296,19 +294,14 @@
     </div>
 
     {#if isExpanded}
-      {#each children as child}
-        {@render seriesTree(child, depth + 1)}
-      {/each}
-      {#each directArticleUris as uri}
+      {#each articleUris as uri}
         {@const art = articles.find(a => a.at_uri === uri)}
         {#if art}
-          <div style="margin-left: {(depth + 1) * 20}px">
-            <PostCard
-              article={art}
-              articleTeaches={articleTeaches.get(art.at_uri) || []}
-              variant="profile"
-            />
-          </div>
+          <PostCard
+            article={art}
+            articleTeaches={articleTeaches.get(art.at_uri) || []}
+            variant="profile"
+          />
         {/if}
       {/each}
     {/if}
