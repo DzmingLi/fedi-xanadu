@@ -3,35 +3,38 @@
   import { schema as basicSchema } from 'prosemirror-schema-basic';
   import { addListNodes } from 'prosemirror-schema-list';
   import { tableNodes } from 'prosemirror-tables';
-  import { inputRules, InputRule, textblockTypeInputRule, wrappingInputRule } from 'prosemirror-inputrules';
-  import { Plugin, NodeSelection } from 'prosemirror-state';
-  import { type NodeView } from 'prosemirror-view';
+  import { inputRules, textblockTypeInputRule, wrappingInputRule } from 'prosemirror-inputrules';
+  import { Plugin, TextSelection } from 'prosemirror-state';
+  import { type NodeView, Decoration, DecorationSet } from 'prosemirror-view';
   import type { EditorView } from 'prosemirror-view';
 
-  // ── Module-level singletons ──────────────────────────────────────────────
-
+  // ── Schema ───────────────────────────────────────────────────────────────────
+  // Math nodes store the formula as text content (like heading stores heading
+  // text). This lets the cursor enter naturally, exactly like headings.
   const baseNodes = addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block');
   export const typstSchema = new Schema({
     nodes: (baseNodes as any)
       .append(tableNodes({ tableGroup: 'block', cellContent: 'block+', cellAttributes: {} }))
       .append({
         math_inline: {
-          group: 'inline', inline: true, atom: true,
-          attrs: { formula: { default: '' } },
-          parseDOM: [{ tag: 'span[data-math]', getAttrs: (d: any) => ({ formula: d.dataset.math }) }],
-          toDOM: (n: PNode) => ['span', { 'data-math': n.attrs.formula, class: 'typst-math-inline' }],
+          group: 'inline', inline: true,
+          content: 'text*',
+          marks: '',
+          parseDOM: [{ tag: 'span.typst-math-inline' }],
+          toDOM: () => ['span', { class: 'typst-math-inline' }, 0],
         },
         math_block: {
-          group: 'block', atom: true,
-          attrs: { formula: { default: '' } },
-          parseDOM: [{ tag: 'div[data-math-block]', getAttrs: (d: any) => ({ formula: d.dataset.mathBlock }) }],
-          toDOM: (n: PNode) => ['div', { 'data-math-block': n.attrs.formula, class: 'typst-math-block' }],
+          group: 'block',
+          content: 'text*',
+          marks: '',
+          parseDOM: [{ tag: 'div.typst-math-block' }],
+          toDOM: () => ['div', { class: 'typst-math-block' }, 0],
         },
       }),
     marks: basicSchema.spec.marks,
   });
 
-  // ── Math rendering cache (shared across all TypstEditor instances) ────────
+  // ── Math rendering cache ─────────────────────────────────────────────────────
   const mathCache = new Map<string, string>();
 
   async function fetchMathHtml(formula: string, display: boolean): Promise<string> {
@@ -57,239 +60,187 @@
       : `<span class="math-fallback">$${formula}$</span>`;
   }
 
-  // ── MathNodeView — no closure over component scope ────────────────────────
-  // Receives schema via typstSchema (module-level) and fetchMathHtml (module-level).
+  // ── MathNodeView ─────────────────────────────────────────────────────────────
+  // Mirrors the heading NodeView pattern:
+  //   cursor inside  → source mode: formula text visible + $ delimiters via CSS
+  //   cursor outside → rendered mode: MathML shown, formula text collapsed
+  //
+  // The mathFocusPlugin below adds a `mathFocused` node decoration when the
+  // cursor is inside a math node; this NodeView reacts to that decoration.
   export class MathNodeView implements NodeView {
     dom: HTMLElement;
+    contentDOM: HTMLElement;          // ProseMirror manages formula text here
     private _display: boolean;
-    private _formula: string;
-    private _editing = false;
-    private _editorEl: HTMLTextAreaElement | HTMLInputElement | null = null;
-    private _view: EditorView | null = null;
-    private _getPos: (() => number | undefined) | boolean;
+    private _renderEl: HTMLElement;   // shows compiled MathML
+    private _focused = false;
+    private _lastFormula = '';
 
-    constructor(node: PNode, editorView: EditorView, getPos: (() => number | undefined) | boolean) {
+    constructor(node: PNode, _view: EditorView, _getPos: any) {
       this._display = node.type.name === 'math_block';
-      this._formula = node.attrs.formula;
-      this._getPos = getPos;
-      this._view = editorView;
+
       this.dom = document.createElement(this._display ? 'div' : 'span');
       this.dom.className = this._display ? 'typst-math-block-view' : 'typst-math-inline-view';
-      this.dom.contentEditable = 'false';
-      console.log('[MathNodeView] created:', node.type.name, JSON.stringify(node.attrs.formula));
-      this._renderMath();
+
+      // contentDOM: editable formula text (always in DOM, collapsed when rendered)
+      this.contentDOM = document.createElement(this._display ? 'div' : 'span');
+      this.contentDOM.className = 'math-source-text';
+
+      // renderEl: MathML output (visible when cursor is outside)
+      this._renderEl = document.createElement(this._display ? 'div' : 'span');
+      this._renderEl.className = 'math-rendered';
+
+      this.dom.appendChild(this.contentDOM);
+      this.dom.appendChild(this._renderEl);
+
+      // Start in rendered mode
+      this._applyRendered(node.textContent);
     }
 
-    private _renderMath() {
-      const f = this._formula, d = this._display, dom = this.dom;
-      dom.innerHTML = d
-        ? `<span class="math-source">$ ${f} $</span>`
-        : `<span class="math-source">$${f}$</span>`;
-      fetchMathHtml(f, d).then(html => {
-        if (!this._editing && this._formula === f) dom.innerHTML = html;
+    update(node: PNode, decorations: readonly any[]) {
+      const expectedType = this._display ? typstSchema.nodes.math_block : typstSchema.nodes.math_inline;
+      if (node.type !== expectedType) return false;
+
+      const focused = decorations.some((d: any) => d.spec?.mathFocused);
+      const formula = node.textContent;
+
+      if (focused !== this._focused) {
+        this._focused = focused;
+        focused ? this._applySource() : this._applyRendered(formula);
+      } else if (!focused && formula !== this._lastFormula) {
+        // Programmatic formula change while not focused
+        this._applyRendered(formula);
+      }
+      return true;
+    }
+
+    // Show the formula text for editing (cursor is inside).
+    private _applySource() {
+      this.dom.classList.add('math-focused');
+      // Restore contentDOM to normal flow
+      this.contentDOM.style.cssText = '';
+      this._renderEl.style.display = 'none';
+    }
+
+    // Show the compiled MathML (cursor is outside).
+    // contentDOM is collapsed to zero size (not display:none, so ProseMirror can
+    // still position the cursor there if the user arrows into the node).
+    private _applyRendered(formula: string) {
+      this._lastFormula = formula;
+      this.dom.classList.remove('math-focused');
+      // Collapse contentDOM — keeps it in DOM for ProseMirror but takes no space
+      this.contentDOM.style.cssText = this._display
+        ? 'display:block;height:0;overflow:hidden'
+        : 'display:inline-block;width:0;height:0;overflow:hidden;vertical-align:middle';
+      this._renderEl.style.display = '';
+      // Show placeholder while the async compile runs
+      this._renderEl.innerHTML = this._display
+        ? `<span class="math-placeholder">$ ${formula || '\u2026'} $</span>`
+        : `<span class="math-placeholder">$${formula || '\u2026'}$</span>`;
+      if (!formula) return;
+      fetchMathHtml(formula, this._display).then(html => {
+        if (!this._focused && this._lastFormula === formula) this._renderEl.innerHTML = html;
       });
     }
 
-    private _startEditing() {
-      if (this._editing) return;
-      this._editing = true;
-      this.dom.classList.add('editing');
-      this.dom.innerHTML = '';
-      if (this._display) {
-        const ta = document.createElement('textarea');
-        ta.className = 'math-edit-input';
-        // Show formula with $$ delimiters (Markdown/LaTeX convention)
-        const hasNewlines = this._formula.includes('\n');
-        const displayed = hasNewlines ? `$$\n${this._formula}\n$$` : `$$${this._formula}$$`;
-        ta.value = displayed;
-        ta.rows = Math.max(3, displayed.split('\n').length + 1);
-        ta.addEventListener('keydown', e => {
-          if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
-            e.preventDefault(); e.stopPropagation(); this._commitEdit(ta.value);
-          }
-          e.stopPropagation();
-        });
-        ta.addEventListener('blur', () => this._commitEdit(ta.value));
-        this.dom.appendChild(ta);
-        this._editorEl = ta;
-        // Select just the formula content between the $$ markers
-        const selStart = hasNewlines ? 3 : 2;
-        const selEnd = displayed.length - (hasNewlines ? 3 : 2);
-        setTimeout(() => { ta.focus(); ta.setSelectionRange(selStart, Math.max(selStart, selEnd)); }, 0);
-      } else {
-        const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.className = 'math-edit-input';
-        inp.value = `$${this._formula}$`;
-        inp.addEventListener('keydown', e => {
-          if (e.key === 'Enter' || e.key === 'Escape') {
-            e.preventDefault(); e.stopPropagation(); this._commitEdit(inp.value);
-          }
-          e.stopPropagation();
-        });
-        inp.addEventListener('blur', () => this._commitEdit(inp.value));
-        this.dom.appendChild(inp);
-        this._editorEl = inp;
-        // Select just the formula content (not the $ signs)
-        setTimeout(() => { inp.focus(); inp.setSelectionRange(1, Math.max(1, inp.value.length - 1)); }, 0);
-      }
+    // Ignore mutations in _renderEl (we update it ourselves).
+    // Let ProseMirror handle contentDOM mutations normally.
+    ignoreMutation(mut: MutationRecord | { type: 'selection'; target: Element }) {
+      const target = (mut as MutationRecord).target;
+      if (!target) return false;
+      return !this.contentDOM.contains(target as Node) && target !== this.contentDOM;
     }
 
-    private _commitEdit(rawValue: string) {
-      if (!this._editing) return;
-      this._editing = false;
-      this._editorEl = null;
-      this.dom.classList.remove('editing');
-
-      const v = rawValue.trim();
-      let wantDisplay = this._display;
-      let formula: string;
-
-      // Determine intended type from delimiters: $$ = display, $ = inline.
-      // Check $$ before $ to avoid treating $$…$$ as an inline $…$.
-      if (v.startsWith('$$') && v.endsWith('$$') && v.length > 4) {
-        wantDisplay = true;
-        formula = v.slice(2, -2).trim();
-      } else if (v.startsWith('$') && v.endsWith('$') && v.length > 2 && !v.startsWith('$$')) {
-        wantDisplay = false;
-        formula = v.slice(1, -1).trim();
-      } else {
-        // No recognizable delimiters: treat as raw formula, keep current type.
-        formula = v;
-      }
-
-      if (!formula) { this._renderMath(); return; }
-
-      const pos = typeof this._getPos === 'function' ? this._getPos() : undefined;
-      if (!this._view || pos === undefined) {
-        this._formula = formula; this._renderMath(); return;
-      }
-
-      const state = this._view.state;
-
-      if (wantDisplay === this._display) {
-        // Same type: update formula if changed.
-        if (formula !== this._formula) {
-          const nodeType = this._display ? typstSchema.nodes.math_block : typstSchema.nodes.math_inline;
-          this._view.dispatch(state.tr.setNodeMarkup(pos, nodeType, { formula }));
-        } else {
-          this._formula = formula; this._renderMath();
-        }
-        return;
-      }
-
-      // Type conversion between inline ↔ display.
-      const currentNode = state.doc.nodeAt(pos);
-      if (!currentNode) { this._formula = formula; this._renderMath(); return; }
-
-      if (!this._display && wantDisplay) {
-        // inline → display: only convert when the inline math is the sole
-        // content of its paragraph (otherwise keep inline, just update formula).
-        const rPos = state.doc.resolve(pos);
-        const parent = rPos.parent;
-        if (parent.type.name === 'paragraph' && parent.childCount === 1) {
-          const paraStart = rPos.before(rPos.depth);
-          const block = typstSchema.nodes.math_block.create({ formula });
-          this._view.dispatch(state.tr.replaceWith(paraStart, paraStart + parent.nodeSize, block));
-        } else {
-          this._view.dispatch(state.tr.setNodeMarkup(pos, typstSchema.nodes.math_inline, { formula }));
-        }
-      } else {
-        // display → inline: replace block with a paragraph containing inline math.
-        const inlineNode = typstSchema.nodes.math_inline.create({ formula });
-        const para = typstSchema.nodes.paragraph.create(null, [inlineNode]);
-        this._view.dispatch(state.tr.replaceWith(pos, pos + currentNode.nodeSize, para));
-      }
-    }
-
-    update(node: PNode) {
-      const expectedType = this._display ? typstSchema.nodes.math_block : typstSchema.nodes.math_inline;
-      if (node.type !== expectedType) return false;
-      const f = node.attrs.formula;
-      if (f !== this._formula) { this._formula = f; if (!this._editing) this._renderMath(); }
-      return true;
-    }
-    selectNode()   { this.dom.classList.add('selected'); this._startEditing(); }
-    deselectNode() { this.dom.classList.remove('selected'); if (this._editing && this._editorEl) this._commitEdit(this._editorEl.value); }
-    stopEvent(e: Event) { return this._editing && (e.target === this._editorEl || this.dom.contains(e.target as Node)); }
-    ignoreMutation() { return true; }
-    destroy() { this._view = null; }
+    destroy() {}
   }
 
-  // ── Math inline creation via keydown ─────────────────────────────────────
-  // Intercepts the closing $ key BEFORE insertion so we never dispatch a
-  // replaceWith inside an in-progress input event (which freezes the editor
-  // and also doesn't fire at all when a Chinese IME is active).
+  // ── Math focus plugin ─────────────────────────────────────────────────────────
+  // Adds a mathFocused node decoration to the math node containing the cursor,
+  // mirroring the heading focusPlugin in ProseEditorBase.
+  const mathFocusPlugin = new Plugin({
+    props: {
+      decorations(state) {
+        const from = state.selection.$from;
+        for (let d = from.depth; d >= 0; d--) {
+          const n = from.node(d);
+          if (n.type.name === 'math_inline' || n.type.name === 'math_block') {
+            const start = from.before(d);
+            return DecorationSet.create(state.doc, [
+              Decoration.node(start, start + n.nodeSize, {}, { mathFocused: true }),
+            ]);
+          }
+        }
+        return DecorationSet.empty;
+      },
+    },
+  });
+
+  // ── Math creation via keydown ────────────────────────────────────────────────
+  // $formula$   → math_inline, cursor placed after the node
+  // $$formula$$ → math_block,  cursor placed after the block
+  // $ $         → empty math_block, cursor placed inside (to type formula)
   const mathKeyPlugin = new Plugin({
     props: {
       handleKeyDown(view, e) {
-        // Only handle a plain $ key (not during IME composition).
-        if (e.key !== '$') return false;
-        if (e.isComposing) { console.log('[mathKey] skipping: isComposing=true'); return false; }
-        const sel = view.state.selection;
-        const cursor = (sel as any).$cursor;
-        if (!cursor) { console.log('[mathKey] skipping: no cursor (selection type:', sel.constructor.name, ')'); return false; }
-        if (cursor.parent.type.name !== 'paragraph') { console.log('[mathKey] skipping: parent is', cursor.parent.type.name); return false; }
-        // Text in the current paragraph up to the cursor.
+        if (e.key !== '$' || e.isComposing) return false;
+        const { state } = view;
+        if (!(state.selection instanceof TextSelection)) return false;
+        const cursor = state.selection.$cursor;
+        if (!cursor || cursor.parent.type.name !== 'paragraph') return false;
+
         const textBefore = cursor.parent.textBetween(0, cursor.parentOffset, null, '\ufffc');
-        console.log('[mathKey] $ pressed, textBefore:', JSON.stringify(textBefore));
-        // $$formula$$ → display math block (triggered on the second closing $).
-        // textBefore will be "$$formula$" when the user presses the final $.
+
+        // $$formula$$ → display math block
         const ddMatch = /^\$\$([^$\n]+)\$$/.exec(textBefore);
         if (ddMatch) {
           const formula = ddMatch[1].trim();
           if (formula) {
-            const nodePos = cursor.before();
-            const nodeEnd = nodePos + cursor.parent.nodeSize;
-            const block = typstSchema.nodes.math_block.create({ formula });
-            const tr = view.state.tr.replaceWith(nodePos, nodeEnd, block);
-            view.dispatch(tr.setSelection(NodeSelection.create(tr.doc, nodePos)));
+            const paraStart = cursor.before();
+            const paraEnd   = paraStart + cursor.parent.nodeSize;
+            const block = typstSchema.nodes.math_block.create(null, [typstSchema.text(formula)]);
+            const tr = state.tr.replaceWith(paraStart, paraEnd, block);
+            // Cursor after the block
+            view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(paraStart) + block.nodeSize)));
             return true;
           }
         }
-        // "$ " (dollar + space/newline before closing $) → empty display math block.
-        if (/\$\s+$/.test(textBefore)) {
-          const nodePos = cursor.before();
-          const nodeEnd = nodePos + cursor.parent.nodeSize;
-          const block = typstSchema.nodes.math_block.create({ formula: '' });
-          const tr = view.state.tr.replaceWith(nodePos, nodeEnd, block);
-          view.dispatch(tr.setSelection(NodeSelection.create(tr.doc, nodePos)));
+
+        // "$ " at start of paragraph → empty display math block, cursor inside
+        if (/^\$\s+$/.test(textBefore)) {
+          const paraStart = cursor.before();
+          const paraEnd   = paraStart + cursor.parent.nodeSize;
+          const block = typstSchema.nodes.math_block.create(null, []);
+          const tr = state.tr.replaceWith(paraStart, paraEnd, block);
+          // Cursor inside the block (position 1 past the opening token)
+          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(paraStart) + 1)));
           return true;
         }
-        // If the paragraph starts with $$ (user building $$formula$$),
-        // let this $ be inserted literally — don't trigger inline math on
-        // the first closing $.
+
+        // Don't fire inline math on the first closing $ of $$formula$$
         if (/^\$\$/.test(textBefore)) return false;
-        // Match the last unmatched $…: everything after the last $ sign.
+
+        // $formula$ → inline math, cursor after
         const m = /\$([^$\n]{1,200})$/.exec(textBefore);
         if (!m) return false;
         const formula = m[1].trim();
         if (!formula) return false;
-        // Replace "$formula" (the opening $ + content, without closing $)
-        // with a math_inline node. The closing $ is consumed by returning true.
+
         const start = cursor.pos - m[0].length;
-        view.dispatch(
-          view.state.tr.replaceWith(start, cursor.pos, typstSchema.nodes.math_inline.create({ formula }))
-        );
+        const inlineNode = typstSchema.nodes.math_inline.create(null, [typstSchema.text(formula)]);
+        const tr = state.tr.replaceWith(start, cursor.pos, inlineNode);
+        // Cursor after the inline node
+        view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(start) + inlineNode.nodeSize)));
         return true;
       },
     },
   });
 
-  // ── Input rules ──────────────────────────────────────────────────────────
-  // The $ InputRule below is a fallback for paste / non-keydown paths.
-  // For live typing the mathKeyPlugin above takes precedence (and returns true
-  // before the $ is inserted, so the InputRule never sees it).
+  // ── Plugins & node views ─────────────────────────────────────────────────────
   export const typstPlugins = [
+    mathFocusPlugin,
     mathKeyPlugin,
     inputRules({ rules: [
       textblockTypeInputRule(/^(={1,6})\s$/, typstSchema.nodes.heading, (m: RegExpMatchArray) => ({ level: m[1].length })),
       wrappingInputRule(/^\+\s$/, typstSchema.nodes.ordered_list),
-      new InputRule(/\$([^$\n]{1,200})\$$/, (state, match, start, end) => {
-        const formula = match[1].trim();
-        if (!formula) return null;
-        return state.tr.replaceWith(start, end, typstSchema.nodes.math_inline.create({ formula }));
-      }),
     ]}),
   ];
 
@@ -298,9 +249,9 @@
     math_block:  (node: PNode, ev: EditorView, gp: any) => new MathNodeView(node, ev, gp),
   };
 
-  // ── Serializer: doc → Typst ──────────────────────────────────────────────
+  // ── Serializer: doc → Typst ──────────────────────────────────────────────────
   function serializeInline(node: PNode): string {
-    if (node.type.name === 'math_inline') return `$${node.attrs.formula}$`;
+    if (node.type.name === 'math_inline') return `$${node.textContent}$`;
     if (node.isText) {
       let s = node.text ?? '';
       const marks = node.marks.map(m => m.type.name);
@@ -347,7 +298,7 @@
       case 'code_block':      return '```\n' + node.textContent + '\n```\n';
       case 'horizontal_rule': return '---\n';
       case 'math_block': {
-        const f = node.attrs.formula;
+        const f = node.textContent;
         return f.includes('\n') ? '$\n' + f + '\n$\n' : '$ ' + f + ' $\n';
       }
       case 'table': {
@@ -368,7 +319,14 @@
     return out.replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
   }
 
-  // ── Parser: Typst → doc ──────────────────────────────────────────────────
+  // ── Parser: Typst → doc ──────────────────────────────────────────────────────
+  function mathInline(formula: string): PNode {
+    return typstSchema.nodes.math_inline.create(null, formula ? [typstSchema.text(formula)] : []);
+  }
+  function mathBlock(formula: string): PNode {
+    return typstSchema.nodes.math_block.create(null, formula ? [typstSchema.text(formula)] : []);
+  }
+
   function parseInline(text: string): PNode[] {
     const nodes: PNode[] = [];
     let i = 0, plain = '';
@@ -376,7 +334,7 @@
     while (i < text.length) {
       const rest = text.slice(i);
       const mathM = rest.match(/^\$([^$\n]+)\$/);
-      if (mathM) { flush(); nodes.push(typstSchema.nodes.math_inline.create({ formula: mathM[1] })); i += mathM[0].length; continue; }
+      if (mathM) { flush(); nodes.push(mathInline(mathM[1])); i += mathM[0].length; continue; }
       const boldM = rest.match(/^\*([^*\n]+)\*/);
       if (boldM) { flush(); nodes.push(typstSchema.text(boldM[1], [typstSchema.marks.strong.create()])); i += boldM[0].length; continue; }
       const emM = rest.match(/^_([^_\n]+)_/);
@@ -397,24 +355,24 @@
       while (i < lines.length) {
         const line = lines[i];
         if (!line.trim()) { i++; continue; }
+
         const hm = line.match(/^(={1,6})\s+(.*)/);
         if (hm) { blocks.push(typstSchema.nodes.heading.create({ level: hm[1].length }, parseInline(hm[2]))); i++; continue; }
+
         if (/^- /.test(line)) {
           const items: PNode[] = [];
-          while (i < lines.length && /^- /.test(lines[i])) {
-            items.push(typstSchema.nodes.list_item.create(null, [typstSchema.nodes.paragraph.create(null, parseInline(lines[i].slice(2)))]));
-            i++;
-          }
+          while (i < lines.length && /^- /.test(lines[i]))
+            items.push(typstSchema.nodes.list_item.create(null, [typstSchema.nodes.paragraph.create(null, parseInline(lines[i++].slice(2)))]));
           blocks.push(typstSchema.nodes.bullet_list.create(null, items)); continue;
         }
+
         if (/^\+ /.test(line)) {
           const items: PNode[] = [];
-          while (i < lines.length && /^\+ /.test(lines[i])) {
-            items.push(typstSchema.nodes.list_item.create(null, [typstSchema.nodes.paragraph.create(null, parseInline(lines[i].slice(2)))]));
-            i++;
-          }
+          while (i < lines.length && /^\+ /.test(lines[i]))
+            items.push(typstSchema.nodes.list_item.create(null, [typstSchema.nodes.paragraph.create(null, parseInline(lines[i++].slice(2)))]));
           blocks.push(typstSchema.nodes.ordered_list.create(null, items)); continue;
         }
+
         if (line.trim() === '```') {
           i++;
           const codeLines: string[] = [];
@@ -422,20 +380,25 @@
           if (i < lines.length) i++;
           blocks.push(typstSchema.nodes.code_block.create(null, codeLines.length ? [typstSchema.text(codeLines.join('\n'))] : [])); continue;
         }
-        // Single-line display math: $ formula $ (Typst space-delimited form)
+
+        // Single-line display math: $ formula $
         const sdm = line.match(/^\$ (.+) \$\s*$/);
-        if (sdm) { blocks.push(typstSchema.nodes.math_block.create({ formula: sdm[1] })); i++; continue; }
+        if (sdm) { blocks.push(mathBlock(sdm[1])); i++; continue; }
+
         // Multi-line display math: $ on its own line
         if (line.trim() === '$') {
           i++;
           const fLines: string[] = [];
           while (i < lines.length && lines[i].trim() !== '$') fLines.push(lines[i++]);
           if (i < lines.length) i++;
-          blocks.push(typstSchema.nodes.math_block.create({ formula: fLines.join('\n') })); continue;
+          blocks.push(mathBlock(fLines.join('\n'))); continue;
         }
+
         if (line.trim() === '---') { blocks.push(typstSchema.nodes.horizontal_rule.create()); i++; continue; }
+
         const qm = line.match(/^#quote\[(.+)\]$/);
         if (qm) { blocks.push(typstSchema.nodes.blockquote.create(null, [typstSchema.nodes.paragraph.create(null, parseInline(qm[1]))])); i++; continue; }
+
         const paraLines: string[] = [];
         while (i < lines.length) {
           const l = lines[i];
@@ -460,15 +423,17 @@
     value: string; placeholder?: string; fillHeight?: boolean;
   } = $props();
 
-  // ── Math insert toolbar items ────────────────────────────────────────────
   const mathToolbarItems: ToolbarItem[] = [
     {
       icon: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><text x="2" y="10" font-size="9" font-family="serif" fill="currentColor" stroke="none">∑</text><line x1="9" y1="4" x2="13" y2="4"/><line x1="9" y1="7" x2="13" y2="7"/><line x1="9" y1="10" x2="13" y2="10"/></svg>',
       title: '插入行内公式 ($…$)',
       run(view: EditorView) {
         const { state, dispatch } = view;
-        const node = typstSchema.nodes.math_inline.create({ formula: '' });
-        dispatch(state.tr.replaceSelectionWith(node));
+        const node = typstSchema.nodes.math_inline.create(null, []);
+        const tr = state.tr.replaceSelectionWith(node);
+        // Cursor inside the new node
+        const nodeStart = tr.selection.from - node.nodeSize;
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
       },
     },
     {
@@ -476,8 +441,10 @@
       title: '插入块级公式 ($$…$$)',
       run(view: EditorView) {
         const { state, dispatch } = view;
-        const node = typstSchema.nodes.math_block.create({ formula: '' });
-        dispatch(state.tr.replaceSelectionWith(node));
+        const node = typstSchema.nodes.math_block.create(null, []);
+        const tr = state.tr.replaceSelectionWith(node);
+        const nodeStart = tr.selection.from - node.nodeSize;
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
       },
     },
   ];
@@ -497,17 +464,62 @@
 />
 
 <style>
-  /* ── Typst math nodes ── */
-  :global(.typst-math-inline-view) { display: inline-block; vertical-align: middle; cursor: pointer; border-radius: 3px; padding: 0 2px; }
-  :global(.typst-math-block-view)  { display: block; border-radius: 4px; margin: 0.75em 0; text-align: center; cursor: pointer; }
-  :global(.typst-math-inline-view.selected),
-  :global(.typst-math-block-view.selected) { outline: 2px solid var(--accent, #4a7); outline-offset: 2px; background: rgba(95, 155, 101, 0.06); }
-  :global(.math-source),
-  :global(.math-fallback) { font-family: var(--font-mono, monospace); font-size: 0.88em; color: #2a6b4a; background: rgba(42, 107, 74, 0.07); border-radius: 3px; padding: 0 4px; }
-  :global(.typst-math-inline-view.editing) { outline: 2px solid var(--accent, #4a7); outline-offset: 2px; background: rgba(95, 155, 101, 0.06); display: inline-flex; align-items: center; }
-  :global(.typst-math-block-view.editing)  { outline: 2px solid var(--accent, #4a7); outline-offset: 2px; background: rgba(95, 155, 101, 0.06); display: block; }
-  :global(.math-edit-input) { font-family: var(--font-mono, monospace); font-size: 0.9em; border: none; outline: none; background: transparent; color: #2a6b4a; padding: 2px 4px; min-width: 6ch; width: auto; resize: none; line-height: 1.4; }
-  :global(textarea.math-edit-input) { display: block; width: 100%; min-height: 2em; }
+  /* ── Math node wrapper ── */
+  :global(.typst-math-inline-view) {
+    display: inline-block;
+    vertical-align: middle;
+    position: relative;
+    border-radius: 3px;
+    cursor: text;
+  }
+  :global(.typst-math-block-view) {
+    display: block;
+    position: relative;
+    border-radius: 4px;
+    margin: 0.75em 0;
+    text-align: center;
+    cursor: text;
+  }
+
+  /* ── Source mode (cursor inside) ── */
+  :global(.typst-math-inline-view.math-focused) {
+    outline: 2px solid var(--accent, #4a7);
+    outline-offset: 2px;
+    background: rgba(95, 155, 101, 0.06);
+  }
+  :global(.typst-math-block-view.math-focused) {
+    outline: 2px solid var(--accent, #4a7);
+    outline-offset: 2px;
+    background: rgba(95, 155, 101, 0.06);
+  }
+  /* $ delimiters shown as pseudo-elements, like heading prefixes */
+  :global(.typst-math-inline-view.math-focused .math-source-text::before) { content: '$'; color: #888; user-select: none; }
+  :global(.typst-math-inline-view.math-focused .math-source-text::after)  { content: '$'; color: #888; user-select: none; }
+  :global(.typst-math-block-view.math-focused  .math-source-text::before) { content: '$ '; color: #888; user-select: none; }
+  :global(.typst-math-block-view.math-focused  .math-source-text::after)  { content: ' $'; color: #888; user-select: none; }
+
+  /* Source text styling */
+  :global(.math-source-text) {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.88em;
+    color: #2a6b4a;
+    white-space: pre-wrap;
+  }
+
+  /* ── Rendered mode ── */
+  :global(.math-rendered) { display: inline-block; }
+  :global(.typst-math-block-view .math-rendered) { display: block; }
+  :global(.math-placeholder),
+  :global(.math-fallback) {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.88em;
+    color: #2a6b4a;
+    background: rgba(42, 107, 74, 0.07);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+
+  /* SVG sizing for MathML output */
   :global(.typst-math-inline-view svg),
   :global(.typst-math-block-view svg) { vertical-align: middle; max-width: 100%; height: auto; }
 </style>
