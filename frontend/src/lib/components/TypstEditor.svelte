@@ -177,9 +177,14 @@
     }
 
     // Ignore mutations in _renderEl (we update it ourselves).
-    // Let ProseMirror handle contentDOM mutations normally.
+    // Let ProseMirror handle contentDOM text/childList mutations normally.
     ignoreMutation(mut: MutationRecord | { type: 'selection'; target: Element }) {
-      const target = (mut as MutationRecord).target;
+      const record = mut as MutationRecord;
+      // Always ignore attribute changes — we set styles/classes ourselves via
+      // _applySource/_applyRendered; letting ProseMirror react to them causes
+      // it to re-render contentDOM, wiping out user input.
+      if (record.type === 'attributes') return true;
+      const target = record.target;
       if (!target) return false;
       return !this.contentDOM.contains(target as Node) && target !== this.contentDOM;
     }
