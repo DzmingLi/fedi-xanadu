@@ -95,6 +95,15 @@
       <mod.default forkOf={route.params.fork_of || ''} editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} />
     {/await}
   </div>
+{:else if route.page === 'series-editor'}
+  <div class="editor-nav">
+    <NavBar />
+  </div>
+  <div class="editor-container">
+    {#await lazySeriesEditor() then mod}
+      <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
 {:else if route.page !== 'book'}
   <div class="top-nav">
     <NavBar />
@@ -123,10 +132,6 @@
     {:else if route.page === 'new-series'}
       {#await lazyNewSeries() then mod}
         <mod.default />
-      {/await}
-    {:else if route.page === 'series-editor'}
-      {#await lazySeriesEditor() then mod}
-        <mod.default id={route.params.id || ''} />
       {/await}
     {:else if route.page === 'profile'}
       {#await lazyProfile() then mod}
