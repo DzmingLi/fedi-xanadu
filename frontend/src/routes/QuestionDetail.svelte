@@ -3,7 +3,6 @@
   import { authorName } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
-  import CommentThread from '../lib/components/CommentThread.svelte';
   import type { ArticleContent, QuestionDetail, ContentFormat } from '../lib/types';
   import { toast } from '../lib/components/Toast.svelte';
 
@@ -200,10 +199,6 @@
     {/if}
   </div>
 
-  <!-- Comments on the question -->
-  <div class="comments-section">
-    <CommentThread contentUri={uri} />
-  </div>
 {/if}
 
 <style>
@@ -391,10 +386,6 @@
     display: flex;
     gap: 8px;
     align-items: center;
-  }
-
-  .comments-section {
-    margin-top: 24px;
   }
 
   .empty { color: var(--text-hint); font-size: 14px; }

@@ -55,6 +55,9 @@ pub struct CreateArticle {
     pub prereqs: Vec<ArticlePrereq>,
     /// If set, the article belongs to this series and its source is stored in the series repo.
     pub series_id: Option<String>,
+    /// Handles to invite to answer this question (only used when kind=Question).
+    #[serde(default)]
+    pub invites: Vec<String>,
 }
 
 // ---- Response ----

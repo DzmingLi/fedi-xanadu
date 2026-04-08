@@ -91,6 +91,19 @@ pub async fn create_question(
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
 
+    // Send invite_answer notifications to requested handles
+    if !input.invites.is_empty() {
+        if let Ok(invited_dids) = notification_service::dids_for_handles(&state.pool, &input.invites).await {
+            for did in invited_dids {
+                let notif_id = tid();
+                let _ = notification_service::create_notification(
+                    &state.pool, &notif_id, &did, &user.did,
+                    "invite_answer", Some(&at_uri), None,
+                ).await;
+            }
+        }
+    }
+
     Ok((StatusCode::CREATED, Json(article)))
 }
 

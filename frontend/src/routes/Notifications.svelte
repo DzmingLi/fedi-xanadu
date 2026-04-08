@@ -27,6 +27,7 @@
       case 'new_follower': return t('notification.newFollower');
       case 'article_fork': return t('notification.articleFork');
       case 'new_answer': return t('notification.newAnswer');
+      case 'invite_answer': return t('notification.inviteAnswer');
       default: return kind;
     }
   }
@@ -39,6 +40,7 @@
       case 'article_fork':
         return n.context_id ? `#/article?uri=${encodeURIComponent(n.context_id)}` : '#/';
       case 'new_answer':
+      case 'invite_answer':
         return n.target_uri ? `#/question?uri=${encodeURIComponent(n.target_uri)}` : '#/';
       case 'new_follower':
         return `#/profile?did=${encodeURIComponent(n.actor_did)}`;

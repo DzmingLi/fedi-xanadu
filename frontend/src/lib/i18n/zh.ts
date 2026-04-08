@@ -350,6 +350,7 @@ export default {
   'qa.translations': '其他语言版本',
   'qa.translationTitle': '翻译标题',
   'notification.newAnswer': '回答了你的问题',
+  'notification.inviteAnswer': '邀请你回答一个问题',
   'profile.questions': '问答',
 
   // Settings

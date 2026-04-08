@@ -354,6 +354,7 @@ export default {
   'qa.translations': 'Other language versions',
   'qa.translationTitle': 'Translated title',
   'notification.newAnswer': 'answered your question',
+  'notification.inviteAnswer': 'invited you to answer a question',
   'profile.questions': 'Q&A',
 
   // Settings

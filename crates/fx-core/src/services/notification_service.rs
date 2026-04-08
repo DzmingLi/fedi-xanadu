@@ -91,6 +91,20 @@ pub async fn mark_read(pool: &PgPool, did: &str, id: &str) -> crate::Result<()> 
     Ok(())
 }
 
+/// Look up DIDs for a list of handles (ignores unknown handles).
+pub async fn dids_for_handles(pool: &PgPool, handles: &[String]) -> crate::Result<Vec<String>> {
+    if handles.is_empty() {
+        return Ok(vec![]);
+    }
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT did FROM profiles WHERE handle = ANY($1)"
+    )
+    .bind(handles)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(d,)| d).collect())
+}
+
 pub async fn mark_all_read(pool: &PgPool, did: &str) -> crate::Result<()> {
     sqlx::query(
         "UPDATE notifications SET read = TRUE WHERE recipient_did = $1 AND read = FALSE"

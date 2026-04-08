@@ -108,6 +108,9 @@ enum Command {
         /// Tags (comma-separated tag IDs)
         #[arg(long, value_delimiter = ',')]
         tags: Vec<String>,
+        /// Handles to invite to answer (comma-separated, e.g. alice,bob)
+        #[arg(long, value_delimiter = ',')]
+        invite: Vec<String>,
     },
     /// Manage skill trees
     Tree {
@@ -783,7 +786,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        Command::Question { title, lang, tags } => {
+        Command::Question { title, lang, tags, invite } => {
             let token = config.token()?;
             let body = CreateArticle {
                 title: title.clone(),
@@ -800,6 +803,7 @@ async fn main() -> Result<()> {
                 tags,
                 prereqs: vec![],
                 series_id: None,
+                invites: invite,
             };
             let article: serde_json::Value = client()
                 .post(format!("{base}/questions"))
@@ -811,6 +815,9 @@ async fn main() -> Result<()> {
             let uri = article["at_uri"].as_str().unwrap_or("?");
             println!("Asked: {title}");
             println!("URI:   {uri}");
+            if !body.invites.is_empty() {
+                println!("Invited: {}", body.invites.join(", "));
+            }
         }
 
         Command::Upload { file, title, desc, lang, tags, license, category, book_id, series, resource } => {
@@ -856,6 +863,7 @@ async fn main() -> Result<()> {
                 tags,
                 prereqs: vec![],
                 series_id: series.clone(),
+                invites: vec![],
             };
 
             let resp: serde_json::Value = client()

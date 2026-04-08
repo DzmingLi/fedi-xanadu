@@ -538,6 +538,7 @@ pub async fn compile_series(
                 tags: vec![],
                 prereqs: vec![],
                 series_id: Some(series_id.clone()),
+                invites: vec![],
             };
             article_service::create_article(
                 &state.pool, &user.did, &at_uri, &input, &hash, None,
