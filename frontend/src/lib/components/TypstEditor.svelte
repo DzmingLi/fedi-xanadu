@@ -116,6 +116,8 @@
       const focused = decorations.some((d: any) => d.spec?.mathFocused);
       const formula = node.textContent;
 
+      console.log('[math.update]', JSON.stringify({ focused, formula, prevFocused: this._focused }));
+
       if (focused !== this._focused) {
         this._focused = focused;
         focused ? this._applySource() : this._applyRendered(formula);
@@ -139,11 +141,16 @@
       // re-assert the DOM cursor in the next frame directly from this.contentDOM.
       if (!this._lastFormula) {
         const el = this.contentDOM;
+        console.log('[math.applySource] scheduling rAF, firstChild=', el.firstChild);
         requestAnimationFrame(() => {
+          console.log('[math.rAF] focused=', this._focused, 'firstChild=', el.firstChild, 'connected=', el.isConnected);
           if (!this._focused) return;
           const anchor = el.firstChild ?? el;
           const sel = window.getSelection();
-          if (sel && el.isConnected) sel.collapse(anchor, 0);
+          if (sel && el.isConnected) {
+            sel.collapse(anchor, 0);
+            console.log('[math.rAF] after collapse: anchorNode=', sel.anchorNode, 'offset=', sel.anchorOffset);
+          }
         });
       }
     }
@@ -186,7 +193,9 @@
       if (record.type === 'attributes') return true;
       const target = record.target;
       if (!target) return false;
-      return !this.contentDOM.contains(target as Node) && target !== this.contentDOM;
+      const inside = this.contentDOM.contains(target as Node) || target === this.contentDOM;
+      console.log('[math.ignoreMutation]', record.type, 'inside=', inside, 'data=', JSON.stringify((target as any).data?.substring(0, 20) ?? ''));
+      return !inside;
     }
 
     destroy() {}
