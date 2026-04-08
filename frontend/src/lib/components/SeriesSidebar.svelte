@@ -2,7 +2,7 @@
   import { getSeries, getSeriesHeadings } from '../api';
   import { getCachedSeries, setCachedSeries } from '../seriesCache';
   import { t } from '../i18n/index.svelte';
-  import type { SeriesDetail, SeriesHeading } from '../types';
+  import type { SeriesDetail, SeriesHeading, SeriesArticle } from '../types';
 
   let { seriesId, currentUri }: { seriesId: string; currentUri: string } = $props();
 
@@ -27,6 +27,23 @@
       heading: ch,
       sections: headings.filter(h => h.parent_heading_id === ch.id && h.article_uri != null),
     }));
+  });
+
+  // Fallback: auto-group by chapter number when title starts with "X.Y"
+  let autoChapterGroups = $derived.by((): { chapterNum: number; articles: SeriesArticle[] }[] => {
+    if (chapterGroups.length > 0 || !detail) return [];
+    const chapterMap = new Map<number, SeriesArticle[]>();
+    for (const a of detail.articles) {
+      const m = a.title.match(/^(\d+)\./);
+      if (!m) return [];
+      const ch = parseInt(m[1]);
+      if (!chapterMap.has(ch)) chapterMap.set(ch, []);
+      chapterMap.get(ch)!.push(a);
+    }
+    if (chapterMap.size <= 1) return [];
+    return [...chapterMap.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([chapterNum, articles]) => ({ chapterNum, articles }));
   });
 
   $effect(() => {
@@ -61,7 +78,7 @@
     </a>
 
     {#if chapterGroups.length > 0}
-      <!-- Chapter-structured view: h1 = chapter, h2 = article -->
+      <!-- Chapter-structured view from DB headings: h1 = chapter, h2 = article -->
       {#each chapterGroups as group (group.heading.id)}
         <div class="ss-chapter">{group.heading.title}</div>
         {#each group.sections as sec, i (sec.id)}
@@ -75,8 +92,23 @@
           </a>
         {/each}
       {/each}
+    {:else if autoChapterGroups.length > 0}
+      <!-- Auto-grouped by "X.Y" title prefix -->
+      {#each autoChapterGroups as group (group.chapterNum)}
+        <div class="ss-chapter">第 {group.chapterNum} 章</div>
+        {#each group.articles as article, i (article.article_uri)}
+          <a
+            href={articleHref(article.article_uri)}
+            class="ss-item ss-indent"
+            class:active={article.article_uri === currentUri}
+          >
+            <span class="ss-num">{i + 1}</span>
+            <span class="ss-item-title">{article.title}</span>
+          </a>
+        {/each}
+      {/each}
     {:else}
-      <!-- Flat list fallback (no headings / split_level not set) -->
+      <!-- Flat list fallback -->
       {#each detail.articles as article, i (article.article_uri)}
         <a
           href={articleHref(article.article_uri)}
