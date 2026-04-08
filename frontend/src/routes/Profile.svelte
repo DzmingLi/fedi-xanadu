@@ -262,7 +262,7 @@
   }
 </script>
 
-{#snippet seriesTree(s: Series, _depth: number, totalArticles?: number)}
+{#snippet seriesTree(s: Series, totalArticles?: number)}
   {@const articleUris = seriesArticleMap.get(s.id) || []}
   {@const count = totalArticles ?? articleUris.length}
   {@const isExpanded = expandedSeries.has(s.id)}
@@ -564,7 +564,7 @@
           variant="profile"
         />
       {:else if item.type === 'series' && item.series}
-        {@render seriesTree(item.series, 0, item.articleCount)}
+        {@render seriesTree(item.series, item.articleCount)}
       {/if}
     {/each}
 
