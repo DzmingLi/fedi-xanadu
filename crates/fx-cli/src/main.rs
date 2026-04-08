@@ -98,6 +98,17 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Ask a question
+    Question {
+        /// Question title
+        title: String,
+        /// Language code (default: zh)
+        #[arg(short, long, default_value = "zh")]
+        lang: String,
+        /// Tags (comma-separated tag IDs)
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+    },
     /// Manage skill trees
     Tree {
         #[command(subcommand)]
@@ -770,6 +781,36 @@ async fn main() -> Result<()> {
             if tags.is_empty() {
                 println!("No tags found.");
             }
+        }
+
+        Command::Question { title, lang, tags } => {
+            let token = config.token()?;
+            let body = CreateArticle {
+                title: title.clone(),
+                description: None,
+                content: String::new(),
+                content_format: fx_core::content::ContentFormat::Markdown,
+                lang: Some(lang),
+                license: Some("CC-BY-SA-4.0".to_string()),
+                translation_of: None,
+                restricted: None,
+                category: None,
+                book_id: None,
+                edition_id: None,
+                tags,
+                prereqs: vec![],
+                series_id: None,
+            };
+            let article: serde_json::Value = client()
+                .post(format!("{base}/questions"))
+                .bearer_auth(&token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Failed to post question")?
+                .json().await?;
+            let uri = article["at_uri"].as_str().unwrap_or("?");
+            println!("Asked: {title}");
+            println!("URI:   {uri}");
         }
 
         Command::Upload { file, title, desc, lang, tags, license, category, book_id, series, resource } => {
