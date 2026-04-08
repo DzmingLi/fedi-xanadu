@@ -172,16 +172,33 @@
         if (!cursor || cursor.parent.type.name !== 'paragraph') return false;
         // Text in the current paragraph up to the cursor.
         const textBefore = cursor.parent.textBetween(0, cursor.parentOffset, null, '\ufffc');
-        // $$ or "$ " (dollar + space/newline before closing $) → display math block.
-        if (textBefore === '$' || /\$\s+$/.test(textBefore)) {
-          const state = view.state;
+        // $$formula$$ → display math block (triggered on the second closing $).
+        // textBefore will be "$$formula$" when the user presses the final $.
+        const ddMatch = /^\$\$([^$\n]+)\$$/.exec(textBefore);
+        if (ddMatch) {
+          const formula = ddMatch[1].trim();
+          if (formula) {
+            const nodePos = cursor.before();
+            const nodeEnd = nodePos + cursor.parent.nodeSize;
+            const block = typstSchema.nodes.math_block.create({ formula });
+            const tr = view.state.tr.replaceWith(nodePos, nodeEnd, block);
+            view.dispatch(tr.setSelection(NodeSelection.create(tr.doc, nodePos)));
+            return true;
+          }
+        }
+        // "$ " (dollar + space/newline before closing $) → empty display math block.
+        if (/\$\s+$/.test(textBefore)) {
           const nodePos = cursor.before();
           const nodeEnd = nodePos + cursor.parent.nodeSize;
           const block = typstSchema.nodes.math_block.create({ formula: '' });
-          const tr = state.tr.replaceWith(nodePos, nodeEnd, block);
+          const tr = view.state.tr.replaceWith(nodePos, nodeEnd, block);
           view.dispatch(tr.setSelection(NodeSelection.create(tr.doc, nodePos)));
           return true;
         }
+        // If the paragraph starts with $$ (user building $$formula$$),
+        // let this $ be inserted literally — don't trigger inline math on
+        // the first closing $.
+        if (/^\$\$/.test(textBefore)) return false;
         // Match the last unmatched $…: everything after the last $ sign.
         const m = /\$([^$\n]{1,200})$/.exec(textBefore);
         if (!m) return false;
