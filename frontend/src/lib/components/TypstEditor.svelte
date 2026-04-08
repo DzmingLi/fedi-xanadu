@@ -24,11 +24,11 @@
           toDOM: () => ['span', { class: 'typst-math-inline' }, 0],
         },
         math_block: {
-          group: 'block',
+          group: 'inline', inline: true,
           content: 'text*',
           marks: '',
-          parseDOM: [{ tag: 'div.typst-math-block' }],
-          toDOM: () => ['div', { class: 'typst-math-block' }, 0],
+          parseDOM: [{ tag: 'span.typst-math-block' }],
+          toDOM: () => ['span', { class: 'typst-math-block' }, 0],
         },
       }),
     marks: basicSchema.spec.marks,
@@ -78,15 +78,16 @@
     constructor(node: PNode, _view: EditorView, _getPos: any) {
       this._display = node.type.name === 'math_block';
 
-      this.dom = document.createElement(this._display ? 'div' : 'span');
+      // Both math_inline and math_block are now inline nodes — always use span
+      this.dom = document.createElement('span');
       this.dom.className = this._display ? 'typst-math-block-view' : 'typst-math-inline-view';
 
       // contentDOM: editable formula text (always in DOM, collapsed when rendered)
-      this.contentDOM = document.createElement(this._display ? 'div' : 'span');
+      this.contentDOM = document.createElement('span');
       this.contentDOM.className = 'math-source-text';
 
       // renderEl: MathML output (visible when cursor is outside)
-      this._renderEl = document.createElement(this._display ? 'div' : 'span');
+      this._renderEl = document.createElement('span');
       this._renderEl.className = 'math-rendered';
 
       this.dom.appendChild(this.contentDOM);
@@ -128,9 +129,7 @@
       this._lastFormula = formula;
       this.dom.classList.remove('math-focused');
       // Collapse contentDOM — keeps it in DOM for ProseMirror but takes no space
-      this.contentDOM.style.cssText = this._display
-        ? 'display:block;height:0;overflow:hidden'
-        : 'display:inline-block;width:0;height:0;overflow:hidden;vertical-align:middle';
+      this.contentDOM.style.cssText = 'display:inline-block;width:0;height:0;overflow:hidden;vertical-align:middle';
       this._renderEl.style.display = '';
       // Show placeholder while the async compile runs
       this._renderEl.innerHTML = this._display
@@ -189,29 +188,26 @@
 
         const textBefore = cursor.parent.textBetween(0, cursor.parentOffset, null, '\ufffc');
 
-        // $$formula$$ → display math block
+        // $$formula$$ → display math (inline node, $ formula $ Typst syntax)
         const ddMatch = /^\$\$([^$\n]+)\$$/.exec(textBefore);
         if (ddMatch) {
           const formula = ddMatch[1].trim();
           if (formula) {
-            const paraStart = cursor.before();
-            const paraEnd   = paraStart + cursor.parent.nodeSize;
+            const start = cursor.pos - textBefore.length;
             const block = typstSchema.nodes.math_block.create(null, [typstSchema.text(formula)]);
-            const tr = state.tr.replaceWith(paraStart, paraEnd, block);
-            // Cursor after the block
-            view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(paraStart) + block.nodeSize)));
+            const tr = state.tr.replaceWith(start, cursor.pos, block);
+            view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(start) + block.nodeSize)));
             return true;
           }
         }
 
-        // $$ or "$ " → empty display math block, cursor inside
+        // $$ or "$ " → empty display math, cursor inside
         if (textBefore === '$' || /^\$\s+$/.test(textBefore)) {
-          const paraStart = cursor.before();
-          const paraEnd   = paraStart + cursor.parent.nodeSize;
+          const start = cursor.pos - textBefore.length;
           const block = typstSchema.nodes.math_block.create(null, []);
-          const tr = state.tr.replaceWith(paraStart, paraEnd, block);
-          // Cursor inside the block (position 1 past the opening token)
-          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(paraStart) + 1)));
+          const tr = state.tr.replaceWith(start, cursor.pos, block);
+          // Cursor inside the node (1 past the opening boundary)
+          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(start) + 1)));
           return true;
         }
 
@@ -252,6 +248,7 @@
   // ── Serializer: doc → Typst ──────────────────────────────────────────────────
   function serializeInline(node: PNode): string {
     if (node.type.name === 'math_inline') return `$${node.textContent}$`;
+    if (node.type.name === 'math_block')  return `$ ${node.textContent} $`;
     if (node.isText) {
       let s = node.text ?? '';
       const marks = node.marks.map(m => m.type.name);
@@ -297,10 +294,6 @@
       }
       case 'code_block':      return '```\n' + node.textContent + '\n```\n';
       case 'horizontal_rule': return '---\n';
-      case 'math_block': {
-        const f = node.textContent;
-        return f.includes('\n') ? '$\n' + f + '\n$\n' : '$ ' + f + ' $\n';
-      }
       case 'table': {
         const firstRow = node.firstChild;
         if (!firstRow) return '';
@@ -333,6 +326,10 @@
     const flush = () => { if (plain) { nodes.push(typstSchema.text(plain)); plain = ''; } };
     while (i < text.length) {
       const rest = text.slice(i);
+      // Display math: $ formula $ (space after opening $ and before closing $)
+      const dispM = rest.match(/^\$ ([^$\n]+) \$/);
+      if (dispM) { flush(); nodes.push(mathBlock(dispM[1].trim())); i += dispM[0].length; continue; }
+      // Inline math: $formula$ (no leading/trailing space adjacent to $)
       const mathM = rest.match(/^\$([^$\n]+)\$/);
       if (mathM) { flush(); nodes.push(mathInline(mathM[1])); i += mathM[0].length; continue; }
       const boldM = rest.match(/^\*([^*\n]+)\*/);
@@ -383,7 +380,10 @@
 
         // Single-line display math: $ formula $
         const sdm = line.match(/^\$ (.+) \$\s*$/);
-        if (sdm) { blocks.push(mathBlock(sdm[1])); i++; continue; }
+        if (sdm) {
+          blocks.push(typstSchema.nodes.paragraph.create(null, [mathBlock(sdm[1])]));
+          i++; continue;
+        }
 
         // Multi-line display math: $ on its own line
         if (line.trim() === '$') {
@@ -391,7 +391,8 @@
           const fLines: string[] = [];
           while (i < lines.length && lines[i].trim() !== '$') fLines.push(lines[i++]);
           if (i < lines.length) i++;
-          blocks.push(mathBlock(fLines.join('\n'))); continue;
+          blocks.push(typstSchema.nodes.paragraph.create(null, [mathBlock(fLines.join('\n'))]));
+          continue;
         }
 
         if (line.trim() === '---') { blocks.push(typstSchema.nodes.horizontal_rule.create()); i++; continue; }
@@ -438,7 +439,7 @@
     },
     {
       icon: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="3" width="12" height="8" rx="1"/><text x="4" y="10" font-size="7" font-family="serif" fill="currentColor" stroke="none">∫</text></svg>',
-      title: '插入块级公式 ($$…$$)',
+      title: '插入块级公式 ($ … $)',
       run(view: EditorView) {
         const { state, dispatch } = view;
         const node = typstSchema.nodes.math_block.create(null, []);
@@ -473,11 +474,10 @@
     cursor: text;
   }
   :global(.typst-math-block-view) {
-    display: block;
+    display: inline-block;
+    vertical-align: middle;
     position: relative;
-    border-radius: 4px;
-    margin: 0.75em 0;
-    text-align: center;
+    border-radius: 3px;
     cursor: text;
   }
 
@@ -491,7 +491,6 @@
     outline: 2px solid var(--accent, #4a7);
     outline-offset: 2px;
     background: rgba(95, 155, 101, 0.06);
-    text-align: left; /* rendered mode is centered; source mode is normal text */
   }
   /* $ delimiters shown as pseudo-elements, like heading prefixes */
   :global(.typst-math-inline-view.math-focused .math-source-text::before) { content: '$'; color: #888; user-select: none; }
@@ -509,7 +508,6 @@
 
   /* ── Rendered mode ── */
   :global(.math-rendered) { display: inline-block; }
-  :global(.typst-math-block-view .math-rendered) { display: block; }
   :global(.math-placeholder),
   :global(.math-fallback) {
     font-family: var(--font-mono, monospace);
