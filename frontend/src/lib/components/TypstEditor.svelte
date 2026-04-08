@@ -9,8 +9,12 @@
   import type { EditorView } from 'prosemirror-view';
 
   // ── Schema ───────────────────────────────────────────────────────────────────
-  // Math nodes store the formula as text content (like heading stores heading
-  // text). This lets the cursor enter naturally, exactly like headings.
+  // math_inline: atom node — formula stored in attrs.formula.
+  //   Editing via a floating <input> overlay (avoids Firefox inline-NodeView
+  //   cursor reverse-mapping bug that prevents ProseMirror from tracking cursor
+  //   position inside inline contentDOM).
+  // math_block:  content node — formula stored as text content, contentDOM works
+  //   fine for block-level nodes in all browsers.
   const baseNodes = addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block');
   export const typstSchema = new Schema({
     nodes: (baseNodes as any)
@@ -18,10 +22,11 @@
       .append({
         math_inline: {
           group: 'inline', inline: true,
-          content: 'text*',
+          atom: true,
+          attrs: { formula: { default: '' } },
           marks: '',
-          parseDOM: [{ tag: 'span.typst-math-inline' }],
-          toDOM: () => ['span', { class: 'typst-math-inline' }, 0],
+          parseDOM: [{ tag: 'span.typst-math-inline', getAttrs: (dom: any) => ({ formula: dom.dataset?.formula ?? '' }) }],
+          toDOM: (node: PNode) => ['span', { class: 'typst-math-inline', 'data-formula': node.attrs.formula }],
         },
         math_block: {
           group: 'block',
@@ -73,129 +78,216 @@
       : `<span class="math-fallback">$${formula}$</span>`;
   }
 
-  // ── MathNodeView ─────────────────────────────────────────────────────────────
+  // ── MathInlineNodeView ───────────────────────────────────────────────────────
+  // Atom node view for math_inline. Formula stored in node.attrs.formula.
+  // Editing via a floating <input> that appears on click or on creation of an
+  // empty node. Commits formula via tr.setNodeMarkup on Enter or blur.
+  export class MathInlineNodeView implements NodeView {
+    dom: HTMLElement;
+    private _view: EditorView;
+    private _getPos: () => number | undefined;
+    private _formula: string;
+    private _renderEl: HTMLElement;
+    private _inputEl: HTMLInputElement | null = null;
+
+    constructor(node: PNode, view: EditorView, getPos: any) {
+      this._view = view;
+      this._getPos = getPos;
+      this._formula = node.attrs.formula ?? '';
+
+      this.dom = document.createElement('span');
+      this.dom.className = 'typst-math-inline-view';
+
+      this._renderEl = document.createElement('span');
+      this._renderEl.className = 'math-rendered';
+      this.dom.appendChild(this._renderEl);
+
+      this._render();
+
+      // Auto-open input for newly created empty nodes
+      if (!this._formula) {
+        requestAnimationFrame(() => this._openInput());
+      }
+
+      this.dom.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._openInput();
+      });
+    }
+
+    update(node: PNode) {
+      if (node.type !== typstSchema.nodes.math_inline) return false;
+      const newFormula = node.attrs.formula ?? '';
+      if (newFormula !== this._formula) {
+        this._formula = newFormula;
+        this._render();
+      }
+      return true;
+    }
+
+    private _render() {
+      if (!this._formula) {
+        this._renderEl.innerHTML = `<span class="math-empty">$ $</span>`;
+        return;
+      }
+      const formula = this._formula;
+      this._renderEl.innerHTML = `<span class="math-placeholder">$${formula}$</span>`;
+      fetchMathHtml(formula, false).then(html => {
+        if (this._formula === formula) this._renderEl.innerHTML = html;
+      });
+    }
+
+    private _openInput() {
+      if (this._inputEl) { this._inputEl.focus(); return; }
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'math-inline-input';
+      input.value = this._formula;
+      input.placeholder = 'Typst 公式…';
+
+      const rect = this.dom.getBoundingClientRect();
+      const left = Math.min(rect.left, window.innerWidth - 220);
+      const top = rect.bottom + 4 + window.scrollY;
+      input.style.cssText = [
+        'position:fixed',
+        `left:${left}px`,
+        `top:${rect.bottom + 4}px`,
+        'z-index:9999',
+        'font-family:monospace',
+        'font-size:0.9em',
+        'padding:4px 8px',
+        'border:2px solid var(--accent,#4a7)',
+        'border-radius:4px',
+        'background:#fff',
+        'color:#000',
+        'min-width:200px',
+        'box-shadow:0 2px 8px rgba(0,0,0,.2)',
+        'outline:none',
+      ].join(';');
+
+      document.body.appendChild(input);
+      this._inputEl = input;
+      this.dom.classList.add('math-focused');
+      input.focus();
+      input.select();
+
+      let committed = false;
+
+      const commit = () => {
+        if (committed) return;
+        committed = true;
+        const formula = input.value.trim();
+        const pos = this._getPos();
+        if (pos !== undefined) {
+          const { state, dispatch } = this._view;
+          if (state.doc.nodeAt(pos)?.type === typstSchema.nodes.math_inline) {
+            dispatch(state.tr.setNodeMarkup(pos, undefined, { formula }));
+          }
+        }
+        cleanup();
+      };
+
+      const cleanup = () => {
+        if (this._inputEl) {
+          document.body.removeChild(this._inputEl);
+          this._inputEl = null;
+        }
+        this.dom.classList.remove('math-focused');
+      };
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); this._view.focus(); }
+        if (e.key === 'Escape') { e.preventDefault(); cleanup(); this._view.focus(); }
+        e.stopPropagation();
+      });
+
+      input.addEventListener('blur', () => { if (!committed) commit(); });
+    }
+
+    stopEvent() { return false; }
+    ignoreMutation() { return true; }
+
+    destroy() {
+      if (this._inputEl) {
+        document.body.removeChild(this._inputEl);
+        this._inputEl = null;
+      }
+    }
+  }
+
+  // ── MathNodeView (math_block only) ───────────────────────────────────────────
   // Mirrors the heading NodeView pattern:
   //   cursor inside  → source mode: formula text visible + $ delimiters via CSS
   //   cursor outside → rendered mode: MathML shown, formula text collapsed
   //
   // The mathFocusPlugin below adds a `mathFocused` node decoration when the
-  // cursor is inside a math node; this NodeView reacts to that decoration.
+  // cursor is inside a math_block; this NodeView reacts to that decoration.
   export class MathNodeView implements NodeView {
     dom: HTMLElement;
-    contentDOM: HTMLElement;          // ProseMirror manages formula text here
-    private _display: boolean;
-    private _renderEl: HTMLElement;   // shows compiled MathML
+    contentDOM: HTMLElement;
+    private _renderEl: HTMLElement;
     private _focused = false;
     private _lastFormula = '';
 
     constructor(node: PNode, _view: EditorView, _getPos: any) {
-      this._display = node.type.name === 'math_block';
+      this.dom = document.createElement('div');
+      this.dom.className = 'typst-math-block-view';
 
-      this.dom = document.createElement(this._display ? 'div' : 'span');
-      this.dom.className = this._display ? 'typst-math-block-view' : 'typst-math-inline-view';
-
-      // contentDOM: editable formula text (always in DOM, collapsed when rendered)
-      this.contentDOM = document.createElement(this._display ? 'div' : 'span');
+      this.contentDOM = document.createElement('div');
       this.contentDOM.className = 'math-source-text';
 
-      // renderEl: MathML output (visible when cursor is outside)
-      this._renderEl = document.createElement(this._display ? 'div' : 'span');
+      this._renderEl = document.createElement('div');
       this._renderEl.className = 'math-rendered';
 
       this.dom.appendChild(this.contentDOM);
       this.dom.appendChild(this._renderEl);
 
-      // Start in rendered mode
       this._applyRendered(node.textContent);
     }
 
     update(node: PNode, decorations: readonly any[]) {
-      const expectedType = this._display ? typstSchema.nodes.math_block : typstSchema.nodes.math_inline;
-      if (node.type !== expectedType) return false;
+      if (node.type !== typstSchema.nodes.math_block) return false;
 
       const focused = decorations.some((d: any) => d.spec?.mathFocused);
       const formula = node.textContent;
-
-      console.log('[math.update]', JSON.stringify({ focused, formula, prevFocused: this._focused }));
 
       if (focused !== this._focused) {
         this._focused = focused;
         focused ? this._applySource() : this._applyRendered(formula);
       } else if (!focused && formula !== this._lastFormula) {
-        // Programmatic formula change while not focused
         this._applyRendered(formula);
       }
       return true;
     }
 
-    // Show the formula text for editing (cursor is inside).
     private _applySource() {
       this.dom.classList.add('math-focused');
-      this.contentDOM.style.cssText = this._display
-        ? 'display:block;min-height:1.2em'
-        : 'display:inline-block;min-width:2px';
+      this.contentDOM.style.cssText = 'display:block;min-height:1.2em';
       this._renderEl.style.display = 'none';
-
-      // Firefox won't keep cursor inside a zero-content inline span.
-      // For empty/ZWS-only nodes (_lastFormula is '' after ZWS strip),
-      // re-assert the DOM cursor in the next frame directly from this.contentDOM.
-      if (!this._lastFormula) {
-        const el = this.contentDOM;
-        console.log('[math.applySource] scheduling rAF, firstChild=', el.firstChild);
-        requestAnimationFrame(() => {
-          console.log('[math.rAF] focused=', this._focused, 'firstChild=', el.firstChild, 'connected=', el.isConnected);
-          if (!this._focused) return;
-          const anchor = el.firstChild ?? el;
-          const sel = window.getSelection();
-          if (sel && el.isConnected) {
-            sel.collapse(anchor, 0);
-            console.log('[math.rAF] after collapse: anchorNode=', sel.anchorNode, 'offset=', sel.anchorOffset);
-          }
-        });
-      }
     }
 
-    // Show the compiled MathML (cursor is outside).
-    // contentDOM is collapsed to zero size (not display:none, so ProseMirror can
-    // still position the cursor there if the user arrows into the node).
     private _applyRendered(formula: string) {
-      // Strip ZWS anchor char added for Firefox cursor placement in empty nodes.
-      formula = formula.replace(/\u200B/g, '');
       this._lastFormula = formula;
       this.dom.classList.remove('math-focused');
-      // Collapse contentDOM — keeps it in DOM for ProseMirror but takes no space
-      this.contentDOM.style.cssText = this._display
-        ? 'display:block;height:0;overflow:hidden'
-        : 'display:inline-block;width:0;height:0;overflow:hidden;vertical-align:middle';
+      this.contentDOM.style.cssText = 'display:block;height:0;overflow:hidden';
       this._renderEl.style.display = '';
       if (!formula) {
-        this._renderEl.innerHTML = this._display
-          ? `<span class="math-empty">$ $</span>`
-          : `<span class="math-empty">$ $</span>`;
+        this._renderEl.innerHTML = `<span class="math-empty">$ $</span>`;
         return;
       }
-      // Show placeholder while the async compile runs
-      this._renderEl.innerHTML = this._display
-        ? `<span class="math-placeholder">$ ${formula} $</span>`
-        : `<span class="math-placeholder">$${formula}$</span>`;
-      fetchMathHtml(formula, this._display).then(html => {
+      this._renderEl.innerHTML = `<span class="math-placeholder">$ ${formula} $</span>`;
+      fetchMathHtml(formula, true).then(html => {
         if (!this._focused && this._lastFormula === formula) this._renderEl.innerHTML = html;
       });
     }
 
-    // Ignore mutations in _renderEl (we update it ourselves).
-    // Let ProseMirror handle contentDOM text/childList mutations normally.
     ignoreMutation(mut: MutationRecord | { type: 'selection'; target: Element }) {
       const record = mut as MutationRecord;
-      // Always ignore attribute changes — we set styles/classes ourselves via
-      // _applySource/_applyRendered; letting ProseMirror react to them causes
-      // it to re-render contentDOM, wiping out user input.
       if (record.type === 'attributes') return true;
       const target = record.target;
       if (!target) return false;
-      const inside = this.contentDOM.contains(target as Node) || target === this.contentDOM;
-      console.log('[math.ignoreMutation]', record.type, 'inside=', inside, 'data=', JSON.stringify((target as any).data?.substring(0, 20) ?? ''));
-      return !inside;
+      return !(this.contentDOM.contains(target as Node) || target === this.contentDOM);
     }
 
     destroy() {}
@@ -246,28 +338,25 @@
           return true;
         }
 
-        // $formula$ → inline math (type closing $, cursor placed after)
+        // $formula$ → inline math atom (type closing $, cursor placed after)
         const m = /\$([^$\n]{1,200})$/.exec(textBefore);
         if (m) {
           const formula = m[1].trim();
           if (formula) {
             const start = cursor.pos - m[0].length;
-            const inlineNode = typstSchema.nodes.math_inline.create(null, [typstSchema.text(formula)]);
+            const inlineNode = typstSchema.nodes.math_inline.create({ formula });
             const tr = state.tr.replaceWith(start, cursor.pos, inlineNode);
             view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(start) + inlineNode.nodeSize)));
             return true;
           }
         }
 
-        // $$ → inline math, cursor inside (ZWS anchor for Firefox cursor placement)
+        // $$ → empty inline math atom, floating input auto-opens via NodeView constructor
         if (textBefore.endsWith('$')) {
-          // Use a zero-width space so Firefox has a text node to anchor the cursor.
-          // The ZWS is stripped in _applyRendered and serializeInline before use.
-          // The actual cursor fix runs inside MathNodeView._applySource via rAF.
-          const inlineNode = typstSchema.nodes.math_inline.create(null, [typstSchema.text('\u200B')]);
-          const tr = state.tr.replaceWith(cursor.pos - 1, cursor.pos, inlineNode);
-          const nodeStart = tr.mapping.map(cursor.pos - 1);
-          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
+          const start = cursor.pos - 1;
+          const inlineNode = typstSchema.nodes.math_inline.create({ formula: '' });
+          const tr = state.tr.replaceWith(start, cursor.pos, inlineNode);
+          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(start) + inlineNode.nodeSize)));
           return true;
         }
 
@@ -287,13 +376,13 @@
   ];
 
   export const typstNodeViews = {
-    math_inline: (node: PNode, ev: EditorView, gp: any) => new MathNodeView(node, ev, gp),
+    math_inline: (node: PNode, ev: EditorView, gp: any) => new MathInlineNodeView(node, ev, gp),
     math_block:  (node: PNode, ev: EditorView, gp: any) => new MathNodeView(node, ev, gp),
   };
 
   // ── Serializer: doc → Typst ──────────────────────────────────────────────────
   function serializeInline(node: PNode): string {
-    if (node.type.name === 'math_inline') return `$${node.textContent.replace(/\u200B/g, '')}$`;
+    if (node.type.name === 'math_inline') return `$${node.attrs.formula}$`;
     if (node.isText) {
       let s = node.text ?? '';
       const marks = node.marks.map(m => m.type.name);
@@ -363,7 +452,7 @@
 
   // ── Parser: Typst → doc ──────────────────────────────────────────────────────
   function mathInline(formula: string): PNode {
-    return typstSchema.nodes.math_inline.create(null, formula ? [typstSchema.text(formula)] : []);
+    return typstSchema.nodes.math_inline.create({ formula });
   }
   function mathBlock(formula: string): PNode {
     return typstSchema.nodes.math_block.create(null, formula ? [typstSchema.text(formula)] : []);
@@ -471,10 +560,9 @@
       title: '插入行内公式 ($…$)',
       run(view: EditorView) {
         const { state, dispatch } = view;
-        const node = typstSchema.nodes.math_inline.create(null, [typstSchema.text('\u200B')]);
-        const tr = state.tr.replaceSelectionWith(node);
-        const nodeStart = tr.selection.from - node.nodeSize;
-        dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
+        const node = typstSchema.nodes.math_inline.create({ formula: '' });
+        dispatch(state.tr.replaceSelectionWith(node));
+        // MathInlineNodeView constructor auto-opens floating input for empty nodes
       },
     },
     {
@@ -482,10 +570,10 @@
       title: '插入块级公式 ($$…$$)',
       run(view: EditorView) {
         const { state, dispatch } = view;
-        const node = typstSchema.nodes.math_block.create(null, [typstSchema.text('\u200B')]);
+        const node = typstSchema.nodes.math_block.create(null, []);
+        const from = state.selection.from;
         const tr = state.tr.replaceSelectionWith(node);
-        const nodeStart = tr.selection.from - node.nodeSize;
-        dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(from) + 1)));
       },
     },
   ];
@@ -573,4 +661,10 @@
   /* SVG sizing for MathML output */
   :global(.typst-math-inline-view svg),
   :global(.typst-math-block-view svg) { vertical-align: middle; max-width: 100%; height: auto; }
+
+  /* Floating input for inline math editing */
+  :global(.math-inline-input) {
+    font-family: var(--font-mono, monospace) !important;
+    font-size: 0.9em !important;
+  }
 </style>
