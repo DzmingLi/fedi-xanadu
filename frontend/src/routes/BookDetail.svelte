@@ -1199,6 +1199,8 @@
     border: 1px solid var(--border); border-radius: 3px;
     background: none; cursor: pointer; color: var(--text-hint);
     transition: all 0.15s; white-space: nowrap;
+    opacity: 0;
+    flex-shrink: 0;
   }
   .chapter-edit-tags-btn:hover { color: var(--accent); border-color: var(--accent); }
   .chapter-delete-btn:hover { color: #c33; border-color: #c33; }
@@ -1225,22 +1227,27 @@
   }
   .chapter-item {
     border-bottom: 1px solid var(--border);
-    padding: 4px 0;
   }
   .chapter-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 0;
+    padding: 6px 0;
     font-size: 14px;
+  }
+  .chapter-row:hover .chapter-edit-tags-btn,
+  .chapter-row:hover .chapter-delete-btn {
+    opacity: 1;
   }
   .chapter-row.sub {
     padding-left: 24px;
     font-size: 13px;
   }
   .chapter-title {
+    flex: 1;
     color: var(--text-primary);
     text-decoration: none;
+    min-width: 0;
   }
   a.chapter-title:hover {
     color: var(--accent);
