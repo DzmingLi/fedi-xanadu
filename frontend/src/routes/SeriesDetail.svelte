@@ -51,6 +51,8 @@
     loading = true;
     error = '';
     try {
+      // Fire bookmarks in parallel with series/headings (doesn't depend on them)
+      const bksPromise = getAuth() ? listBookmarks().catch(() => null) : Promise.resolve(null);
       const [d, h] = await Promise.all([getSeries(id), getSeriesHeadings(id)]);
       detail = d;
       headings = h;
@@ -59,27 +61,25 @@
       const allArticleUris = new Set<string>();
       for (const a of d.articles) allArticleUris.add(a.article_uri);
 
-      // Fetch votes in a single batch request
+      // Fetch votes and settle bookmarks in parallel
+      const [voteResults, bks] = await Promise.all([
+        allArticleUris.size > 0
+          ? getVotesBatch([...allArticleUris]).catch(() => null)
+          : Promise.resolve(null),
+        bksPromise,
+      ]);
+
       const voteMap = new Map<string, VoteSummary>();
-      if (allArticleUris.size > 0) {
-        try {
-          const results = await getVotesBatch([...allArticleUris]);
-          for (const v of results) voteMap.set(v.target_uri, v);
-        } catch {
-          // fallback: zero votes
-          for (const uri of allArticleUris) {
-            voteMap.set(uri, { target_uri: uri, score: 0, upvotes: 0, downvotes: 0 });
-          }
+      if (voteResults) {
+        for (const v of voteResults) voteMap.set(v.target_uri, v);
+      } else {
+        for (const uri of allArticleUris) {
+          voteMap.set(uri, { target_uri: uri, score: 0, upvotes: 0, downvotes: 0 });
         }
       }
       articleVotes = voteMap;
 
-      if (getAuth()) {
-        try {
-          const bks = await listBookmarks();
-          bookmarkedUris = new Set(bks.map(b => b.article_uri));
-        } catch { /* ok */ }
-      }
+      if (bks) bookmarkedUris = new Set(bks.map(b => b.article_uri));
     } catch (e: any) {
       error = e.message || 'Failed to load series';
     }
