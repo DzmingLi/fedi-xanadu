@@ -491,6 +491,7 @@
     outline: 2px solid var(--accent, #4a7);
     outline-offset: 2px;
     background: rgba(95, 155, 101, 0.06);
+    text-align: left; /* rendered mode is centered; source mode is normal text */
   }
   /* $ delimiters shown as pseudo-elements, like heading prefixes */
   :global(.typst-math-inline-view.math-focused .math-source-text::before) { content: '$'; color: #888; user-select: none; }
