@@ -48,7 +48,10 @@
         mathCache.set(key, html);
         return html;
       }
-    } catch {}
+      console.warn('[math] render API returned', res.status, 'for formula:', formula);
+    } catch (err) {
+      console.warn('[math] render API fetch failed:', err);
+    }
     return display
       ? `<span class="math-fallback">$ ${formula} $</span>`
       : `<span class="math-fallback">$${formula}$</span>`;
@@ -339,7 +342,10 @@
       }
       case 'code_block':      return '```\n' + node.textContent + '\n```\n';
       case 'horizontal_rule': return '---\n';
-      case 'math_block':      return '$\n' + node.attrs.formula + '\n$\n';
+      case 'math_block': {
+        const f = node.attrs.formula;
+        return f.includes('\n') ? '$\n' + f + '\n$\n' : '$ ' + f + ' $\n';
+      }
       case 'table': {
         const firstRow = node.firstChild;
         if (!firstRow) return '';
@@ -412,6 +418,10 @@
           if (i < lines.length) i++;
           blocks.push(typstSchema.nodes.code_block.create(null, codeLines.length ? [typstSchema.text(codeLines.join('\n'))] : [])); continue;
         }
+        // Single-line display math: $ formula $ (Typst space-delimited form)
+        const sdm = line.match(/^\$ (.+) \$\s*$/);
+        if (sdm) { blocks.push(typstSchema.nodes.math_block.create({ formula: sdm[1] })); i++; continue; }
+        // Multi-line display math: $ on its own line
         if (line.trim() === '$') {
           i++;
           const fLines: string[] = [];
@@ -426,7 +436,7 @@
         while (i < lines.length) {
           const l = lines[i];
           if (!l.trim()) break;
-          if (/^(={1,6}\s|```$|\$\s*$|---$|#quote\[)/.test(l)) break;
+          if (/^(={1,6}\s|```$|\$\s*$|\$ .+ \$\s*$|---$|#quote\[)/.test(l)) break;
           if (/^[+-] /.test(l) && paraLines.length > 0) break;
           paraLines.push(l); i++;
         }
