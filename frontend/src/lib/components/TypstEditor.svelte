@@ -129,8 +129,11 @@
     // Show the formula text for editing (cursor is inside).
     private _applySource() {
       this.dom.classList.add('math-focused');
-      // Restore contentDOM to normal flow
-      this.contentDOM.style.cssText = '';
+      // Give contentDOM a physical size so Firefox can place the cursor there even
+      // when the formula is empty (zero-size inline spans can't receive focus in Firefox).
+      this.contentDOM.style.cssText = this._display
+        ? 'display:block;min-height:1.2em'
+        : 'display:inline-block;min-width:2px';
       this._renderEl.style.display = 'none';
     }
 
@@ -236,7 +239,17 @@
         if (textBefore.endsWith('$')) {
           const inlineNode = typstSchema.nodes.math_inline.create(null, []);
           const tr = state.tr.replaceWith(cursor.pos - 1, cursor.pos, inlineNode);
-          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(cursor.pos - 1) + 1)));
+          const targetPos = tr.mapping.map(cursor.pos - 1) + 1;
+          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, targetPos)));
+          // Firefox won't maintain cursor in a freshly-created empty inline span.
+          // Re-assert the DOM selection after the browser has painted the new DOM.
+          requestAnimationFrame(() => {
+            view.focus();
+            try {
+              const { node, offset } = view.domAtPos(targetPos);
+              window.getSelection()?.collapse(node, offset);
+            } catch {}
+          });
           return true;
         }
 
@@ -442,9 +455,15 @@
         const { state, dispatch } = view;
         const node = typstSchema.nodes.math_inline.create(null, []);
         const tr = state.tr.replaceSelectionWith(node);
-        // Cursor inside the new node
-        const nodeStart = tr.selection.from - node.nodeSize;
-        dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
+        const targetPos = tr.selection.from - node.nodeSize + 1;
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, targetPos)));
+        requestAnimationFrame(() => {
+          view.focus();
+          try {
+            const { node: domNode, offset } = view.domAtPos(targetPos);
+            window.getSelection()?.collapse(domNode, offset);
+          } catch {}
+        });
       },
     },
     {
@@ -454,8 +473,15 @@
         const { state, dispatch } = view;
         const node = typstSchema.nodes.math_block.create(null, []);
         const tr = state.tr.replaceSelectionWith(node);
-        const nodeStart = tr.selection.from - node.nodeSize;
-        dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
+        const targetPos = tr.selection.from - node.nodeSize + 1;
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, targetPos)));
+        requestAnimationFrame(() => {
+          view.focus();
+          try {
+            const { node: domNode, offset } = view.domAtPos(targetPos);
+            window.getSelection()?.collapse(domNode, offset);
+          } catch {}
+        });
       },
     },
   ];
