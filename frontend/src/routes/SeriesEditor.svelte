@@ -3,6 +3,8 @@
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import type { SeriesDetail, SeriesArticle } from '../lib/types';
+  import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
+  import TypstEditor from '../lib/components/TypstEditor.svelte';
 
   let { id } = $props<{ id: string }>();
 
@@ -60,10 +62,9 @@
     }
   }
 
-  function onInput(e: Event) {
-    editorContent = (e.target as HTMLTextAreaElement).value;
+  $effect(() => {
     dirty = editorContent !== originalContent;
-  }
+  });
 
   async function save() {
     if (!activeFile || !dirty) return;
@@ -258,14 +259,21 @@
               {saving ? t('seriesEditor.saving') : t('seriesEditor.save')}
             </button>
           </div>
-          <textarea
-            class="code-editor"
-            value={editorContent}
-            oninput={onInput}
-            spellcheck="false"
-            autocomplete="off"
-            data-ext={ext(activeFile)}
-          ></textarea>
+          <div class="wysiwyg-wrap">
+            {#if ext(activeFile) === 'md'}
+              <MarkdownEditor bind:value={editorContent} fillHeight={true} />
+            {:else if ext(activeFile) === 'typ'}
+              <TypstEditor bind:value={editorContent} fillHeight={true} />
+            {:else}
+              <textarea
+                class="code-editor"
+                value={editorContent}
+                oninput={onInput}
+                spellcheck="false"
+                autocomplete="off"
+              ></textarea>
+            {/if}
+          </div>
         {:else}
           <div class="no-file">
             <p>{t('seriesEditor.noFile')}</p>
@@ -600,6 +608,12 @@
   .save-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  .wysiwyg-wrap {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
   .code-editor {
     flex: 1;
     width: 100%;
