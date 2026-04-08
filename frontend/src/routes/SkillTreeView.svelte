@@ -3,6 +3,7 @@
   import { getAuth } from '../lib/auth.svelte';
   import { tagName as resolveTagName } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
+  import { untrack } from 'svelte';
   import type { SkillTreeDetail, SkillTreeEdge, Tag } from '../lib/types';
 
   let { uri } = $props<{ uri: string }>();
@@ -31,11 +32,16 @@
   let tagSuggestions = $state<Tag[]>([]);
   let activeInput = $state<'parent' | 'child' | null>(null);
 
-  $effect(() => { load(); });
+  $effect(() => {
+    // Explicitly track uri (re-load when navigating to a different tree)
+    // but untrack the API calls so auth state changes don't cause re-runs
+    const currentUri = uri;
+    untrack(() => load(currentUri));
+  });
 
-  async function load() {
+  async function load(treeUri: string) {
     loading = true;
-    const [d, tags] = await Promise.all([getSkillTree(uri), listTags()]);
+    const [d, tags] = await Promise.all([getSkillTree(treeUri), listTags()]);
     detail = d;
     allTags = tags;
     loading = false;
@@ -60,13 +66,13 @@
     if (!newParent.trim() || !newChild.trim() || !detail) return;
     await addSkillTreeEdge(uri, newParent.trim(), newChild.trim());
     newParent = ''; newChild = '';
-    await load();
+    await load(uri);
   }
 
   async function removeEdge(e: SkillTreeEdge) {
     if (!detail) return;
     await removeSkillTreeEdge(uri, e.parent_tag, e.child_tag);
-    await load();
+    await load(uri);
   }
 
   async function doFork() {
