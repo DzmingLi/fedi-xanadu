@@ -141,6 +141,8 @@
     // contentDOM is collapsed to zero size (not display:none, so ProseMirror can
     // still position the cursor there if the user arrows into the node).
     private _applyRendered(formula: string) {
+      // Strip ZWS anchor char added for Firefox cursor placement in empty nodes.
+      formula = formula.replace(/\u200B/g, '');
       this._lastFormula = formula;
       this.dom.classList.remove('math-focused');
       // Collapse contentDOM — keeps it in DOM for ProseMirror but takes no space
@@ -232,22 +234,24 @@
           }
         }
 
-        // $$ → empty inline math, cursor inside
-        // User typed $, then $ again with nothing in between. Replace the
-        // opening $ (already in the document) with an empty math_inline and
-        // put the cursor inside so the user can type the formula.
+        // $$ → inline math, cursor inside (ZWS anchor for Firefox cursor placement)
         if (textBefore.endsWith('$')) {
-          const inlineNode = typstSchema.nodes.math_inline.create(null, []);
+          // Use a zero-width space so Firefox can anchor the cursor inside the span.
+          // The ZWS is stripped in _applyRendered and serializeInline before use.
+          const zws = typstSchema.text('\u200B');
+          const inlineNode = typstSchema.nodes.math_inline.create(null, [zws]);
           const tr = state.tr.replaceWith(cursor.pos - 1, cursor.pos, inlineNode);
-          const targetPos = tr.mapping.map(cursor.pos - 1) + 1;
-          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, targetPos)));
-          // Firefox won't maintain cursor in a freshly-created empty inline span.
-          // Re-assert the DOM selection after the browser has painted the new DOM.
+          const nodeStart = tr.mapping.map(cursor.pos - 1);
+          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
           requestAnimationFrame(() => {
             view.focus();
             try {
-              const { node, offset } = view.domAtPos(targetPos);
-              window.getSelection()?.collapse(node, offset);
+              const outerEl = view.nodeDOM(nodeStart) as Element | null;
+              const contentEl = outerEl?.querySelector('.math-source-text');
+              if (contentEl) {
+                const anchor = contentEl.firstChild ?? contentEl;
+                window.getSelection()?.collapse(anchor, 0);
+              }
             } catch {}
           });
           return true;
@@ -275,7 +279,7 @@
 
   // ── Serializer: doc → Typst ──────────────────────────────────────────────────
   function serializeInline(node: PNode): string {
-    if (node.type.name === 'math_inline') return `$${node.textContent}$`;
+    if (node.type.name === 'math_inline') return `$${node.textContent.replace(/\u200B/g, '')}$`;
     if (node.isText) {
       let s = node.text ?? '';
       const marks = node.marks.map(m => m.type.name);
@@ -455,13 +459,14 @@
         const { state, dispatch } = view;
         const node = typstSchema.nodes.math_inline.create(null, []);
         const tr = state.tr.replaceSelectionWith(node);
-        const targetPos = tr.selection.from - node.nodeSize + 1;
-        dispatch(tr.setSelection(TextSelection.create(tr.doc, targetPos)));
+        const nodeStart = tr.selection.from - node.nodeSize;
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
         requestAnimationFrame(() => {
           view.focus();
           try {
-            const { node: domNode, offset } = view.domAtPos(targetPos);
-            window.getSelection()?.collapse(domNode, offset);
+            const outerEl = view.nodeDOM(nodeStart) as Element | null;
+            const contentEl = outerEl?.querySelector('.math-source-text');
+            if (contentEl) window.getSelection()?.collapse(contentEl, 0);
           } catch {}
         });
       },
@@ -473,13 +478,14 @@
         const { state, dispatch } = view;
         const node = typstSchema.nodes.math_block.create(null, []);
         const tr = state.tr.replaceSelectionWith(node);
-        const targetPos = tr.selection.from - node.nodeSize + 1;
-        dispatch(tr.setSelection(TextSelection.create(tr.doc, targetPos)));
+        const nodeStart = tr.selection.from - node.nodeSize;
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
         requestAnimationFrame(() => {
           view.focus();
           try {
-            const { node: domNode, offset } = view.domAtPos(targetPos);
-            window.getSelection()?.collapse(domNode, offset);
+            const outerEl = view.nodeDOM(nodeStart) as Element | null;
+            const contentEl = outerEl?.querySelector('.math-source-text');
+            if (contentEl) window.getSelection()?.collapse(contentEl, 0);
           } catch {}
         });
       },
