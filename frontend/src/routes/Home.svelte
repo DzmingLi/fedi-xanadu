@@ -149,25 +149,19 @@
       }
     }
 
-    // Add series cards
+    // Add series cards — always show all series, sorted by creation date
     const dedupedSeries = deduplicateSeriesByTranslation(allSeries, locale);
     for (const s of dedupedSeries) {
       const allMemberUris = seriesArticleMap.get(s.id) || [];
       if (allMemberUris.length === 0) continue;
 
-      const memberArts = allMemberUris
-        .map(uri => articles.find(a => a.at_uri === uri))
-        .filter((a): a is Article => !!a);
-
-      const hasMatch = memberArts.some(a => artUriSet.has(a.at_uri));
-      if (!hasMatch) continue;
-
-      const maxScore = memberArts.reduce((acc, a) => Math.max(acc, trendingScore(a)), 0);
+      const seriesAge = Math.max(1, (Date.now() - new Date(s.created_at).getTime()) / (1000 * 60 * 60));
+      const sortKey = 1 / Math.pow(seriesAge, 0.5);
       items.push({
         type: 'series',
         series: s,
         articleCount: allMemberUris.length,
-        sortKey: maxScore,
+        sortKey,
       });
     }
 
