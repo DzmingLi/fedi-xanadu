@@ -515,18 +515,24 @@
                       setChapterProgress(id, ch.id, checked);
                     }} />
                 {/if}
-                {#if ch.article_uri}
-                  <a href="#/article?uri={encodeURIComponent(ch.article_uri)}" class="chapter-title">{ch.title}</a>
-                {:else}
-                  <span class="chapter-title">{ch.title}</span>
-                {/if}
-                <!-- Chapter tags display -->
-                {#each ch.teaches as tag}
-                  <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
-                {/each}
-                {#each ch.prereqs as p}
-                  <span class="tag-badge prereq sm" title="{p.prereq_type === 'required' ? '必须前置' : '推荐前置'}">{p.tag_id}</span>
-                {/each}
+                <div class="chapter-content">
+                  {#if ch.article_uri}
+                    <a href="#/article?uri={encodeURIComponent(ch.article_uri)}" class="chapter-title">{ch.title}</a>
+                  {:else}
+                    <span class="chapter-title">{ch.title}</span>
+                  {/if}
+                  <!-- Chapter tags display -->
+                  {#if ch.teaches.length > 0 || ch.prereqs.length > 0}
+                    <div class="chapter-tag-row">
+                      {#each ch.teaches as tag}
+                        <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
+                      {/each}
+                      {#each ch.prereqs as p}
+                        <span class="tag-badge prereq sm" title="{p.prereq_type === 'required' ? '必须前置' : '推荐前置'}">{p.tag_id}</span>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
                 {#if getAuth()}
                   <button class="chapter-edit-tags-btn" onclick={() => editingChapterId === ch.id ? closeChapterTagEdit() : openChapterTagEdit(ch)}>
                     {editingChapterId === ch.id ? '收起' : '编辑 tag'}
@@ -607,17 +613,23 @@
                             setChapterProgress(id, sub.id, checked);
                           }} />
                       {/if}
-                      {#if sub.article_uri}
-                        <a href="#/article?uri={encodeURIComponent(sub.article_uri)}" class="chapter-title">{sub.title}</a>
-                      {:else}
-                        <span class="chapter-title">{sub.title}</span>
-                      {/if}
-                      {#each sub.teaches as tag}
-                        <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
-                      {/each}
-                      {#each sub.prereqs as p}
-                        <span class="tag-badge prereq sm">{p.tag_id}</span>
-                      {/each}
+                      <div class="chapter-content">
+                        {#if sub.article_uri}
+                          <a href="#/article?uri={encodeURIComponent(sub.article_uri)}" class="chapter-title">{sub.title}</a>
+                        {:else}
+                          <span class="chapter-title">{sub.title}</span>
+                        {/if}
+                        {#if sub.teaches.length > 0 || sub.prereqs.length > 0}
+                          <div class="chapter-tag-row">
+                            {#each sub.teaches as tag}
+                              <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
+                            {/each}
+                            {#each sub.prereqs as p}
+                              <span class="tag-badge prereq sm">{p.tag_id}</span>
+                            {/each}
+                          </div>
+                        {/if}
+                      </div>
                       {#if getAuth()}
                         <button class="chapter-edit-tags-btn" onclick={() => editingChapterId === sub.id ? closeChapterTagEdit() : openChapterTagEdit(sub)}>
                           {editingChapterId === sub.id ? '收起' : '编辑 tag'}
@@ -1243,11 +1255,21 @@
     padding-left: 24px;
     font-size: 13px;
   }
-  .chapter-title {
+  .chapter-content {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .chapter-tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .chapter-title {
     color: var(--text-primary);
     text-decoration: none;
-    min-width: 0;
   }
   a.chapter-title:hover {
     color: var(--accent);
