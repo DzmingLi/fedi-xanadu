@@ -24,7 +24,7 @@ pub fn router(state: AppState, config: &Config) -> Router {
     let governor_conf = std::sync::Arc::new(
         tower_governor::governor::GovernorConfigBuilder::default()
             .key_extractor(tower_governor::key_extractor::SmartIpKeyExtractor)
-            .per_second(4)
+            .per_second(20)
             .burst_size(600)
             .finish()
             .expect("invalid rate limiter config"),
