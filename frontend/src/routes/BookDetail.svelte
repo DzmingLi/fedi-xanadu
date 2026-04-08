@@ -508,13 +508,6 @@
             {@const children = detail.chapters.filter(c => c.parent_id === ch.id)}
             <div class="chapter-item">
               <div class="chapter-row">
-                {#if getAuth()}
-                  <input type="checkbox" checked={progressMap.get(ch.id) || false}
-                    onchange={(e: Event) => {
-                      const checked = (e.target as HTMLInputElement).checked;
-                      setChapterProgress(id, ch.id, checked);
-                    }} />
-                {/if}
                 <div class="chapter-content">
                   {#if ch.article_uri}
                     <a href="#/article?uri={encodeURIComponent(ch.article_uri)}" class="chapter-title">{ch.title}</a>
@@ -606,13 +599,6 @@
                 <div class="chapter-children">
                   {#each children as sub}
                     <div class="chapter-row sub">
-                      {#if getAuth()}
-                        <input type="checkbox" checked={progressMap.get(sub.id) || false}
-                          onchange={(e: Event) => {
-                            const checked = (e.target as HTMLInputElement).checked;
-                            setChapterProgress(id, sub.id, checked);
-                          }} />
-                      {/if}
                       <div class="chapter-content">
                         {#if sub.article_uri}
                           <a href="#/article?uri={encodeURIComponent(sub.article_uri)}" class="chapter-title">{sub.title}</a>
