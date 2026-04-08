@@ -2,7 +2,4 @@
 import type { SeriesArticleRow } from "./SeriesArticleRow";
 import type { SeriesRow } from "./SeriesRow";
 
-/**
- * Recursive tree node for full hierarchy display.
- */
-export type SeriesTreeNode = { series: SeriesRow, articles: Array<SeriesArticleRow>, children: Array<SeriesTreeNode>, };
+export type SeriesTreeNode = { series: SeriesRow, articles: Array<SeriesArticleRow>, };

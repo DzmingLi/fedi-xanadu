@@ -66,13 +66,11 @@ pub struct SeriesDetailResponse {
     pub translations: Vec<SeriesRow>,
 }
 
-/// Recursive tree node for full hierarchy display.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SeriesTreeNode {
     pub series: SeriesRow,
     pub articles: Vec<SeriesArticleRow>,
-    pub children: Vec<SeriesTreeNode>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -404,8 +402,8 @@ pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<Seri
     .fetch_all(pool)
     .await?;
 
-    Ok(SeriesTreeNode { series, articles, children: vec![] })
-    }
+    Ok(SeriesTreeNode { series, articles })
+}
 
 /// Reorder articles within a series.
 pub async fn reorder_series_articles(

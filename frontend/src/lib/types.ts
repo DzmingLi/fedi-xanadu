@@ -245,7 +245,6 @@ export interface SeriesDetail {
 export interface SeriesTreeNode {
   series: Series;
   articles: SeriesArticle[];
-  children: SeriesTreeNode[];
 }
 
 export interface SeriesHeading {

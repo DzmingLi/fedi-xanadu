@@ -3,4 +3,4 @@ import type { SeriesArticleRow } from "./SeriesArticleRow";
 import type { SeriesPrereqRow } from "./SeriesPrereqRow";
 import type { SeriesRow } from "./SeriesRow";
 
-export type SeriesDetailResponse = { series: SeriesRow, articles: Array<SeriesArticleRow>, prereqs: Array<SeriesPrereqRow>, children: Array<SeriesRow>, translations: Array<SeriesRow>, };
+export type SeriesDetailResponse = { series: SeriesRow, articles: Array<SeriesArticleRow>, prereqs: Array<SeriesPrereqRow>, translations: Array<SeriesRow>, };

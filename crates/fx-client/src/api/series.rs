@@ -58,7 +58,6 @@ pub struct SeriesDetailResponse {
 pub struct SeriesTreeNode {
     pub series: SeriesRow,
     pub articles: Vec<serde_json::Value>,
-    pub children: Vec<SeriesTreeNode>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

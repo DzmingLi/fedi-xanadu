@@ -1,17 +1,15 @@
 <script lang="ts">
-  import { getSeries, getSeriesTree, getSeriesHeadings, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
+  import { getSeries, getSeriesHeadings, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
-  import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, SeriesTreeNode, SeriesHeading, VoteSummary, BookmarkWithTitle } from '../lib/types';
+  import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, SeriesHeading, VoteSummary, BookmarkWithTitle } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
   let detail = $state<SeriesDetail | null>(null);
-  let tree = $state<SeriesTreeNode | null>(null);
   let headings = $state<SeriesHeading[]>([]);
   let loading = $state(true);
   let error = $state('');
-  let viewMode = $state<'flat' | 'tree'>('flat');
 
   // Build heading tree: group level-2+ headings under their level-1 parent
   interface HeadingGroup {
@@ -60,7 +58,6 @@
       // Collect all article URIs for vote fetching
       const allArticleUris = new Set<string>();
       for (const a of d.articles) allArticleUris.add(a.article_uri);
-      if (tree) collectTreeArticleUris(tree, allArticleUris);
 
       // Fetch votes in a single batch request
       const voteMap = new Map<string, VoteSummary>();
@@ -87,17 +84,6 @@
       error = e.message || 'Failed to load series';
     }
     loading = false;
-  }
-
-  function collectTreeArticleUris(node: SeriesTreeNode, set: Set<string>) {
-    for (const a of node.articles) set.add(a.article_uri);
-    for (const child of node.children) collectTreeArticleUris(child, set);
-  }
-
-  function countTreeArticles(node: SeriesTreeNode): number {
-    let count = node.articles.length;
-    for (const child of node.children) count += countTreeArticles(child);
-    return count;
   }
 
   async function voteArticle(uri: string, value: number) {
@@ -178,29 +164,6 @@
   </div>
 {/snippet}
 
-{#snippet treeNode(node: SeriesTreeNode, depth: number)}
-  <div class="tree-section" style="margin-left: {depth * 24}px">
-    {#if depth > 0}
-      <h3 class="section-title">
-        <a href="#/series?id={encodeURIComponent(node.series.id)}">{node.series.title}</a>
-      </h3>
-      {#if node.series.description}
-        <p class="section-desc">{node.series.description}</p>
-      {/if}
-    {/if}
-    {#if node.articles.length > 0}
-      <div class="series-articles">
-        {#each node.articles as article, i (article.article_uri)}
-          {@render articleItem(article, i)}
-        {/each}
-      </div>
-    {/if}
-    {#each node.children as child (child.series.id)}
-      {@render treeNode(child, depth + 1)}
-    {/each}
-  </div>
-{/snippet}
-
 {#if loading}
   <p class="meta">Loading...</p>
 {:else if error}
@@ -259,8 +222,6 @@
         </div>
       {/each}
     </div>
-  {:else if viewMode === 'tree' && tree}
-    {@render treeNode(tree, 0)}
   {:else}
     <div class="series-articles">
       {#each detail.articles as article, i (article.article_uri)}

@@ -1,13 +1,12 @@
 <script lang="ts">
-  import { getSeries, getSeriesTree } from '../api';
+  import { getSeries } from '../api';
   import { getCachedSeries, setCachedSeries } from '../seriesCache';
   import { t } from '../i18n/index.svelte';
-  import type { SeriesDetail, SeriesTreeNode, SeriesArticle } from '../types';
+  import type { SeriesDetail } from '../types';
 
   let { seriesId, currentUri }: { seriesId: string; currentUri: string } = $props();
 
   let detail = $state<SeriesDetail | null>(null);
-  let tree = $state<SeriesTreeNode | null>(null);
   let loading = $state(true);
 
   function articleHref(uri: string): string {
@@ -21,21 +20,13 @@
     const cached = getCachedSeries(seriesId);
     if (cached) {
       detail = cached.detail;
-      tree = cached.tree ?? null;
       loading = false;
       return;
     }
 
-    getSeries(seriesId).then(async (d) => {
+    getSeries(seriesId).then((d) => {
       detail = d;
-      let t: SeriesTreeNode | undefined;
-      if (d.children.length > 0) {
-        try {
-          t = await getSeriesTree(seriesId);
-          tree = t;
-        } catch { /* ok */ }
-      }
-      setCachedSeries(seriesId, d, t);
+      setCachedSeries(seriesId, d);
       loading = false;
     }).catch(() => { loading = false; });
   });
@@ -50,45 +41,18 @@
     <a href="#/series?id={encodeURIComponent(seriesId)}" class="ss-title">
       {detail.series.title}
     </a>
-
-    {#if tree}
-      {@render treeItems(tree, 0)}
-    {:else}
-      {#each detail.articles as article, i (article.article_uri)}
-        <a
-          href={articleHref(article.article_uri)}
-          class="ss-item"
-          class:active={article.article_uri === currentUri}
-        >
-          <span class="ss-num">{i + 1}</span>
-          <span class="ss-item-title">{article.title}</span>
-        </a>
-      {/each}
-    {/if}
+    {#each detail.articles as article, i (article.article_uri)}
+      <a
+        href={articleHref(article.article_uri)}
+        class="ss-item"
+        class:active={article.article_uri === currentUri}
+      >
+        <span class="ss-num">{i + 1}</span>
+        <span class="ss-item-title">{article.title}</span>
+      </a>
+    {/each}
   </nav>
 {/if}
-
-{#snippet treeItems(node: SeriesTreeNode, depth: number)}
-  {#if depth > 0}
-    <div class="ss-section" style="padding-left: {depth * 12}px">
-      {node.series.title}
-    </div>
-  {/if}
-  {#each node.articles as article, i (article.article_uri)}
-    <a
-      href={articleHref(article.article_uri)}
-      class="ss-item"
-      class:active={article.article_uri === currentUri}
-      style="padding-left: {(depth + 1) * 12 + 8}px"
-    >
-      <span class="ss-num">{i + 1}</span>
-      <span class="ss-item-title">{article.title}</span>
-    </a>
-  {/each}
-  {#each node.children as child (child.series.id)}
-    {@render treeItems(child, depth + 1)}
-  {/each}
-{/snippet}
 
 <style>
   .series-sidebar {

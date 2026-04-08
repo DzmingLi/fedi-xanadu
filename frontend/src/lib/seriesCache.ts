@@ -1,8 +1,7 @@
-import type { SeriesDetail, SeriesTreeNode } from './types';
+import type { SeriesDetail } from './types';
 
 interface CacheEntry {
   detail: SeriesDetail;
-  tree?: SeriesTreeNode;
   ts: number;
 }
 
@@ -16,6 +15,6 @@ export function getCachedSeries(id: string): CacheEntry | null {
   return null;
 }
 
-export function setCachedSeries(id: string, detail: SeriesDetail, tree?: SeriesTreeNode) {
-  cache.set(id, { detail, tree, ts: Date.now() });
+export function setCachedSeries(id: string, detail: SeriesDetail) {
+  cache.set(id, { detail, ts: Date.now() });
 }
