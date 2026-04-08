@@ -147,7 +147,6 @@
     <select bind:value={category}>
       <option value="general">{t('category.general')}</option>
       <option value="lecture">{t('category.lecture')}</option>
-      <option value="paper">{t('category.paper')}</option>
     </select>
   </label>
 

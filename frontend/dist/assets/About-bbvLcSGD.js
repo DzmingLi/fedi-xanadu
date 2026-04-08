@@ -1,4 +1,4 @@
-import{p as o,k as e,l as r,v as d}from"./index-RyqOxduh.js";import"./legacy-DaAcv5WY.js";import{h as s}from"./html-CiybAPPB.js";import{g as u,i as p}from"./marked.esm-BrvgsfIk.js";const k=`# Fedi-Xanadu：让知识流向对的人
+import{p as o,k as e,l as r,v as d}from"./index-Ckwvm0LV.js";import"./legacy-CHAnUehp.js";import{h as s}from"./html-C-lrBJtF.js";import{g as u,i as p}from"./marked.esm-BlPPxf9d.js";const k=`# Fedi-Xanadu：让知识流向对的人
 
 ## 你有没有遇到过这样的情况？
 
