@@ -1,6 +1,5 @@
 <script lang="ts">
   import { getGraph, getTagTree, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote } from '../lib/api';
-  import { cacheGet, cacheSet } from '../lib/stableCache';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import { authorName, tagName as resolveTagName } from '../lib/display';
@@ -210,19 +209,7 @@
 
   // --- Data loading ---
   $effect(() => {
-    const cachedGraph = cacheGet<typeof graphNodes>('graph:nodes');
-    const cachedEdges = cacheGet<typeof graphEdges>('graph:edges');
-    const cachedTree = cacheGet<typeof tree>('tag-tree');
-
-    const graphPromise = (cachedGraph && cachedEdges)
-      ? Promise.resolve({ nodes: cachedGraph, edges: cachedEdges })
-      : getGraph().then(d => { cacheSet('graph:nodes', d.nodes); cacheSet('graph:edges', d.edges); return d; });
-
-    const treePromise = cachedTree
-      ? Promise.resolve(cachedTree)
-      : getTagTree().then(t => { cacheSet('tag-tree', t); return t; });
-
-    Promise.all([graphPromise, treePromise, listSkills()]).then(([data, tr, sk]) => {
+    Promise.all([getGraph(), getTagTree(), listSkills()]).then(([data, tr, sk]) => {
       graphNodes = data.nodes;
       graphEdges = data.edges;
       tree = tr;
