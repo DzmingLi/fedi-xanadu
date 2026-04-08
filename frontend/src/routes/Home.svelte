@@ -11,7 +11,6 @@
     articleTeaches: Map<string, ContentTeachRow[]>;
     articlePrereqs: Map<string, ContentPrereqBulkRow[]>;
     interests: string[];
-    ts: number;
   } | null = null;
 </script>
 
@@ -236,7 +235,6 @@
         articles, allTags, tagTree, allSeries,
         seriesArticleUris, seriesArticleMap,
         articleTeaches, articlePrereqs, interests,
-        ts: Date.now(),
       };
 
       // Show picker if no interests saved and we have categories
@@ -404,11 +402,6 @@
     font-size: 15px;
     font-weight: 500;
     color: var(--text-primary);
-  }
-  .picker-desc {
-    font-size: 11px;
-    color: var(--text-hint);
-    line-height: 1.3;
   }
   .picker-actions {
     margin-top: 20px;
