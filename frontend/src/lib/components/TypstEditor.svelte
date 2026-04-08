@@ -76,6 +76,7 @@
       this.dom = document.createElement(this._display ? 'div' : 'span');
       this.dom.className = this._display ? 'typst-math-block-view' : 'typst-math-inline-view';
       this.dom.contentEditable = 'false';
+      console.log('[MathNodeView] created:', node.type.name, JSON.stringify(node.attrs.formula));
       this._renderMath();
     }
 
@@ -223,12 +224,15 @@
     props: {
       handleKeyDown(view, e) {
         // Only handle a plain $ key (not during IME composition).
-        if (e.key !== '$' || e.isComposing) return false;
+        if (e.key !== '$') return false;
+        if (e.isComposing) { console.log('[mathKey] skipping: isComposing=true'); return false; }
         const sel = view.state.selection;
         const cursor = (sel as any).$cursor;
-        if (!cursor || cursor.parent.type.name !== 'paragraph') return false;
+        if (!cursor) { console.log('[mathKey] skipping: no cursor (selection type:', sel.constructor.name, ')'); return false; }
+        if (cursor.parent.type.name !== 'paragraph') { console.log('[mathKey] skipping: parent is', cursor.parent.type.name); return false; }
         // Text in the current paragraph up to the cursor.
         const textBefore = cursor.parent.textBetween(0, cursor.parentOffset, null, '\ufffc');
+        console.log('[mathKey] $ pressed, textBefore:', JSON.stringify(textBefore));
         // $$formula$$ → display math block (triggered on the second closing $).
         // textBefore will be "$$formula$" when the user presses the final $.
         const ddMatch = /^\$\$([^$\n]+)\$$/.exec(textBefore);
