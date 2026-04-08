@@ -94,8 +94,11 @@
       if (this._display) {
         const ta = document.createElement('textarea');
         ta.className = 'math-edit-input';
-        ta.value = this._formula;
-        ta.rows = Math.max(2, this._formula.split('\n').length + 1);
+        // Show formula with $$ delimiters (Markdown/LaTeX convention)
+        const hasNewlines = this._formula.includes('\n');
+        const displayed = hasNewlines ? `$$\n${this._formula}\n$$` : `$$${this._formula}$$`;
+        ta.value = displayed;
+        ta.rows = Math.max(3, displayed.split('\n').length + 1);
         ta.addEventListener('keydown', e => {
           if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
             e.preventDefault(); e.stopPropagation(); this._commitEdit(ta.value);
@@ -105,12 +108,15 @@
         ta.addEventListener('blur', () => this._commitEdit(ta.value));
         this.dom.appendChild(ta);
         this._editorEl = ta;
-        setTimeout(() => ta.focus(), 0);
+        // Select just the formula content between the $$ markers
+        const selStart = hasNewlines ? 3 : 2;
+        const selEnd = displayed.length - (hasNewlines ? 3 : 2);
+        setTimeout(() => { ta.focus(); ta.setSelectionRange(selStart, Math.max(selStart, selEnd)); }, 0);
       } else {
         const inp = document.createElement('input');
         inp.type = 'text';
         inp.className = 'math-edit-input';
-        inp.value = this._formula;
+        inp.value = `$${this._formula}$`;
         inp.addEventListener('keydown', e => {
           if (e.key === 'Enter' || e.key === 'Escape') {
             e.preventDefault(); e.stopPropagation(); this._commitEdit(inp.value);
@@ -120,28 +126,76 @@
         inp.addEventListener('blur', () => this._commitEdit(inp.value));
         this.dom.appendChild(inp);
         this._editorEl = inp;
-        setTimeout(() => { inp.focus(); inp.select(); }, 0);
+        // Select just the formula content (not the $ signs)
+        setTimeout(() => { inp.focus(); inp.setSelectionRange(1, Math.max(1, inp.value.length - 1)); }, 0);
       }
     }
 
-    private _commitEdit(newFormula: string) {
+    private _commitEdit(rawValue: string) {
       if (!this._editing) return;
       this._editing = false;
       this._editorEl = null;
       this.dom.classList.remove('editing');
-      const trimmed = newFormula.trim();
-      if (trimmed !== this._formula && this._view) {
-        const pos = typeof this._getPos === 'function' ? this._getPos() : undefined;
-        if (pos !== undefined) {
-          const nodeType = this._display
-            ? typstSchema.nodes.math_block
-            : typstSchema.nodes.math_inline;
-          this._view.dispatch(this._view.state.tr.setNodeMarkup(pos, nodeType, { formula: trimmed }));
-          return;
-        }
+
+      const v = rawValue.trim();
+      let wantDisplay = this._display;
+      let formula: string;
+
+      // Determine intended type from delimiters: $$ = display, $ = inline.
+      // Check $$ before $ to avoid treating $$…$$ as an inline $…$.
+      if (v.startsWith('$$') && v.endsWith('$$') && v.length > 4) {
+        wantDisplay = true;
+        formula = v.slice(2, -2).trim();
+      } else if (v.startsWith('$') && v.endsWith('$') && v.length > 2 && !v.startsWith('$$')) {
+        wantDisplay = false;
+        formula = v.slice(1, -1).trim();
+      } else {
+        // No recognizable delimiters: treat as raw formula, keep current type.
+        formula = v;
       }
-      this._formula = trimmed || this._formula;
-      this._renderMath();
+
+      if (!formula) { this._renderMath(); return; }
+
+      const pos = typeof this._getPos === 'function' ? this._getPos() : undefined;
+      if (!this._view || pos === undefined) {
+        this._formula = formula; this._renderMath(); return;
+      }
+
+      const state = this._view.state;
+
+      if (wantDisplay === this._display) {
+        // Same type: update formula if changed.
+        if (formula !== this._formula) {
+          const nodeType = this._display ? typstSchema.nodes.math_block : typstSchema.nodes.math_inline;
+          this._view.dispatch(state.tr.setNodeMarkup(pos, nodeType, { formula }));
+        } else {
+          this._formula = formula; this._renderMath();
+        }
+        return;
+      }
+
+      // Type conversion between inline ↔ display.
+      const currentNode = state.doc.nodeAt(pos);
+      if (!currentNode) { this._formula = formula; this._renderMath(); return; }
+
+      if (!this._display && wantDisplay) {
+        // inline → display: only convert when the inline math is the sole
+        // content of its paragraph (otherwise keep inline, just update formula).
+        const rPos = state.doc.resolve(pos);
+        const parent = rPos.parent;
+        if (parent.type.name === 'paragraph' && parent.childCount === 1) {
+          const paraStart = rPos.before(rPos.depth);
+          const block = typstSchema.nodes.math_block.create({ formula });
+          this._view.dispatch(state.tr.replaceWith(paraStart, paraStart + parent.nodeSize, block));
+        } else {
+          this._view.dispatch(state.tr.setNodeMarkup(pos, typstSchema.nodes.math_inline, { formula }));
+        }
+      } else {
+        // display → inline: replace block with a paragraph containing inline math.
+        const inlineNode = typstSchema.nodes.math_inline.create({ formula });
+        const para = typstSchema.nodes.paragraph.create(null, [inlineNode]);
+        this._view.dispatch(state.tr.replaceWith(pos, pos + currentNode.nodeSize, para));
+      }
     }
 
     update(node: PNode) {
