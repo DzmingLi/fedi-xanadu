@@ -3,7 +3,6 @@
   import { getAuth } from '../lib/auth.svelte';
   import { tagName as resolveTagName } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
-  import { untrack } from 'svelte';
   import type { SkillTreeDetail, SkillTreeEdge, Tag } from '../lib/types';
 
   let { uri } = $props<{ uri: string }>();
@@ -32,12 +31,7 @@
   let tagSuggestions = $state<Tag[]>([]);
   let activeInput = $state<'parent' | 'child' | null>(null);
 
-  $effect(() => {
-    // Explicitly track uri (re-load when navigating to a different tree)
-    // but untrack the API calls so auth state changes don't cause re-runs
-    const currentUri = uri;
-    untrack(() => load(currentUri));
-  });
+  $effect(() => { load(uri); });
 
   async function load(treeUri: string) {
     loading = true;
