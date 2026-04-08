@@ -471,6 +471,7 @@ export default {
   'profile.tabReviews': '书评',
   'profile.tabQA': '问答',
   'profile.tabBookmarks': '收藏',
+  'profile.tabAllArticles': '全部文章',
 
   // Editor layout
   'editor.settings': '设置',

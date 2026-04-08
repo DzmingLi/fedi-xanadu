@@ -38,7 +38,7 @@
   let questions = $state<Article[]>([]);
   let answers = $state<Article[]>([]);
   let publicBookmarks = $state<BookmarkWithTitle[]>([]);
-  let profileTab = $state<'articles' | 'lectures' | 'papers' | 'reviews' | 'qa' | 'bookmarks'>('articles');
+  let profileTab = $state<'articles' | 'lectures' | 'papers' | 'reviews' | 'qa' | 'bookmarks' | 'all'>('articles');
 
   let isOwnProfile = $derived(getAuth()?.did === did);
   let following = $state<FollowEntry[]>([]);
@@ -86,6 +86,35 @@
   let lecturesFeed = $derived(buildFeed('lecture'));
   let papersFeed = $derived(buildFeed('paper'));
   let reviewsFeed = $derived(buildFeed('review'));
+
+  // "全部文章" tab: articles grouped by series
+  interface ArticleGroup {
+    series: Series | null;
+    articles: Article[];
+  }
+  let allArticleGroups = $derived((): ArticleGroup[] => {
+    const deduped = deduplicateByTranslation(articles, locale);
+    const groups: ArticleGroup[] = [];
+    const assignedUris = new Set<string>();
+
+    for (const s of allUserSeries) {
+      const uriList = seriesArticleMap.get(s.id) || [];
+      const seriesArts = uriList
+        .map(uri => deduped.find(a => a.at_uri === uri))
+        .filter(Boolean) as Article[];
+      if (seriesArts.length > 0) {
+        groups.push({ series: s, articles: seriesArts });
+        seriesArts.forEach(a => assignedUris.add(a.at_uri));
+      }
+    }
+
+    const standalone = deduped.filter(a => !assignedUris.has(a.at_uri));
+    if (standalone.length > 0) {
+      groups.push({ series: null, articles: standalone });
+    }
+
+    return groups;
+  });
 
   $effect(() => {
     load();
@@ -524,6 +553,12 @@
         <span class="tab-count">{publicBookmarks.length}</span>
       </button>
     {/if}
+    {#if articles.length > 0}
+      <button class="tab-btn" class:active={profileTab === 'all'} onclick={() => { profileTab = 'all'; }}>
+        {t('profile.tabAllArticles')}
+        <span class="tab-count">{articles.length}</span>
+      </button>
+    {/if}
   </div>
 
   {#if profileTab === 'articles' || profileTab === 'lectures' || profileTab === 'papers' || profileTab === 'reviews'}
@@ -550,7 +585,7 @@
         <a href="#/new-series" class="create-link">{t('profile.createSeries')}</a>
       </div>
     {/if}
-  {:else}
+  {:else if profileTab === 'qa'}
     {#if questions.length > 0}
       <h3 class="section-title">{t('qa.myQuestions')}</h3>
       {#each questions as q}
@@ -595,6 +630,32 @@
       </a>
     {/each}
     {#if publicBookmarks.length === 0}
+      <p class="empty-text">{t('profile.noWorks')}</p>
+    {/if}
+  {:else if profileTab === 'all'}
+    {#each allArticleGroups() as group}
+      {#if group.series}
+        <div class="all-series-group">
+          <a href="#/series?id={group.series.id}" class="all-series-title">
+            {group.series.title}
+            <span class="all-series-count">{group.articles.length} 篇</span>
+          </a>
+          <div class="all-series-articles">
+            {#each group.articles as art}
+              <a href="#/article?uri={encodeURIComponent(art.at_uri)}" class="all-article-row">
+                <span class="all-article-title">{art.title || '（无标题）'}</span>
+                {#if art.lang}<span class="all-article-lang">{art.lang}</span>{/if}
+              </a>
+            {/each}
+          </div>
+        </div>
+      {:else}
+        {#each group.articles as art}
+          <PostCard article={art} articleTeaches={articleTeaches.get(art.at_uri) || []} variant="profile" />
+        {/each}
+      {/if}
+    {/each}
+    {#if allArticleGroups().length === 0}
       <p class="empty-text">{t('profile.noWorks')}</p>
     {/if}
   {/if}
@@ -1226,5 +1287,63 @@
     color: var(--text-hint);
     flex-shrink: 0;
     margin-left: 12px;
+  }
+
+  /* ── 全部文章 tab ── */
+  .all-series-group {
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .all-series-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--bg-dim, var(--bg));
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .all-series-title:hover { color: var(--accent); }
+  .all-series-count {
+    font-size: 12px;
+    color: var(--text-hint);
+    font-family: var(--font-sans);
+    margin-left: auto;
+  }
+  .all-series-articles {
+    display: flex;
+    flex-direction: column;
+  }
+  .all-article-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--border);
+    text-decoration: none;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+  }
+  .all-article-row:last-child { border-bottom: none; }
+  .all-article-row:hover { background: var(--bg-hover, rgba(0,0,0,.03)); color: var(--accent); }
+  .all-article-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .all-article-lang {
+    font-size: 11px;
+    color: var(--text-hint);
+    background: var(--bg-dim);
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
   }
 </style>

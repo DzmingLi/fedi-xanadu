@@ -475,6 +475,7 @@ export default {
   'profile.tabReviews': 'Reviews',
   'profile.tabQA': 'Q&A',
   'profile.tabBookmarks': 'Bookmarks',
+  'profile.tabAllArticles': 'All Articles',
 
   // Editor layout
   'editor.settings': 'Settings',
