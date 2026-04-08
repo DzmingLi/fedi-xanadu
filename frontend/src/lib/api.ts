@@ -176,6 +176,13 @@ export const getSeriesTree = (id: string) => get<SeriesTreeNode>(`/series/${enco
 export const getSeriesHeadings = (id: string) => get<SeriesHeading[]>(`/series/${encodeURIComponent(id)}/headings`);
 export const reorderSeriesArticles = (series_id: string, article_uris: string[]) =>
   put<void>(`/series/${encodeURIComponent(series_id)}/articles/reorder`, { article_uris });
+export const compileSeries = (id: string) => post<{ articles_created: number; articles_updated: number; total_headings: number }>(`/series/${encodeURIComponent(id)}/compile`, {});
+export const listSeriesFiles = (id: string) => get<{ path: string; size: number }[]>(`/series/${encodeURIComponent(id)}/files`);
+export const readSeriesFile = (id: string, path: string) => get<string>(`/series/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`);
+export const writeSeriesFile = (id: string, path: string, content: string, message?: string) =>
+  put<void>(`/series/${encodeURIComponent(id)}/file`, { path, content, message });
+export const deleteSeriesFile = (id: string, path: string) =>
+  del<void>(`/series/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`);
 
 // Skill Trees
 export const listSkillTrees = () => get<SkillTree[]>('/skill-trees');

@@ -41,6 +41,7 @@
   let bookmarkedUris = $state(new Set<string>());
 
   let isLoggedIn = $derived(!!getAuth());
+  let isOwner = $derived(isLoggedIn && detail?.series.created_by === getAuth()?.did);
 
 
   $effect(() => {
@@ -170,7 +171,12 @@
   <p class="error">{error}</p>
 {:else if detail}
   <div class="series-header">
-    <h1>{detail.series.title}</h1>
+    <div class="series-title-row">
+      <h1>{detail.series.title}</h1>
+      {#if isOwner}
+        <a href="#/series-editor?id={encodeURIComponent(id)}" class="edit-link">{t('common.edit')}</a>
+      {/if}
+    </div>
     {#if detail.series.long_description}
       <p class="series-long-desc">{detail.series.long_description}</p>
     {:else if detail.series.description}
@@ -235,9 +241,20 @@
   .series-header {
     margin-bottom: 24px;
   }
-  .series-header h1 {
-    margin: 0 0 8px;
+  .series-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 8px;
   }
+  .series-title-row h1 { margin: 0; }
+  .edit-link {
+    font-size: 13px;
+    color: var(--text-hint);
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+  .edit-link:hover { color: var(--accent); }
   .series-long-desc {
     font-size: 15px;
     color: var(--text-secondary);

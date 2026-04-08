@@ -16,6 +16,7 @@ export const routes: Route[] = [
   { pattern: '/library', page: 'library' },
   { pattern: '/series', page: 'series' },
   { pattern: '/new-series', page: 'new-series' },
+  { pattern: '/series-editor', page: 'series-editor' },
   { pattern: '/profile', page: 'profile' },
   { pattern: '/skill-tree/new', page: 'skill-tree-new' },
   { pattern: '/skill-tree', page: 'skill-tree' },

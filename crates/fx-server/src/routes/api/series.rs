@@ -337,6 +337,172 @@ pub async fn list_resources(
     Ok(Json(resources))
 }
 
+// --- File tree: list, read, write, delete ---
+
+#[derive(serde::Serialize)]
+pub struct SeriesFileInfo {
+    pub path: String,  // relative to repo root, e.g. "chapters/01.md"
+    pub size: u64,
+}
+
+/// List all user-editable files in the series repo (chapters/* + root non-ignored files).
+pub async fn list_series_files(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<SeriesFileInfo>>> {
+    let pijul_node_id: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+
+    let Some(node_id) = pijul_node_id else {
+        return Ok(Json(vec![]));
+    };
+
+    let repo_path = state.pijul.series_repo_path(&node_id);
+    let mut files = Vec::new();
+
+    // Root-level editable files (skip hidden, cache, HTML)
+    if let Ok(entries) = std::fs::read_dir(&repo_path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_file() { continue; }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name.ends_with(".html") { continue; }
+            if let Ok(meta) = entry.metadata() {
+                files.push(SeriesFileInfo { path: name, size: meta.len() });
+            }
+        }
+    }
+
+    // chapters/ directory
+    let chapters_dir = repo_path.join("chapters");
+    if let Ok(entries) = std::fs::read_dir(&chapters_dir) {
+        let mut chapter_files: Vec<_> = entries.flatten().filter(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            e.path().is_file() && !n.starts_with('.') && !n.ends_with(".html")
+        }).collect();
+        chapter_files.sort_by_key(|e| e.file_name());
+        for entry in chapter_files {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Ok(meta) = entry.metadata() {
+                files.push(SeriesFileInfo { path: format!("chapters/{name}"), size: meta.len() });
+            }
+        }
+    }
+
+    Ok(Json(files))
+}
+
+#[derive(serde::Deserialize)]
+pub struct FilePathQuery {
+    pub path: String,
+}
+
+/// Read a single file's text content.
+pub async fn read_series_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<FilePathQuery>,
+) -> ApiResult<String> {
+    let node_id = series_node_id(&state.pool, &id).await?;
+    let safe = safe_path(&q.path)?;
+    let full = state.pijul.series_repo_path(&node_id).join(&safe);
+    let content = tokio::fs::read_to_string(&full).await
+        .map_err(|_| AppError(fx_core::Error::NotFound { entity: "file", id: q.path.clone() }))?;
+    Ok(content)
+}
+
+#[derive(serde::Deserialize)]
+pub struct WriteFileInput {
+    pub path: String,
+    pub content: String,
+    pub message: Option<String>,
+}
+
+/// Write (create or overwrite) a file, then record in pijul.
+pub async fn write_series_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<WriteFileInput>,
+) -> ApiResult<StatusCode> {
+    let node_id = series_node_id(&state.pool, &id).await?;
+    require_series_owner(&state.pool, &id, &user.did).await?;
+
+    let safe = safe_path(&input.path)?;
+    let full = state.pijul.series_repo_path(&node_id).join(&safe);
+    if let Some(parent) = full.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(&full, &input.content).await?;
+
+    let msg = input.message.unwrap_or_else(|| format!("Update {}", input.path));
+    if let Err(e) = state.pijul.record_series(&node_id, &msg, Some(&user.did)) {
+        tracing::warn!("pijul record failed for {node_id}: {e}");
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Delete a file from the series repo.
+pub async fn delete_series_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WriteAuth(user): WriteAuth,
+    Query(q): Query<FilePathQuery>,
+) -> ApiResult<StatusCode> {
+    let node_id = series_node_id(&state.pool, &id).await?;
+    require_series_owner(&state.pool, &id, &user.did).await?;
+
+    let safe = safe_path(&q.path)?;
+    let full = state.pijul.series_repo_path(&node_id).join(&safe);
+    tokio::fs::remove_file(&full).await
+        .map_err(|_| AppError(fx_core::Error::NotFound { entity: "file", id: q.path.clone() }))?;
+
+    if let Err(e) = state.pijul.record_series(&node_id, &format!("Delete {}", q.path), Some(&user.did)) {
+        tracing::warn!("pijul record failed: {e}");
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---- helpers ----
+
+async fn series_node_id(pool: &sqlx::PgPool, series_id: &str) -> ApiResult<String> {
+    let node_id: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(series_id)
+    .fetch_optional(pool)
+    .await?
+    .flatten();
+
+    node_id.ok_or_else(|| AppError(fx_core::Error::BadRequest("Series has no pijul repo".into())))
+}
+
+async fn require_series_owner(pool: &sqlx::PgPool, series_id: &str, did: &str) -> ApiResult<()> {
+    let owner = series_service::get_series_owner(pool, series_id).await?;
+    require_owner(Some(&owner), did)
+}
+
+/// Validate and normalise a relative file path; reject traversal attempts.
+fn safe_path(path: &str) -> ApiResult<std::path::PathBuf> {
+    if path.contains("..") || path.starts_with('/') {
+        return Err(AppError(fx_core::Error::BadRequest(format!("Invalid path: {path}"))));
+    }
+    let p = std::path::Path::new(path);
+    // Only allow one level of subdirectory (chapters/<name> or <name>)
+    let components: Vec<_> = p.components().collect();
+    if components.len() > 2 {
+        return Err(AppError(fx_core::Error::BadRequest("Path too deep".into())));
+    }
+    Ok(p.to_path_buf())
+}
+
 // --- Fork series ---
 
 pub async fn fork_series(

@@ -225,6 +225,8 @@ fn series_routes() -> Router<AppState> {
         // Series pijul repo
         .route("/series/{id}/resource", post(series::upload_resource))
         .route("/series/{id}/resources", get(series::list_resources))
+        .route("/series/{id}/files", get(series::list_series_files))
+        .route("/series/{id}/file", get(series::read_series_file).put(series::write_series_file).delete(series::delete_series_file))
         .route("/series/{id}/fork", post(series::fork_series))
         // Series compile + heading extraction
         .route("/series/{id}/compile", post(series::compile_series))

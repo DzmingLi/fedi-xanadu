@@ -250,6 +250,25 @@ export default {
   'newSeries.errCreate': '创建失败',
   'newSeries.selectedTag': '已选: {0}',
   'newSeries.prereqNeedsReading': '需要先读',
+  'newSeries.titlePlaceholder': '系列讲义标题',
+
+  // Series editor
+  'seriesEditor.viewSeries': '查看系列',
+  'seriesEditor.newFile': '新建文件',
+  'seriesEditor.compile': '编译',
+  'seriesEditor.compiling': '编译中...',
+  'seriesEditor.save': '保存',
+  'seriesEditor.saving': '保存中...',
+  'seriesEditor.unsaved': '有未保存的修改',
+  'seriesEditor.unsavedChanges': '有未保存的修改，确定要切换吗？',
+  'seriesEditor.noFile': '从左侧选择一个文件开始编辑',
+  'seriesEditor.confirmDelete': '确定删除 {0}？',
+  'seriesEditor.tabEditor': '编辑',
+  'seriesEditor.tabPrereqs': '前置关系',
+  'seriesEditor.prereqHint': '编译后会生成文章，届时可在此设置文章间的前置依赖',
+  'seriesEditor.noPrereqs': '暂无前置关系',
+  'seriesEditor.prereqSelectArticle': '选择文章',
+  'seriesEditor.prereqSelectPrereq': '选择前置文章',
 
   // Skills
   'skills.mySkills': '我的技能',

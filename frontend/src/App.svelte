@@ -46,6 +46,7 @@
   const lazyBookList = () => import('./routes/BookList.svelte');
   const lazyBookDetail = () => import('./routes/BookDetail.svelte');
   const lazyBookEdition = () => import('./routes/BookEdition.svelte');
+  const lazySeriesEditor = () => import('./routes/SeriesEditor.svelte');
 </script>
 
 <Toast />
@@ -122,6 +123,10 @@
     {:else if route.page === 'new-series'}
       {#await lazyNewSeries() then mod}
         <mod.default />
+      {/await}
+    {:else if route.page === 'series-editor'}
+      {#await lazySeriesEditor() then mod}
+        <mod.default id={route.params.id || ''} />
       {/await}
     {:else if route.page === 'profile'}
       {#await lazyProfile() then mod}

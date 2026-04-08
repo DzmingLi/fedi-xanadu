@@ -254,6 +254,25 @@ export default {
   'newSeries.errCreate': 'Creation failed',
   'newSeries.selectedTag': 'Selected: {0}',
   'newSeries.prereqNeedsReading': 'requires reading',
+  'newSeries.titlePlaceholder': 'Series title',
+
+  // Series editor
+  'seriesEditor.viewSeries': 'View series',
+  'seriesEditor.newFile': 'New file',
+  'seriesEditor.compile': 'Compile',
+  'seriesEditor.compiling': 'Compiling...',
+  'seriesEditor.save': 'Save',
+  'seriesEditor.saving': 'Saving...',
+  'seriesEditor.unsaved': 'Unsaved changes',
+  'seriesEditor.unsavedChanges': 'You have unsaved changes. Switch anyway?',
+  'seriesEditor.noFile': 'Select a file from the left to start editing',
+  'seriesEditor.confirmDelete': 'Delete {0}?',
+  'seriesEditor.tabEditor': 'Editor',
+  'seriesEditor.tabPrereqs': 'Prerequisites',
+  'seriesEditor.prereqHint': 'Compile the series first to generate articles, then set prerequisites here',
+  'seriesEditor.noPrereqs': 'No prerequisites set',
+  'seriesEditor.prereqSelectArticle': 'Select article',
+  'seriesEditor.prereqSelectPrereq': 'Select prerequisite',
 
   // Skills
   'skills.mySkills': 'My Skills',
