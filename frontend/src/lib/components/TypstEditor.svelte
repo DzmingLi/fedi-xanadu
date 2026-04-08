@@ -129,12 +129,23 @@
     // Show the formula text for editing (cursor is inside).
     private _applySource() {
       this.dom.classList.add('math-focused');
-      // Give contentDOM a physical size so Firefox can place the cursor there even
-      // when the formula is empty (zero-size inline spans can't receive focus in Firefox).
       this.contentDOM.style.cssText = this._display
         ? 'display:block;min-height:1.2em'
         : 'display:inline-block;min-width:2px';
       this._renderEl.style.display = 'none';
+
+      // Firefox won't keep cursor inside a zero-content inline span.
+      // For empty/ZWS-only nodes (_lastFormula is '' after ZWS strip),
+      // re-assert the DOM cursor in the next frame directly from this.contentDOM.
+      if (!this._lastFormula) {
+        const el = this.contentDOM;
+        requestAnimationFrame(() => {
+          if (!this._focused) return;
+          const anchor = el.firstChild ?? el;
+          const sel = window.getSelection();
+          if (sel && el.isConnected) sel.collapse(anchor, 0);
+        });
+      }
     }
 
     // Show the compiled MathML (cursor is outside).
@@ -236,24 +247,13 @@
 
         // $$ → inline math, cursor inside (ZWS anchor for Firefox cursor placement)
         if (textBefore.endsWith('$')) {
-          // Use a zero-width space so Firefox can anchor the cursor inside the span.
+          // Use a zero-width space so Firefox has a text node to anchor the cursor.
           // The ZWS is stripped in _applyRendered and serializeInline before use.
-          const zws = typstSchema.text('\u200B');
-          const inlineNode = typstSchema.nodes.math_inline.create(null, [zws]);
+          // The actual cursor fix runs inside MathNodeView._applySource via rAF.
+          const inlineNode = typstSchema.nodes.math_inline.create(null, [typstSchema.text('\u200B')]);
           const tr = state.tr.replaceWith(cursor.pos - 1, cursor.pos, inlineNode);
           const nodeStart = tr.mapping.map(cursor.pos - 1);
           view.dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
-          requestAnimationFrame(() => {
-            view.focus();
-            try {
-              const outerEl = view.nodeDOM(nodeStart) as Element | null;
-              const contentEl = outerEl?.querySelector('.math-source-text');
-              if (contentEl) {
-                const anchor = contentEl.firstChild ?? contentEl;
-                window.getSelection()?.collapse(anchor, 0);
-              }
-            } catch {}
-          });
           return true;
         }
 
@@ -457,18 +457,10 @@
       title: '插入行内公式 ($…$)',
       run(view: EditorView) {
         const { state, dispatch } = view;
-        const node = typstSchema.nodes.math_inline.create(null, []);
+        const node = typstSchema.nodes.math_inline.create(null, [typstSchema.text('\u200B')]);
         const tr = state.tr.replaceSelectionWith(node);
         const nodeStart = tr.selection.from - node.nodeSize;
         dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
-        requestAnimationFrame(() => {
-          view.focus();
-          try {
-            const outerEl = view.nodeDOM(nodeStart) as Element | null;
-            const contentEl = outerEl?.querySelector('.math-source-text');
-            if (contentEl) window.getSelection()?.collapse(contentEl, 0);
-          } catch {}
-        });
       },
     },
     {
@@ -476,18 +468,10 @@
       title: '插入块级公式 ($$…$$)',
       run(view: EditorView) {
         const { state, dispatch } = view;
-        const node = typstSchema.nodes.math_block.create(null, []);
+        const node = typstSchema.nodes.math_block.create(null, [typstSchema.text('\u200B')]);
         const tr = state.tr.replaceSelectionWith(node);
         const nodeStart = tr.selection.from - node.nodeSize;
         dispatch(tr.setSelection(TextSelection.create(tr.doc, nodeStart + 1)));
-        requestAnimationFrame(() => {
-          view.focus();
-          try {
-            const outerEl = view.nodeDOM(nodeStart) as Element | null;
-            const contentEl = outerEl?.querySelector('.math-source-text');
-            if (contentEl) window.getSelection()?.collapse(contentEl, 0);
-          } catch {}
-        });
       },
     },
   ];
