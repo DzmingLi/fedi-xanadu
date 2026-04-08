@@ -34,27 +34,6 @@
     return groups;
   });
 
-  // Fallback: auto-group by chapter number when title starts with "X.Y"
-  interface AutoChapterGroup {
-    chapterNum: number;
-    articles: SeriesArticle[];
-  }
-  let autoChapterGroups = $derived.by((): AutoChapterGroup[] => {
-    if (headingGroups.length > 0 || !detail) return [];
-    const chapterMap = new Map<number, SeriesArticle[]>();
-    for (const a of detail.articles) {
-      const m = a.title.match(/^(\d+)\./);
-      if (!m) return []; // not all articles match — bail
-      const ch = parseInt(m[1]);
-      if (!chapterMap.has(ch)) chapterMap.set(ch, []);
-      chapterMap.get(ch)!.push(a);
-    }
-    if (chapterMap.size <= 1) return []; // no point grouping a single chapter
-    return [...chapterMap.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([chapterNum, articles]) => ({ chapterNum, articles }));
-  });
-
   // Votes per article
   let articleVotes = $state(new Map<string, VoteSummary>());
 
@@ -240,19 +219,6 @@
             <!-- chapter heading with no child sections — show articles directly -->
             <p class="toc-empty">（暂无章节）</p>
           {/if}
-        </div>
-      {/each}
-    </div>
-  {:else if autoChapterGroups.length > 0}
-    <div class="toc-chapters">
-      {#each autoChapterGroups as group (group.chapterNum)}
-        <div class="toc-chapter">
-          <h2 class="chapter-title">第 {group.chapterNum} 章</h2>
-          <div class="series-articles">
-            {#each group.articles as article, i (article.article_uri)}
-              {@render articleItem(article, i)}
-            {/each}
-          </div>
         </div>
       {/each}
     </div>
