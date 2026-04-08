@@ -1,17 +1,33 @@
 <script lang="ts">
-  import { getSeries } from '../api';
+  import { getSeries, getSeriesHeadings } from '../api';
   import { getCachedSeries, setCachedSeries } from '../seriesCache';
   import { t } from '../i18n/index.svelte';
-  import type { SeriesDetail } from '../types';
+  import type { SeriesDetail, SeriesHeading } from '../types';
 
   let { seriesId, currentUri }: { seriesId: string; currentUri: string } = $props();
 
   let detail = $state<SeriesDetail | null>(null);
+  let headings = $state<SeriesHeading[]>([]);
   let loading = $state(true);
 
   function articleHref(uri: string): string {
     return `#/article?uri=${encodeURIComponent(uri)}&series_id=${encodeURIComponent(seriesId)}`;
   }
+
+  // Group headings: top-level (no parent) = chapters, children = article entries
+  interface ChapterGroup {
+    heading: SeriesHeading;
+    sections: SeriesHeading[];
+  }
+
+  let chapterGroups = $derived.by((): ChapterGroup[] => {
+    if (!headings.length) return [];
+    const topLevel = headings.filter(h => !h.parent_heading_id);
+    return topLevel.map(ch => ({
+      heading: ch,
+      sections: headings.filter(h => h.parent_heading_id === ch.id && h.article_uri != null),
+    }));
+  });
 
   $effect(() => {
     if (!seriesId) return;
@@ -20,13 +36,15 @@
     const cached = getCachedSeries(seriesId);
     if (cached) {
       detail = cached.detail;
+      headings = cached.headings ?? [];
       loading = false;
       return;
     }
 
-    getSeries(seriesId).then((d) => {
+    Promise.all([getSeries(seriesId), getSeriesHeadings(seriesId)]).then(([d, h]) => {
       detail = d;
-      setCachedSeries(seriesId, d);
+      headings = h;
+      setCachedSeries(seriesId, d, h);
       loading = false;
     }).catch(() => { loading = false; });
   });
@@ -41,16 +59,35 @@
     <a href="#/series?id={encodeURIComponent(seriesId)}" class="ss-title">
       {detail.series.title}
     </a>
-    {#each detail.articles as article, i (article.article_uri)}
-      <a
-        href={articleHref(article.article_uri)}
-        class="ss-item"
-        class:active={article.article_uri === currentUri}
-      >
-        <span class="ss-num">{i + 1}</span>
-        <span class="ss-item-title">{article.title}</span>
-      </a>
-    {/each}
+
+    {#if chapterGroups.length > 0}
+      <!-- Chapter-structured view: h1 = chapter, h2 = article -->
+      {#each chapterGroups as group (group.heading.id)}
+        <div class="ss-chapter">{group.heading.title}</div>
+        {#each group.sections as sec, i (sec.id)}
+          <a
+            href={articleHref(sec.article_uri!)}
+            class="ss-item ss-indent"
+            class:active={sec.article_uri === currentUri}
+          >
+            <span class="ss-num">{i + 1}</span>
+            <span class="ss-item-title">{sec.title}</span>
+          </a>
+        {/each}
+      {/each}
+    {:else}
+      <!-- Flat list fallback (no headings / split_level not set) -->
+      {#each detail.articles as article, i (article.article_uri)}
+        <a
+          href={articleHref(article.article_uri)}
+          class="ss-item"
+          class:active={article.article_uri === currentUri}
+        >
+          <span class="ss-num">{i + 1}</span>
+          <span class="ss-item-title">{article.title}</span>
+        </a>
+      {/each}
+    {/if}
   </nav>
 {/if}
 
@@ -84,7 +121,7 @@
   }
   .ss-title:hover { text-decoration: underline; }
 
-  .ss-section {
+  .ss-chapter {
     font-weight: 600;
     font-size: 11px;
     text-transform: uppercase;
@@ -103,6 +140,9 @@
     line-height: 1.4;
     border-left: 2px solid transparent;
     transition: all 0.1s;
+  }
+  .ss-item.ss-indent {
+    padding-left: 24px;
   }
   .ss-item:hover {
     background: var(--bg-hover, #f5f5f5);
