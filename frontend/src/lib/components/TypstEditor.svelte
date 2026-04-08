@@ -180,9 +180,8 @@
   });
 
   // ── Math creation via keydown ────────────────────────────────────────────────
-  // $formula$   → math_inline, cursor placed after the node
-  // $$formula$$ → math_block,  cursor placed after the block
-  // $ $         → empty math_block, cursor placed inside (to type formula)
+  // $formula$  → math_inline  (type closing $, cursor placed after node)
+  // "$ " + $   → math_block   (dollar-space in empty para, then $; cursor inside)
   const mathKeyPlugin = new Plugin({
     props: {
       handleKeyDown(view, e) {
@@ -201,15 +200,6 @@
           const block = typstSchema.nodes.math_block.create(null, []);
           const tr = state.tr.replaceWith(paraStart, paraEnd, block);
           view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(paraStart) + 1)));
-          return true;
-        }
-
-        // "$" → empty inline math node, cursor inside (user typed $$ with nothing between)
-        if (textBefore === '$') {
-          const start = cursor.pos - 1;
-          const inlineNode = typstSchema.nodes.math_inline.create(null, []);
-          const tr = state.tr.replaceWith(start, cursor.pos, inlineNode);
-          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(start) + 1)));
           return true;
         }
 
