@@ -132,11 +132,16 @@
         ? 'display:block;height:0;overflow:hidden'
         : 'display:inline-block;width:0;height:0;overflow:hidden;vertical-align:middle';
       this._renderEl.style.display = '';
+      if (!formula) {
+        this._renderEl.innerHTML = this._display
+          ? `<span class="math-empty">$ $</span>`
+          : `<span class="math-empty">$ $</span>`;
+        return;
+      }
       // Show placeholder while the async compile runs
       this._renderEl.innerHTML = this._display
-        ? `<span class="math-placeholder">$ ${formula || '\u2026'} $</span>`
-        : `<span class="math-placeholder">$${formula || '\u2026'}$</span>`;
-      if (!formula) return;
+        ? `<span class="math-placeholder">$ ${formula} $</span>`
+        : `<span class="math-placeholder">$${formula}$</span>`;
       fetchMathHtml(formula, this._display).then(html => {
         if (!this._focused && this._lastFormula === formula) this._renderEl.innerHTML = html;
       });
@@ -500,6 +505,15 @@
   /* ── Rendered mode ── */
   :global(.math-rendered) { display: inline-block; }
   :global(.typst-math-block-view .math-rendered) { display: block; }
+  :global(.math-empty) {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.88em;
+    color: var(--text-hint, #aaa);
+    background: rgba(42, 107, 74, 0.04);
+    border-radius: 3px;
+    padding: 0 4px;
+    border: 1px dashed rgba(42, 107, 74, 0.3);
+  }
   :global(.math-placeholder),
   :global(.math-fallback) {
     font-family: var(--font-mono, monospace);
