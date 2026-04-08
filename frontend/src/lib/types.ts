@@ -248,6 +248,17 @@ export interface SeriesTreeNode {
   children: SeriesTreeNode[];
 }
 
+export interface SeriesHeading {
+  id: number;
+  series_id: string;
+  level: number;
+  title: string;
+  anchor: string;
+  article_uri: string | null;
+  parent_heading_id: number | null;
+  order_index: number;
+}
+
 export interface SkillTree {
   at_uri: string;
   did: string;

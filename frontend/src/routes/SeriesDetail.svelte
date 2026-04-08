@@ -1,16 +1,40 @@
 <script lang="ts">
-  import { getSeries, getSeriesTree, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
+  import { getSeries, getSeriesTree, getSeriesHeadings, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
-  import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, SeriesTreeNode, VoteSummary, BookmarkWithTitle } from '../lib/types';
+  import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, SeriesTreeNode, SeriesHeading, VoteSummary, BookmarkWithTitle } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
   let detail = $state<SeriesDetail | null>(null);
   let tree = $state<SeriesTreeNode | null>(null);
+  let headings = $state<SeriesHeading[]>([]);
   let loading = $state(true);
   let error = $state('');
   let viewMode = $state<'flat' | 'tree'>('flat');
+
+  // Build heading tree: group level-2+ headings under their level-1 parent
+  interface HeadingGroup {
+    heading: SeriesHeading;           // level-1 chapter heading
+    sections: SeriesHeading[];        // level-2+ section headings (with article_uri)
+  }
+
+  let headingGroups = $derived.by((): HeadingGroup[] => {
+    if (!headings.length) return [];
+    const groups: HeadingGroup[] = [];
+    const idMap = new Map<number, SeriesHeading>();
+    for (const h of headings) idMap.set(h.id, h);
+
+    // Top-level headings become chapter groups
+    const topLevel = headings.filter(h => !h.parent_heading_id);
+    for (const ch of topLevel) {
+      const sections = headings.filter(
+        h => h.parent_heading_id === ch.id && h.article_uri
+      );
+      groups.push({ heading: ch, sections });
+    }
+    return groups;
+  });
 
   // Votes per article
   let articleVotes = $state(new Map<string, VoteSummary>());
@@ -29,8 +53,9 @@
     loading = true;
     error = '';
     try {
-      const d = await getSeries(id);
+      const [d, h] = await Promise.all([getSeries(id), getSeriesHeadings(id)]);
       detail = d;
+      headings = h;
 
       // Collect all article URIs for vote fetching
       const allArticleUris = new Set<string>();
@@ -202,7 +227,39 @@
     {/if}
   </div>
 
-  {#if viewMode === 'tree' && tree}
+  {#if headingGroups.length > 0}
+    <!-- Hierarchical TOC: chapter groups with sections -->
+    <div class="toc-chapters">
+      {#each headingGroups as group (group.heading.id)}
+        <div class="toc-chapter">
+          <h2 class="chapter-title">{group.heading.title}</h2>
+          {#if group.sections.length > 0}
+            <div class="series-articles">
+              {#each group.sections as sec, i (sec.id)}
+                {@const article = detail.articles.find(a => a.article_uri === sec.article_uri)}
+                {#if article}
+                  {@render articleItem(article, i)}
+                {:else}
+                  <!-- article_uri exists but not in detail.articles — render as plain link -->
+                  <div class="series-item">
+                    <div class="item-number">{i + 1}</div>
+                    <div class="item-content">
+                      <a href="#/article?uri={encodeURIComponent(sec.article_uri!)}&series_id={encodeURIComponent(id)}" class="item-title">
+                        {sec.title}
+                      </a>
+                    </div>
+                  </div>
+                {/if}
+              {/each}
+            </div>
+          {:else}
+            <!-- chapter heading with no child sections — show articles directly -->
+            <p class="toc-empty">（暂无章节）</p>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  {:else if viewMode === 'tree' && tree}
     {@render treeNode(tree, 0)}
   {:else}
     <div class="series-articles">
@@ -210,7 +267,6 @@
         {@render articleItem(article, i)}
       {/each}
     </div>
-
   {/if}
 {/if}
 
@@ -362,6 +418,30 @@
   }
   .series-parent a:hover {
     text-decoration: underline;
+  }
+
+  /* Hierarchical TOC */
+  .toc-chapters {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .toc-chapter {
+    margin-bottom: 8px;
+  }
+  .chapter-title {
+    font-family: var(--font-serif);
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 28px 0 0;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .toc-empty {
+    font-size: 13px;
+    color: var(--text-hint);
+    margin: 8px 0;
   }
 
   /* Tree view */

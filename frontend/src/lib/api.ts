@@ -1,7 +1,7 @@
 import type {
   Tag, Article, ArticleContent, ArticlePrereqRow, ContentTeachRow, ContentPrereqBulkRow,
   ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
-  AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, ProfileData, SeriesContextItem,
+  AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, SeriesHeading, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
   BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter, ChapterPrereqEntry,
@@ -173,6 +173,7 @@ export const removeSeriesPrereq = (series_id: string, article_uri: string, prere
 export const getSeriesContext = (uri: string) => get<SeriesContextItem[]>(`/series/context?uri=${encodeURIComponent(uri)}`);
 export const getAllSeriesArticles = () => get<{ series_id: string; article_uri: string }[]>('/series/all-articles');
 export const getSeriesTree = (id: string) => get<SeriesTreeNode>(`/series/${encodeURIComponent(id)}/tree`);
+export const getSeriesHeadings = (id: string) => get<SeriesHeading[]>(`/series/${encodeURIComponent(id)}/headings`);
 export const reorderSeriesArticles = (series_id: string, article_uris: string[]) =>
   put<void>(`/series/${encodeURIComponent(series_id)}/articles/reorder`, { article_uris });
 
