@@ -204,8 +204,8 @@
           }
         }
 
-        // "$ " at start of paragraph → empty display math block, cursor inside
-        if (/^\$\s+$/.test(textBefore)) {
+        // $$ or "$ " → empty display math block, cursor inside
+        if (textBefore === '$' || /^\$\s+$/.test(textBefore)) {
           const paraStart = cursor.before();
           const paraEnd   = paraStart + cursor.parent.nodeSize;
           const block = typstSchema.nodes.math_block.create(null, []);
