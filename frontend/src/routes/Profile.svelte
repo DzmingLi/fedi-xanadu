@@ -53,28 +53,6 @@
     sortDate: string;
   }
 
-  // Build parent→children map and recursive article count
-  let childSeriesMap = $derived.by(() => {
-    const map = new Map<string, Series[]>();
-    for (const s of allUserSeries) {
-      if (s.parent_id) {
-        const arr = map.get(s.parent_id) || [];
-        arr.push(s);
-        map.set(s.parent_id, arr);
-      }
-    }
-    // Sort children by order_index
-    for (const [, children] of map) {
-      children.sort((a, b) => a.order_index - b.order_index);
-    }
-    return map;
-  });
-
-  function countDescendantArticles(seriesId: string): number {
-    const direct = (seriesArticleMap.get(seriesId) || []).length;
-    const children = childSeriesMap.get(seriesId) || [];
-    return direct + children.reduce((sum, c) => sum + countDescendantArticles(c.id), 0);
-  }
 
   // Track which series are expanded
   let expandedSeries = $state(new Set<string>());
@@ -96,9 +74,8 @@
       }
     }
     for (const s of allUserSeries) {
-      if (s.parent_id) continue;
       if ((s.category || 'general') !== categoryFilter) continue;
-      const totalArticles = countDescendantArticles(s.id);
+      const totalArticles = (seriesArticleMap.get(s.id) || []).length;
       items.push({ type: 'series', series: s, articleCount: totalArticles, sortDate: s.created_at });
     }
     items.sort((a, b) => b.sortDate.localeCompare(a.sortDate));

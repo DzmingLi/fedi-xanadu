@@ -13,7 +13,6 @@ pub struct SeriesRow {
     pub title: String,
     pub description: Option<String>,
     pub long_description: Option<String>,
-    pub parent_id: Option<String>,
     pub order_index: i32,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
@@ -30,7 +29,6 @@ pub struct SeriesListRow {
     pub title: String,
     pub description: Option<String>,
     pub long_description: Option<String>,
-    pub parent_id: Option<String>,
     pub order_index: i32,
     pub created_by: String,
     pub author_handle: Option<String>,
@@ -53,7 +51,6 @@ pub struct SeriesDetailResponse {
     pub series: SeriesRow,
     pub articles: Vec<serde_json::Value>,
     pub prereqs: Vec<serde_json::Value>,
-    pub children: Vec<SeriesRow>,
     pub translations: Vec<SeriesRow>,
 }
 
@@ -90,8 +87,6 @@ pub struct CreateSeriesInput {
     pub long_description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub topics: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -185,22 +180,6 @@ impl FxClient {
             &serde_json::json!({
                 "series_id": series_id,
                 "article_uris": article_uris,
-            }),
-        )
-        .await
-    }
-
-    /// Reorder child series.
-    pub async fn reorder_series_children(
-        &self,
-        parent_id: &str,
-        child_ids: &[String],
-    ) -> ClientResult<()> {
-        self.put_empty(
-            &format!("/series/{parent_id}/children/reorder"),
-            &serde_json::json!({
-                "parent_id": parent_id,
-                "child_ids": child_ids,
             }),
         )
         .await

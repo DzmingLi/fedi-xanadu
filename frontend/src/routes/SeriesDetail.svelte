@@ -20,8 +20,6 @@
 
   let isLoggedIn = $derived(!!getAuth());
 
-  // Auto-switch to tree view if this series has children
-  let hasChildren = $derived(detail ? detail.children.length > 0 : false);
 
   $effect(() => {
     loadSeries();
@@ -34,13 +32,7 @@
       const d = await getSeries(id);
       detail = d;
 
-      // If has children, load the full tree
-      if (d.children.length > 0) {
-        viewMode = 'tree';
-        tree = await getSeriesTree(id);
-      }
-
-      // Collect all article URIs (flat + tree) for vote fetching
+      // Collect all article URIs for vote fetching
       const allArticleUris = new Set<string>();
       for (const a of d.articles) allArticleUris.add(a.article_uri);
       if (tree) collectTreeArticleUris(tree, allArticleUris);
@@ -197,13 +189,7 @@
       <p class="series-desc">{detail.series.description}</p>
     {/if}
     <div class="series-meta">
-      {#if hasChildren && tree}
-        {@const totalArticles = countTreeArticles(tree)}
-        <span class="meta">{totalArticles} {t('series.articles')}</span>
-        <span class="meta">{detail.children.length} {t('series.sections')}</span>
-      {:else}
-        <span class="meta">{detail.articles.length} {t('series.articles')}</span>
-      {/if}
+      <span class="meta">{detail.articles.length} {t('series.articles')}</span>
       <span class="meta"><a href="#/profile?did={encodeURIComponent(detail.series.created_by)}">@{detail.series.author_handle || detail.series.created_by}</a></span>
     </div>
     {#if detail.translations && detail.translations.length > 0}
@@ -212,11 +198,6 @@
         {#each detail.translations as tr (tr.id)}
           <a href="#/series?id={encodeURIComponent(tr.id)}" class="lang-link">{tr.lang}</a>
         {/each}
-      </div>
-    {/if}
-    {#if detail.series.parent_id}
-      <div class="series-parent">
-        <a href="#/series?id={encodeURIComponent(detail.series.parent_id)}">{t('series.backToParent')}</a>
       </div>
     {/if}
   </div>
@@ -230,19 +211,6 @@
       {/each}
     </div>
 
-    {#if detail.children.length > 0}
-      <div class="children-list">
-        <h2>{t('series.sections')}</h2>
-        {#each detail.children as child (child.id)}
-          <a href="#/series?id={encodeURIComponent(child.id)}" class="child-link">
-            <span class="child-title">{child.title}</span>
-            {#if child.description}
-              <span class="child-desc">{child.description}</span>
-            {/if}
-          </a>
-        {/each}
-      </div>
-    {/if}
   {/if}
 {/if}
 

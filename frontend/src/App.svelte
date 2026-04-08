@@ -121,7 +121,7 @@
       {/await}
     {:else if route.page === 'new-series'}
       {#await lazyNewSeries() then mod}
-        <mod.default parentId={route.params.parent_id} />
+        <mod.default />
       {/await}
     {:else if route.page === 'profile'}
       {#await lazyProfile() then mod}

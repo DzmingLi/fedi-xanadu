@@ -218,7 +218,6 @@ fn series_routes() -> Router<AppState> {
         .route("/series/{id}/articles", post(series::add_series_article))
         .route("/series/{id}/articles/remove", delete(series::remove_series_article))
         .route("/series/{id}/articles/reorder", put(series::reorder_articles))
-        .route("/series/{id}/children/reorder", put(series::reorder_children))
         .route("/series/{id}/prereqs", post(series::add_series_prereq))
         .route("/series/{id}/prereqs/remove", delete(series::remove_series_prereq))
         .route("/series/context", get(series::get_series_context))

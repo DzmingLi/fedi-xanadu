@@ -160,7 +160,7 @@ export const updateProfileLinks = (links: { label: string; url: string }[]) =>
 // Series
 export const listSeries = () => get<Series[]>('/series');
 export const getSeries = (id: string) => get<SeriesDetail>(`/series/${encodeURIComponent(id)}`);
-export const createSeries = (data: { title: string; description?: string; long_description?: string; topics?: string[]; parent_id?: string; category?: string }) =>
+export const createSeries = (data: { title: string; description?: string; long_description?: string; topics?: string[]; category?: string }) =>
   post<Series>('/series', data);
 export const addSeriesArticle = (series_id: string, article_uri: string) =>
   post<void>(`/series/${encodeURIComponent(series_id)}/articles`, { article_uri });
@@ -175,8 +175,6 @@ export const getAllSeriesArticles = () => get<{ series_id: string; article_uri: 
 export const getSeriesTree = (id: string) => get<SeriesTreeNode>(`/series/${encodeURIComponent(id)}/tree`);
 export const reorderSeriesArticles = (series_id: string, article_uris: string[]) =>
   put<void>(`/series/${encodeURIComponent(series_id)}/articles/reorder`, { article_uris });
-export const reorderSeriesChildren = (parent_id: string, child_ids: string[]) =>
-  put<void>(`/series/${encodeURIComponent(parent_id)}/children/reorder`, { child_ids });
 
 // Skill Trees
 export const listSkillTrees = () => get<SkillTree[]>('/skill-trees');

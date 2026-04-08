@@ -20,7 +20,6 @@ pub(crate) struct CreateSeriesInput {
     description: Option<String>,
     long_description: Option<String>,
     topics: Option<Vec<String>>,
-    parent_id: Option<String>,
     lang: Option<String>,
     translation_of: Option<String>,
     category: Option<String>,
@@ -51,13 +50,6 @@ pub async fn create_series(
 
     let id = format!("s-{}", tid());
     let topics = input.topics.unwrap_or_default();
-
-    // If parent_id given, verify the user owns the parent series
-    if let Some(ref pid) = input.parent_id {
-        let owner = series_service::get_series_owner(&state.pool, pid).await?;
-        require_owner(Some(&owner), &user.did)?;
-    }
-
     let lang = input.lang.as_deref().unwrap_or("zh");
     let translation_group = if let Some(ref source_id) = input.translation_of {
         Some(series_service::resolve_series_translation_group(&state.pool, source_id).await?)
@@ -80,7 +72,6 @@ pub async fn create_series(
         input.description.as_deref(),
         input.long_description.as_deref(),
         &topics,
-        input.parent_id.as_deref(),
         &user.did,
         lang,
         translation_group,
@@ -248,26 +239,6 @@ pub async fn reorder_articles(
     Ok(StatusCode::OK)
 }
 
-// --- Reorder child series ---
-
-#[derive(serde::Deserialize)]
-pub(crate) struct ReorderChildrenInput {
-    child_ids: Vec<String>,
-}
-
-pub async fn reorder_children(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    WriteAuth(user): WriteAuth,
-    Json(input): Json<ReorderChildrenInput>,
-) -> ApiResult<StatusCode> {
-    let owner = series_service::get_series_owner(&state.pool, &id).await?;
-    require_owner(Some(&owner), &user.did)?;
-
-    series_service::reorder_children(&state.pool, &id, &input.child_ids).await?;
-    Ok(StatusCode::OK)
-}
-
 // --- Series resource upload ---
 
 pub async fn upload_resource(
@@ -403,7 +374,6 @@ pub async fn fork_series(
         original.series.description.as_deref(),
         original.series.long_description.as_deref(),
         &[],
-        None,
         &user.did,
         &original.series.lang,
         None,

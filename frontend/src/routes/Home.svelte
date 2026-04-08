@@ -149,33 +149,10 @@
       }
     }
 
-    // Add series cards — only top-level series (no parent)
-    // Deduplicate series translations
+    // Add series cards
     const dedupedSeries = deduplicateSeriesByTranslation(allSeries, locale);
-    // Collect all descendant article URIs for each top-level series
-    const childSeriesOf = new Map<string, string[]>();
     for (const s of dedupedSeries) {
-      if (s.parent_id) {
-        const arr = childSeriesOf.get(s.parent_id) || [];
-        arr.push(s.id);
-        childSeriesOf.set(s.parent_id, arr);
-      }
-    }
-
-    for (const s of dedupedSeries) {
-      if (s.parent_id) continue; // skip sub-series
-
-      // Gather articles from this series and all descendant sub-series
-      const allMemberUris: string[] = [];
-      const stack = [s.id];
-      while (stack.length > 0) {
-        const sid = stack.pop()!;
-        const uris = seriesArticleMap.get(sid) || [];
-        allMemberUris.push(...uris);
-        for (const child of (childSeriesOf.get(sid) || [])) {
-          stack.push(child);
-        }
-      }
+      const allMemberUris = seriesArticleMap.get(s.id) || [];
       if (allMemberUris.length === 0) continue;
 
       const memberArts = allMemberUris

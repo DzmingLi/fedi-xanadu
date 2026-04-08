@@ -227,12 +227,8 @@ export default {
   'series.upvote': '赞',
   'series.bookmark': '收藏',
   'series.prereqLabel': '前置:',
-  'series.backToParent': '← 返回上级系列',
-
   // NewSeries
   'newSeries.title': '创建系列讲义',
-  'newSeries.parentLabel': '上级系列（可选）',
-  'newSeries.parentPlaceholder': '搜索上级系列...',
   'newSeries.titleLabel': '标题',
   'newSeries.descPlaceholder': '系列讲义的简要描述（卡片上显示）',
   'newSeries.longDescLabel': '详细介绍',

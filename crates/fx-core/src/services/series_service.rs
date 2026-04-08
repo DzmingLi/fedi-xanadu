@@ -11,7 +11,6 @@ pub struct SeriesRow {
     pub title: String,
     pub description: Option<String>,
     pub long_description: Option<String>,
-    pub parent_id: Option<String>,
     pub order_index: i32,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
@@ -28,7 +27,6 @@ pub struct SeriesListRow {
     pub title: String,
     pub description: Option<String>,
     pub long_description: Option<String>,
-    pub parent_id: Option<String>,
     pub order_index: i32,
     pub created_by: String,
     pub author_handle: Option<String>,
@@ -65,7 +63,6 @@ pub struct SeriesDetailResponse {
     pub series: SeriesRow,
     pub articles: Vec<SeriesArticleRow>,
     pub prereqs: Vec<SeriesPrereqRow>,
-    pub children: Vec<SeriesRow>,
     pub translations: Vec<SeriesRow>,
 }
 
@@ -118,11 +115,10 @@ pub struct SeriesHeadingRow {
 pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, s.long_description, \
-                s.parent_id, s.order_index, s.created_by, pu.handle AS author_handle, s.created_at, \
+                s.order_index, s.created_by, pu.handle AS author_handle, s.created_at, \
                 s.lang, s.translation_group, s.category, s.split_level \
          FROM series s \
          LEFT JOIN platform_users pu ON s.created_by = pu.did \
-         WHERE s.parent_id IS NULL \
          ORDER BY s.created_at DESC LIMIT $1",
     )
     .bind(limit)
@@ -138,39 +134,22 @@ pub async fn create_series(
     description: Option<&str>,
     long_description: Option<&str>,
     topics: &[String],
-    parent_id: Option<&str>,
     created_by: &str,
     lang: &str,
     translation_group: Option<String>,
     category: &str,
     pijul_node_id: Option<&str>,
 ) -> crate::Result<SeriesRow> {
-    // Auto-assign order_index: append after existing siblings
-    let order_index: i32 = if parent_id.is_some() {
-        sqlx::query_scalar::<_, Option<i32>>(
-            "SELECT MAX(order_index) FROM series WHERE parent_id = $1",
-        )
-        .bind(parent_id)
-        .fetch_one(pool)
-        .await?
-        .unwrap_or(-1)
-        + 1
-    } else {
-        0
-    };
-
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO series (id, title, description, long_description, parent_id, order_index, created_by, lang, translation_group, category, pijul_node_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        "INSERT INTO series (id, title, description, long_description, order_index, created_by, lang, translation_group, category, pijul_node_id) \
+         VALUES ($1, $2, $3, $4, 0, $5, $6, $7, $8, $9)",
     )
     .bind(id)
     .bind(title)
     .bind(description)
     .bind(long_description)
-    .bind(parent_id)
-    .bind(order_index)
     .bind(created_by)
     .bind(lang)
     .bind(&translation_group)
@@ -192,7 +171,7 @@ pub async fn create_series(
     tx.commit().await?;
 
     let row = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
+        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -204,7 +183,7 @@ pub async fn create_series(
 
 pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesDetailResponse> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
+        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -232,21 +211,12 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
     .fetch_all(pool)
     .await?;
 
-    let children = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
-         FROM series WHERE parent_id = $1 ORDER BY order_index",
-    )
-    .bind(id)
-    .fetch_all(pool)
-    .await?;
-
     let translations = get_series_translations(pool, id).await?;
 
     Ok(SeriesDetailResponse {
         series,
         articles,
         prereqs,
-        children,
         translations,
     })
 }
@@ -293,7 +263,7 @@ pub async fn get_series_translations(pool: &PgPool, id: &str) -> crate::Result<V
     };
 
     let rows = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
+        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level \
          FROM series WHERE translation_group = $1 AND id != $2 ORDER BY lang",
     )
     .bind(&group)
@@ -413,104 +383,29 @@ pub async fn all_series_articles(pool: &PgPool, limit: i64) -> crate::Result<Vec
     Ok(rows)
 }
 
-/// Walk up parent_id links to find the root series of any (possibly nested) series.
-pub async fn get_root_series_id(pool: &PgPool, series_id: &str) -> crate::Result<String> {
-    let root: String = sqlx::query_scalar(
-        "WITH RECURSIVE ancestors AS ( \
-             SELECT id, parent_id FROM series WHERE id = $1 \
-             UNION ALL \
-             SELECT s.id, s.parent_id FROM series s JOIN ancestors a ON s.id = a.parent_id \
-         ) SELECT id FROM ancestors WHERE parent_id IS NULL",
+/// Build a flat tree node for a series (no children — parent series removed).
+pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<SeriesTreeNode> {
+    let series = sqlx::query_as::<_, SeriesRow>(
+        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level \
+         FROM series WHERE id = $1",
     )
-    .bind(series_id)
+    .bind(root_id)
     .fetch_optional(pool)
     .await?
-    .ok_or_else(|| Error::NotFound {
-        entity: "series",
-        id: series_id.to_string(),
-    })?;
-    Ok(root)
-}
+    .ok_or_else(|| Error::NotFound { entity: "series", id: root_id.to_string() })?;
 
-/// Build the full tree from a root series, recursively loading children and articles.
-pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<SeriesTreeNode> {
-    // Fetch all series in the tree in one query using recursive CTE
-    let all_series = sqlx::query_as::<_, SeriesRow>(
-        "WITH RECURSIVE tree AS ( \
-             SELECT id, title, description, long_description, parent_id, order_index, created_by, created_at, lang, translation_group, category, split_level \
-             FROM series WHERE id = $1 \
-             UNION ALL \
-             SELECT s.id, s.title, s.description, s.long_description, s.parent_id, s.order_index, s.created_by, s.created_at, s.lang, s.translation_group, s.category, s.split_level \
-             FROM series s JOIN tree t ON s.parent_id = t.id \
-         ) SELECT * FROM tree",
+    let articles = sqlx::query_as::<_, SeriesArticleRow>(
+        "SELECT sa.series_id, sa.article_uri, a.title, COALESCE(a.description, '') AS description, \
+                a.lang, sa.order_index, sa.heading_title, sa.heading_anchor \
+         FROM series_articles sa JOIN articles a ON sa.article_uri = a.at_uri \
+         WHERE sa.series_id = $1 ORDER BY sa.order_index",
     )
     .bind(root_id)
     .fetch_all(pool)
     .await?;
 
-    if all_series.is_empty() {
-        return Err(Error::NotFound {
-            entity: "series",
-            id: root_id.to_string(),
-        });
+    Ok(SeriesTreeNode { series, articles, children: vec![] })
     }
-
-    // Fetch all articles for all series in the tree in one query
-    let series_ids: Vec<&str> = all_series.iter().map(|s| s.id.as_str()).collect();
-    let all_articles = sqlx::query_as::<_, SeriesArticleRow>(
-        "SELECT sa.series_id, sa.article_uri, a.title, COALESCE(a.description, '') AS description, \
-                a.lang, sa.order_index, sa.heading_title, sa.heading_anchor \
-         FROM series_articles sa JOIN articles a ON sa.article_uri = a.at_uri \
-         WHERE sa.series_id = ANY($1) ORDER BY sa.order_index",
-    )
-    .bind(&series_ids)
-    .fetch_all(pool)
-    .await?;
-
-    // Group articles by series_id
-    let mut articles_map: std::collections::HashMap<String, Vec<SeriesArticleRow>> =
-        std::collections::HashMap::new();
-    for art in all_articles {
-        articles_map.entry(art.series_id.clone()).or_default().push(art);
-    }
-
-    // Build tree recursively
-    fn build_node(
-        id: &str,
-        series_map: &std::collections::HashMap<String, SeriesRow>,
-        children_map: &std::collections::HashMap<String, Vec<String>>,
-        articles_map: &mut std::collections::HashMap<String, Vec<SeriesArticleRow>>,
-    ) -> SeriesTreeNode {
-        let series = series_map[id].clone();
-        let articles = articles_map.remove(id).unwrap_or_default();
-        let mut children: Vec<SeriesTreeNode> = children_map
-            .get(id)
-            .map(|child_ids| {
-                child_ids
-                    .iter()
-                    .map(|cid| build_node(cid, series_map, children_map, articles_map))
-                    .collect()
-            })
-            .unwrap_or_default();
-        children.sort_by_key(|c| c.series.order_index);
-        SeriesTreeNode {
-            series,
-            articles,
-            children,
-        }
-    }
-
-    let mut series_map: std::collections::HashMap<String, SeriesRow> = std::collections::HashMap::new();
-    let mut children_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for s in &all_series {
-        series_map.insert(s.id.clone(), s.clone());
-        if let Some(pid) = &s.parent_id {
-            children_map.entry(pid.clone()).or_default().push(s.id.clone());
-        }
-    }
-
-    Ok(build_node(root_id, &series_map, &children_map, &mut articles_map))
-}
 
 /// Reorder articles within a series.
 pub async fn reorder_series_articles(
@@ -527,23 +422,6 @@ pub async fn reorder_series_articles(
         .bind(uri)
         .execute(pool)
         .await?;
-    }
-    Ok(())
-}
-
-/// Reorder child series within a parent.
-pub async fn reorder_children(
-    pool: &PgPool,
-    parent_id: &str,
-    child_ids: &[String],
-) -> crate::Result<()> {
-    for (i, cid) in child_ids.iter().enumerate() {
-        sqlx::query("UPDATE series SET order_index = $1 WHERE id = $2 AND parent_id = $3")
-            .bind(i as i32)
-            .bind(cid)
-            .bind(parent_id)
-            .execute(pool)
-            .await?;
     }
     Ok(())
 }

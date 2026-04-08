@@ -132,7 +132,6 @@ export interface Series {
   title: string;
   description: string | null;
   long_description: string | null;
-  parent_id: string | null;
   order_index: number;
   created_by: string;
   author_handle?: string | null;
@@ -240,7 +239,6 @@ export interface SeriesDetail {
   series: Series;
   articles: SeriesArticle[];
   prereqs: SeriesArticlePrereq[];
-  children: Series[];
   translations: Series[];
 }
 
