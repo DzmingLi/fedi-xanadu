@@ -216,18 +216,31 @@
           return true;
         }
 
-        // $formula$ → inline math, cursor after
+        // $formula$ → inline math (type closing $, cursor placed after)
         const m = /\$([^$\n]{1,200})$/.exec(textBefore);
-        if (!m) return false;
-        const formula = m[1].trim();
-        if (!formula) return false;
+        if (m) {
+          const formula = m[1].trim();
+          if (formula) {
+            const start = cursor.pos - m[0].length;
+            const inlineNode = typstSchema.nodes.math_inline.create(null, [typstSchema.text(formula)]);
+            const tr = state.tr.replaceWith(start, cursor.pos, inlineNode);
+            view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(start) + inlineNode.nodeSize)));
+            return true;
+          }
+        }
 
-        const start = cursor.pos - m[0].length;
-        const inlineNode = typstSchema.nodes.math_inline.create(null, [typstSchema.text(formula)]);
-        const tr = state.tr.replaceWith(start, cursor.pos, inlineNode);
-        // Cursor after the inline node
-        view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(start) + inlineNode.nodeSize)));
-        return true;
+        // $$ → empty inline math, cursor inside
+        // User typed $, then $ again with nothing in between. Replace the
+        // opening $ (already in the document) with an empty math_inline and
+        // put the cursor inside so the user can type the formula.
+        if (textBefore.endsWith('$')) {
+          const inlineNode = typstSchema.nodes.math_inline.create(null, []);
+          const tr = state.tr.replaceWith(cursor.pos - 1, cursor.pos, inlineNode);
+          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(cursor.pos - 1) + 1)));
+          return true;
+        }
+
+        return false;
       },
     },
   });
