@@ -255,8 +255,13 @@ export default {
   // Series editor
   'seriesEditor.viewSeries': '查看系列',
   'seriesEditor.newFile': '新建文件',
+  'seriesEditor.files': '文件',
   'seriesEditor.compile': '编译',
   'seriesEditor.compiling': '编译中...',
+  'seriesEditor.compileHint': '编译将把章节文件按标题切分，生成对应的独立文章。',
+  'seriesEditor.compileHeadings': '个章节',
+  'seriesEditor.compileCreated': '篇新建',
+  'seriesEditor.compileUpdated': '篇更新',
   'seriesEditor.save': '保存',
   'seriesEditor.saving': '保存中...',
   'seriesEditor.unsaved': '有未保存的修改',

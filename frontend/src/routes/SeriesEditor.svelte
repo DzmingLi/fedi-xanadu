@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { getSeries, listSeriesFiles, readSeriesFile, writeSeriesFile, deleteSeriesFile, compileSeries, addSeriesPrereq, removeSeriesPrereq } from '../lib/api';
-  import { getAuth } from '../lib/auth.svelte';
+  import {
+    getSeries, listSeriesFiles, readSeriesFile, writeSeriesFile, deleteSeriesFile,
+    compileSeries, addSeriesPrereq, removeSeriesPrereq,
+  } from '../lib/api';
   import { t } from '../lib/i18n/index.svelte';
   import type { SeriesDetail, SeriesArticle } from '../lib/types';
   import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
@@ -23,8 +25,12 @@
   let showNewFile = $state(false);
   let error = $state('');
 
-  // Prereq editing
-  let activeTab = $state<'editor' | 'prereqs'>('editor');
+  // Panel toggles (mirrors NewArticle)
+  let filePanelOpen = $state(true);
+  let settingsPanelOpen = $state(true);
+
+  // Prereqs tab
+  let activeTab = $state<'compile' | 'prereqs'>('compile');
   let prereqFrom = $state('');
   let prereqTo = $state('');
 
@@ -36,7 +42,6 @@
       const [d, f] = await Promise.all([getSeries(id), listSeriesFiles(id)]);
       detail = d;
       files = f;
-      // Open first file by default
       if (f.length > 0 && !activeFile) {
         await openFile(f[0].path);
       }
@@ -86,7 +91,6 @@
     compileResult = null;
     try {
       compileResult = await compileSeries(id);
-      // Reload series to reflect new articles
       detail = await getSeries(id);
     } catch (e: any) {
       compileError = e.message || 'Compile failed';
@@ -97,7 +101,6 @@
   async function createFile() {
     let name = newFileName.trim();
     if (!name) return;
-    // Add default extension if missing
     if (!name.includes('.')) name += '.md';
     const path = name.includes('/') ? name : `chapters/${name}`;
     try {
@@ -131,15 +134,11 @@
     return path.split('.').pop() ?? '';
   }
 
-  function fileIcon(path: string) {
-    const e = ext(path);
-    if (e === 'md') return '📝';
-    if (e === 'typ') return '🔤';
-    if (e === 'bib') return '📚';
-    return '📄';
+  function fileLabel(path: string) {
+    return path.replace('chapters/', '');
   }
 
-  // Prereq helpers
+  // Prereqs
   function prereqsFor(articleUri: string): SeriesArticle[] {
     if (!detail) return [];
     return detail.prereqs
@@ -161,7 +160,7 @@
     detail = await getSeries(id);
   }
 
-  // Keyboard shortcut: Ctrl+S / Cmd+S
+  // Keyboard shortcut
   function onKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
@@ -177,229 +176,302 @@
 {:else if error && !detail}
   <p class="error">{error}</p>
 {:else if detail}
-  <div class="editor-layout">
-    <!-- Sidebar: file tree -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <span class="series-name">{detail.series.title}</span>
-        <a href="#/series?id={encodeURIComponent(id)}" class="view-link" title={t('seriesEditor.viewSeries')}>↗</a>
-      </div>
+  <div class="editor-page">
 
-      <div class="file-tree">
-        {#each files as f}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="file-item"
-            class:active={activeFile === f.path}
-            onclick={() => openFile(f.path)}
-            role="button"
-            tabindex="0"
-            onkeydown={(e) => { if (e.key === 'Enter') openFile(f.path); }}
-          >
-            <span class="file-icon">{fileIcon(f.path)}</span>
-            <span class="file-name">{f.path.replace('chapters/', '')}</span>
-            <button class="del-btn" onclick={(e) => { e.stopPropagation(); deleteFile(f.path); }} title={t('common.delete')}>×</button>
+    <!-- Title area -->
+    <div class="editor-title-area">
+      <div class="title-row">
+        <span class="series-title">{detail.series.title}</span>
+        <a href="#/series?id={encodeURIComponent(id)}" class="view-link">↗ {t('seriesEditor.viewSeries')}</a>
+      </div>
+      {#if activeFile}
+        <div class="active-file-row">
+          <span class="active-file-name">{activeFile}</span>
+          {#if dirty}<span class="dirty-dot">●</span>{/if}
+        </div>
+      {/if}
+    </div>
+
+    <!-- Body: file panel + editor + settings panel -->
+    <div class="editor-body">
+
+      <!-- Left: File Tree Panel -->
+      {#if filePanelOpen}
+        <aside class="file-panel">
+          <div class="panel-header">
+            <span class="panel-label">{t('seriesEditor.files')}</span>
           </div>
-        {/each}
+          <div class="file-list">
+            {#each files as f}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div
+                class="file-item"
+                class:active={activeFile === f.path}
+                onclick={() => openFile(f.path)}
+                role="button"
+                tabindex="0"
+                onkeydown={(e) => { if (e.key === 'Enter') openFile(f.path); }}
+              >
+                <span class="file-name">{fileLabel(f.path)}</span>
+                <button class="del-btn" onclick={(e) => { e.stopPropagation(); deleteFile(f.path); }}>×</button>
+              </div>
+            {/each}
 
-        {#if showNewFile}
-          <div class="new-file-row">
-            <input
-              type="text"
-              bind:value={newFileName}
-              placeholder="01-intro.md"
-              onkeydown={(e) => { if (e.key === 'Enter') createFile(); if (e.key === 'Escape') { showNewFile = false; } }}
-              autofocus
-            />
-            <button onclick={createFile}>{t('common.add')}</button>
-          </div>
-        {:else}
-          <button class="add-file-btn" onclick={() => { showNewFile = true; }}>+ {t('seriesEditor.newFile')}</button>
-        {/if}
-      </div>
-
-      <!-- Compile -->
-      <div class="compile-section">
-        <button class="compile-btn" onclick={compile} disabled={compiling}>
-          {compiling ? t('seriesEditor.compiling') : t('seriesEditor.compile')}
-        </button>
-        {#if compileResult}
-          <p class="compile-ok">
-            ✓ {compileResult.total_headings} 节，{compileResult.articles_created} 篇新建，{compileResult.articles_updated} 篇更新
-          </p>
-        {/if}
-        {#if compileError}
-          <p class="compile-error">{compileError}</p>
-        {/if}
-      </div>
-    </aside>
-
-    <!-- Main editor -->
-    <main class="editor-pane">
-      <!-- Tab bar -->
-      <div class="tab-bar">
-        <button class="tab" class:active={activeTab === 'editor'} onclick={() => { activeTab = 'editor'; }}>
-          {t('seriesEditor.tabEditor')}
-        </button>
-        <button class="tab" class:active={activeTab === 'prereqs'} onclick={() => { activeTab = 'prereqs'; }}>
-          {t('seriesEditor.tabPrereqs')}
-          {#if detail.prereqs.length > 0}<span class="tab-count">{detail.prereqs.length}</span>{/if}
-        </button>
-      </div>
-
-      {#if activeTab === 'editor'}
-        {#if activeFile}
-          <div class="editor-toolbar">
-            <span class="current-file">{activeFile}</span>
-            {#if dirty}
-              <span class="dirty-dot" title={t('seriesEditor.unsaved')}>●</span>
+            {#if showNewFile}
+              <div class="new-file-row">
+                <input
+                  type="text"
+                  bind:value={newFileName}
+                  placeholder="01-intro.md"
+                  onkeydown={(e) => { if (e.key === 'Enter') createFile(); if (e.key === 'Escape') { showNewFile = false; } }}
+                />
+                <button onclick={createFile}>{t('common.add')}</button>
+              </div>
+            {:else}
+              <button class="add-file-btn" onclick={() => { showNewFile = true; }}>+ {t('seriesEditor.newFile')}</button>
             {/if}
-            <button class="save-btn" onclick={save} disabled={saving || !dirty}>
-              {saving ? t('seriesEditor.saving') : t('seriesEditor.save')}
-            </button>
           </div>
-          <div class="wysiwyg-wrap">
+        </aside>
+      {/if}
+
+      <!-- Center: Editor -->
+      <div class="editor-main">
+        <!-- Left toggle -->
+        <button
+          class="panel-tab panel-tab-left"
+          class:open={filePanelOpen}
+          onclick={() => { filePanelOpen = !filePanelOpen; }}
+          title={t('seriesEditor.files')}
+        >
+          <svg width="12" height="22" viewBox="0 0 10 18" fill="currentColor">
+            {#if filePanelOpen}
+              <polyline points="8,2 2,9 8,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            {:else}
+              <polyline points="2,2 8,9 2,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            {/if}
+          </svg>
+        </button>
+
+        <div class="editor-content">
+          {#if activeFile}
             {#if ext(activeFile) === 'md'}
               <MarkdownEditor bind:value={editorContent} fillHeight={true} />
             {:else if ext(activeFile) === 'typ'}
               <TypstEditor bind:value={editorContent} fillHeight={true} />
             {:else}
-              <textarea
-                class="code-editor"
-                value={editorContent}
-                oninput={onInput}
-                spellcheck="false"
-                autocomplete="off"
-              ></textarea>
+              <textarea class="editor-textarea" bind:value={editorContent} spellcheck="false"></textarea>
             {/if}
-          </div>
-        {:else}
-          <div class="no-file">
-            <p>{t('seriesEditor.noFile')}</p>
-          </div>
-        {/if}
-      {:else}
-        <!-- Prereq editor -->
-        <div class="prereq-pane">
-          {#if detail.articles.length === 0}
-            <p class="hint">{t('seriesEditor.prereqHint')}</p>
           {:else}
-            <div class="prereq-add">
-              <select bind:value={prereqFrom}>
-                <option value="">{t('seriesEditor.prereqSelectArticle')}</option>
-                {#each detail.articles as a}
-                  <option value={a.article_uri}>{a.title}</option>
-                {/each}
-              </select>
-              <span class="arrow">需要先读</span>
-              <select bind:value={prereqTo}>
-                <option value="">{t('seriesEditor.prereqSelectPrereq')}</option>
-                {#each detail.articles as a}
-                  <option value={a.article_uri}>{a.title}</option>
-                {/each}
-              </select>
-              <button class="add-prereq-btn" onclick={addPrereq} disabled={!prereqFrom || !prereqTo || prereqFrom === prereqTo}>
-                {t('common.add')}
-              </button>
-            </div>
+            <div class="no-file"><p>{t('seriesEditor.noFile')}</p></div>
+          {/if}
+        </div>
 
-            <div class="prereq-list">
-              {#each detail.articles as article}
-                {@const pqs = prereqsFor(article.article_uri)}
-                {#if pqs.length > 0}
-                  <div class="prereq-group">
-                    <span class="prereq-article">{article.title}</span>
-                    <span class="prereq-needs">需要先读：</span>
-                    {#each pqs as pq}
-                      <span class="prereq-tag">
-                        {pq.title}
-                        <button class="rm-prereq" onclick={() => delPrereq(article.article_uri, pq.article_uri)}>×</button>
-                      </span>
+        <!-- Right toggle -->
+        <button
+          class="panel-tab panel-tab-right"
+          class:open={settingsPanelOpen}
+          onclick={() => { settingsPanelOpen = !settingsPanelOpen; }}
+          title={t('editor.settings')}
+        >
+          <svg width="12" height="22" viewBox="0 0 10 18" fill="currentColor">
+            {#if settingsPanelOpen}
+              <polyline points="2,2 8,9 2,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            {:else}
+              <polyline points="8,2 2,9 8,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            {/if}
+          </svg>
+        </button>
+      </div>
+
+      <!-- Right: Settings Panel -->
+      {#if settingsPanelOpen}
+        <aside class="settings-panel">
+          <!-- Tab bar -->
+          <div class="sp-tabs">
+            <button class="sp-tab" class:active={activeTab === 'compile'} onclick={() => { activeTab = 'compile'; }}>
+              {t('seriesEditor.compile')}
+            </button>
+            <button class="sp-tab" class:active={activeTab === 'prereqs'} onclick={() => { activeTab = 'prereqs'; }}>
+              {t('seriesEditor.tabPrereqs')}
+            </button>
+          </div>
+
+          {#if activeTab === 'compile'}
+            <div class="sp-body">
+              <p class="sp-hint">{t('seriesEditor.compileHint')}</p>
+              <button class="compile-btn" onclick={compile} disabled={compiling}>
+                {compiling ? t('seriesEditor.compiling') : t('seriesEditor.compile')}
+              </button>
+              {#if compileResult}
+                <p class="compile-ok">✓ {compileResult.total_headings} {t('seriesEditor.compileHeadings')}，{compileResult.articles_created} {t('seriesEditor.compileCreated')}，{compileResult.articles_updated} {t('seriesEditor.compileUpdated')}</p>
+              {/if}
+              {#if compileError}
+                <p class="compile-error">{compileError}</p>
+              {/if}
+            </div>
+          {:else}
+            <div class="sp-body">
+              {#if detail.articles.length === 0}
+                <p class="sp-hint">{t('seriesEditor.prereqHint')}</p>
+              {:else}
+                <div class="prereq-add">
+                  <select bind:value={prereqFrom}>
+                    <option value="">{t('seriesEditor.prereqSelectArticle')}</option>
+                    {#each detail.articles as a}
+                      <option value={a.article_uri}>{a.title}</option>
                     {/each}
-                  </div>
-                {/if}
-              {/each}
-              {#if detail.prereqs.length === 0}
-                <p class="hint">{t('seriesEditor.noPrereqs')}</p>
+                  </select>
+                  <span class="prereq-arrow">需要先读</span>
+                  <select bind:value={prereqTo}>
+                    <option value="">{t('seriesEditor.prereqSelectPrereq')}</option>
+                    {#each detail.articles as a}
+                      <option value={a.article_uri}>{a.title}</option>
+                    {/each}
+                  </select>
+                  <button class="add-prereq-btn" onclick={addPrereq} disabled={!prereqFrom || !prereqTo || prereqFrom === prereqTo}>
+                    {t('common.add')}
+                  </button>
+                </div>
+                <div class="prereq-list">
+                  {#each detail.articles as article}
+                    {@const pqs = prereqsFor(article.article_uri)}
+                    {#if pqs.length > 0}
+                      <div class="prereq-group">
+                        <span class="prereq-article">{article.title}</span>
+                        <div class="prereq-tags">
+                          {#each pqs as pq}
+                            <span class="prereq-tag">
+                              {pq.title}
+                              <button class="rm-prereq" onclick={() => delPrereq(article.article_uri, pq.article_uri)}>×</button>
+                            </span>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                  {/each}
+                  {#if detail.prereqs.length === 0}
+                    <p class="sp-hint">{t('seriesEditor.noPrereqs')}</p>
+                  {/if}
+                </div>
               {/if}
             </div>
           {/if}
-        </div>
+        </aside>
       {/if}
-    </main>
+    </div>
+
+    <!-- Footer -->
+    <div class="editor-footer">
+      <span class="footer-status">
+        {#if dirty}
+          <span class="status-unsaved">{t('seriesEditor.unsaved')}</span>
+        {:else if activeFile}
+          <span class="status-saved">{t('version.saved')}</span>
+        {/if}
+      </span>
+      <div class="footer-spacer"></div>
+      <button class="btn btn-outline" onclick={save} disabled={saving || !dirty}>
+        {saving ? t('seriesEditor.saving') : t('common.save')}
+      </button>
+    </div>
+
   </div>
 {/if}
 
 <style>
-  .editor-layout {
+  .editor-page {
     display: flex;
-    height: calc(100vh - 120px);
-    gap: 0;
-    border: 1px solid var(--border);
-    border-radius: 4px;
+    flex-direction: column;
+    height: 100%;
     overflow: hidden;
   }
 
-  /* Sidebar */
-  .sidebar {
+  /* Title area */
+  .editor-title-area {
+    flex-shrink: 0;
+    padding: 8px 16px 6px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-white);
+  }
+  .title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .series-title {
+    font-family: var(--font-serif);
+    font-size: 1.3rem;
+    color: var(--text-primary);
+    font-weight: 400;
+  }
+  .view-link {
+    font-size: 12px;
+    color: var(--text-hint);
+    text-decoration: none;
+  }
+  .view-link:hover { color: var(--accent); }
+  .active-file-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .active-file-name {
+    font-size: 12px;
+    color: var(--text-hint);
+    font-family: var(--font-mono, monospace);
+  }
+  .dirty-dot { color: var(--accent); font-size: 10px; }
+
+  /* Body */
+  .editor-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Left: File panel */
+  .file-panel {
     width: 220px;
     flex-shrink: 0;
-    background: var(--bg-white);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background: var(--bg-white);
+    font-size: 13px;
   }
-  .sidebar-header {
-    padding: 12px 12px 8px;
+  .panel-header {
+    padding: 8px 12px;
     border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
+    background: var(--bg-hover, #fafafa);
   }
-  .series-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .view-link {
-    font-size: 13px;
+  .panel-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--text-hint);
-    text-decoration: none;
-    flex-shrink: 0;
   }
-  .view-link:hover { color: var(--accent); }
-
-  .file-tree {
+  .file-list {
     flex: 1;
     overflow-y: auto;
-    padding: 6px 0;
+    padding: 4px 0;
   }
   .file-item {
     display: flex;
     align-items: center;
     gap: 6px;
-    width: 100%;
-    padding: 5px 10px 5px 12px;
-    border: none;
-    background: none;
-    text-align: left;
+    padding: 5px 10px 5px 14px;
     cursor: pointer;
-    font-size: 13px;
     color: var(--text-secondary);
     transition: background 0.1s;
+    border-radius: 0;
   }
   .file-item:hover { background: rgba(95,155,101,0.06); }
-  .file-item.active {
-    background: rgba(95,155,101,0.1);
-    color: var(--accent);
-  }
-  .file-icon { flex-shrink: 0; font-size: 12px; }
+  .file-item.active { background: rgba(95,155,101,0.1); color: var(--accent); }
   .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .del-btn {
     opacity: 0;
@@ -413,7 +485,6 @@
   }
   .file-item:hover .del-btn { opacity: 1; }
   .del-btn:hover { color: #c33; }
-
   .new-file-row {
     display: flex;
     gap: 4px;
@@ -439,7 +510,7 @@
   }
   .add-file-btn {
     width: 100%;
-    padding: 6px 12px;
+    padding: 6px 14px;
     border: none;
     background: none;
     text-align: left;
@@ -449,176 +520,44 @@
   }
   .add-file-btn:hover { color: var(--accent); }
 
-  .compile-section {
-    padding: 10px 12px;
-    border-top: 1px solid var(--border);
-  }
-  .compile-btn {
-    width: 100%;
-    padding: 7px 0;
-    font-size: 13px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-  .compile-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .compile-ok {
-    margin: 6px 0 0;
-    font-size: 12px;
-    color: var(--accent);
-  }
-  .compile-error {
-    margin: 6px 0 0;
-    font-size: 12px;
-    color: #c33;
-  }
-
-  /* Tab bar */
-  .tab-bar {
-    display: flex;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .tab {
-    padding: 7px 16px;
-    font-size: 13px;
-    border: none;
-    background: none;
-    cursor: pointer;
-    color: var(--text-secondary);
-    border-bottom: 2px solid transparent;
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .tab:hover { color: var(--text-primary); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab-count {
-    font-size: 11px;
-    background: rgba(95,155,101,0.15);
-    color: var(--accent);
-    padding: 1px 5px;
-    border-radius: 10px;
-  }
-
-  /* Prereq pane */
-  .prereq-pane {
+  /* Center: Editor */
+  .editor-main {
     flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-  }
-  .prereq-add {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
+    min-width: 0;
+    position: relative;
   }
-  .prereq-add select {
-    padding: 6px 8px;
-    font-size: 13px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    max-width: 220px;
-  }
-  .arrow { font-size: 13px; color: var(--text-hint); }
-  .add-prereq-btn {
-    padding: 6px 14px;
-    font-size: 13px;
-    background: var(--accent);
-    color: white;
+  .panel-tab {
+    width: 14px;
+    flex-shrink: 0;
+    background: var(--bg-hover, #fafafa);
     border: none;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .add-prereq-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .prereq-list { display: flex; flex-direction: column; gap: 10px; }
-  .prereq-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-    font-size: 13px;
-  }
-  .prereq-article { font-weight: 500; color: var(--text-primary); }
-  .prereq-needs { color: var(--text-hint); }
-  .prereq-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    background: rgba(95,155,101,0.1);
-    color: var(--accent);
-    padding: 2px 8px;
-    border-radius: 3px;
-    font-size: 12px;
-  }
-  .rm-prereq {
-    background: none;
-    border: none;
+    border-right: 1px solid var(--border);
     cursor: pointer;
     color: var(--text-hint);
-    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 0;
-    line-height: 1;
+    transition: background 0.15s, color 0.15s;
   }
-  .rm-prereq:hover { color: #c33; }
-  .hint { font-size: 13px; color: var(--text-hint); }
-
-  /* Editor pane */
-  .editor-pane {
+  .panel-tab-right {
+    border-right: none;
+    border-left: 1px solid var(--border);
+  }
+  .panel-tab:hover { background: var(--bg-gray, #f0f0f0); color: var(--accent); }
+  .editor-content {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg-white);
+    min-width: 0;
   }
-  .editor-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-white);
-    flex-shrink: 0;
-  }
-  .current-file {
-    font-size: 12px;
-    color: var(--text-hint);
-    font-family: var(--font-mono, monospace);
-  }
-  .dirty-dot {
-    color: var(--accent);
-    font-size: 10px;
-  }
-  .save-btn {
-    margin-left: auto;
-    padding: 4px 12px;
-    font-size: 12px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: none;
-    cursor: pointer;
-    color: var(--text-secondary);
-    transition: all 0.15s;
-  }
-  .save-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .wysiwyg-wrap {
-    flex: 1;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-  .code-editor {
+  .editor-textarea {
     flex: 1;
     width: 100%;
     padding: 16px;
-    font-family: var(--font-mono, 'Fira Code', 'Consolas', monospace);
+    font-family: var(--font-mono, monospace);
     font-size: 14px;
     line-height: 1.6;
     border: none;
@@ -627,9 +566,7 @@
     background: var(--bg-white);
     color: var(--text-primary);
     box-sizing: border-box;
-    tab-size: 2;
   }
-
   .no-file {
     flex: 1;
     display: flex;
@@ -638,4 +575,133 @@
     color: var(--text-hint);
     font-size: 14px;
   }
+
+  /* Right: Settings panel */
+  .settings-panel {
+    width: 240px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-white);
+    font-size: 13px;
+  }
+  .sp-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .sp-tab {
+    flex: 1;
+    padding: 8px 4px;
+    font-size: 12px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .sp-tab:hover { color: var(--text-primary); }
+  .sp-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .sp-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sp-hint {
+    font-size: 12px;
+    color: var(--text-hint);
+    line-height: 1.5;
+    margin: 0;
+  }
+  .compile-btn {
+    width: 100%;
+    padding: 8px 0;
+    font-size: 13px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .compile-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .compile-ok { font-size: 12px; color: var(--accent); margin: 0; }
+  .compile-error { font-size: 12px; color: #c33; margin: 0; }
+
+  /* Prereq editor */
+  .prereq-add {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .prereq-add select {
+    width: 100%;
+    padding: 5px 6px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+  }
+  .prereq-arrow { font-size: 12px; color: var(--text-hint); text-align: center; }
+  .add-prereq-btn {
+    padding: 5px 0;
+    font-size: 12px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    width: 100%;
+  }
+  .add-prereq-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .prereq-list { display: flex; flex-direction: column; gap: 8px; }
+  .prereq-group { display: flex; flex-direction: column; gap: 3px; }
+  .prereq-article { font-weight: 500; font-size: 12px; color: var(--text-primary); }
+  .prereq-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .prereq-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(95,155,101,0.1);
+    color: var(--accent);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+  .rm-prereq {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-hint); font-size: 12px; padding: 0; line-height: 1;
+  }
+  .rm-prereq:hover { color: #c33; }
+
+  /* Footer */
+  .editor-footer {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-white);
+  }
+  .footer-spacer { flex: 1; }
+  .status-unsaved { font-size: 12px; color: var(--text-hint); }
+  .status-saved { font-size: 12px; color: var(--accent); }
+  .btn {
+    padding: 6px 16px;
+    font-size: 13px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-secondary);
+    transition: all 0.15s;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-outline { /* same as .btn */ }
 </style>

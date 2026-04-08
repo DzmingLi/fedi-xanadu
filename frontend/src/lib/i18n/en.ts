@@ -259,8 +259,13 @@ export default {
   // Series editor
   'seriesEditor.viewSeries': 'View series',
   'seriesEditor.newFile': 'New file',
+  'seriesEditor.files': 'Files',
   'seriesEditor.compile': 'Compile',
   'seriesEditor.compiling': 'Compiling...',
+  'seriesEditor.compileHint': 'Compile splits chapter files by headings and generates individual articles.',
+  'seriesEditor.compileHeadings': 'headings',
+  'seriesEditor.compileCreated': 'created',
+  'seriesEditor.compileUpdated': 'updated',
   'seriesEditor.save': 'Save',
   'seriesEditor.saving': 'Saving...',
   'seriesEditor.unsaved': 'Unsaved changes',
