@@ -189,34 +189,24 @@
 
         const textBefore = cursor.parent.textBetween(0, cursor.parentOffset, null, '\ufffc');
 
-        // $$formula$$ → display math block
-        const ddMatch = /^\$\$([^$\n]+)\$$/.exec(textBefore);
-        if (ddMatch) {
-          const formula = ddMatch[1].trim();
-          if (formula) {
-            const paraStart = cursor.before();
-            const paraEnd   = paraStart + cursor.parent.nodeSize;
-            const block = typstSchema.nodes.math_block.create(null, [typstSchema.text(formula)]);
-            const tr = state.tr.replaceWith(paraStart, paraEnd, block);
-            // Cursor after the block
-            view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(paraStart) + block.nodeSize)));
-            return true;
-          }
-        }
-
-        // $$ or "$ " → empty display math block, cursor inside
-        if (textBefore === '$' || /^\$\s+$/.test(textBefore)) {
+        // "$ " (dollar + space) in empty paragraph → empty display math block, cursor inside
+        if (/^\$\s+$/.test(textBefore)) {
           const paraStart = cursor.before();
           const paraEnd   = paraStart + cursor.parent.nodeSize;
           const block = typstSchema.nodes.math_block.create(null, []);
           const tr = state.tr.replaceWith(paraStart, paraEnd, block);
-          // Cursor inside the block (position 1 past the opening token)
           view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(paraStart) + 1)));
           return true;
         }
 
-        // Don't fire inline math on the first closing $ of $$formula$$
-        if (/^\$\$/.test(textBefore)) return false;
+        // "$" → empty inline math node, cursor inside (user typed $$ with nothing between)
+        if (textBefore === '$') {
+          const start = cursor.pos - 1;
+          const inlineNode = typstSchema.nodes.math_inline.create(null, []);
+          const tr = state.tr.replaceWith(start, cursor.pos, inlineNode);
+          view.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(start) + 1)));
+          return true;
+        }
 
         // $formula$ → inline math, cursor after
         const m = /\$([^$\n]{1,200})$/.exec(textBefore);
