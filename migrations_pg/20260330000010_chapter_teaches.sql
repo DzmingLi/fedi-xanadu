@@ -1,3 +1,0 @@
--- Chapters can teach tags (reuse content_teaches with content_uri = 'chapter:<id>')
--- No schema change needed — content_teaches already accepts any content_uri string.
--- This migration is a no-op marker for documentation.
