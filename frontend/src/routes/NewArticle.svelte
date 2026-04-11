@@ -1,10 +1,10 @@
 <script lang="ts">
   import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveArticle, recordArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, getArticleHistory, getArticleDiff, unrecordArticleChange, listArticleCollaborators, inviteArticleCollaborator, removeArticleCollaborator, listArticleChannels, readArticleChannelFile, writeArticleChannelFile, articleChannelDiff, applyArticleChannelChange } from '../lib/api';
-  import ChannelPanel from '../lib/components/ChannelPanel.svelte';
+  import ChannelPanel from 'pijul-editor/ChannelPanel.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getLangPrefs } from '../lib/langPrefs.svelte';
-  import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
-  import TypstEditor from '../lib/components/TypstEditor.svelte';
+  import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
+  import TypstEditor from 'pijul-editor/TypstEditor.svelte';
   import type { Tag, Article, BookEdition, ContentFormat, PrereqType, ArticleVersionInfo, VersionDiff } from '../lib/types';
 
   let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
@@ -1011,6 +1011,7 @@
               <ChannelPanel
                 currentChannel={currentArticleChannel}
                 channels={articleChannels}
+                currentUserDid={getAuth()?.did || ''}
                 onChannelChange={(ch) => { currentArticleChannel = ch; }}
                 fetchCollaborators={() => listArticleCollaborators(savedArticleUri)}
                 doInvite={(did) => inviteArticleCollaborator(savedArticleUri, did).then(() => {})}

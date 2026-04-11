@@ -9,9 +9,9 @@
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import type { SeriesDetail, SeriesArticle } from '../lib/types';
-  import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
-  import TypstEditor from '../lib/components/TypstEditor.svelte';
-  import ChannelPanel from '../lib/components/ChannelPanel.svelte';
+  import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
+  import TypstEditor from 'pijul-editor/TypstEditor.svelte';
+  import ChannelPanel from 'pijul-editor/ChannelPanel.svelte';
 
   let { id } = $props<{ id: string }>();
 
@@ -372,6 +372,7 @@
               <ChannelPanel
                 {currentChannel}
                 {channels}
+                currentUserDid={getAuth()?.did || ''}
                 onChannelChange={switchChannel}
                 fetchCollaborators={() => listCollaborators(id)}
                 doInvite={(did) => inviteCollaborator(id, did).then(() => {})}

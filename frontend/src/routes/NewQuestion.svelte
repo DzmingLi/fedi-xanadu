@@ -4,7 +4,7 @@
   import { getAuth } from '../lib/auth.svelte';
   import { toast } from '../lib/components/Toast.svelte';
   import type { Tag, ContentFormat } from '../lib/types';
-  import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
+  import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
 
   let locale = $derived(getLocale());
 
