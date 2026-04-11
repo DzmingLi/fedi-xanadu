@@ -7,6 +7,7 @@ mod blocks;
 mod bookmarks;
 pub(crate) mod books;
 mod comments;
+mod discussions;
 mod drafts;
 mod follows;
 mod graph;
@@ -72,6 +73,7 @@ pub fn routes() -> Router<AppState> {
         .merge(article_routes())
         .merge(vote_routes())
         .merge(comment_routes())
+        .merge(discussion_routes())
         .merge(skill_routes())
         .merge(skill_tree_routes())
         .merge(bookmark_routes())
@@ -249,6 +251,15 @@ fn series_routes() -> Router<AppState> {
         .route("/series/{id}/channel/{channel}/log", get(series::channel_log))
         .route("/series/{id}/channel/{channel}/apply", post(series::apply_channel_change))
         .route("/series/{id}/channel-diff", get(series::channel_diff))
+}
+
+fn discussion_routes() -> Router<AppState> {
+    Router::new()
+        .route("/discussions", get(discussions::list_discussions).post(discussions::create_discussion))
+        .route("/discussions/{id}", get(discussions::get_discussion))
+        .route("/discussions/{id}/status", put(discussions::update_status))
+        .route("/discussions/{id}/apply", post(discussions::apply_discussion_change))
+        .route("/discussions/{id}/apply-all", post(discussions::apply_all_discussion_changes))
 }
 
 fn notification_routes() -> Router<AppState> {

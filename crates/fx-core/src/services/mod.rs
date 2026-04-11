@@ -21,3 +21,4 @@ pub mod book_service;
 pub mod member_service;
 pub mod version_service;
 pub mod collaboration_service;
+pub mod discussion_service;

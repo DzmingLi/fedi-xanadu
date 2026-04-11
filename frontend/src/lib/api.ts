@@ -244,6 +244,42 @@ export interface ArticleCollaborator {
   created_at: string;
 }
 
+// Discussions
+export interface Discussion {
+  id: string;
+  target_uri: string;
+  source_uri: string;
+  author_did: string;
+  title: string;
+  body: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+export interface DiscussionChange {
+  id: number;
+  discussion_id: string;
+  change_hash: string;
+  added_by: string;
+  added_at: string;
+  applied: boolean;
+  applied_at: string | null;
+}
+export interface DiscussionDetail {
+  discussion: Discussion;
+  changes: DiscussionChange[];
+}
+export const createDiscussion = (data: { target_uri: string; source_uri: string; title: string; body?: string; change_hashes: string[] }) =>
+  post<Discussion>('/discussions', data);
+export const listDiscussions = (uri: string) => get<Discussion[]>(`/discussions?uri=${encodeURIComponent(uri)}`);
+export const getDiscussion = (id: string) => get<DiscussionDetail>(`/discussions/${encodeURIComponent(id)}`);
+export const updateDiscussionStatus = (id: string, status: string) =>
+  put<void>(`/discussions/${encodeURIComponent(id)}/status`, { status });
+export const applyDiscussionChange = (id: string, changeHash: string) =>
+  post<{ has_conflicts: boolean }>(`/discussions/${encodeURIComponent(id)}/apply`, { change_hash: changeHash });
+export const applyAllDiscussionChanges = (id: string) =>
+  post<{ has_conflicts: boolean; applied: number }>(`/discussions/${encodeURIComponent(id)}/apply-all`, {});
+
 // Skill Trees
 export const listSkillTrees = () => get<SkillTree[]>('/skill-trees');
 export const getSkillTree = (uri: string) => get<SkillTreeDetail>(`/skill-trees/by-uri?uri=${encodeURIComponent(uri)}`);

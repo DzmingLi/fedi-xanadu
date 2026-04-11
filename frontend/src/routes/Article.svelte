@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport, getForkAhead, applyChange } from '../lib/api';
+  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport, getForkAhead, applyChange, listDiscussions, createDiscussion } from '../lib/api';
+  import type { Discussion } from '../lib/api';
   import ArticleHistory from '../lib/components/ArticleHistory.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import { tagName } from '../lib/display';
@@ -65,6 +66,14 @@
   let forkAheadMap = $state(new Map<string, string[]>());
   let forkAheadLoading = $state(new Set<string>());
   let applyingChange = $state('');
+
+  // Discussions
+  let discussions = $state<Discussion[]>([]);
+  let openDiscussions = $derived(discussions.filter(d => d.status === 'open'));
+  let showCreateDisc = $state(false);
+  let discTitle = $state('');
+  let discBody = $state('');
+  let creatingDisc = $state(false);
   let commentThread: CommentThread | undefined = $state();
 
   $effect(() => {
@@ -105,6 +114,8 @@
         bookmarks = bookmarks.filter(b => b.article_uri !== uri);
       }
       commentThread?.loadComments();
+      // Load discussions
+      listDiscussions(uri).then(d => { discussions = d; }).catch(() => {});
     }).catch(e => {
       if (ac.signal.aborted) return;
       error = e.message;
@@ -219,6 +230,26 @@
       forkAheadMap = new Map(forkAheadMap);
     } catch { /* */ }
     applyingChange = '';
+  }
+
+  async function doCreateDiscussion() {
+    if (!article || !forkSource || !discTitle.trim()) return;
+    creatingDisc = true;
+    try {
+      const ahead = await getForkAhead(uri, forkSource);
+      const disc = await createDiscussion({
+        target_uri: forkSource,
+        source_uri: uri,
+        title: discTitle.trim(),
+        body: discBody.trim() || undefined,
+        change_hashes: ahead,
+      });
+      showCreateDisc = false;
+      discTitle = '';
+      discBody = '';
+      window.location.hash = `#/discussion?id=${encodeURIComponent(disc.id)}`;
+    } catch { /* */ }
+    creatingDisc = false;
   }
 
   function doEdit() {
@@ -618,6 +649,13 @@ try {
           </button>
         {/if}
 
+        {#if forkSource && isOwner}
+          <button class="action-btn labeled-btn" onclick={() => { showCreateDisc = true; }} title="提交贡献给原文">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            <span class="btn-label">提交贡献</span>
+          </button>
+        {/if}
+
         {#if isLoggedIn && !isOwner}
           <div class="action-separator"></div>
           <button class="action-btn" onclick={() => { reportOpen = true; }} title={t('report.report')}>
@@ -688,6 +726,44 @@ try {
               {/if}
             </div>
           {/if}
+        </div>
+      {/if}
+
+      <!-- Create discussion modal -->
+      {#if showCreateDisc}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="report-overlay" onclick={() => { showCreateDisc = false; }}>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="report-modal" onclick={(e) => e.stopPropagation()}>
+            <h3>提交贡献</h3>
+            <p class="disc-hint">将此 fork 的修改提交给原文作者审查</p>
+            <input type="text" class="disc-title-input" placeholder="标题（例如：修正定理 3.2 的证明）" bind:value={discTitle} />
+            <textarea class="disc-body-input" placeholder="说明（可选）" bind:value={discBody} rows="3"></textarea>
+            <div class="disc-modal-actions">
+              <button onclick={() => { showCreateDisc = false; }}>取消</button>
+              <button class="disc-submit-btn" onclick={doCreateDiscussion} disabled={creatingDisc || !discTitle.trim()}>
+                {creatingDisc ? '提交中...' : '提交'}
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Open discussions -->
+      {#if discussions.length > 0}
+        <div class="discussions-section">
+          <h3>Discussions ({openDiscussions.length} 个开放)</h3>
+          {#each discussions.slice(0, 5) as d (d.id)}
+            <a href="#/discussion?id={encodeURIComponent(d.id)}" class="disc-link">
+              <span class="disc-link-title">{d.title}</span>
+              <span class="disc-link-status {d.status === 'open' ? 'status-open' : d.status === 'merged' ? 'status-merged' : 'status-closed'}">
+                {d.status === 'open' ? '开放' : d.status === 'merged' ? '已合并' : '已关闭'}
+              </span>
+              <span class="disc-link-date">{d.created_at.split('T')[0]}</span>
+            </a>
+          {/each}
         </div>
       {/if}
 
@@ -1382,6 +1458,84 @@ try {
   }
   .fork-apply-btn:hover { background: var(--accent); color: white; }
   .fork-apply-btn:disabled { opacity: 0.5; cursor: wait; }
+
+  /* Discussions */
+  .discussions-section {
+    margin: 16px 0;
+  }
+  .discussions-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0 0 8px;
+  }
+  .disc-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .disc-link:last-child { border-bottom: none; }
+  .disc-link-title {
+    flex: 1;
+    font-size: 14px;
+    color: var(--text-primary);
+  }
+  .disc-link:hover .disc-link-title { color: var(--accent); }
+  .disc-link-status {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .disc-link-date {
+    font-size: 11px;
+    color: var(--text-hint);
+  }
+  .disc-hint {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 12px;
+  }
+  .disc-title-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 14px;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+  }
+  .disc-body-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    resize: vertical;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+  }
+  .disc-modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .disc-modal-actions button {
+    padding: 6px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: none;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .disc-submit-btn {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: white !important;
+  }
+  .disc-submit-btn:disabled { opacity: 0.5; cursor: not-allowed !important; }
 
   /* Access control panel */
   .access-panel {

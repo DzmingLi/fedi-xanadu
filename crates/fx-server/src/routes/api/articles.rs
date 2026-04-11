@@ -1600,7 +1600,7 @@ pub async fn apply_change(
 }
 
 /// Sync meta.json from pijul repo to DB after applying changes.
-async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_path: &std::path::Path) {
+pub(super) async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_path: &std::path::Path) {
     let meta = match fx_core::meta::read_meta_file(repo_path) {
         Some(m) => m,
         None => return,

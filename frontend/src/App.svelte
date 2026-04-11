@@ -47,6 +47,7 @@
   const lazyBookDetail = () => import('./routes/BookDetail.svelte');
   const lazyBookEdition = () => import('./routes/BookEdition.svelte');
   const lazySeriesEditor = () => import('./routes/SeriesEditor.svelte');
+  const lazyDiscussion = () => import('./routes/Discussion.svelte');
 </script>
 
 <Toast />
@@ -144,6 +145,10 @@
     {:else if route.page === 'skill-tree-new'}
       {#await lazyNewSkillTree() then mod}
         <mod.default />
+      {/await}
+    {:else if route.page === 'discussion'}
+      {#await lazyDiscussion() then mod}
+        <mod.default id={route.params.id || ''} />
       {/await}
     {:else if route.page === 'forks'}
       {#await lazyForks() then mod}
