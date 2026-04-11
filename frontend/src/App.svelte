@@ -209,16 +209,16 @@
     overflow: hidden;
   }
   .top-nav-series {
-    max-width: 1100px;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 0 1rem;
   }
   .container-series {
-    max-width: 1100px;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 0 1rem;
     display: flex;
-    gap: 0;
+    gap: 1.5rem;
   }
   .top-nav {
     max-width: 760px;

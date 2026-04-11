@@ -177,6 +177,7 @@ export const getSeriesHeadings = (id: string) => get<SeriesHeading[]>(`/series/$
 export const reorderSeriesArticles = (series_id: string, article_uris: string[]) =>
   put<void>(`/series/${encodeURIComponent(series_id)}/articles/reorder`, { article_uris });
 export const compileSeries = (id: string) => post<{ articles_created: number; articles_updated: number; total_headings: number }>(`/series/${encodeURIComponent(id)}/compile`, {});
+export const forkSeries = (id: string) => post<Series>(`/series/${encodeURIComponent(id)}/fork`, {});
 export const listSeriesFiles = (id: string) => get<{ path: string; size: number }[]>(`/series/${encodeURIComponent(id)}/files`);
 export const readSeriesFile = (id: string, path: string) => get<string>(`/series/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`);
 export const writeSeriesFile = (id: string, path: string, content: string, message?: string) =>

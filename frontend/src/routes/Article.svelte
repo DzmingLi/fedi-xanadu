@@ -412,18 +412,22 @@ try {
   <p class="meta">Loading...</p>
 {:else}
   {#if seriesId}
-    <div class="series-left-col">
-      <SeriesSidebar {seriesId} currentUri={uri} />
+    <div class="series-left-panel">
+      <div class="series-left-col">
+        <SeriesSidebar {seriesId} currentUri={uri} />
+      </div>
       {#if tocItems.length > 0}
-        <nav class="toc toc-in-sidebar">
-          <ul>
-            {#each tocItems as item}
-              <li class="toc-{item.level}" class:active={activeId === item.id}>
-                <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
-              </li>
-            {/each}
-          </ul>
-        </nav>
+        <div class="series-toc-col">
+          <nav class="toc toc-in-sidebar">
+            <ul>
+              {#each tocItems as item}
+                <li class="toc-{item.level}" class:active={activeId === item.id}>
+                  <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
+                </li>
+              {/each}
+            </ul>
+          </nav>
+        </div>
       {/if}
     </div>
   {/if}
@@ -665,14 +669,20 @@ try {
 
 <style>
 
-  .series-left-col {
-    width: 260px;
-    flex-shrink: 0;
+  .series-left-panel {
     display: flex;
-    flex-direction: column;
+    gap: 0;
+    flex-shrink: 0;
     position: sticky;
     top: 4rem;
     max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+  }
+  .series-left-col {
+    width: 220px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
     border-right: 1px solid var(--border);
   }
@@ -683,14 +693,19 @@ try {
     border-right: none;
     width: auto;
   }
+  .series-toc-col {
+    width: 200px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+  }
   .toc-in-sidebar {
-    border-top: 1px solid var(--border);
     padding: 12px 16px;
     margin: 0;
   }
 
   @media (max-width: 860px) {
-    .series-left-col { display: none; }
+    .series-left-panel { display: none; }
   }
 
   .article-layout {

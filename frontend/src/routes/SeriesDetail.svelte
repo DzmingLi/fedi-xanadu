@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { getSeries, getSeriesHeadings, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks } from '../lib/api';
+  import { getSeries, getSeriesHeadings, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks, getMyVote, forkSeries } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
+  import CommentThread from '../lib/components/CommentThread.svelte';
   import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, SeriesHeading, VoteSummary, BookmarkWithTitle } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
@@ -39,6 +40,12 @@
 
   // Bookmarks
   let bookmarkedUris = $state(new Set<string>());
+
+  // Series-level vote
+  let seriesVotes = $state<VoteSummary | null>(null);
+  let mySeriesVote = $state(0);
+  let commentThread: CommentThread | undefined = $state();
+  let forking = $state(false);
 
   let isLoggedIn = $derived(!!getAuth());
   let isOwner = $derived(isLoggedIn && detail?.series.created_by === getAuth()?.did);
@@ -81,6 +88,15 @@
       articleVotes = voteMap;
 
       if (bks) bookmarkedUris = new Set(bks.map(b => b.article_uri));
+
+      // Fetch series-level vote
+      const seriesUri = `series:${id}`;
+      const [sv, mv] = await Promise.all([
+        getVotesBatch([seriesUri]).then(r => r?.[0] ?? null).catch(() => null),
+        getAuth() ? getMyVote(seriesUri).then(r => r.value).catch(() => 0) : Promise.resolve(0),
+      ]);
+      seriesVotes = sv ?? { target_uri: seriesUri, score: 0, upvotes: 0, downvotes: 0 };
+      mySeriesVote = mv;
     } catch (e: any) {
       error = e.message || 'Failed to load series';
     }
@@ -109,6 +125,25 @@
         bookmarkedUris = new Set(bookmarkedUris);
       }
     } catch { /* */ }
+  }
+
+  async function doSeriesVote(value: number) {
+    if (!isLoggedIn) return;
+    const seriesUri = `series:${id}`;
+    const newValue = mySeriesVote === value ? 0 : value;
+    seriesVotes = await castVote(seriesUri, newValue);
+    mySeriesVote = newValue;
+  }
+
+  async function doForkSeries() {
+    if (!isLoggedIn || forking) return;
+    forking = true;
+    try {
+      const forked = await forkSeries(id);
+      window.location.hash = `#/series?id=${encodeURIComponent(forked.id)}`;
+    } catch {
+      forking = false;
+    }
   }
 
   // Build a map of prereqs for visualization
@@ -173,9 +208,6 @@
   <div class="series-header">
     <div class="series-title-row">
       <h1>{detail.series.title}</h1>
-      {#if isOwner}
-        <a href="#/series-editor?id={encodeURIComponent(id)}" class="edit-link">{t('common.edit')}</a>
-      {/if}
     </div>
     {#if detail.series.long_description}
       <p class="series-long-desc">{detail.series.long_description}</p>
@@ -235,6 +267,35 @@
       {/each}
     </div>
   {/if}
+
+  <!-- Action bar -->
+  <div class="action-bar">
+    <div class="action-group">
+      <button class="action-btn" class:active={mySeriesVote > 0} onclick={() => doSeriesVote(1)} disabled={!isLoggedIn} title={isLoggedIn ? t('article.upvote') : t('article.loginToVote')}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill={mySeriesVote > 0 ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
+      </button>
+      <span class="action-score">{seriesVotes?.score ?? 0}</span>
+      <button class="action-btn" class:active={mySeriesVote < 0} onclick={() => doSeriesVote(-1)} disabled={!isLoggedIn} title={isLoggedIn ? t('article.downvote') : t('article.loginToVote')}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill={mySeriesVote < 0 ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/></svg>
+      </button>
+    </div>
+
+    <button class="action-btn labeled-btn" onclick={doForkSeries} disabled={!isLoggedIn || forking} title={t('article.fork')}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
+      <span class="btn-label">{forking ? '...' : t('article.fork')}</span>
+    </button>
+
+    {#if isOwner}
+      <div class="action-separator"></div>
+      <a href="#/series-editor?id={encodeURIComponent(id)}" class="action-btn labeled-btn" title={t('common.edit')}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span class="btn-label">{t('common.edit')}</span>
+      </a>
+    {/if}
+  </div>
+
+  <!-- Comments -->
+  <CommentThread bind:this={commentThread} contentUri={`series:${id}`} />
 {/if}
 
 <style>
@@ -480,5 +541,67 @@
     color: var(--text-secondary);
     display: block;
     margin-top: 4px;
+  }
+
+  /* Action bar */
+  .action-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2rem;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .action-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 6px;
+  }
+  .action-bar .action-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    color: var(--text-hint);
+    transition: all 0.15s;
+    text-decoration: none;
+  }
+  .action-bar .action-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .action-bar .action-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .action-bar .action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .labeled-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .btn-label {
+    font-size: 12px;
+  }
+  .action-score {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 20px;
+    text-align: center;
+  }
+  .action-separator {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 4px;
   }
 </style>
