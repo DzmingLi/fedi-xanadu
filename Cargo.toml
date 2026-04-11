@@ -18,7 +18,7 @@ repository = "https://github.com/DzmingLi/fedi-xanadu"
 
 [workspace.dependencies]
 fx-core = { path = "crates/fx-core" }
-pijul-knot = { path = "../pijul-knot" }
+pijul-knot = { git = "https://github.com/DzmingLi/pijul-knot.git" }
 fx-atproto = { path = "crates/fx-atproto" }
 fx-search = { path = "crates/fx-search" }
 fx-render = { path = "crates/fx-render" }

@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "pijul-editor": "file:../../pijul-editor",
+    "pijul-editor": "git+https://github.com/DzmingLi/pijul-editor.git",
     "cytoscape": "^3.31.0",
     "cytoscape-dagre": "^2.5.0",
     "katex": "^0.16.42",

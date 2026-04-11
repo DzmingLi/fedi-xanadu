@@ -3180,6 +3180,7 @@ dependencies = [
 [[package]]
 name = "pijul-knot"
 version = "0.1.0"
+source = "git+https://github.com/DzmingLi/pijul-knot.git#b047bf906e7c7521596b4e8a2b6a49db412e7121"
 dependencies = [
  "anyhow",
  "axum",
