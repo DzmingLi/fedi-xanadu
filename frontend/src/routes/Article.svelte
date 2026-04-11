@@ -67,7 +67,8 @@
   let forkAheadLoading = $state(new Set<string>());
   let applyingChange = $state('');
 
-  // Discussions
+  // Discussions / PR
+  let prTab = $state<'pr' | 'forks'>('pr');
   let discussions = $state<Discussion[]>([]);
   let openDiscussions = $derived(discussions.filter(d => d.status === 'open'));
   let showCreateDisc = $state(false);
@@ -764,79 +765,97 @@ try {
       <!-- Comments -->
       <CommentThread bind:this={commentThread} contentUri={uri} {contentEl} />
 
-      <!-- Pull Requests -->
-      {#if discussions.length > 0 || (isOwner && forks.length > 0)}
+      <!-- Pull Requests & Forks -->
+      {#if discussions.length > 0 || forks.length > 0}
         <details class="pr-section">
           <summary>
-            Pull Requests
+            Pull Requests & Forks
             {#if openDiscussions.length > 0}
-              <span class="pr-count">{openDiscussions.length}</span>
+              <span class="pr-count">{openDiscussions.length} PR</span>
+            {/if}
+            {#if forks.length > 0}
+              <span class="pr-forks-count">{forks.length} Forks</span>
             {/if}
           </summary>
           <div class="pr-body">
-            <!-- Discussion list -->
-            {#if discussions.length > 0}
-              <div class="pr-list">
-                {#each discussions as d (d.id)}
-                  <a href="#/discussion?id={encodeURIComponent(d.id)}" class="disc-link">
-                    <span class="disc-link-title">{d.title}</span>
-                    <span class="disc-link-status {d.status === 'open' ? 'status-open' : d.status === 'merged' ? 'status-merged' : 'status-closed'}">
-                      {d.status === 'open' ? '开放' : d.status === 'merged' ? '已合并' : '已关闭'}
-                    </span>
-                    <span class="disc-link-date">{d.created_at.split('T')[0]}</span>
-                  </a>
-                {/each}
-              </div>
-            {/if}
+            <!-- PR tab bar -->
+            <div class="pr-tabs">
+              <button class="pr-tab" class:active={prTab === 'pr'} onclick={() => { prTab = 'pr'; }}>
+                PR ({discussions.length})
+              </button>
+              <button class="pr-tab" class:active={prTab === 'forks'} onclick={() => { prTab = 'forks'; }}>
+                Forks ({forks.length})
+              </button>
+            </div>
 
-            <!-- Fork contributions (owner only, for forks without discussions) -->
-            {#if isOwner && forks.length > 0}
-              <div class="pr-forks">
-                <h4>Fork 贡献</h4>
-                {#each forks as f (f.fork_uri)}
-                  <div class="fork-contrib-item">
-                    <div class="fork-contrib-header">
-                      <a href="#/article?uri={encodeURIComponent(f.forked_uri)}" class="fork-contrib-title">{f.title}</a>
-                      <span class="fork-contrib-author">{f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}</span>
-                      <span class="fork-contrib-score">+{f.vote_score}</span>
-                      <button
-                        class="fork-expand-btn"
-                        onclick={() => loadForkAhead(f.forked_uri)}
-                        disabled={forkAheadLoading.has(f.forked_uri)}
-                      >
-                        {#if forkAheadLoading.has(f.forked_uri)}
-                          ...
-                        {:else if forkAheadMap.has(f.forked_uri)}
-                          收起
+            {#if prTab === 'pr'}
+              {#if discussions.length === 0}
+                <p class="pr-empty">暂无 Pull Request</p>
+              {:else}
+                <div class="pr-list">
+                  {#each discussions as d (d.id)}
+                    <a href="#/discussion?id={encodeURIComponent(d.id)}" class="disc-link">
+                      <span class="disc-link-title">{d.title}</span>
+                      <span class="disc-link-status {d.status === 'open' ? 'status-open' : d.status === 'merged' ? 'status-merged' : 'status-closed'}">
+                        {d.status === 'open' ? '开放' : d.status === 'merged' ? '已合并' : '已关闭'}
+                      </span>
+                      <span class="disc-link-date">{d.created_at.split('T')[0]}</span>
+                    </a>
+                  {/each}
+                </div>
+              {/if}
+            {:else}
+              {#if forks.length === 0}
+                <p class="pr-empty">暂无 Fork</p>
+              {:else}
+                <div class="pr-fork-list">
+                  {#each forks as f (f.fork_uri)}
+                    <div class="fork-contrib-item">
+                      <div class="fork-contrib-header">
+                        <a href="#/article?uri={encodeURIComponent(f.forked_uri)}" class="fork-contrib-title">{f.title}</a>
+                        <span class="fork-contrib-author">{f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}</span>
+                        <span class="fork-contrib-score">+{f.vote_score}</span>
+                        <button
+                          class="fork-expand-btn"
+                          onclick={() => loadForkAhead(f.forked_uri)}
+                          disabled={forkAheadLoading.has(f.forked_uri)}
+                        >
+                          {#if forkAheadLoading.has(f.forked_uri)}
+                            ...
+                          {:else if forkAheadMap.has(f.forked_uri)}
+                            收起
+                          {:else}
+                            查看 changes
+                          {/if}
+                        </button>
+                      </div>
+                      {#if forkAheadMap.has(f.forked_uri)}
+                        {@const ahead = forkAheadMap.get(f.forked_uri)!}
+                        {#if ahead.length === 0}
+                          <p class="fork-no-changes">与原文完全同步</p>
                         {:else}
-                          查看 changes
+                          <div class="fork-changes-list">
+                            {#each ahead as hash}
+                              <div class="fork-change-row">
+                                <code class="fork-change-hash">{hash.slice(0, 16)}…</code>
+                                {#if isOwner}
+                                  <button
+                                    class="fork-apply-btn"
+                                    onclick={() => applyForkChange(f.forked_uri, hash)}
+                                    disabled={applyingChange === hash}
+                                  >
+                                    {applyingChange === hash ? '...' : '应用'}
+                                  </button>
+                                {/if}
+                              </div>
+                            {/each}
+                          </div>
                         {/if}
-                      </button>
-                    </div>
-                    {#if forkAheadMap.has(f.forked_uri)}
-                      {@const ahead = forkAheadMap.get(f.forked_uri)!}
-                      {#if ahead.length === 0}
-                        <p class="fork-no-changes">无领先的 changes</p>
-                      {:else}
-                        <div class="fork-changes-list">
-                          {#each ahead as hash}
-                            <div class="fork-change-row">
-                              <code class="fork-change-hash">{hash.slice(0, 16)}…</code>
-                              <button
-                                class="fork-apply-btn"
-                                onclick={() => applyForkChange(f.forked_uri, hash)}
-                                disabled={applyingChange === hash}
-                              >
-                                {applyingChange === hash ? '...' : '应用'}
-                              </button>
-                            </div>
-                          {/each}
-                        </div>
                       {/if}
-                    {/if}
-                  </div>
-                {/each}
-              </div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
             {/if}
           </div>
         </details>
@@ -1499,18 +1518,44 @@ try {
     font-weight: 600;
   }
   .pr-body {
-    padding: 12px 16px;
+    padding: 0;
   }
-  .pr-list {
-    margin-bottom: 16px;
+  .pr-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
   }
-  .pr-forks h4 {
+  .pr-tab {
+    flex: 1;
+    padding: 8px 16px;
+    border: none;
+    background: none;
     font-size: 13px;
-    font-weight: 600;
     color: var(--text-hint);
-    margin: 16px 0 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .pr-tab:hover { color: var(--text-primary); }
+  .pr-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    font-weight: 500;
+  }
+  .pr-list, .pr-fork-list {
+    padding: 8px 16px;
+  }
+  .pr-empty {
+    padding: 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-hint);
+  }
+  .pr-forks-count {
+    font-size: 11px;
+    background: var(--bg-gray, #eee);
+    color: var(--text-secondary);
+    padding: 1px 6px;
+    border-radius: 8px;
   }
   .disc-link {
     display: flex;
