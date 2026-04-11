@@ -148,6 +148,14 @@ fn article_routes() -> Router<AppState> {
         .route("/articles/by-uri/unrecord", post(articles::unrecord_article_change))
         .route("/articles/by-uri/record", post(articles::record_article))
         .route("/articles/apply-change", post(articles::apply_change))
+        // Collaboration
+        .route("/articles/collaborators", get(articles::list_article_collaborators).post(articles::invite_article_collaborator))
+        .route("/articles/collaborators/remove", delete(articles::remove_article_collaborator_endpoint))
+        .route("/articles/channels", get(articles::list_article_channels))
+        .route("/articles/channel/file", get(articles::read_article_channel_file).put(articles::write_article_channel_file))
+        .route("/articles/channel/log", get(articles::article_channel_log))
+        .route("/articles/channel/apply", post(articles::apply_article_channel_change))
+        .route("/articles/channel-diff", get(articles::article_channel_diff))
 }
 
 fn vote_routes() -> Router<AppState> {
@@ -232,6 +240,14 @@ fn series_routes() -> Router<AppState> {
         .route("/series/{id}/compile", post(series::compile_series))
         .route("/series/{id}/headings", get(series::get_headings))
         .route("/series/{id}/split-level", put(series::update_split_level))
+        // Collaboration
+        .route("/series/{id}/collaborators", get(series::list_collaborators).post(series::invite_collaborator))
+        .route("/series/{id}/collaborators/{did}", delete(series::remove_collaborator))
+        .route("/series/{id}/channels", get(series::list_channels))
+        .route("/series/{id}/channel/{channel}/file", get(series::read_channel_file).put(series::write_channel_file))
+        .route("/series/{id}/channel/{channel}/log", get(series::channel_log))
+        .route("/series/{id}/channel/{channel}/apply", post(series::apply_channel_change))
+        .route("/series/{id}/channel-diff", get(series::channel_diff))
 }
 
 fn notification_routes() -> Router<AppState> {

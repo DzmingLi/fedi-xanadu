@@ -185,6 +185,63 @@ export const writeSeriesFile = (id: string, path: string, content: string, messa
 export const deleteSeriesFile = (id: string, path: string) =>
   del<void>(`/series/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`);
 
+// Collaboration
+export interface Collaborator {
+  series_id: string;
+  user_did: string;
+  channel_name: string;
+  role: string;
+  invited_by: string | null;
+  created_at: string;
+}
+export interface ChannelDiffResult {
+  only_in_a: string[];
+  only_in_b: string[];
+}
+export const listCollaborators = (id: string) => get<Collaborator[]>(`/series/${encodeURIComponent(id)}/collaborators`);
+export const inviteCollaborator = (id: string, user_did: string, role?: string) =>
+  post<Collaborator>(`/series/${encodeURIComponent(id)}/collaborators`, { user_did, role });
+export const removeCollaborator = (id: string, did: string) =>
+  del<void>(`/series/${encodeURIComponent(id)}/collaborators/${encodeURIComponent(did)}`);
+export const listChannels = (id: string) => get<string[]>(`/series/${encodeURIComponent(id)}/channels`);
+export const readChannelFile = (id: string, channel: string, path: string) =>
+  get<{ content: string }>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/file?path=${encodeURIComponent(path)}`);
+export const writeChannelFile = (id: string, channel: string, path: string, content: string, message?: string) =>
+  put<{ change_hash: string; merkle: string }>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/file`, { path, content, message });
+export const channelLog = (id: string, channel: string) =>
+  get<string[]>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/log`);
+export const applyChannelChange = (id: string, targetChannel: string, sourceChannel: string, changeHash: string) =>
+  post<void>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(targetChannel)}/apply`, { source_channel: sourceChannel, change_hash: changeHash });
+export const channelDiff = (id: string, a: string, b: string) =>
+  get<ChannelDiffResult>(`/series/${encodeURIComponent(id)}/channel-diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+
+// Article Collaboration
+export const listArticleCollaborators = (uri: string) => get<ArticleCollaborator[]>(`/articles/collaborators?uri=${encodeURIComponent(uri)}`);
+export const inviteArticleCollaborator = (uri: string, user_did: string, role?: string) =>
+  post<ArticleCollaborator>('/articles/collaborators', { uri, user_did, role });
+export const removeArticleCollaborator = (uri: string, user_did: string) =>
+  del<void>('/articles/collaborators/remove', { uri, user_did });
+export const listArticleChannels = (uri: string) => get<string[]>(`/articles/channels?uri=${encodeURIComponent(uri)}`);
+export const readArticleChannelFile = (uri: string, channel: string, path?: string) =>
+  get<{ content: string }>(`/articles/channel/file?uri=${encodeURIComponent(uri)}&channel=${encodeURIComponent(channel)}${path ? `&path=${encodeURIComponent(path)}` : ''}`);
+export const writeArticleChannelFile = (uri: string, channel: string, content: string, message?: string, path?: string) =>
+  put<{ change_hash: string; merkle: string }>('/articles/channel/file', { uri, channel, content, message, path });
+export const articleChannelLog = (uri: string, channel: string) =>
+  get<string[]>(`/articles/channel/log?uri=${encodeURIComponent(uri)}&channel=${encodeURIComponent(channel)}`);
+export const applyArticleChannelChange = (uri: string, targetChannel: string, changeHash: string) =>
+  post<void>('/articles/channel/apply', { uri, target_channel: targetChannel, change_hash: changeHash });
+export const articleChannelDiff = (uri: string, a: string, b: string) =>
+  get<ChannelDiffResult>(`/articles/channel-diff?uri=${encodeURIComponent(uri)}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+
+export interface ArticleCollaborator {
+  article_uri: string;
+  user_did: string;
+  channel_name: string;
+  role: string;
+  invited_by: string | null;
+  created_at: string;
+}
+
 // Skill Trees
 export const listSkillTrees = () => get<SkillTree[]>('/skill-trees');
 export const getSkillTree = (uri: string) => get<SkillTreeDetail>(`/skill-trees/by-uri?uri=${encodeURIComponent(uri)}`);

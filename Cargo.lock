@@ -1467,10 +1467,12 @@ name = "fx-pijul"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dashmap",
  "pijul-at-config",
  "pijul-at-core",
  "pijul-at-repository",
  "rand 0.10.0",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+dashmap = "6"
 anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
@@ -12,6 +13,7 @@ pijul-core.workspace = true
 pijul-repository.workspace = true
 pijul-config.workspace = true
 rand.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

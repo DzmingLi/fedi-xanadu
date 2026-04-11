@@ -2,11 +2,16 @@
   import {
     getSeries, listSeriesFiles, readSeriesFile, writeSeriesFile, deleteSeriesFile,
     compileSeries, addSeriesPrereq, removeSeriesPrereq,
+    listCollaborators, inviteCollaborator, removeCollaborator,
+    listChannels, readChannelFile, writeChannelFile,
+    channelDiff, applyChannelChange,
   } from '../lib/api';
+  import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import type { SeriesDetail, SeriesArticle } from '../lib/types';
   import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
   import TypstEditor from '../lib/components/TypstEditor.svelte';
+  import ChannelPanel from '../lib/components/ChannelPanel.svelte';
 
   let { id } = $props<{ id: string }>();
 
@@ -25,12 +30,23 @@
   let showNewFile = $state(false);
   let error = $state('');
 
+  // Channel state
+  let channels = $state<string[]>(['main']);
+  let currentChannel = $state('main');
+  let channelReadOnly = $derived((() => {
+    // Owner can write to main; others only to their own channel
+    const auth = getAuth();
+    if (!auth) return true;
+    // Will be set after collaborators load
+    return false;
+  })());
+
   // Panel toggles (mirrors NewArticle)
   let filePanelOpen = $state(true);
   let settingsPanelOpen = $state(true);
 
   // Prereqs tab
-  let activeTab = $state<'compile' | 'prereqs'>('compile');
+  let activeTab = $state<'compile' | 'prereqs' | 'collab'>('compile');
   let prereqFrom = $state('');
   let prereqTo = $state('');
 
@@ -39,9 +55,23 @@
   async function loadSeries() {
     loading = true;
     try {
-      const [d, f] = await Promise.all([getSeries(id), listSeriesFiles(id)]);
+      const [d, f, chs, collabs] = await Promise.all([
+        getSeries(id),
+        listSeriesFiles(id),
+        listChannels(id).catch(() => ['main']),
+        listCollaborators(id).catch(() => []),
+      ]);
       detail = d;
       files = f;
+      channels = chs;
+
+      // Set current channel to user's own channel
+      const auth = getAuth();
+      if (auth) {
+        const myCollab = collabs.find(c => c.user_did === auth.did);
+        if (myCollab) currentChannel = myCollab.channel_name;
+      }
+
       if (f.length > 0 && !activeFile) {
         await openFile(f[0].path);
       }
@@ -57,7 +87,13 @@
     }
     activeFile = path;
     try {
-      const content = await readSeriesFile(id, path);
+      let content: string;
+      if (currentChannel === 'main') {
+        content = await readSeriesFile(id, path);
+      } else {
+        const res = await readChannelFile(id, currentChannel, path);
+        content = res.content;
+      }
       editorContent = content;
       originalContent = content;
       dirty = false;
@@ -75,7 +111,11 @@
     if (!activeFile || !dirty) return;
     saving = true;
     try {
-      await writeSeriesFile(id, activeFile, editorContent);
+      if (currentChannel === 'main') {
+        await writeSeriesFile(id, activeFile, editorContent);
+      } else {
+        await writeChannelFile(id, currentChannel, activeFile, editorContent);
+      }
       originalContent = editorContent;
       dirty = false;
     } catch (e: any) {
@@ -104,7 +144,11 @@
     if (!name.includes('.')) name += '.md';
     const path = name.includes('/') ? name : `chapters/${name}`;
     try {
-      await writeSeriesFile(id, path, '', `Create ${path}`);
+      if (currentChannel === 'main') {
+        await writeSeriesFile(id, path, '', `Create ${path}`);
+      } else {
+        await writeChannelFile(id, currentChannel, path, '', `Create ${path}`);
+      }
       files = await listSeriesFiles(id);
       newFileName = '';
       showNewFile = false;
@@ -112,6 +156,13 @@
     } catch (e: any) {
       error = e.message;
     }
+  }
+
+  function switchChannel(ch: string) {
+    if (dirty && !confirm(t('seriesEditor.unsavedChanges'))) return;
+    currentChannel = ch;
+    dirty = false;
+    if (activeFile) openFile(activeFile);
   }
 
   async function deleteFile(path: string) {
@@ -187,6 +238,9 @@
       {#if activeFile}
         <div class="active-file-row">
           <span class="active-file-name">{activeFile}</span>
+          {#if currentChannel !== 'main'}
+            <span class="channel-badge">{currentChannel}</span>
+          {/if}
           {#if dirty}<span class="dirty-dot">●</span>{/if}
         </div>
       {/if}
@@ -295,6 +349,9 @@
             <button class="sp-tab" class:active={activeTab === 'prereqs'} onclick={() => { activeTab = 'prereqs'; }}>
               {t('seriesEditor.tabPrereqs')}
             </button>
+            <button class="sp-tab" class:active={activeTab === 'collab'} onclick={() => { activeTab = 'collab'; }}>
+              协作
+            </button>
           </div>
 
           {#if activeTab === 'compile'}
@@ -309,6 +366,19 @@
               {#if compileError}
                 <p class="compile-error">{compileError}</p>
               {/if}
+            </div>
+          {:else if activeTab === 'collab'}
+            <div class="sp-body">
+              <ChannelPanel
+                {currentChannel}
+                {channels}
+                onChannelChange={switchChannel}
+                fetchCollaborators={() => listCollaborators(id)}
+                doInvite={(did) => inviteCollaborator(id, did).then(() => {})}
+                doRemove={(did) => removeCollaborator(id, did)}
+                fetchDiff={(target, current) => channelDiff(id, target, current)}
+                doApply={(target, source, hash) => applyChannelChange(id, target, source, hash)}
+              />
             </div>
           {:else}
             <div class="sp-body">
@@ -423,6 +493,14 @@
     font-family: var(--font-mono, monospace);
   }
   .dirty-dot { color: var(--accent); font-size: 10px; }
+  .channel-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--accent);
+    color: white;
+    font-family: var(--font-mono, monospace);
+  }
 
   /* Body */
   .editor-body {

@@ -5,7 +5,7 @@ use axum::{
 };
 use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::*;
-use fx_core::services::{article_service, series_service};
+use fx_core::services::{article_service, collaboration_service, series_service};
 use fx_core::validation;
 
 use crate::error::{AppError, ApiResult, require_owner};
@@ -79,6 +79,9 @@ pub async fn create_series(
         pijul_node_id.as_deref(),
     )
     .await?;
+
+    // Register creator as owner collaborator
+    let _ = collaboration_service::register_owner(&state.pool, &id, &user.did).await;
 
     Ok((StatusCode::CREATED, Json(row)))
 }
@@ -837,4 +840,252 @@ pub async fn update_split_level(
         .await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+// --- Collaboration endpoints ---
+
+pub async fn list_collaborators(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<collaboration_service::Collaborator>>> {
+    let collabs = collaboration_service::list_collaborators(&state.pool, &id).await?;
+    Ok(Json(collabs))
+}
+
+#[derive(serde::Deserialize)]
+pub struct InviteInput {
+    pub user_did: String,
+    pub role: Option<String>,
+}
+
+pub async fn invite_collaborator(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<InviteInput>,
+) -> ApiResult<(StatusCode, Json<collaboration_service::Collaborator>)> {
+    let owner = series_service::get_series_owner(&state.pool, &id).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    let role = input.role.as_deref().unwrap_or("editor");
+    let short_did = input.user_did.chars().rev().take(8).collect::<String>().chars().rev().collect::<String>();
+    let channel_name = format!("collab_{short_did}");
+
+    let node_id: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+
+    if let Some(ref node) = node_id {
+        state.pijul.create_channel(node, &channel_name, None)
+            .map_err(|e| AppError(fx_core::Error::Internal(format!("create channel: {e}"))))?;
+    }
+
+    let collab = collaboration_service::add_collaborator(
+        &state.pool, &id, &input.user_did, role, &channel_name, &user.did,
+    ).await?;
+
+    Ok((StatusCode::CREATED, Json(collab)))
+}
+
+pub async fn remove_collaborator(
+    State(state): State<AppState>,
+    Path((id, did)): Path<(String, String)>,
+    WriteAuth(user): WriteAuth,
+) -> ApiResult<StatusCode> {
+    let owner = series_service::get_series_owner(&state.pool, &id).await?;
+    require_owner(Some(&owner), &user.did)?;
+
+    let collab = collaboration_service::get_collaborator(&state.pool, &id, &did).await?;
+    let removed = collaboration_service::remove_collaborator(&state.pool, &id, &did).await?;
+    if !removed {
+        return Err(AppError(fx_core::Error::NotFound { entity: "collaborator", id: did.clone() }));
+    }
+
+    if let Some(c) = collab {
+        let node_id: Option<String> = sqlx::query_scalar(
+            "SELECT pijul_node_id FROM series WHERE id = $1",
+        )
+        .bind(&id)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten();
+
+        if let Some(ref node) = node_id {
+            let _ = state.pijul.delete_channel(node, &c.channel_name);
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_channels(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<String>>> {
+    let node_id: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+
+    let channels = match node_id {
+        Some(ref node) => state.pijul.list_channels(node)
+            .map_err(|e| AppError(fx_core::Error::Internal(format!("list channels: {e}"))))?,
+        None => vec!["main".to_string()],
+    };
+
+    Ok(Json(channels))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ChannelFileQuery {
+    pub path: String,
+}
+
+pub async fn read_channel_file(
+    State(state): State<AppState>,
+    Path((id, channel)): Path<(String, String)>,
+    Query(q): Query<ChannelFileQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let node_id: String = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten()
+    .ok_or(AppError(fx_core::Error::NotFound { entity: "series", id: id.clone() }))?;
+
+    let content = state.pijul.read_file_from_channel(&node_id, &channel, &q.path)
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("read channel file: {e}"))))?;
+
+    let text = String::from_utf8_lossy(&content).into_owned();
+    Ok(Json(serde_json::json!({ "content": text })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct WriteChannelFileInput {
+    pub path: String,
+    pub content: String,
+    pub message: Option<String>,
+}
+
+pub async fn write_channel_file(
+    State(state): State<AppState>,
+    Path((id, channel)): Path<(String, String)>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<WriteChannelFileInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let collab = collaboration_service::get_collaborator(&state.pool, &id, &user.did).await?;
+    let allowed = match &collab {
+        Some(c) => c.channel_name == channel || c.role == "owner",
+        None => false,
+    };
+    if !allowed {
+        return Err(AppError(fx_core::Error::Forbidden { action: "write to this channel" }));
+    }
+
+    let node_id: String = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten()
+    .ok_or(AppError(fx_core::Error::NotFound { entity: "series", id: id.clone() }))?;
+
+    let msg = input.message.as_deref().unwrap_or("update file");
+    let result = state.pijul.write_and_record_on_channel(
+        &node_id, &channel, &input.path, input.content.as_bytes(), msg, Some(&user.did),
+    ).map_err(|e| AppError(fx_core::Error::Internal(format!("write channel file: {e}"))))?;
+
+    let (hash, merkle) = result.unwrap_or_default();
+    Ok(Json(serde_json::json!({ "change_hash": hash, "merkle": merkle })))
+}
+
+pub async fn channel_log(
+    State(state): State<AppState>,
+    Path((id, channel)): Path<(String, String)>,
+) -> ApiResult<Json<Vec<String>>> {
+    let node_id: String = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten()
+    .ok_or(AppError(fx_core::Error::NotFound { entity: "series", id: id.clone() }))?;
+
+    let log = state.pijul.log_channel(&node_id, &channel)
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("channel log: {e}"))))?;
+
+    Ok(Json(log))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ApplyChangeInput {
+    pub source_channel: String,
+    pub change_hash: String,
+}
+
+pub async fn apply_channel_change(
+    State(state): State<AppState>,
+    Path((id, channel)): Path<(String, String)>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<ApplyChangeInput>,
+) -> ApiResult<StatusCode> {
+    let collab = collaboration_service::get_collaborator(&state.pool, &id, &user.did).await?;
+    let allowed = match &collab {
+        Some(c) => c.channel_name == channel || c.role == "owner",
+        None => false,
+    };
+    if !allowed {
+        return Err(AppError(fx_core::Error::Forbidden { action: "write to this channel" }));
+    }
+
+    let node_id: String = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten()
+    .ok_or(AppError(fx_core::Error::NotFound { entity: "series", id: id.clone() }))?;
+
+    state.pijul.apply_change_to_channel(&node_id, &input.change_hash, &channel)
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("apply change: {e}"))))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(serde::Deserialize)]
+pub struct ChannelDiffQuery {
+    pub a: String,
+    pub b: String,
+}
+
+pub async fn channel_diff(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<ChannelDiffQuery>,
+) -> ApiResult<Json<fx_pijul::ChannelDiffResult>> {
+    let node_id: String = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten()
+    .ok_or(AppError(fx_core::Error::NotFound { entity: "series", id: id.clone() }))?;
+
+    let diff = state.pijul.diff_channels(&node_id, &q.a, &q.b)
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("channel diff: {e}"))))?;
+
+    Ok(Json(diff))
 }

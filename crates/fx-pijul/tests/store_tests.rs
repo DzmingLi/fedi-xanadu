@@ -38,7 +38,7 @@ fn test_init_repo_idempotent() {
     let path1 = store.init_repo("repo1").unwrap();
     // Write a file so we can verify the repo isn't wiped on reinit
     write_file(&store, "repo1", "content.typ", "keep me\n");
-    store.record("repo1", "initial").unwrap();
+    store.record("repo1", "initial", None).unwrap();
 
     let path2 = store.init_repo("repo1").unwrap();
     assert_eq!(path1, path2);
@@ -65,9 +65,9 @@ fn test_record_returns_hash() {
     store.init_repo("r").unwrap();
 
     write_file(&store, "r", "content.typ", "hello\n");
-    let hash = store.record("r", "first").unwrap();
+    let hash = store.record("r", "first", None).unwrap();
     assert!(hash.is_some(), "first record should produce a change hash");
-    assert!(!hash.as_ref().unwrap().is_empty());
+    assert!(!hash.as_ref().unwrap().0.is_empty());
 }
 
 #[test]
@@ -76,10 +76,10 @@ fn test_record_no_changes_returns_none() {
     store.init_repo("r").unwrap();
 
     write_file(&store, "r", "content.typ", "hello\n");
-    store.record("r", "first").unwrap();
+    store.record("r", "first", None).unwrap();
 
     // Recording again with no changes should return None
-    let hash = store.record("r", "no-op").unwrap();
+    let hash = store.record("r", "no-op", None).unwrap();
     assert!(hash.is_none(), "recording with no changes should return None");
 }
 
@@ -89,10 +89,10 @@ fn test_record_multiple_changes() {
     store.init_repo("r").unwrap();
 
     write_file(&store, "r", "content.typ", "v1\n");
-    let h1 = store.record("r", "version 1").unwrap().expect("should record");
+    let h1 = store.record("r", "version 1", None).unwrap().expect("should record");
 
     write_file(&store, "r", "content.typ", "v2\n");
-    let h2 = store.record("r", "version 2").unwrap().expect("should record");
+    let h2 = store.record("r", "version 2", None).unwrap().expect("should record");
 
     assert_ne!(h1, h2, "different changes should have different hashes");
 }
@@ -103,11 +103,11 @@ fn test_record_adds_new_files_automatically() {
     store.init_repo("r").unwrap();
 
     write_file(&store, "r", "content.typ", "main\n");
-    store.record("r", "first").unwrap();
+    store.record("r", "first", None).unwrap();
 
     // Add a second file — record should auto-track it
     write_file(&store, "r", "extra.txt", "extra\n");
-    let hash = store.record("r", "add extra").unwrap();
+    let hash = store.record("r", "add extra", None).unwrap();
     assert!(hash.is_some(), "adding a new file should produce a change");
 
     let files = store.list_files("r").unwrap();
@@ -123,7 +123,7 @@ fn test_record_skips_dotfiles_and_html() {
     write_file(&store, "r", "content.typ", "main\n");
     write_file(&store, "r", "content.html", "<p>cached</p>\n");
     // .ignore is a dotfile created by init_repo
-    store.record("r", "initial").unwrap();
+    store.record("r", "initial", None).unwrap();
 
     let files = store.list_files("r").unwrap();
     let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
@@ -142,7 +142,7 @@ fn test_fork_creates_independent_copy() {
     store.init_repo("original").unwrap();
 
     write_file(&store, "original", "content.typ", "original content\n");
-    store.record("original", "initial").unwrap();
+    store.record("original", "initial", None).unwrap();
 
     let fork_path = store.fork("original", "forked").unwrap();
     assert!(fork_path.exists());
@@ -163,13 +163,13 @@ fn test_fork_is_independent() {
     store.init_repo("original").unwrap();
 
     write_file(&store, "original", "content.typ", "v1\n");
-    store.record("original", "initial").unwrap();
+    store.record("original", "initial", None).unwrap();
 
     store.fork("original", "forked").unwrap();
 
     // Modify original — fork should be unaffected
     write_file(&store, "original", "content.typ", "v2\n");
-    store.record("original", "update").unwrap();
+    store.record("original", "update", None).unwrap();
 
     let fork_content = store.get_file_content("forked", "content.typ").unwrap();
     assert_eq!(fork_content, b"v1\n", "fork should still have original content");
@@ -201,7 +201,7 @@ fn test_log_after_one_record() {
     store.init_repo("r").unwrap();
 
     write_file(&store, "r", "content.typ", "hello\n");
-    let hash = store.record("r", "first").unwrap().expect("should record");
+    let (hash, _merkle) = store.record("r", "first", None).unwrap().expect("should record");
 
     let log = store.log("r").unwrap();
     // pijul may include an implicit root change, so the log may have >=1 entries.
@@ -215,10 +215,10 @@ fn test_log_preserves_order() {
     store.init_repo("r").unwrap();
 
     write_file(&store, "r", "content.typ", "v1\n");
-    let h1 = store.record("r", "first").unwrap().expect("should record");
+    let (h1, _) = store.record("r", "first", None).unwrap().expect("should record");
 
     write_file(&store, "r", "content.typ", "v2\n");
-    let h2 = store.record("r", "second").unwrap().expect("should record");
+    let (h2, _) = store.record("r", "second", None).unwrap().expect("should record");
 
     let log = store.log("r").unwrap();
     let pos1 = log.iter().position(|h| h == &h1).expect("h1 should be in log");
@@ -249,7 +249,7 @@ fn test_diff_after_revert_is_clean() {
     store.init_repo("r").unwrap();
 
     write_file(&store, "r", "content.typ", "original\n");
-    store.record("r", "initial").unwrap();
+    store.record("r", "initial", None).unwrap();
 
     write_file(&store, "r", "content.typ", "modified\n");
     // Should have hunks before revert
@@ -271,7 +271,7 @@ fn test_revert_preserves_untracked_files() {
     store.init_repo("r").unwrap();
 
     write_file(&store, "r", "content.typ", "tracked\n");
-    store.record("r", "initial").unwrap();
+    store.record("r", "initial", None).unwrap();
 
     // Add an untracked file and modify the tracked one
     write_file(&store, "r", "notes.txt", "untracked notes\n");
@@ -342,7 +342,7 @@ fn test_list_files_after_record() {
     store.init_repo("test1").unwrap();
 
     write_file(&store, "test1", "content.typ", "Hello world");
-    store.record("test1", "initial").unwrap();
+    store.record("test1", "initial", None).unwrap();
 
     let files = store.list_files("test1").unwrap();
     assert_eq!(files.len(), 1);
@@ -356,7 +356,7 @@ fn test_get_file_content() {
     store.init_repo("test1").unwrap();
 
     write_file(&store, "test1", "content.typ", "Hello world");
-    store.record("test1", "initial").unwrap();
+    store.record("test1", "initial", None).unwrap();
 
     let content = store.get_file_content("test1", "content.typ").unwrap();
     assert_eq!(content, b"Hello world");
@@ -386,7 +386,7 @@ fn test_diff_no_changes() {
     store.init_repo("test1").unwrap();
 
     write_file(&store, "test1", "content.typ", "Hello world\n");
-    store.record("test1", "initial").unwrap();
+    store.record("test1", "initial", None).unwrap();
 
     let diff = store.diff("test1").unwrap();
     assert!(diff.hunks.is_empty(), "no hunks expected when working copy matches pristine");
@@ -399,7 +399,7 @@ fn test_diff_modified_file() {
     store.init_repo("test1").unwrap();
 
     write_file(&store, "test1", "content.typ", "line one\nline two\n");
-    store.record("test1", "initial").unwrap();
+    store.record("test1", "initial", None).unwrap();
 
     // Modify the file
     write_file(&store, "test1", "content.typ", "line one\nline three\n");
@@ -417,7 +417,7 @@ fn test_diff_untracked_file() {
     store.init_repo("test1").unwrap();
 
     write_file(&store, "test1", "content.typ", "Hello\n");
-    store.record("test1", "initial").unwrap();
+    store.record("test1", "initial", None).unwrap();
 
     // Add a new untracked file
     write_file(&store, "test1", "notes.txt", "some notes\n");
@@ -432,7 +432,7 @@ fn test_revert() {
     store.init_repo("test1").unwrap();
 
     write_file(&store, "test1", "content.typ", "original content\n");
-    store.record("test1", "initial").unwrap();
+    store.record("test1", "initial", None).unwrap();
 
     // Modify the file
     write_file(&store, "test1", "content.typ", "modified content\n");
@@ -456,14 +456,14 @@ fn test_apply_change_between_repos() {
     // Create source repo with initial content
     store.init_repo("source").unwrap();
     write_file(&store, "source", "content.typ", "original\n");
-    let _hash1 = store.record("source", "initial").unwrap().expect("should record");
+    let _hash1 = store.record("source", "initial", None).unwrap().expect("should record");
 
     // Fork to create target repo
     store.fork("source", "target").unwrap();
 
     // Make a change in source
     write_file(&store, "source", "content.typ", "updated\n");
-    let hash2 = store.record("source", "update content").unwrap().expect("should record");
+    let (hash2, _) = store.record("source", "update content", None).unwrap().expect("should record");
 
     // Apply the new change to target
     store.apply("source", "target", &hash2).unwrap();
@@ -479,7 +479,7 @@ fn test_apply_already_applied() {
 
     store.init_repo("source").unwrap();
     write_file(&store, "source", "content.typ", "hello\n");
-    let hash = store.record("source", "initial").unwrap().expect("should record");
+    let (hash, _) = store.record("source", "initial", None).unwrap().expect("should record");
 
     store.fork("source", "target").unwrap();
 
@@ -506,11 +506,198 @@ fn test_list_files_multiple() {
 
     write_file(&store, "test1", "content.typ", "main content\n");
     write_file(&store, "test1", "metadata.json", "{}\n");
-    store.record("test1", "initial").unwrap();
+    store.record("test1", "initial", None).unwrap();
 
     let files = store.list_files("test1").unwrap();
     let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
     assert!(paths.contains(&"content.typ"));
     assert!(paths.contains(&"metadata.json"));
     assert_eq!(files.len(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// Channel operations
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_create_and_list_channels() {
+    let (_tmp, store) = setup();
+    store.init_repo("r").unwrap();
+
+    // Initially only "main"
+    let channels = store.list_channels("r").unwrap();
+    assert_eq!(channels, vec!["main"]);
+
+    // Create a new channel
+    store.create_channel("r", "alice", None).unwrap();
+    let mut channels = store.list_channels("r").unwrap();
+    channels.sort();
+    assert_eq!(channels, vec!["alice", "main"]);
+}
+
+#[test]
+fn test_create_channel_inherits_history() {
+    let (_tmp, store) = setup();
+    store.init_repo("r").unwrap();
+
+    write_file(&store, "r", "content.typ", "hello\n");
+    store.record("r", "initial", None).unwrap();
+
+    store.create_channel("r", "branch1", None).unwrap();
+
+    // Branch should have the same log as main
+    let main_log = store.log_channel("r", "main").unwrap();
+    let branch_log = store.log_channel("r", "branch1").unwrap();
+    assert_eq!(main_log, branch_log);
+}
+
+#[test]
+fn test_delete_channel() {
+    let (_tmp, store) = setup();
+    store.init_repo("r").unwrap();
+
+    store.create_channel("r", "temp", None).unwrap();
+    assert_eq!(store.list_channels("r").unwrap().len(), 2);
+
+    store.delete_channel("r", "temp").unwrap();
+    assert_eq!(store.list_channels("r").unwrap(), vec!["main"]);
+}
+
+#[test]
+fn test_delete_main_channel_fails() {
+    let (_tmp, store) = setup();
+    store.init_repo("r").unwrap();
+
+    let result = store.delete_channel("r", "main");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_read_file_from_channel() {
+    let (_tmp, store) = setup();
+    store.init_repo("r").unwrap();
+
+    write_file(&store, "r", "content.typ", "main content\n");
+    store.record("r", "initial", None).unwrap();
+
+    // Create branch and diverge
+    store.create_channel("r", "branch", None).unwrap();
+
+    // Write different content to the branch
+    store.write_and_record_on_channel("r", "branch", "content.typ", b"branch content\n", "branch edit", None).unwrap();
+
+    // Read from each channel without touching working copy
+    let main_content = store.read_file_from_channel("r", "main", "content.typ").unwrap();
+    let branch_content = store.read_file_from_channel("r", "branch", "content.typ").unwrap();
+
+    assert_eq!(main_content, b"main content\n");
+    assert_eq!(branch_content, b"branch content\n");
+}
+
+#[test]
+fn test_write_and_record_on_channel() {
+    let (_tmp, store) = setup();
+    store.init_repo("r").unwrap();
+
+    write_file(&store, "r", "content.typ", "initial\n");
+    store.record("r", "initial", None).unwrap();
+
+    store.create_channel("r", "alice", None).unwrap();
+
+    // Write on alice's channel
+    let result = store.write_and_record_on_channel(
+        "r", "alice", "content.typ", b"alice's version\n", "alice edit", Some("did:plc:alice"),
+    ).unwrap();
+    assert!(result.is_some());
+
+    // Main should still have original content
+    let main_content = store.read_file_from_channel("r", "main", "content.typ").unwrap();
+    assert_eq!(main_content, b"initial\n");
+
+    // Alice's channel should have new content
+    let alice_content = store.read_file_from_channel("r", "alice", "content.typ").unwrap();
+    assert_eq!(alice_content, b"alice's version\n");
+
+    // Alice's log should be longer than main's
+    let main_log = store.log_channel("r", "main").unwrap();
+    let alice_log = store.log_channel("r", "alice").unwrap();
+    assert!(alice_log.len() > main_log.len());
+}
+
+#[test]
+fn test_apply_change_to_channel() {
+    let (_tmp, store) = setup();
+    store.init_repo("r").unwrap();
+
+    write_file(&store, "r", "content.typ", "initial\n");
+    store.record("r", "initial", None).unwrap();
+
+    store.create_channel("r", "alice", None).unwrap();
+
+    // Alice makes a change
+    let (hash, _) = store.write_and_record_on_channel(
+        "r", "alice", "content.typ", b"alice edit\n", "alice change", None,
+    ).unwrap().expect("should record");
+
+    // Apply alice's change to main
+    store.apply_change_to_channel("r", &hash, "main").unwrap();
+
+    // Main should now have alice's content
+    let main_content = store.read_file_from_channel("r", "main", "content.typ").unwrap();
+    assert_eq!(main_content, b"alice edit\n");
+}
+
+#[test]
+fn test_diff_channels() {
+    let (_tmp, store) = setup();
+    store.init_repo("r").unwrap();
+
+    write_file(&store, "r", "content.typ", "initial\n");
+    store.record("r", "initial", None).unwrap();
+
+    store.create_channel("r", "alice", None).unwrap();
+
+    // Alice makes a change
+    store.write_and_record_on_channel(
+        "r", "alice", "content.typ", b"alice edit\n", "alice change", None,
+    ).unwrap();
+
+    let diff = store.diff_channels("r", "alice", "main").unwrap();
+    assert_eq!(diff.only_in_a.len(), 1, "alice should have 1 unique change");
+    assert!(diff.only_in_b.is_empty(), "main should have no unique changes");
+}
+
+#[test]
+fn test_channels_independent_changes() {
+    let (_tmp, store) = setup();
+    store.init_repo("r").unwrap();
+
+    write_file(&store, "r", "content.typ", "initial\n");
+    store.record("r", "initial", None).unwrap();
+
+    store.create_channel("r", "alice", None).unwrap();
+    store.create_channel("r", "bob", None).unwrap();
+
+    // Alice and Bob make independent changes
+    store.write_and_record_on_channel(
+        "r", "alice", "file_a.typ", b"alice's file\n", "alice adds file", None,
+    ).unwrap();
+    store.write_and_record_on_channel(
+        "r", "bob", "file_b.typ", b"bob's file\n", "bob adds file", None,
+    ).unwrap();
+
+    // Diff alice vs bob
+    let diff = store.diff_channels("r", "alice", "bob").unwrap();
+    assert_eq!(diff.only_in_a.len(), 1);
+    assert_eq!(diff.only_in_b.len(), 1);
+
+    // Apply bob's change to alice's channel
+    let bob_hash = &diff.only_in_b[0];
+    store.apply_change_to_channel("r", bob_hash, "alice").unwrap();
+
+    // Alice should now have both files
+    let alice_a = store.read_file_from_channel("r", "alice", "file_a.typ").unwrap();
+    let alice_b = store.read_file_from_channel("r", "alice", "file_b.typ").unwrap();
+    assert_eq!(alice_a, b"alice's file\n");
+    assert_eq!(alice_b, b"bob's file\n");
 }

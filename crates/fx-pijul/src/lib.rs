@@ -1,3 +1,3 @@
 pub mod store;
 
-pub use store::{DiffHunk, DiffResult, PijulStore, TrackedFile};
+pub use store::{ChannelDiffResult, DiffHunk, DiffResult, PijulStore, TrackedFile};

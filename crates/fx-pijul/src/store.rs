@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
+use dashmap::DashMap;
 use pijul_core::{
     Base32, MutTxnT, MutTxnTExt, TxnT, TxnTExt, TreeTxnT,
     RecordBuilder, Algorithm,
@@ -36,18 +38,37 @@ pub struct TrackedFile {
     pub is_dir: bool,
 }
 
+/// Result of comparing two channels' change sets.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct ChannelDiffResult {
+    /// Changes present in channel A but not in channel B.
+    pub only_in_a: Vec<String>,
+    /// Changes present in channel B but not in channel A.
+    pub only_in_b: Vec<String>,
+}
+
 /// Wrapper around pijul-core for managing article repositories.
 ///
 /// Each article gets its own pijul repo under `base_path/node_id/`.
 pub struct PijulStore {
     base_path: PathBuf,
+    /// Per-repo write locks. Read operations (from pristine graph) don't need this.
+    /// Write operations that touch the working copy must acquire the lock.
+    repo_locks: DashMap<String, Mutex<()>>,
 }
 
 impl PijulStore {
     pub fn new(base_path: impl AsRef<Path>) -> Self {
         Self {
             base_path: base_path.as_ref().to_path_buf(),
+            repo_locks: DashMap::new(),
         }
+    }
+
+    /// Acquire a per-repo write lock. Returns a guard that releases on drop.
+    fn lock_repo(&self, node_id: &str) -> dashmap::mapref::one::Ref<'_, String, Mutex<()>> {
+        self.repo_locks.entry(node_id.to_string()).or_insert_with(|| Mutex::new(()));
+        self.repo_locks.get(node_id).unwrap()
     }
 
     pub fn repo_path(&self, node_id: &str) -> PathBuf {
@@ -99,10 +120,13 @@ impl PijulStore {
     }
 
     fn record_at_path(&self, path: &std::path::Path, node_id: &str, message: &str, author_did: Option<&str>) -> anyhow::Result<Option<(String, String)>> {
+        self.record_at_path_on_channel(path, node_id, pijul_core::DEFAULT_CHANNEL, message, author_did)
+    }
+
+    fn record_at_path_on_channel(&self, path: &std::path::Path, node_id: &str, channel_name: &str, message: &str, author_did: Option<&str>) -> anyhow::Result<Option<(String, String)>> {
         let repo = self.open_repo(path)?;
 
         let txn = repo.pristine.arc_txn_begin()?;
-        let channel_name = pijul_core::DEFAULT_CHANNEL;
 
         // Load channel
         let channel = {
@@ -325,11 +349,16 @@ impl PijulStore {
 
     /// Get the list of change hashes in a repo's main channel.
     pub fn log(&self, node_id: &str) -> anyhow::Result<Vec<String>> {
+        self.log_channel(node_id, pijul_core::DEFAULT_CHANNEL)
+    }
+
+    /// Get the list of change hashes in a specific channel.
+    pub fn log_channel(&self, node_id: &str, channel_name: &str) -> anyhow::Result<Vec<String>> {
         let path = self.repo_path(node_id);
         let repo = self.open_repo(&path)?;
         let txn = repo.pristine.txn_begin()?;
-        let channel = txn.load_channel(pijul_core::DEFAULT_CHANNEL)?
-            .ok_or_else(|| anyhow::anyhow!("No main channel"))?;
+        let channel = txn.load_channel(channel_name)?
+            .ok_or_else(|| anyhow::anyhow!("Channel {channel_name} not found"))?;
 
         let mut hashes = Vec::new();
         let ch = channel.read();
@@ -666,6 +695,262 @@ impl PijulStore {
         }
 
         Ok(files)
+    }
+
+    // --- Channel methods ---
+
+    /// Create a new channel, forked from an existing one (CoW, nearly instant).
+    /// If `fork_from` is None, forks from DEFAULT_CHANNEL ("main").
+    pub fn create_channel(
+        &self,
+        node_id: &str,
+        channel_name: &str,
+        fork_from: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let path = self.repo_path(node_id);
+        let repo = self.open_repo(&path)?;
+        let mut txn = repo.pristine.mut_txn_begin()?;
+
+        let source_name = fork_from.unwrap_or(pijul_core::DEFAULT_CHANNEL);
+        let source = txn.load_channel(source_name)?
+            .ok_or_else(|| anyhow::anyhow!("Source channel {source_name} not found"))?;
+
+        txn.fork(&source, channel_name)
+            .map_err(|e| anyhow::anyhow!("Failed to create channel {channel_name}: {e}"))?;
+        txn.commit()?;
+
+        tracing::info!("created channel {channel_name} (forked from {source_name}) in {node_id}");
+        Ok(())
+    }
+
+    /// List all channel names in a repo.
+    pub fn list_channels(&self, node_id: &str) -> anyhow::Result<Vec<String>> {
+        let path = self.repo_path(node_id);
+        let repo = self.open_repo(&path)?;
+        let txn = repo.pristine.txn_begin()?;
+
+        use pijul_core::ChannelTxnT;
+        let channels = txn.channels("")?;
+        let names: Vec<String> = channels
+            .iter()
+            .map(|ch| txn.name(&*ch.read()).to_string())
+            .collect();
+        Ok(names)
+    }
+
+    /// Delete a channel. Cannot delete "main".
+    pub fn delete_channel(&self, node_id: &str, channel_name: &str) -> anyhow::Result<()> {
+        if channel_name == pijul_core::DEFAULT_CHANNEL {
+            anyhow::bail!("Cannot delete the main channel");
+        }
+        let path = self.repo_path(node_id);
+        let repo = self.open_repo(&path)?;
+        let mut txn = repo.pristine.mut_txn_begin()?;
+
+        let deleted = txn.drop_channel(channel_name)?;
+        if !deleted {
+            anyhow::bail!("Channel {channel_name} not found");
+        }
+        txn.commit()?;
+
+        tracing::info!("deleted channel {channel_name} from {node_id}");
+        Ok(())
+    }
+
+    /// Read a file's content directly from a channel's pristine graph,
+    /// without touching the working copy. Safe for concurrent reads.
+    pub fn read_file_from_channel(
+        &self,
+        node_id: &str,
+        channel_name: &str,
+        file_path: &str,
+    ) -> anyhow::Result<Vec<u8>> {
+        let path = self.repo_path(node_id);
+        let repo = self.open_repo(&path)?;
+        let txn = repo.pristine.arc_txn_begin()?;
+
+        let channel = {
+            let t = txn.read();
+            t.load_channel(channel_name)?
+                .ok_or_else(|| anyhow::anyhow!("Channel {channel_name} not found"))?
+        };
+
+        let content = {
+            let t = txn.read();
+            match pijul_core::fs::find_inode(&*t, file_path) {
+                Ok(inode) => {
+                    match t.get_inodes(&inode, None) {
+                        Ok(Some(&pos)) => {
+                            drop(t);
+                            let mut buf = Vec::new();
+                            let mut out = pijul_core::vertex_buffer::Writer::new(&mut buf);
+                            pijul_core::output::output_file(
+                                &repo.changes, &txn, &channel, pos, &mut out,
+                            ).map_err(|e| anyhow::anyhow!("Failed to output file {file_path}: {e:?}"))?;
+                            buf
+                        }
+                        _ => anyhow::bail!("File {file_path} not found in channel {channel_name}"),
+                    }
+                }
+                Err(_) => anyhow::bail!("File {file_path} not tracked in channel {channel_name}"),
+            }
+        };
+
+        txn.commit()?;
+        Ok(content)
+    }
+
+    /// Write a file and record the change on a specific channel.
+    /// Acquires per-repo lock since it touches the working copy.
+    /// Returns `Some((change_hash, merkle))` or `None` if no effective change.
+    pub fn write_and_record_on_channel(
+        &self,
+        node_id: &str,
+        channel_name: &str,
+        file_path: &str,
+        content: &[u8],
+        message: &str,
+        author_did: Option<&str>,
+    ) -> anyhow::Result<Option<(String, String)>> {
+        let lock_ref = self.lock_repo(node_id);
+        let _guard = lock_ref.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+
+        let path = self.repo_path(node_id);
+
+        // Output the target channel's state to working copy
+        {
+            let repo = self.open_repo(&path)?;
+            let txn = repo.pristine.arc_txn_begin()?;
+            let channel = {
+                let t = txn.read();
+                t.load_channel(channel_name)?
+                    .ok_or_else(|| anyhow::anyhow!("Channel {channel_name} not found"))?
+            };
+            pijul_core::output::output_repository_no_pending(
+                &repo.working_copy, &repo.changes, &txn, &channel,
+                "", true, None, 1, 0,
+            ).map_err(|e| anyhow::anyhow!("Failed to output channel state: {e:?}"))?;
+            txn.commit()?;
+        }
+
+        // Write the file to the working copy
+        let full_path = path.join(file_path);
+        if let Some(parent) = full_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&full_path, content)?;
+
+        // Record the change on this channel
+        self.record_at_path_on_channel(&path, node_id, channel_name, message, author_did)
+    }
+
+    /// Apply an existing change (already in the change store) to a specific channel.
+    /// The change can come from any channel in the same repo.
+    pub fn apply_change_to_channel(
+        &self,
+        node_id: &str,
+        change_hash: &str,
+        target_channel: &str,
+    ) -> anyhow::Result<()> {
+        let hash = pijul_core::Hash::from_base32(change_hash.as_bytes())
+            .ok_or_else(|| anyhow::anyhow!("Invalid change hash: {change_hash}"))?;
+
+        let lock_ref = self.lock_repo(node_id);
+        let _guard = lock_ref.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+
+        let path = self.repo_path(node_id);
+        let repo = self.open_repo(&path)?;
+        let txn = repo.pristine.arc_txn_begin()?;
+
+        let channel = {
+            let t = txn.read();
+            t.load_channel(target_channel)?
+                .ok_or_else(|| anyhow::anyhow!("Channel {target_channel} not found"))?
+        };
+
+        // Check if already applied
+        let already = {
+            let t = txn.read();
+            t.has_change(&channel, &hash)?.is_some()
+        };
+        if already {
+            txn.commit()?;
+            return Ok(());
+        }
+
+        // Apply the change (and its dependencies recursively)
+        {
+            let mut t = txn.write();
+            let mut ch = channel.write();
+            t.apply_change_rec(&repo.changes, &mut *ch, &hash)?;
+        }
+
+        // Output updated state to working copy if this is the main channel
+        if target_channel == pijul_core::DEFAULT_CHANNEL {
+            pijul_core::output::output_repository_no_pending(
+                &repo.working_copy, &repo.changes, &txn, &channel,
+                "", true, None, 1, 0,
+            ).map_err(|e| anyhow::anyhow!("Failed to output working copy: {e:?}"))?;
+        }
+
+        txn.commit()?;
+        tracing::info!("applied change {change_hash} to channel {target_channel} in {node_id}");
+        Ok(())
+    }
+
+    /// Compare two channels: list changes unique to each.
+    pub fn diff_channels(
+        &self,
+        node_id: &str,
+        channel_a: &str,
+        channel_b: &str,
+    ) -> anyhow::Result<ChannelDiffResult> {
+        let path = self.repo_path(node_id);
+        let repo = self.open_repo(&path)?;
+        let txn = repo.pristine.txn_begin()?;
+
+        let ch_a = txn.load_channel(channel_a)?
+            .ok_or_else(|| anyhow::anyhow!("Channel {channel_a} not found"))?;
+        let ch_b = txn.load_channel(channel_b)?
+            .ok_or_else(|| anyhow::anyhow!("Channel {channel_b} not found"))?;
+
+        let hashes_a: std::collections::HashSet<String> = {
+            let ch = ch_a.read();
+            let mut set = std::collections::HashSet::new();
+            for entry in txn.log(&*ch, 0)? {
+                let (_, (hash, _)) = entry?;
+                let h: pijul_core::Hash = hash.into();
+                set.insert(h.to_base32());
+            }
+            set
+        };
+        let hashes_b: std::collections::HashSet<String> = {
+            let ch = ch_b.read();
+            let mut set = std::collections::HashSet::new();
+            for entry in txn.log(&*ch, 0)? {
+                let (_, (hash, _)) = entry?;
+                let h: pijul_core::Hash = hash.into();
+                set.insert(h.to_base32());
+            }
+            set
+        };
+
+        Ok(ChannelDiffResult {
+            only_in_a: hashes_a.difference(&hashes_b).cloned().collect(),
+            only_in_b: hashes_b.difference(&hashes_a).cloned().collect(),
+        })
+    }
+
+    /// Record changes on a specific channel of a series repo.
+    pub fn record_series_on_channel(
+        &self,
+        series_node_id: &str,
+        channel_name: &str,
+        message: &str,
+        author_did: Option<&str>,
+    ) -> anyhow::Result<Option<(String, String)>> {
+        let path = self.series_repo_path(series_node_id);
+        self.record_at_path_on_channel(&path, series_node_id, channel_name, message, author_did)
     }
 
     // --- Series repo methods ---

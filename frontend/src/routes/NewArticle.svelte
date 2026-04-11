@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveArticle, recordArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, getArticleHistory, getArticleDiff, unrecordArticleChange } from '../lib/api';
+  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveArticle, recordArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, getArticleHistory, getArticleDiff, unrecordArticleChange, listArticleCollaborators, inviteArticleCollaborator, removeArticleCollaborator, listArticleChannels, readArticleChannelFile, writeArticleChannelFile, articleChannelDiff, applyArticleChannelChange } from '../lib/api';
+  import ChannelPanel from '../lib/components/ChannelPanel.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getLangPrefs } from '../lib/langPrefs.svelte';
   import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
@@ -53,6 +54,10 @@
   let loadingFile = $state(false);
   let converting = $state(false);
   let originalFormat = $state<ContentFormat | ''>(''); // Track source format for fork conversion
+
+  // --- Channel state ---
+  let articleChannels = $state<string[]>(['main']);
+  let currentArticleChannel = $state('main');
 
   // --- UI state ---
   let sidebarOpen = $state(true);
@@ -326,6 +331,8 @@
         license = a.license || 'CC-BY-SA-4.0';
       });
       loadHistory();
+      // Load channels for collaboration
+      listArticleChannels(editUri).then(chs => { articleChannels = chs; }).catch(() => {});
     } else if (initialDraftId) {
       listDrafts().then(drafts => {
         const d = drafts.find(d => d.id === initialDraftId);
@@ -996,6 +1003,21 @@
                   ></textarea>
                 </div>
               {/each}
+            </details>
+          {/if}
+          {#if isEditing && savedArticleUri && articleChannels.length > 0}
+            <details>
+              <summary>协作</summary>
+              <ChannelPanel
+                currentChannel={currentArticleChannel}
+                channels={articleChannels}
+                onChannelChange={(ch) => { currentArticleChannel = ch; }}
+                fetchCollaborators={() => listArticleCollaborators(savedArticleUri)}
+                doInvite={(did) => inviteArticleCollaborator(savedArticleUri, did).then(() => {})}
+                doRemove={(did) => removeArticleCollaborator(savedArticleUri, did)}
+                fetchDiff={(target, current) => articleChannelDiff(savedArticleUri, target, current)}
+                doApply={(target, _source, hash) => applyArticleChannelChange(savedArticleUri, target, hash)}
+              />
             </details>
           {/if}
         </aside>

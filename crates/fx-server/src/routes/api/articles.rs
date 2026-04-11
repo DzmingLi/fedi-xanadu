@@ -6,7 +6,7 @@ use axum::{
 use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::*;
 use fx_core::region::default_visibility;
-use fx_core::services::{article_service, notification_service, series_service, version_service};
+use fx_core::services::{article_service, collaboration_service, notification_service, series_service, version_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult, require_owner};
@@ -672,6 +672,9 @@ pub async fn create_article(
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
+
+    // Register creator as owner collaborator
+    let _ = collaboration_service::register_article_owner(&state.pool, &at_uri, &user.did).await;
 
     Ok((StatusCode::CREATED, Json(article)))
 }
@@ -1538,4 +1541,203 @@ pub async fn apply_change(
     }
 
     Ok(Json(ApplyChangeOutput { has_conflicts, content }))
+}
+
+// --- Article collaboration endpoints ---
+
+pub async fn list_article_collaborators(
+    State(state): State<AppState>,
+    Query(q): Query<UriQuery>,
+) -> ApiResult<Json<Vec<collaboration_service::ArticleCollaborator>>> {
+    let collabs = collaboration_service::list_article_collaborators(&state.pool, &q.uri).await?;
+    Ok(Json(collabs))
+}
+
+#[derive(serde::Deserialize)]
+pub struct InviteArticleCollabInput {
+    pub uri: String,
+    pub user_did: String,
+    pub role: Option<String>,
+}
+
+pub async fn invite_article_collaborator(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<InviteArticleCollabInput>,
+) -> ApiResult<(StatusCode, Json<collaboration_service::ArticleCollaborator>)> {
+    // Verify ownership
+    let article = article_service::get_article(&state.pool, state.instance_mode, &input.uri).await?;
+    require_owner(Some(&article.did), &user.did)?;
+
+    let role = input.role.as_deref().unwrap_or("editor");
+    let short_did = input.user_did.chars().rev().take(8).collect::<String>().chars().rev().collect::<String>();
+    let channel_name = format!("collab_{short_did}");
+
+    // Create pijul channel
+    let node_id = uri_to_node_id(&input.uri);
+    if let Err(e) = state.pijul.create_channel(&node_id, &channel_name, None) {
+        tracing::warn!("create channel for article: {e}");
+    }
+
+    let collab = collaboration_service::add_article_collaborator(
+        &state.pool, &input.uri, &input.user_did, role, &channel_name, &user.did,
+    ).await?;
+
+    Ok((StatusCode::CREATED, Json(collab)))
+}
+
+#[derive(serde::Deserialize)]
+pub struct RemoveArticleCollabInput {
+    pub uri: String,
+    pub user_did: String,
+}
+
+pub async fn remove_article_collaborator_endpoint(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<RemoveArticleCollabInput>,
+) -> ApiResult<StatusCode> {
+    let article = article_service::get_article(&state.pool, state.instance_mode, &input.uri).await?;
+    require_owner(Some(&article.did), &user.did)?;
+
+    let collab = collaboration_service::get_article_collaborator(&state.pool, &input.uri, &input.user_did).await?;
+    let removed = collaboration_service::remove_article_collaborator(&state.pool, &input.uri, &input.user_did).await?;
+    if !removed {
+        return Err(AppError(fx_core::Error::NotFound { entity: "collaborator", id: input.user_did }));
+    }
+
+    if let Some(c) = collab {
+        let node_id = uri_to_node_id(&input.uri);
+        let _ = state.pijul.delete_channel(&node_id, &c.channel_name);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_article_channels(
+    State(state): State<AppState>,
+    Query(q): Query<UriQuery>,
+) -> ApiResult<Json<Vec<String>>> {
+    let node_id = uri_to_node_id(&q.uri);
+    let channels = state.pijul.list_channels(&node_id)
+        .unwrap_or_else(|_| vec!["main".to_string()]);
+    Ok(Json(channels))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ArticleChannelFileQuery {
+    pub uri: String,
+    pub channel: String,
+    pub path: Option<String>,
+}
+
+pub async fn read_article_channel_file(
+    State(state): State<AppState>,
+    Query(q): Query<ArticleChannelFileQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let node_id = uri_to_node_id(&q.uri);
+    let file_path = q.path.as_deref().unwrap_or("content.typ");
+
+    let content = state.pijul.read_file_from_channel(&node_id, &q.channel, file_path)
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("read channel file: {e}"))))?;
+
+    let text = String::from_utf8_lossy(&content).into_owned();
+    Ok(Json(serde_json::json!({ "content": text })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct WriteArticleChannelFileInput {
+    pub uri: String,
+    pub channel: String,
+    pub content: String,
+    pub message: Option<String>,
+    pub path: Option<String>,
+}
+
+pub async fn write_article_channel_file(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<WriteArticleChannelFileInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    // Verify user has access to this channel
+    let collab = collaboration_service::get_article_collaborator(&state.pool, &input.uri, &user.did).await?;
+    let allowed = match &collab {
+        Some(c) => c.channel_name == input.channel || c.role == "owner",
+        None => false,
+    };
+    if !allowed {
+        return Err(AppError(fx_core::Error::Forbidden { action: "write to this channel" }));
+    }
+
+    let node_id = uri_to_node_id(&input.uri);
+    let file_path = input.path.as_deref().unwrap_or("content.typ");
+    let msg = input.message.as_deref().unwrap_or("update");
+
+    let result = state.pijul.write_and_record_on_channel(
+        &node_id, &input.channel, file_path, input.content.as_bytes(), msg, Some(&user.did),
+    ).map_err(|e| AppError(fx_core::Error::Internal(format!("write channel file: {e}"))))?;
+
+    let (hash, merkle) = result.unwrap_or_default();
+    Ok(Json(serde_json::json!({ "change_hash": hash, "merkle": merkle })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ArticleChannelQuery {
+    pub uri: String,
+    pub channel: String,
+}
+
+pub async fn article_channel_log(
+    State(state): State<AppState>,
+    Query(q): Query<ArticleChannelQuery>,
+) -> ApiResult<Json<Vec<String>>> {
+    let node_id = uri_to_node_id(&q.uri);
+    let log = state.pijul.log_channel(&node_id, &q.channel)
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("channel log: {e}"))))?;
+    Ok(Json(log))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ApplyArticleChannelInput {
+    pub uri: String,
+    pub target_channel: String,
+    pub change_hash: String,
+}
+
+pub async fn apply_article_channel_change(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<ApplyArticleChannelInput>,
+) -> ApiResult<StatusCode> {
+    let collab = collaboration_service::get_article_collaborator(&state.pool, &input.uri, &user.did).await?;
+    let allowed = match &collab {
+        Some(c) => c.channel_name == input.target_channel || c.role == "owner",
+        None => false,
+    };
+    if !allowed {
+        return Err(AppError(fx_core::Error::Forbidden { action: "write to this channel" }));
+    }
+
+    let node_id = uri_to_node_id(&input.uri);
+    state.pijul.apply_change_to_channel(&node_id, &input.change_hash, &input.target_channel)
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("apply change: {e}"))))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(serde::Deserialize)]
+pub struct ArticleChannelDiffQuery {
+    pub uri: String,
+    pub a: String,
+    pub b: String,
+}
+
+pub async fn article_channel_diff(
+    State(state): State<AppState>,
+    Query(q): Query<ArticleChannelDiffQuery>,
+) -> ApiResult<Json<fx_pijul::ChannelDiffResult>> {
+    let node_id = uri_to_node_id(&q.uri);
+    let diff = state.pijul.diff_channels(&node_id, &q.a, &q.b)
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("channel diff: {e}"))))?;
+    Ok(Json(diff))
 }
