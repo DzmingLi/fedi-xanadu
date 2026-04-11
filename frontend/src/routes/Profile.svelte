@@ -38,7 +38,7 @@
   let questions = $state<Article[]>([]);
   let answers = $state<Article[]>([]);
   let publicBookmarks = $state<BookmarkWithTitle[]>([]);
-  let profileTab = $state<'articles' | 'lectures' | 'papers' | 'reviews' | 'qa' | 'bookmarks' | 'all'>('articles');
+  let profileTab = $state<string>('general');
 
   let isOwnProfile = $derived(getAuth()?.did === did);
   let following = $state<FollowEntry[]>([]);
@@ -82,10 +82,47 @@
     return items;
   }
 
-  let articlesFeed = $derived(buildFeed('general'));
-  let lecturesFeed = $derived(buildFeed('lecture'));
-  let papersFeed = $derived(buildFeed('paper'));
-  let reviewsFeed = $derived(buildFeed('review'));
+  // Dynamically derive all categories from user's articles and series
+  let userCategories = $derived.by((): { key: string; label: string; count: number }[] => {
+    const counts = new Map<string, number>();
+    const deduped = deduplicateByTranslation(articles, locale);
+    for (const a of deduped) {
+      const cat = a.category || 'general';
+      if (!seriesArticleUris.has(a.at_uri)) {
+        counts.set(cat, (counts.get(cat) || 0) + 1);
+      }
+    }
+    for (const s of allUserSeries) {
+      const cat = s.category || 'general';
+      counts.set(cat, (counts.get(cat) || 0) + 1);
+    }
+    // Build ordered list: 'general' first, then sorted by count desc
+    const cats: { key: string; label: string; count: number }[] = [];
+    const knownLabels: Record<string, string> = {
+      general: t('category.general'),
+      lecture: t('category.lecture'),
+      paper: t('category.paper'),
+      review: t('category.review'),
+    };
+    const allKeys = Array.from(counts.keys());
+    // Ensure 'general' is always first
+    if (!allKeys.includes('general')) allKeys.unshift('general');
+    const sorted = allKeys.sort((a, b) => {
+      if (a === 'general') return -1;
+      if (b === 'general') return 1;
+      return (counts.get(b) || 0) - (counts.get(a) || 0);
+    });
+    for (const key of sorted) {
+      cats.push({
+        key,
+        label: knownLabels[key] || key,
+        count: counts.get(key) || 0,
+      });
+    }
+    return cats;
+  });
+
+  let currentFeed = $derived(buildFeed(profileTab));
 
   // "全部文章" tab: articles grouped by series
   interface ArticleGroup {
@@ -512,28 +549,14 @@
   {/if}
 
   <div class="profile-tabs">
-    <button class="tab-btn" class:active={profileTab === 'articles'} onclick={() => { profileTab = 'articles'; }}>
-      {t('category.general')}
-      {#if articlesFeed.length > 0}<span class="tab-count">{articlesFeed.length}</span>{/if}
-    </button>
-    {#if lecturesFeed.length > 0 || isOwnProfile}
-      <button class="tab-btn" class:active={profileTab === 'lectures'} onclick={() => { profileTab = 'lectures'; }}>
-        {t('category.lecture')}
-        {#if lecturesFeed.length > 0}<span class="tab-count">{lecturesFeed.length}</span>{/if}
-      </button>
-    {/if}
-    {#if papersFeed.length > 0 || isOwnProfile}
-      <button class="tab-btn" class:active={profileTab === 'papers'} onclick={() => { profileTab = 'papers'; }}>
-        {t('category.paper')}
-        {#if papersFeed.length > 0}<span class="tab-count">{papersFeed.length}</span>{/if}
-      </button>
-    {/if}
-    {#if reviewsFeed.length > 0}
-      <button class="tab-btn" class:active={profileTab === 'reviews'} onclick={() => { profileTab = 'reviews'; }}>
-        {t('category.review')}
-        <span class="tab-count">{reviewsFeed.length}</span>
-      </button>
-    {/if}
+    {#each userCategories as cat (cat.key)}
+      {#if cat.count > 0 || cat.key === 'general' || isOwnProfile}
+        <button class="tab-btn" class:active={profileTab === cat.key} onclick={() => { profileTab = cat.key; }}>
+          {cat.label}
+          {#if cat.count > 0}<span class="tab-count">{cat.count}</span>{/if}
+        </button>
+      {/if}
+    {/each}
     <button class="tab-btn" class:active={profileTab === 'qa'} onclick={() => { profileTab = 'qa'; }}>
       {t('profile.questions')}
       {#if questions.length + answers.length > 0}
@@ -554,9 +577,8 @@
     {/if}
   </div>
 
-  {#if profileTab === 'articles' || profileTab === 'lectures' || profileTab === 'papers' || profileTab === 'reviews'}
-    {@const feed = profileTab === 'articles' ? articlesFeed : profileTab === 'lectures' ? lecturesFeed : profileTab === 'papers' ? papersFeed : reviewsFeed}
-    {#each feed as item}
+  {#if profileTab !== 'qa' && profileTab !== 'bookmarks' && profileTab !== 'all'}
+    {#each currentFeed as item}
       {#if item.type === 'article' && item.article}
         <PostCard
           article={item.article}
@@ -568,7 +590,7 @@
       {/if}
     {/each}
 
-    {#if feed.length === 0}
+    {#if currentFeed.length === 0}
       <p class="empty-text">{t('profile.noWorks')}</p>
     {/if}
 

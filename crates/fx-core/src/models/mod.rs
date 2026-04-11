@@ -10,7 +10,7 @@ pub use social::*;
 pub use tag::*;
 
 // Re-export enums from content module for convenience.
-pub use crate::content::{Category, ContentFormat, ContentKind, PrereqType};
+pub use crate::content::{ContentFormat, ContentKind, PrereqType};
 
 #[cfg(test)]
 mod tests {

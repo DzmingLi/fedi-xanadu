@@ -334,7 +334,7 @@ pub async fn create_article(
 
     let mut tx = pool.begin().await?;
 
-    let category = input.category.unwrap_or_default();
+    let category = input.category.as_deref().unwrap_or("general");
 
     sqlx::query(
         "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id, edition_id) \

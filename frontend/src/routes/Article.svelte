@@ -352,6 +352,7 @@ try {
     // Replace references — pulldown_cmark: sup.footnote-reference > a,
     // standard: a[role="doc-noteref"]
     let counter = 0;
+    const endnotes: { num: number; html: string }[] = [];
     const refs = el.querySelectorAll('sup.footnote-reference > a, a[role="doc-noteref"]');
     refs.forEach(a => {
       const href = (a as HTMLAnchorElement).getAttribute('href');
@@ -372,6 +373,8 @@ try {
       sidenote.className = 'sidenote';
       sidenote.innerHTML = fnContent;
 
+      endnotes.push({ num: counter, html: fnContent });
+
       // For pulldown_cmark, replace the parent <sup>, not just the <a>
       const parent = a.parentElement;
       if (parent && parent.tagName === 'SUP' && parent.classList.contains('footnote-reference')) {
@@ -384,6 +387,22 @@ try {
     // Remove footnote definitions from the bottom
     fnDefs.forEach(def => def.remove());
     if (fnSection) fnSection.remove();
+
+    // Build endnotes section (shown when sidenotes can't fit in margin)
+    if (endnotes.length > 0) {
+      const section = document.createElement('section');
+      section.className = 'endnotes';
+      const hr = document.createElement('hr');
+      section.appendChild(hr);
+      const ol = document.createElement('ol');
+      for (const en of endnotes) {
+        const li = document.createElement('li');
+        li.innerHTML = en.html;
+        ol.appendChild(li);
+      }
+      section.appendChild(ol);
+      el.appendChild(section);
+    }
   }
 </script>
 
@@ -393,11 +412,24 @@ try {
   <p class="meta">Loading...</p>
 {:else}
   {#if seriesId}
-    <SeriesSidebar {seriesId} currentUri={uri} />
+    <div class="series-left-col">
+      <SeriesSidebar {seriesId} currentUri={uri} />
+      {#if tocItems.length > 0}
+        <nav class="toc toc-in-sidebar">
+          <ul>
+            {#each tocItems as item}
+              <li class="toc-{item.level}" class:active={activeId === item.id}>
+                <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
+              </li>
+            {/each}
+          </ul>
+        </nav>
+      {/if}
+    </div>
   {/if}
   <div class="article-layout" class:has-series-sidebar={!!seriesId}>
-    <!-- Left floating TOC + forks -->
-    {#if tocItems.length > 0 || topForks.length > 0}
+    <!-- Left floating TOC + forks (only when no series sidebar) -->
+    {#if !seriesId && (tocItems.length > 0 || topForks.length > 0)}
       <aside class="toc-box">
         <div class="toc-sticky">
           {#if tocItems.length > 0}
@@ -632,6 +664,34 @@ try {
 {/if}
 
 <style>
+
+  .series-left-col {
+    width: 260px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 4rem;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+  }
+  .series-left-col :global(.series-sidebar) {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+    border-right: none;
+    width: auto;
+  }
+  .toc-in-sidebar {
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    margin: 0;
+  }
+
+  @media (max-width: 860px) {
+    .series-left-col { display: none; }
+  }
 
   .article-layout {
     position: relative;
@@ -1002,6 +1062,27 @@ try {
       display: none;
     }
   }
+  /* Endnotes section: hidden on wide screens, visible on narrow */
+  :global(.endnotes) {
+    display: none;
+  }
+  :global(.endnotes hr) {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2rem 0 1rem;
+  }
+  :global(.endnotes ol) {
+    padding-left: 1.5em;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+  :global(.endnotes li) {
+    margin: 0.5em 0;
+  }
+
+  /* Narrow screen: hide margin sidenotes, show endnotes, allow inline toggle */
   @media (max-width: 60rem) {
     :global(.sidenote) {
       display: none;
@@ -1009,18 +1090,15 @@ try {
     :global(.margin-toggle:checked + .sidenote) {
       display: block;
       float: none;
-      width: 100%;
-      margin: 0.5rem 0 0.5rem 1rem;
-      padding: 8px;
+      width: auto;
+      margin: 0.3rem 0 0.5rem 1rem;
+      padding: 6px 8px;
       background: rgba(0, 0, 0, 0.02);
       border-left: 2px solid var(--border);
       border-radius: 2px;
     }
-    :global(.margin-toggle) {
-      display: none;
-    }
-    :global(.sidenote-number) {
-      cursor: pointer;
+    :global(.endnotes) {
+      display: block;
     }
   }
 

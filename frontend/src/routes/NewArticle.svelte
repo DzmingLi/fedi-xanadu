@@ -4,7 +4,7 @@
   import { getLangPrefs } from '../lib/langPrefs.svelte';
   import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
   import TypstEditor from '../lib/components/TypstEditor.svelte';
-  import type { Tag, Article, BookEdition, ContentFormat, Category, PrereqType, ArticleVersionInfo, VersionDiff } from '../lib/types';
+  import type { Tag, Article, BookEdition, ContentFormat, PrereqType, ArticleVersionInfo, VersionDiff } from '../lib/types';
 
   let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
   let isEditing = $state(false);
@@ -37,7 +37,7 @@
   let restricted = $state(false);
   let translationOf = $state('');
   let commitMessage = $state('');
-  let category = $state<Category>((initialCategory || 'general') as Category);
+  let category = $state(initialCategory || 'general');
   let bookId = $state(initialBookId || '');
   let editionId = $state('');
   let bookEditions = $state<BookEdition[]>([]);
@@ -859,12 +859,18 @@
             {/if}
             <div class="sb-field">
               <label>{t('newArticle.categoryLabel')}</label>
-              <select bind:value={category}>
+              <input
+                bind:value={category}
+                list="category-suggestions"
+                placeholder={t('category.general')}
+                class="category-input"
+              />
+              <datalist id="category-suggestions">
                 <option value="general">{t('category.general')}</option>
                 <option value="lecture">{t('category.lecture')}</option>
                 <option value="paper">{t('category.paper')}</option>
                 <option value="review">{t('category.review')}</option>
-              </select>
+              </datalist>
             </div>
             {#if category === 'review' && bookEditions.length > 0}
               <div class="sb-field">

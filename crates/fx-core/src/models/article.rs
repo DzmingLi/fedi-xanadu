@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::tag::ArticlePrereq;
-use crate::content::{Category, ContentFormat, ContentKind};
+use crate::content::{ContentFormat, ContentKind};
 
 // ---- DB row ----
 
@@ -23,7 +23,7 @@ pub struct Article {
     pub translation_group: Option<String>,
     pub license: String,
     pub prereq_threshold: f64,
-    pub category: Category,
+    pub category: String,
     pub question_uri: Option<String>,
     pub book_id: Option<String>,
     pub edition_id: Option<String>,
@@ -48,7 +48,7 @@ pub struct CreateArticle {
     pub license: Option<String>,
     pub translation_of: Option<String>,
     pub restricted: Option<bool>,
-    pub category: Option<Category>,
+    pub category: Option<String>,
     pub book_id: Option<String>,
     pub edition_id: Option<String>,
     pub tags: Vec<String>,

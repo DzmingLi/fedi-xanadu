@@ -220,6 +220,7 @@ export default {
   'library.emptyHint': '在文章页面点击「收藏」按钮添加文章',
   'library.removeBookmark': '取消收藏',
   'library.seriesFolder': '系列',
+  'library.selectArticle': '选择一篇文章开始阅读',
 
   // Series
   'series.articles': '篇文章',

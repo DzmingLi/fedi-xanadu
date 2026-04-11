@@ -3,7 +3,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::StatusCode,
 };
-use fx_core::content::{ContentFormat, ContentKind, Category};
+use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::*;
 use fx_core::services::{article_service, series_service};
 use fx_core::validation;
@@ -698,7 +698,7 @@ pub async fn compile_series(
                 license: None,
                 translation_of: None,
                 restricted: None,
-                category: Some(series.series.category.parse().unwrap_or(Category::General)),
+                category: Some(series.series.category.clone()),
                 book_id: None,
                 edition_id: None,
                 tags: vec![],

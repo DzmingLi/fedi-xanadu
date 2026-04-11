@@ -220,6 +220,7 @@ export default {
   'library.emptyHint': 'Click "Bookmark" on any article to add it here',
   'library.removeBookmark': 'Remove bookmark',
   'library.seriesFolder': 'Series',
+  'library.selectArticle': 'Select an article to start reading',
 
   // Series
   'series.articles': 'articles',

@@ -123,7 +123,7 @@
     </div>
 
     {#if questionContent}
-      <div class="content-body rendered-html">
+      <div class="content">
         {@html questionContent.html}
       </div>
     {/if}
@@ -185,7 +185,7 @@
             <span>{answer.created_at.split(' ')[0]}</span>
           </div>
           {#if content}
-            <div class="content-body rendered-html">
+            <div class="content">
               {@html content.html}
             </div>
           {:else}
@@ -246,12 +246,6 @@
   .author:hover {
     color: var(--accent);
     text-decoration: none;
-  }
-
-  .content-body {
-    font-size: 15px;
-    line-height: 1.7;
-    color: var(--text-primary);
   }
 
   .q-actions {

@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { listBookmarks, moveBookmark, removeBookmark, getArticlesByDid, listSeries, getAllSeriesArticles } from '../lib/api';
+  import { listBookmarks, moveBookmark, removeBookmark, getArticlesByDid, listSeries, getAllSeriesArticles, getArticleContent } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps } from '../lib/series';
-  import type { BookmarkWithTitle, Article, Series } from '../lib/types';
+  import type { BookmarkWithTitle, Article, Series, ArticleContent } from '../lib/types';
 
   let bookmarks = $state<BookmarkWithTitle[]>([]);
   let myArticles = $state<Article[]>([]);
@@ -11,15 +11,19 @@
   let seriesArticleMap = $state<Map<string, string[]>>(new Map());
   let loading = $state(true);
   let expandedFolders = $state(new Set<string>(['/', `/${t('library.seriesFolder')}`]));
-  let selectedFolder = $state('/');
   let newFolderName = $state('');
   let showNewFolder = $state(false);
+
+  // Selected article for rendering
+  let selectedUri = $state<string | null>(null);
+  let selectedTitle = $state('');
+  let articleHtml = $state('');
+  let contentLoading = $state(false);
 
   // Build folder tree from bookmark paths
   let folderTree = $derived.by(() => {
     const folders = new Set<string>(['/']);
     for (const b of allItems) {
-      // Add this folder and all parent folders
       const parts = b.folder_path.split('/').filter(Boolean);
       let path = '';
       for (const p of parts) {
@@ -31,39 +35,31 @@
   });
 
   // Hierarchical folder structure for tree rendering
-  type FolderNode = { name: string; path: string; children: FolderNode[]; count: number };
+  type FolderNode = { name: string; path: string; children: FolderNode[]; items: BookmarkWithTitle[] };
   let folderNodes = $derived.by(() => {
-    const root: FolderNode = { name: t('nav.library'), path: '/', children: [], count: 0 };
+    const root: FolderNode = { name: t('nav.library'), path: '/', children: [], items: [] };
     const nodeMap = new Map<string, FolderNode>();
     nodeMap.set('/', root);
-
-    // Count bookmarks per folder
-    const folderCounts = new Map<string, number>();
-    for (const b of allItems) {
-      folderCounts.set(b.folder_path, (folderCounts.get(b.folder_path) || 0) + 1);
-    }
-    root.count = allItems.length;
 
     for (const path of folderTree) {
       if (path === '/') continue;
       const parts = path.split('/').filter(Boolean);
       const name = parts[parts.length - 1];
       const parentPath = parts.length > 1 ? '/' + parts.slice(0, -1).join('/') : '/';
-      const node: FolderNode = { name, path, children: [], count: folderCounts.get(path) || 0 };
+      const node: FolderNode = { name, path, children: [], items: [] };
       nodeMap.set(path, node);
       const parent = nodeMap.get(parentPath);
       if (parent) parent.children.push(node);
     }
 
-    return root;
-  });
+    // Place items into their folder nodes
+    for (const b of allItems) {
+      const node = nodeMap.get(b.folder_path);
+      if (node) node.items.push(b);
+      else root.items.push(b);
+    }
 
-  // Articles in selected folder (and subfolders)
-  let visibleArticles = $derived.by(() => {
-    if (selectedFolder === '/') return allItems;
-    return allItems.filter(b =>
-      b.folder_path === selectedFolder || b.folder_path.startsWith(selectedFolder + '/')
-    );
+    return root;
   });
 
   $effect(() => {
@@ -76,7 +72,6 @@
     ]).then(([bk, arts, series, sa]) => {
       bookmarks = bk;
       myArticles = arts;
-      // Filter to user's series
       const did = auth?.did;
       allSeries = did ? series.filter(s => s.created_by === did) : [];
       const saMaps = buildSeriesArticleMaps(sa);
@@ -95,10 +90,9 @@
     return uris;
   });
 
-  // "My articles" as virtual bookmark items — series articles go into series folders
+  // "My articles" as virtual bookmark items
   let myArticleItems = $derived.by(() => {
     const items: BookmarkWithTitle[] = [];
-    // Articles that belong to a series → placed in /${t('library.seriesFolder')}/SeriesTitle folder
     for (const s of allSeries) {
       const articleUris = seriesArticleMap.get(s.id) || [];
       for (const uri of articleUris) {
@@ -114,7 +108,6 @@
         }
       }
     }
-    // Standalone articles (not in any series)
     for (const a of myArticles) {
       if (!seriesArticleUris.has(a.at_uri)) {
         items.push({
@@ -140,19 +133,24 @@
     expandedFolders = new Set(expandedFolders);
   }
 
-  function selectFolder(path: string) {
-    selectedFolder = path;
+  async function selectArticle(uri: string, title: string) {
+    if (selectedUri === uri) return;
+    selectedUri = uri;
+    selectedTitle = title;
+    articleHtml = '';
+    contentLoading = true;
+    try {
+      const c = await getArticleContent(uri);
+      articleHtml = c.html;
+    } catch {
+      articleHtml = `<p style="color:var(--text-hint)">${t('common.loading')} failed</p>`;
+    }
+    contentLoading = false;
   }
 
   async function createFolder() {
     const name = newFolderName.trim();
     if (!name) return;
-    const path = selectedFolder === '/' ? '/' + name : selectedFolder + '/' + name;
-    // Create folder by moving a placeholder — or just expand it
-    // Folders are implicit from bookmark paths, so we just set selected
-    expandedFolders.add(selectedFolder);
-    expandedFolders = new Set(expandedFolders);
-    selectedFolder = path;
     showNewFolder = false;
     newFolderName = '';
   }
@@ -202,88 +200,83 @@
       </div>
     {/if}
 
-    <nav class="tree-nav">
-      {#snippet folderItem(node: FolderNode, depth: number)}
-        <div
-          class="tree-item"
-          class:selected={selectedFolder === node.path}
-          style="padding-left: {8 + depth * 16}px"
-          role="treeitem"
-          tabindex="0"
-          aria-selected={selectedFolder === node.path}
-          onclick={() => selectFolder(node.path)}
-          onkeydown={(e) => { if (e.key === 'Enter') selectFolder(node.path); }}
-          ondragover={(e) => e.preventDefault()}
-          ondrop={() => onDrop(node.path)}
-        >
-          {#if node.children.length > 0}
-            <button class="tree-chevron" title={t('article.toggleCollapse')} class:open={expandedFolders.has(node.path)} onclick={(e) => { e.stopPropagation(); toggleFolder(node.path); }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-          {:else}
-            <span class="tree-spacer"></span>
-          {/if}
-          <svg class="tree-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            {#if node.path === '/'}
-              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+    {#if loading}
+      <p class="tree-loading">{t('common.loading')}</p>
+    {:else}
+      <nav class="tree-nav">
+        {#snippet folderItem(node: FolderNode, depth: number)}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="tree-item tree-folder"
+            style="padding-left: {8 + depth * 14}px"
+            onclick={() => toggleFolder(node.path)}
+            ondragover={(e) => e.preventDefault()}
+            ondrop={() => onDrop(node.path)}
+          >
+            {#if node.children.length > 0 || node.items.length > 0}
+              <span class="tree-chevron" class:open={expandedFolders.has(node.path)}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
             {:else}
-              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+              <span class="tree-spacer"></span>
             {/if}
-          </svg>
-          <span class="tree-name">{node.name}</span>
-          {#if node.count > 0}
-            <span class="tree-count">{node.count}</span>
+            <svg class="tree-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+            <span class="tree-name">{node.name}</span>
+          </div>
+
+          {#if expandedFolders.has(node.path)}
+            {#each node.children as child}
+              {@render folderItem(child, depth + 1)}
+            {/each}
+            {#each node.items as item}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div
+                class="tree-item tree-file"
+                class:selected={selectedUri === item.article_uri}
+                style="padding-left: {8 + (depth + 1) * 14}px"
+                onclick={() => selectArticle(item.article_uri, item.title)}
+                draggable="true"
+                ondragstart={() => onDragStart(item.article_uri)}
+              >
+                <span class="tree-spacer"></span>
+                <svg class="tree-icon file-doc" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <span class="tree-name">{item.title}</span>
+              </div>
+            {/each}
           {/if}
-        </div>
-        {#if expandedFolders.has(node.path) && node.children.length > 0}
-          {#each node.children as child}
-            {@render folderItem(child, depth + 1)}
-          {/each}
-        {/if}
-      {/snippet}
-      {@render folderItem(folderNodes, 0)}
-    </nav>
+        {/snippet}
+        {@render folderItem(folderNodes, 0)}
+      </nav>
+    {/if}
   </aside>
 
-  <main class="file-list">
-    <div class="list-header">
-      <span class="list-path">{selectedFolder === '/' ? t('nav.library') : selectedFolder}</span>
-      <span class="list-count">{visibleArticles.length}</span>
-    </div>
-
-    {#if loading}
-      <p class="meta">{t('common.loading')}</p>
-    {:else if visibleArticles.length === 0}
-      <div class="empty-library">
-        <p>{t('library.emptyFolder')}</p>
-        <p class="meta">{t('library.emptyHint')}</p>
-      </div>
-    {:else}
-      {#each visibleArticles as b}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <a
-          href="#/article?uri={encodeURIComponent(b.article_uri)}"
-          class="file-item"
-          draggable="true"
-          ondragstart={() => onDragStart(b.article_uri)}
-        >
-          <svg class="file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-          </svg>
-          <div class="file-info">
-            <span class="file-title">{b.title}</span>
-            {#if b.description}
-              <span class="file-desc">{b.description}</span>
-            {/if}
-          </div>
-          <div class="file-actions">
-            <span class="file-folder">{b.folder_path}</span>
-            <button class="file-remove" onclick={(e) => { e.preventDefault(); e.stopPropagation(); doRemoveBookmark(b.article_uri); }} title={t('library.removeBookmark')}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
+  <main class="reader-pane">
+    {#if selectedUri}
+      <div class="reader-header">
+        <h1 class="reader-title">{selectedTitle}</h1>
+        <a href="#/article?uri={encodeURIComponent(selectedUri)}" class="reader-open" title={t('common.edit')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         </a>
-      {/each}
+      </div>
+      {#if contentLoading}
+        <p class="meta">{t('common.loading')}</p>
+      {:else}
+        <div class="content">
+          {@html articleHtml}
+        </div>
+      {/if}
+    {:else}
+      <div class="reader-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint)" stroke-width="1" opacity="0.4">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
+        </svg>
+        <p>{t('library.selectArticle')}</p>
+      </div>
     {/if}
   </main>
 </div>
@@ -292,16 +285,19 @@
   .library-layout {
     display: flex;
     gap: 0;
-    min-height: calc(100vh - 6rem);
+    min-height: calc(100vh - 4rem);
   }
 
-  /* Folder tree sidebar */
+  /* ── Folder tree sidebar ── */
   .folder-tree {
-    width: 240px;
+    width: 280px;
     flex-shrink: 0;
     border-right: 1px solid var(--border);
     background: rgba(0,0,0,0.015);
     overflow-y: auto;
+    max-height: calc(100vh - 4rem);
+    position: sticky;
+    top: 4rem;
   }
   .tree-header {
     display: flex;
@@ -311,11 +307,11 @@
     border-bottom: 1px solid var(--border);
   }
   .tree-title {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-hint);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
   }
   .tree-action {
     background: none;
@@ -327,6 +323,12 @@
     transition: color 0.15s;
   }
   .tree-action:hover { color: var(--accent); }
+
+  .tree-loading {
+    padding: 16px;
+    color: var(--text-hint);
+    font-size: 13px;
+  }
 
   .new-folder-input {
     display: flex;
@@ -360,7 +362,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px;
+    padding: 3px 8px;
     cursor: pointer;
     transition: background 0.1s;
     font-size: 13px;
@@ -368,24 +370,28 @@
     user-select: none;
   }
   .tree-item:hover {
-    background: var(--bg-hover);
+    background: rgba(0,0,0,0.04);
   }
-  .tree-item.selected {
-    background: var(--bg-hover);
-    color: var(--text-primary);
+  .tree-folder {
     font-weight: 500;
+    color: var(--text-primary);
+  }
+  .tree-file {
+    font-weight: 400;
+    color: var(--text-secondary);
+  }
+  .tree-file.selected {
+    background: rgba(95, 155, 101, 0.1);
+    color: var(--accent);
   }
   .tree-chevron {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    color: var(--text-hint);
-    transition: transform 0.15s;
+    justify-content: center;
     width: 14px;
     flex-shrink: 0;
+    color: var(--text-hint);
+    transition: transform 0.15s;
   }
   .tree-chevron.open {
     transform: rotate(90deg);
@@ -398,6 +404,14 @@
     flex-shrink: 0;
     color: var(--text-hint);
   }
+  .tree-icon.file-doc {
+    color: var(--text-hint);
+    opacity: 0.6;
+  }
+  .tree-file.selected .tree-icon.file-doc {
+    color: var(--accent);
+    opacity: 1;
+  }
   .tree-name {
     flex: 1;
     min-width: 0;
@@ -405,120 +419,62 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .tree-count {
-    font-size: 11px;
-    color: var(--text-hint);
-    background: var(--bg-hover);
-    padding: 0 5px;
-    border-radius: 8px;
-    flex-shrink: 0;
-  }
 
-  /* File list */
-  .file-list {
+  /* ── Reader pane ── */
+  .reader-pane {
     flex: 1;
     min-width: 0;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 2rem;
   }
-  .list-header {
+  .reader-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(0,0,0,0.01);
+    gap: 12px;
+    padding: 1.5rem 0 0;
+    margin-bottom: 0.5rem;
   }
-  .list-path {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-  .list-count {
-    font-size: 12px;
-    color: var(--text-hint);
-  }
-
-  .empty-library {
-    padding: 3rem 1rem;
-    text-align: center;
-    color: var(--text-secondary);
-  }
-  .empty-library p { margin: 0.5rem 0; }
-
-  .file-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
-    text-decoration: none;
-    color: inherit;
-    transition: background 0.1s;
-    cursor: grab;
-  }
-  .file-item:hover {
-    background: var(--bg-hover);
-    text-decoration: none;
-  }
-  .file-item:active {
-    cursor: grabbing;
-  }
-  .file-icon {
-    flex-shrink: 0;
-    color: var(--text-hint);
-  }
-  .file-info {
+  .reader-title {
+    font-family: var(--font-serif);
+    font-size: 1.8rem;
+    font-weight: 400;
+    margin: 0;
     flex: 1;
     min-width: 0;
+    line-height: 1.3;
+  }
+  .reader-open {
+    color: var(--text-hint);
+    flex-shrink: 0;
+    padding: 4px;
+    transition: color 0.15s;
+  }
+  .reader-open:hover { color: var(--accent); }
+
+  .reader-empty {
     display: flex;
     flex-direction: column;
-  }
-  .file-title {
-    font-family: var(--font-serif);
-    font-size: 14px;
-    color: var(--text-primary);
-    line-height: 1.35;
-  }
-  .file-item:hover .file-title {
-    color: var(--accent);
-  }
-  .file-desc {
-    font-size: 12px;
-    color: var(--text-hint);
-    margin-top: 1px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .file-actions {
-    display: flex;
     align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  .file-folder {
-    font-size: 11px;
+    justify-content: center;
+    height: 60vh;
+    gap: 12px;
     color: var(--text-hint);
-  }
-  .file-remove {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-hint);
-    padding: 2px;
-    display: flex;
-    opacity: 0;
-    transition: opacity 0.15s, color 0.15s;
-  }
-  .file-item:hover .file-remove {
-    opacity: 1;
-  }
-  .file-remove:hover {
-    color: #dc2626;
+    font-size: 14px;
   }
 
-  @media (max-width: 640px) {
+  @media (max-width: 700px) {
+    .folder-tree { width: 200px; }
+    .reader-pane { padding: 0 1rem; }
+  }
+  @media (max-width: 500px) {
+    .library-layout { flex-direction: column; }
     .folder-tree {
-      width: 180px;
+      width: 100%;
+      max-height: 40vh;
+      position: static;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
     }
   }
 </style>

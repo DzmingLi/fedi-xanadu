@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use fx_core::content::{Category, ContentFormat};
+use fx_core::content::ContentFormat;
 use fx_core::models::CreateArticle;
 use serde::{Deserialize, Serialize};
 
@@ -58,7 +58,7 @@ enum Command {
         /// License (default: CC-BY-SA-4.0)
         #[arg(long, default_value = "CC-BY-SA-4.0")]
         license: String,
-        /// Category: general, lecture, paper, review
+        /// Category (e.g. general, lecture, paper, review, or custom)
         #[arg(long, default_value = "general")]
         category: String,
         /// Book ID (for reviews)
@@ -368,7 +368,7 @@ enum AdminCommand {
         /// Short description
         #[arg(short, long)]
         desc: Option<String>,
-        /// Category: general, lecture, paper, review
+        /// Category (e.g. general, lecture, paper, review, or custom)
         #[arg(long, default_value = "general")]
         category: String,
         /// Book ID (for reviews)
@@ -844,9 +844,6 @@ async fn main() -> Result<()> {
                     .unwrap_or("Untitled")
                     .to_string()
             });
-
-            let category: Category = category.parse()
-                .map_err(|e: String| anyhow::anyhow!(e))?;
 
             let body = CreateArticle {
                 title: title.clone(),
