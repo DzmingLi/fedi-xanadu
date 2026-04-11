@@ -10,7 +10,7 @@ use pijul_core::{
 };
 
 /// A single line-level difference between the working copy and the last recorded state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct DiffHunk {
     /// The file path relative to the repo root.
     pub path: String,
@@ -21,7 +21,7 @@ pub struct DiffHunk {
 }
 
 /// Summary of differences between the working copy and the last recorded state.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct DiffResult {
     /// Per-file hunks showing what changed.
     pub hunks: Vec<DiffHunk>,
