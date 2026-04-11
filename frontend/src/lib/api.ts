@@ -99,6 +99,8 @@ export const getArticle = (uri: string) => get<Article>(`/articles/by-uri?uri=${
 export const getArticleContent = (uri: string) => get<ArticleContent>(`/articles/by-uri/content?uri=${encodeURIComponent(uri)}`);
 export const getArticlePrereqs = (uri: string) => get<ArticlePrereqRow[]>(`/articles/by-uri/prereqs?uri=${encodeURIComponent(uri)}`);
 export const getArticleForks = (uri: string) => get<ForkWithTitle[]>(`/articles/by-uri/forks?uri=${encodeURIComponent(uri)}`);
+export const getForkAhead = (forkUri: string, originalUri: string) =>
+  get<string[]>(`/articles/by-uri/fork-ahead?fork_uri=${encodeURIComponent(forkUri)}&original_uri=${encodeURIComponent(originalUri)}`);
 export const createArticle = (data: CreateArticle) => post<Article>('/articles', data);
 export const getAllArticleTeaches = () => get<ContentTeachRow[]>('/articles/all-teaches');
 export const getAllArticlePrereqs = () => get<ContentPrereqBulkRow[]>('/articles/all-prereqs');

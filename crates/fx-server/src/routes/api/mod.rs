@@ -121,6 +121,7 @@ fn article_routes() -> Router<AppState> {
         .route("/articles/by-uri/content", get(articles::get_article_content))
         .route("/articles/by-uri/prereqs", get(articles::get_article_prereqs))
         .route("/articles/by-uri/forks", get(articles::get_article_forks))
+        .route("/articles/by-uri/fork-ahead", get(articles::get_fork_ahead))
         .route("/articles/full", get(articles::get_article_full))
         // Mutations (proper verbs)
         .route("/articles/update", put(articles::update_article))

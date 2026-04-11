@@ -496,6 +496,15 @@ impl PijulStore {
         Ok(result)
     }
 
+    /// Compare two repos' main channel logs. Returns changes in source but not in target.
+    /// Useful for showing what a fork has that the original doesn't.
+    pub fn diff_repos(&self, source_node_id: &str, target_node_id: &str) -> anyhow::Result<Vec<String>> {
+        let source_log = self.log(source_node_id)?;
+        let target_log = self.log(target_node_id)?;
+        let target_set: std::collections::HashSet<&str> = target_log.iter().map(|s| s.as_str()).collect();
+        Ok(source_log.into_iter().filter(|h| !target_set.contains(h.as_str())).collect())
+    }
+
     /// Apply a recorded change (by hash) from a source repo into a target repo.
     ///
     /// This copies the change file from the source repo's change store into the

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport } from '../lib/api';
+  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport, getForkAhead, applyChange } from '../lib/api';
   import ArticleHistory from '../lib/components/ArticleHistory.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import { tagName } from '../lib/display';
@@ -60,6 +60,11 @@
   let contentEl: HTMLDivElement | undefined = $state();
   let topForks = $derived(forks.slice(0, 3));
   let quotePopup = $state<{ x: number; y: number; text: string } | null>(null);
+
+  // Fork ahead changes
+  let forkAheadMap = $state(new Map<string, string[]>());
+  let forkAheadLoading = $state(new Set<string>());
+  let applyingChange = $state('');
   let commentThread: CommentThread | undefined = $state();
 
   $effect(() => {
@@ -178,6 +183,42 @@
   function doFork() {
     if (!article) return;
     window.location.hash = `#/new?fork_of=${encodeURIComponent(article.at_uri)}`;
+  }
+
+  async function loadForkAhead(forkUri: string) {
+    if (forkAheadMap.has(forkUri)) {
+      // Toggle: clear if already loaded
+      forkAheadMap.delete(forkUri);
+      forkAheadMap = new Map(forkAheadMap);
+      return;
+    }
+    forkAheadLoading.add(forkUri);
+    forkAheadLoading = new Set(forkAheadLoading);
+    try {
+      const ahead = await getForkAhead(forkUri, uri);
+      forkAheadMap.set(forkUri, ahead);
+      forkAheadMap = new Map(forkAheadMap);
+    } catch { /* */ }
+    forkAheadLoading.delete(forkUri);
+    forkAheadLoading = new Set(forkAheadLoading);
+  }
+
+  async function applyForkChange(forkUri: string, changeHash: string) {
+    applyingChange = changeHash;
+    try {
+      const result = await applyChange({ source_uri: forkUri, target_uri: uri, change_hash: changeHash });
+      if (result.has_conflicts) {
+        alert('应用成功但存在冲突，请编辑解决');
+      }
+      // Reload article content and fork ahead
+      const full = await getArticleFull(uri);
+      if (full.content) content = full.content;
+      // Refresh ahead list
+      const ahead = await getForkAhead(forkUri, uri);
+      forkAheadMap.set(forkUri, ahead);
+      forkAheadMap = new Map(forkAheadMap);
+    } catch { /* */ }
+    applyingChange = '';
   }
 
   function doEdit() {
@@ -648,6 +689,58 @@ try {
             </div>
           {/if}
         </div>
+      {/if}
+
+      <!-- Fork contributions -->
+      {#if isOwner && forks.length > 0}
+        <details class="history-section">
+          <summary>Fork 贡献 ({forks.length})</summary>
+          <div class="fork-contributions">
+            {#each forks as f (f.fork_uri)}
+              <div class="fork-contrib-item">
+                <div class="fork-contrib-header">
+                  <a href="#/article?uri={encodeURIComponent(f.forked_uri)}" class="fork-contrib-title">{f.title}</a>
+                  <span class="fork-contrib-author">{f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}</span>
+                  <span class="fork-contrib-score">+{f.vote_score}</span>
+                  <button
+                    class="fork-expand-btn"
+                    onclick={() => loadForkAhead(f.forked_uri)}
+                    disabled={forkAheadLoading.has(f.forked_uri)}
+                  >
+                    {#if forkAheadLoading.has(f.forked_uri)}
+                      ...
+                    {:else if forkAheadMap.has(f.forked_uri)}
+                      收起
+                    {:else}
+                      查看 changes
+                    {/if}
+                  </button>
+                </div>
+                {#if forkAheadMap.has(f.forked_uri)}
+                  {@const ahead = forkAheadMap.get(f.forked_uri)!}
+                  {#if ahead.length === 0}
+                    <p class="fork-no-changes">无领先的 changes</p>
+                  {:else}
+                    <div class="fork-changes-list">
+                      {#each ahead as hash}
+                        <div class="fork-change-row">
+                          <code class="fork-change-hash">{hash.slice(0, 16)}…</code>
+                          <button
+                            class="fork-apply-btn"
+                            onclick={() => applyForkChange(f.forked_uri, hash)}
+                            disabled={applyingChange === hash}
+                          >
+                            {applyingChange === hash ? '...' : '应用'}
+                          </button>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </details>
       {/if}
 
       <!-- Version history -->
@@ -1217,6 +1310,78 @@ try {
   .history-section summary:hover { color: var(--text-primary); }
   .history-section[open] summary { border-bottom: 1px solid var(--border); }
   .history-wrap { padding: 0; }
+
+  /* Fork contributions */
+  .fork-contributions {
+    padding: 8px 16px;
+  }
+  .fork-contrib-item {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .fork-contrib-item:last-child { border-bottom: none; }
+  .fork-contrib-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .fork-contrib-title {
+    font-family: var(--font-serif);
+    font-size: 14px;
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+  .fork-contrib-title:hover { color: var(--accent); }
+  .fork-contrib-author {
+    font-size: 12px;
+    color: var(--text-hint);
+  }
+  .fork-contrib-score {
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .fork-expand-btn {
+    margin-left: auto;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: none;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .fork-expand-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .fork-expand-btn:disabled { opacity: 0.5; cursor: wait; }
+  .fork-no-changes {
+    font-size: 12px;
+    color: var(--text-hint);
+    margin: 4px 0 0 0;
+  }
+  .fork-changes-list {
+    margin-top: 6px;
+  }
+  .fork-change-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 0;
+  }
+  .fork-change-hash {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .fork-apply-btn {
+    padding: 2px 10px;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    background: none;
+    color: var(--accent);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .fork-apply-btn:hover { background: var(--accent); color: white; }
+  .fork-apply-btn:disabled { opacity: 0.5; cursor: wait; }
 
   /* Access control panel */
   .access-panel {

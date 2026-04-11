@@ -419,6 +419,26 @@ pub async fn get_article_forks(
     Ok(Json(forks))
 }
 
+/// Get changes in a fork that the original article doesn't have.
+pub async fn get_fork_ahead(
+    State(state): State<AppState>,
+    Query(q): Query<ForkAheadQuery>,
+) -> ApiResult<Json<Vec<String>>> {
+    let fork_node = uri_to_node_id(&q.fork_uri);
+    let original_node = uri_to_node_id(&q.original_uri);
+
+    let ahead = state.pijul.diff_repos(&fork_node, &original_node)
+        .unwrap_or_default();
+
+    Ok(Json(ahead))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ForkAheadQuery {
+    pub fork_uri: String,
+    pub original_uri: String,
+}
+
 /// Shared: write source file, render, record pijul, track version.
 pub(super) async fn publish_article_content(
     state: &AppState,
