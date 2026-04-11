@@ -655,10 +655,29 @@ pub async fn create_article(
         require_owner(Some(&owner), &user.did)?;
     }
 
-    publish_article_content(
+    let repo_path = publish_article_content(
         &state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
         input.series_id.as_deref(), "Initial publish",
     ).await?;
+
+    // Write meta.json to pijul repo (for standalone articles)
+    if input.series_id.is_none() {
+        let meta = fx_core::meta::article_meta_from_create(
+            &input.title,
+            input.description.as_deref(),
+            &input.tags,
+            &input.prereqs,
+            input.license.as_deref(),
+            input.lang.as_deref(),
+            input.category.as_deref(),
+            input.content_format.as_str(),
+        );
+        if let Err(e) = fx_core::meta::write_meta_file(&repo_path, &meta) {
+            tracing::warn!("failed to write meta.json: {e}");
+        }
+        let node_id = uri_to_node_id(&at_uri);
+        let _ = state.pijul.record(&node_id, "Add metadata", Some(&user.did));
+    }
 
     let hash = content_hash(&input.content);
 
@@ -1208,6 +1227,20 @@ pub async fn update_article(
         }
     }
 
+    // Update meta.json if title or description changed
+    if input.title.is_some() || input.description.is_some() {
+        let article_for_meta = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
+        let node_id = uri_to_node_id(&input.uri);
+        let repo_path = state.pijul.repo_path(&node_id);
+        if repo_path.exists() {
+            let mut meta = fx_core::meta::read_meta_file(&repo_path).unwrap_or_default();
+            meta.title = article_for_meta.title.clone();
+            meta.description = if article_for_meta.description.is_empty() { None } else { Some(article_for_meta.description.clone()) };
+            let _ = fx_core::meta::write_meta_file(&repo_path, &meta);
+            // Don't record separately — it'll be included in the next content record
+        }
+    }
+
     let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
     Ok(Json(article))
 }
@@ -1558,9 +1591,62 @@ pub async fn apply_change(
 
         let hash = content_hash(&content);
         article_service::update_article_content_hash(&state.pool, &input.target_uri, &hash).await?;
+
+        // Sync meta.json → DB if it exists
+        sync_meta_to_db(&state, &input.target_uri, &repo_path).await;
     }
 
     Ok(Json(ApplyChangeOutput { has_conflicts, content }))
+}
+
+/// Sync meta.json from pijul repo to DB after applying changes.
+async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_path: &std::path::Path) {
+    let meta = match fx_core::meta::read_meta_file(repo_path) {
+        Some(m) => m,
+        None => return,
+    };
+
+    // Sync title
+    if !meta.title.is_empty() {
+        let _ = article_service::update_article_title(&state.pool, article_uri, &meta.title).await;
+    }
+    // Sync description
+    if let Some(ref desc) = meta.description {
+        let _ = article_service::update_article_description(&state.pool, article_uri, desc).await;
+    }
+    // Sync tags: clear old, insert new
+    if !meta.tags.is_empty() {
+        let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
+            .bind(article_uri)
+            .execute(&state.pool)
+            .await;
+        for tag_id in &meta.tags {
+            let _ = sqlx::query(
+                "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            )
+            .bind(article_uri)
+            .bind(tag_id)
+            .execute(&state.pool)
+            .await;
+        }
+    }
+    // Sync prereqs: clear old, insert new
+    if !meta.prereqs.is_empty() {
+        let _ = sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
+            .bind(article_uri)
+            .execute(&state.pool)
+            .await;
+        for p in &meta.prereqs {
+            let _ = sqlx::query(
+                "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            )
+            .bind(article_uri)
+            .bind(&p.tag_id)
+            .bind(&p.prereq_type)
+            .execute(&state.pool)
+            .await;
+        }
+    }
 }
 
 // --- Article collaboration endpoints ---

@@ -1,6 +1,7 @@
 pub mod content;
 pub mod db;
 pub mod error;
+pub mod meta;
 pub mod models;
 pub mod region;
 pub mod services;

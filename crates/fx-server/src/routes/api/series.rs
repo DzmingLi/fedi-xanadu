@@ -80,6 +80,23 @@ pub async fn create_series(
     )
     .await?;
 
+    // Write series meta.json
+    if let Some(ref node) = pijul_node_id {
+        let meta = fx_core::meta::SeriesMeta {
+            title: input.title.clone(),
+            description: input.description.clone(),
+            long_description: input.long_description.clone(),
+            lang: Some(lang.to_string()),
+            category: Some(category.to_string()),
+            topics: topics.clone(),
+        };
+        let repo_path = state.pijul.series_repo_path(node);
+        if let Err(e) = fx_core::meta::write_series_meta_file(&repo_path, &meta) {
+            tracing::warn!("failed to write series meta.json: {e}");
+        }
+        let _ = state.pijul.record_series(node, "Add metadata", Some(&user.did));
+    }
+
     // Register creator as owner collaborator
     let _ = collaboration_service::register_owner(&state.pool, &id, &user.did).await;
 
@@ -586,6 +603,25 @@ pub async fn compile_series(
     .fetch_optional(&state.pool)
     .await?
     .flatten();
+
+    // Sync series meta.json → DB if it exists
+    if let Some(ref node) = pijul_node_id {
+        let repo_path = state.pijul.series_repo_path(node);
+        if let Some(meta) = fx_core::meta::read_series_meta_file(&repo_path) {
+            if !meta.title.is_empty() {
+                let _ = sqlx::query("UPDATE series SET title = $1 WHERE id = $2")
+                    .bind(&meta.title).bind(&series_id).execute(&state.pool).await;
+            }
+            if let Some(ref desc) = meta.description {
+                let _ = sqlx::query("UPDATE series SET description = $1 WHERE id = $2")
+                    .bind(desc).bind(&series_id).execute(&state.pool).await;
+            }
+            if let Some(ref long_desc) = meta.long_description {
+                let _ = sqlx::query("UPDATE series SET long_description = $1 WHERE id = $2")
+                    .bind(long_desc).bind(&series_id).execute(&state.pool).await;
+            }
+        }
+    }
 
     let node_id = pijul_node_id.ok_or_else(|| {
         AppError(fx_core::Error::BadRequest("Series has no pijul repo".into()))
