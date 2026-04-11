@@ -13,7 +13,7 @@ fx-core.workspace = true
 fx-render.workspace = true
 fx-search.workspace = true
 fx-atproto.workspace = true
-fx-pijul.workspace = true
+pijul-knot.workspace = true
 
 axum.workspace = true
 tokio.workspace = true

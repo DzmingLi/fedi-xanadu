@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use fx_atproto::client::AtClient;
 use fx_core::region::InstanceMode;
-use fx_pijul::PijulStore;
+use pijul_knot::PijulStore;
 use sqlx::PgPool;
 
 use crate::config::Config;

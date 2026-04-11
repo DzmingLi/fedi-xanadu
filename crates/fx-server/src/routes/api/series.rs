@@ -1110,7 +1110,7 @@ pub async fn channel_diff(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Query(q): Query<ChannelDiffQuery>,
-) -> ApiResult<Json<fx_pijul::ChannelDiffResult>> {
+) -> ApiResult<Json<pijul_knot::ChannelDiffResult>> {
     let node_id: String = sqlx::query_scalar(
         "SELECT pijul_node_id FROM series WHERE id = $1",
     )

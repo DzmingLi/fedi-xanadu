@@ -1841,7 +1841,7 @@ pub struct ArticleChannelDiffQuery {
 pub async fn article_channel_diff(
     State(state): State<AppState>,
     Query(q): Query<ArticleChannelDiffQuery>,
-) -> ApiResult<Json<fx_pijul::ChannelDiffResult>> {
+) -> ApiResult<Json<pijul_knot::ChannelDiffResult>> {
     let node_id = uri_to_node_id(&q.uri);
     let diff = state.pijul.diff_channels(&node_id, &q.a, &q.b)
         .map_err(|e| AppError(fx_core::Error::Internal(format!("channel diff: {e}"))))?;

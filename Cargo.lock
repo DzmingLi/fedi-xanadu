@@ -1463,23 +1463,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fx-pijul"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dashmap",
- "pijul-at-config",
- "pijul-at-core",
- "pijul-at-repository",
- "rand 0.10.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
 name = "fx-render"
 version = "0.1.0"
 dependencies = [
@@ -1517,9 +1500,9 @@ dependencies = [
  "figment",
  "fx-atproto",
  "fx-core",
- "fx-pijul",
  "fx-render",
  "fx-search",
+ "pijul-knot",
  "rand 0.10.0",
  "regex-lite",
  "reqwest",
@@ -3192,6 +3175,26 @@ dependencies = [
  "pijul-at-core",
  "rlimit",
  "toml",
+]
+
+[[package]]
+name = "pijul-knot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "dashmap",
+ "pijul-at-config",
+ "pijul-at-core",
+ "pijul-at-repository",
+ "rand 0.10.0",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
