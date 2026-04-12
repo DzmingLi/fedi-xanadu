@@ -309,7 +309,7 @@
             lockFile = ./Cargo.lock;
             outputHashes = {
               "atproto-auth-0.1.0" = "sha256-7U7pGTRXfPnnBLsINTO5ZGgfssO4B53qbfBXpSirM7U=";
-              "pijul-knot-0.1.0" = "sha256-1ch8qgwJQw0qig5Hle7P7kgu+bpwrelE6uvF6rjEe1c=";
+              "pijul-knot-0.1.0" = "sha256-in6mzkJkShHcA3dpHr1N69zdpy/MJlPgL8yQoz3uD70=";
             };
           };
           nativeBuildInputs = with pkgs; [ pkg-config ];
@@ -332,7 +332,7 @@
             lockFile = ./Cargo.lock;
             outputHashes = {
               "atproto-auth-0.1.0" = "sha256-7U7pGTRXfPnnBLsINTO5ZGgfssO4B53qbfBXpSirM7U=";
-              "pijul-knot-0.1.0" = "sha256-1ch8qgwJQw0qig5Hle7P7kgu+bpwrelE6uvF6rjEe1c=";
+              "pijul-knot-0.1.0" = "sha256-in6mzkJkShHcA3dpHr1N69zdpy/MJlPgL8yQoz3uD70=";
             };
           };
           nativeBuildInputs = with pkgs; [ pkg-config ];
