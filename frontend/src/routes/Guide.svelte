@@ -192,13 +192,26 @@ fn main() &lbrace;
     <p>支持 CommonMark 扩展语法，适合熟悉 Markdown 的用户。</p>
 
     <h3>数学公式</h3>
-    <p>使用 KaTeX 语法，服务端渲染：</p>
+    <p>使用 LaTeX 语法，服务端渲染为 MathML：</p>
     <pre><code>行内公式：$x^2 + y^2 = r^2$
 
 块级公式：
 $$
 \int_a^b f(x)\,dx = F(b) - F(a)
 $$</code></pre>
+
+    <h3>定理环境</h3>
+    <p>使用 callout 语法（类似 Obsidian），在引用块中以 <code>[!type]</code> 开头：</p>
+    <pre><code>&gt; [!theorem] 勾股定理
+&gt; 对于直角三角形，$a^2 + b^2 = c^2$。
+
+&gt; [!proof]
+&gt; 由相似三角形可得...
+
+&gt; [!definition] 连续
+&gt; 函数 $f$ 在 $x_0$ 点连续...</code></pre>
+    <p>支持的类型：<code>theorem</code>、<code>lemma</code>、<code>corollary</code>、<code>proposition</code>、<code>definition</code>、<code>proof</code>、<code>remark</code>、<code>example</code>、<code>solution</code>。</p>
+    <p>渲染效果与 Typst 的定理环境完全一致。</p>
 
     <h3>扩展语法</h3>
     <pre><code># 标题

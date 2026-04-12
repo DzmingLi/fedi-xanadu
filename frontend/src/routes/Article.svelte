@@ -867,12 +867,14 @@ try {
 
   .series-left-panel {
     display: flex;
+    flex-direction: column;
     gap: 0;
     flex-shrink: 0;
     position: sticky;
     top: 4rem;
     max-height: calc(100vh - 4rem);
     overflow-y: auto;
+    border-right: 1px solid var(--border);
   }
   .series-left-col {
     width: clamp(180px, 18vw, 240px);
@@ -880,7 +882,6 @@ try {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    border-right: 1px solid var(--border);
   }
   .series-left-col :global(.series-sidebar) {
     position: static;
