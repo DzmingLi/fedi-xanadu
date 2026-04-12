@@ -22,14 +22,6 @@
       if (!a || a.target || a.hasAttribute('download') || e.ctrlKey || e.metaKey || e.shiftKey) return;
       const href = a.getAttribute('href');
       if (!href || href.startsWith('http') || href.startsWith('mailto:') || href.startsWith('javascript:')) return;
-      // Support legacy hash links during migration
-      if (href.startsWith('#/')) {
-        e.preventDefault();
-        const path = href.slice(1);
-        history.pushState(null, '', path);
-        onNavigate();
-        return;
-      }
       if (href.startsWith('/') && !href.startsWith('/api/') && !href.startsWith('/oauth/')) {
         e.preventDefault();
         history.pushState(null, '', href);

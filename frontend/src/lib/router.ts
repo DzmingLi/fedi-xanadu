@@ -40,18 +40,12 @@ export interface MatchResult {
 }
 
 export function matchRoute(url: string): MatchResult {
-  // Support both path-based and legacy hash-based URLs
   let path: string;
-  if (url.startsWith('#')) {
-    path = url.slice(1) || '/';
-  } else {
-    // Extract pathname from full URL or path string
-    try {
-      const u = new URL(url, 'http://localhost');
-      path = u.pathname + u.search;
-    } catch {
-      path = url || '/';
-    }
+  try {
+    const u = new URL(url, 'http://localhost');
+    path = u.pathname + u.search;
+  } catch {
+    path = url || '/';
   }
 
   const [base, query] = path.split('?');
