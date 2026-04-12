@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use fx_atproto::client::AtClient;
 use fx_core::region::InstanceMode;
-use pijul_knot::PijulStore;
+use pijul_knot::{PadProjectResolver, PadError, PijulStore};
 use sqlx::PgPool;
 
 use crate::config::Config;
@@ -15,12 +15,25 @@ pub struct AppState {
     pub admin_secret: Option<String>,
     pub instance_mode: InstanceMode,
     pub session_store: Arc<dyn atproto_auth::SessionStore>,
+    pub series_resolver: Arc<dyn PadProjectResolver>,
 }
 
-// Allow atproto-auth's AuthUser extractor to pull SessionStore from AppState.
+// FromRef impls
 impl axum::extract::FromRef<AppState> for Arc<dyn atproto_auth::SessionStore> {
     fn from_ref(state: &AppState) -> Self {
         state.session_store.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<PijulStore> {
+    fn from_ref(state: &AppState) -> Self {
+        state.pijul.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<dyn PadProjectResolver> {
+    fn from_ref(state: &AppState) -> Self {
+        state.series_resolver.clone()
     }
 }
 
@@ -33,13 +46,15 @@ impl AppState {
 
         std::fs::create_dir_all(&config.pijul_store_path)?;
 
-        // Initialize Typst package cache directory
         let packages_dir = std::path::PathBuf::from(&config.pijul_store_path).join("typst-packages");
         std::fs::create_dir_all(&packages_dir)?;
         fx_render::set_packages_dir(packages_dir);
 
         let session_store: Arc<dyn atproto_auth::SessionStore> =
             Arc::new(atproto_auth::PgSessionStore::new(pool.clone()));
+
+        let series_resolver: Arc<dyn PadProjectResolver> =
+            Arc::new(PgSeriesResolver { pool: pool.clone() });
 
         tracing::info!("instance mode: {}", instance_mode.as_str());
 
@@ -50,6 +65,46 @@ impl AppState {
             admin_secret: config.admin_secret.clone(),
             instance_mode,
             session_store,
+            series_resolver,
         })
+    }
+}
+
+/// PadProjectResolver for fedi-xanadu series — resolves series ID to pijul node_id.
+struct PgSeriesResolver {
+    pool: PgPool,
+}
+
+#[async_trait::async_trait]
+impl PadProjectResolver for PgSeriesResolver {
+    async fn resolve_node_id(&self, series_id: &str) -> Result<String, PadError> {
+        let row: Option<Option<String>> = sqlx::query_scalar("SELECT pijul_node_id FROM series WHERE id = $1")
+            .bind(series_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| PadError::Internal(e.to_string()))?;
+        row.flatten()
+            .ok_or(PadError::NotFound("series not found or no pijul repo".into()))
+    }
+
+    async fn get_knot_url(&self, _series_id: &str) -> Option<String> {
+        // fedi-xanadu doesn't use knot push/pull for series yet
+        None
+    }
+
+    async fn get_owner_did(&self, series_id: &str) -> Result<String, PadError> {
+        sqlx::query_scalar::<_, String>("SELECT author_did FROM series WHERE id = $1")
+            .bind(series_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| PadError::Internal(e.to_string()))?
+            .ok_or(PadError::NotFound("series not found".into()))
+    }
+
+    async fn on_record(&self, series_id: &str) {
+        let _ = sqlx::query("UPDATE series SET updated_at = NOW() WHERE id = $1")
+            .bind(series_id)
+            .execute(&self.pool)
+            .await;
     }
 }

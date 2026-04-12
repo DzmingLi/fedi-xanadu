@@ -1940,6 +1940,7 @@ name = "fx-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "atproto-auth",
  "atproto-oauth",
  "axum",
@@ -3848,9 +3849,10 @@ dependencies = [
 [[package]]
 name = "pijul-knot"
 version = "0.1.0"
-source = "git+https://github.com/DzmingLi/pijul-knot.git#1b387a0ed1a71fe69bcc74a1cb86da106cee7909"
+source = "git+https://github.com/DzmingLi/pijul-knot.git#5ab7b711775229773ef2724a88c709d07d17a8bd"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "clap",
  "dashmap",
