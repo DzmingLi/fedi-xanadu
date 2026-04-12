@@ -48,9 +48,9 @@ SELECT
     DATE(b.created_at) AS day,
     0::bigint AS views,
     0::bigint AS comments,
-    COUNT(b.at_uri) AS bookmarks
+    COUNT(b.article_uri) AS bookmarks
 FROM articles a
-JOIN user_bookmarks b ON b.at_uri = a.at_uri
+JOIN user_bookmarks b ON b.article_uri = a.at_uri
 WHERE a.removed_at IS NULL
 GROUP BY a.did, DATE(b.created_at);
 

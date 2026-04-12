@@ -68,7 +68,7 @@ pub async fn get_stats(
 
     let total_bookmarks: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM user_bookmarks b \
-         JOIN articles a ON a.at_uri = b.at_uri \
+         JOIN articles a ON a.at_uri = b.article_uri \
          WHERE a.did = $1 AND a.removed_at IS NULL"
     ).bind(&user.did).fetch_one(&state.pool).await?;
 
@@ -104,7 +104,7 @@ pub async fn list_articles(
         ).bind(&uri).fetch_one(&state.pool).await.unwrap_or((0,));
 
         let bookmarks: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM user_bookmarks WHERE at_uri = $1"
+            "SELECT COUNT(*) FROM user_bookmarks WHERE article_uri = $1"
         ).bind(&uri).fetch_one(&state.pool).await.unwrap_or((0,));
 
         let votes: (i64,) = sqlx::query_as(
