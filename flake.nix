@@ -39,6 +39,11 @@
               default = [];
               description = "Allowed CORS origins. Empty = same-origin only.";
             };
+            publicUrl = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Public URL of this instance (for OAuth client_id and callback). e.g. https://fedi-xanadu.dzming.li";
+            };
             adminSecretFile = lib.mkOption {
               type = lib.types.nullOr lib.types.path;
               default = null;
@@ -100,6 +105,8 @@
                 FX_INSTANCE_NAME = cfg.instanceName;
                 FX_ENV = "production";
                 RUST_LOG = "info";
+              } // lib.optionalAttrs (cfg.publicUrl != "") {
+                FX_PUBLIC_URL = cfg.publicUrl;
               } // lib.optionalAttrs (cfg.corsOrigins != []) {
                 FX_CORS_ORIGINS = lib.concatStringsSep "," cfg.corsOrigins;
               };
@@ -301,6 +308,7 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
+              "atproto-auth-0.1.0" = "sha256-7U7pGTRXfPnnBLsINTO5ZGgfssO4B53qbfBXpSirM7U=";
               "pijul-knot-0.1.0" = "sha256-1ch8qgwJQw0qig5Hle7P7kgu+bpwrelE6uvF6rjEe1c=";
             };
           };
@@ -323,6 +331,7 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
+              "atproto-auth-0.1.0" = "sha256-7U7pGTRXfPnnBLsINTO5ZGgfssO4B53qbfBXpSirM7U=";
               "pijul-knot-0.1.0" = "sha256-1ch8qgwJQw0qig5Hle7P7kgu+bpwrelE6uvF6rjEe1c=";
             };
           };
