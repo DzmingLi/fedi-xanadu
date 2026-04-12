@@ -127,10 +127,10 @@
           {/if}
         </span>
       {/if}
-      <button class="expand-btn" onclick={toggleExpand} title={expanded ? t('home.collapse') : t('home.expand')}>
-        {#if expandLoading}...{:else}{expanded ? '▲' : '▼'}{/if}
-      </button>
     </div>
+    <button class="expand-btn" onclick={toggleExpand} title={expanded ? t('home.collapse') : t('home.expand')}>
+      {#if expandLoading}...{:else}{expanded ? '▲' : '▼'}{/if}
+    </button>
   </a>
 
   {#if expanded && expandedContent}
@@ -182,10 +182,10 @@
       <span class="card-stats">
         <span class="stat">{articleCount} {variant === 'home' ? t('home.lectures') : t('profile.lectureCount')}</span>
       </span>
-      <button class="expand-btn" onclick={toggleExpand} title={expanded ? t('home.collapse') : t('home.expand')}>
-        {#if expandLoading}...{:else}{expanded ? '▲' : '▼'}{/if}
-      </button>
     </div>
+    <button class="expand-btn" onclick={toggleExpand} title={expanded ? t('home.collapse') : t('home.expand')}>
+      {#if expandLoading}...{:else}{expanded ? '▲' : '▼'}{/if}
+    </button>
   </a>
 
   {#if expanded && expandedContent}
@@ -220,10 +220,11 @@
 <style>
   .post-card {
     display: block;
+    position: relative;
     background: var(--bg-white);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 16px 20px;
+    padding: 16px 40px 16px 20px;
     margin-bottom: 12px;
     transition: border-color 0.15s, box-shadow 0.15s;
     text-decoration: none;
@@ -299,17 +300,21 @@
   }
   /* Expand button */
   .expand-btn {
-    background: none;
-    border: none;
-    font-size: 11px;
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg-hover, #f5f5f5);
+    border: 1px solid var(--border);
+    font-size: 13px;
     color: var(--text-hint);
     cursor: pointer;
-    padding: 2px 6px;
-    margin-left: 8px;
-    border-radius: 3px;
+    padding: 6px 10px;
+    border-radius: 4px;
     transition: all 0.15s;
+    line-height: 1;
   }
-  .expand-btn:hover { background: var(--bg-hover); color: var(--accent); }
+  .expand-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
 
   /* Full-width expanded article */
   .expanded-full {
