@@ -124,14 +124,31 @@
   </a>
 
   {#if expanded && expandedContent}
-    <div class="expanded-article">
-      <div class="expanded-body">
+    <div class="expanded-full">
+      <div class="expanded-header">
+        <h1 class="expanded-title">{article.title}</h1>
+        <div class="expanded-meta">
+          <a href="/profile?did={encodeURIComponent(article.did)}">{authorName(article)}</a>
+          <span>&middot;</span>
+          <span>{article.created_at.split(' ')[0]}</span>
+          <span>&middot;</span>
+          <span>{article.content_format}</span>
+          <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
+        </div>
+      </div>
+      <div class="expanded-layout">
         {#if tocItems.length > 1}
-          <nav class="expanded-toc">
-            {#each tocItems as item}
-              <a href="#{item.id}" class="toc-item toc-h{item.level}">{item.text}</a>
-            {/each}
-          </nav>
+          <aside class="expanded-toc-aside">
+            <nav class="toc">
+              <ul>
+                {#each tocItems as item}
+                  <li class="toc-{item.level}">
+                    <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
+                  </li>
+                {/each}
+              </ul>
+            </nav>
+          </aside>
         {/if}
         <div class="content" bind:this={contentEl}>{@html expandedContent.html}</div>
       </div>
@@ -253,51 +270,58 @@
   }
   .expand-btn:hover { background: var(--bg-hover); color: var(--accent); }
 
-  /* Expanded article content */
-  .expanded-article {
-    border: 1px solid var(--border);
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-    margin-top: -13px;
-    margin-bottom: 12px;
-    background: var(--bg-white);
-    overflow: hidden;
+  /* Full-width expanded article */
+  .expanded-full {
+    margin-bottom: 24px;
+    border-top: 1px solid var(--border);
+    padding-top: 20px;
   }
-  .expanded-body {
+  .expanded-header {
+    margin-bottom: 16px;
+  }
+  .expanded-title {
+    font-family: var(--font-serif);
+    font-size: 2rem;
+    font-weight: 400;
+    margin: 0 0 8px;
+    line-height: 1.3;
+  }
+  .expanded-meta {
     display: flex;
-    gap: 0;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-hint);
   }
-  .expanded-toc {
-    width: 180px;
-    flex-shrink: 0;
-    padding: 16px 12px;
-    border-right: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    align-self: flex-start;
-    max-height: 80vh;
-    overflow-y: auto;
-  }
-  .toc-item {
-    display: block;
+  .expanded-meta a { color: var(--text-secondary); text-decoration: none; }
+  .expanded-meta a:hover { color: var(--accent); }
+  .collapse-btn {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 3px 10px;
     font-size: 12px;
     color: var(--text-hint);
-    text-decoration: none;
-    padding: 3px 0;
-    line-height: 1.4;
+    cursor: pointer;
   }
-  .toc-item:hover { color: var(--accent); }
-  .toc-h3 { padding-left: 12px; }
-  .toc-h4 { padding-left: 24px; }
-  .expanded-article :global(.content) {
-    flex: 1;
-    min-width: 0;
-    padding: 20px 28px;
-    max-height: none;
+  .collapse-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .expanded-layout {
+    position: relative;
+  }
+  .expanded-toc-aside {
+    position: absolute;
+    left: -200px;
+    top: 0;
+    width: 180px;
+  }
+  .expanded-toc-aside :global(.toc) {
+    position: sticky;
+    top: 4rem;
   }
 
-  @media (max-width: 768px) {
-    .expanded-toc { display: none; }
+  @media (max-width: 75rem) {
+    .expanded-toc-aside { display: none; }
   }
 
   .series-badge {
