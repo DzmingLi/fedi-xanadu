@@ -9,11 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "pijul-editor": "git+https://github.com/DzmingLi/pijul-editor.git",
     "cytoscape": "^3.31.0",
     "cytoscape-dagre": "^2.5.0",
     "katex": "^0.16.42",
     "marked": "^17.0.5",
+    "pijul-editor": "github:DzmingLi/pijul-editor",
     "prosemirror-commands": "^1.7.1",
     "prosemirror-example-setup": "^1.2.3",
     "prosemirror-history": "^1.5.0",

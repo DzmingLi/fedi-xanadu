@@ -12,6 +12,7 @@
   import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
   import TypstEditor from 'pijul-editor/TypstEditor.svelte';
   import ChannelPanel from 'pijul-editor/ChannelPanel.svelte';
+  import FilePanel from 'pijul-editor/FilePanel.svelte';
 
   let { id } = $props<{ id: string }>();
 
@@ -26,8 +27,6 @@
   let compiling = $state(false);
   let compileResult = $state<{ articles_created: number; articles_updated: number; total_headings: number } | null>(null);
   let compileError = $state('');
-  let newFileName = $state('');
-  let showNewFile = $state(false);
   let error = $state('');
 
   // Channel state
@@ -138,24 +137,14 @@
     compiling = false;
   }
 
-  async function createFile() {
-    let name = newFileName.trim();
-    if (!name) return;
-    if (!name.includes('.')) name += '.md';
-    const path = name.includes('/') ? name : `chapters/${name}`;
-    try {
-      if (currentChannel === 'main') {
-        await writeSeriesFile(id, path, '', `Create ${path}`);
-      } else {
-        await writeChannelFile(id, currentChannel, path, '', `Create ${path}`);
-      }
-      files = await listSeriesFiles(id);
-      newFileName = '';
-      showNewFile = false;
-      await openFile(path);
-    } catch (e: any) {
-      error = e.message;
+  async function createFile(path: string) {
+    if (currentChannel === 'main') {
+      await writeSeriesFile(id, path, '', `Create ${path}`);
+    } else {
+      await writeChannelFile(id, currentChannel, path, '', `Create ${path}`);
     }
+    files = await listSeriesFiles(id);
+    await openFile(path);
   }
 
   function switchChannel(ch: string) {
@@ -165,19 +154,14 @@
     if (activeFile) openFile(activeFile);
   }
 
-  async function deleteFile(path: string) {
-    if (!confirm(t('seriesEditor.confirmDelete', path))) return;
-    try {
-      await deleteSeriesFile(id, path);
-      files = files.filter(f => f.path !== path);
-      if (activeFile === path) {
-        activeFile = null;
-        editorContent = '';
-        dirty = false;
-        if (files.length > 0) await openFile(files[0].path);
-      }
-    } catch (e: any) {
-      error = e.message;
+  async function doDeleteFile(path: string) {
+    await deleteSeriesFile(id, path);
+    files = files.filter(f => f.path !== path);
+    if (activeFile === path) {
+      activeFile = null;
+      editorContent = '';
+      dirty = false;
+      if (files.length > 0) await openFile(files[0].path);
     }
   }
 
@@ -185,9 +169,6 @@
     return path.split('.').pop() ?? '';
   }
 
-  function fileLabel(path: string) {
-    return path.replace('chapters/', '');
-  }
 
   // Prereqs
   function prereqsFor(articleUri: string): SeriesArticle[] {
@@ -255,37 +236,13 @@
           <div class="panel-header">
             <span class="panel-label">{t('seriesEditor.files')}</span>
           </div>
-          <div class="file-list">
-            {#each files as f}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div
-                class="file-item"
-                class:active={activeFile === f.path}
-                onclick={() => openFile(f.path)}
-                role="button"
-                tabindex="0"
-                onkeydown={(e) => { if (e.key === 'Enter') openFile(f.path); }}
-              >
-                <span class="file-name">{fileLabel(f.path)}</span>
-                <button class="del-btn" onclick={(e) => { e.stopPropagation(); deleteFile(f.path); }}>×</button>
-              </div>
-            {/each}
-
-            {#if showNewFile}
-              <div class="new-file-row">
-                <input
-                  type="text"
-                  bind:value={newFileName}
-                  placeholder="01-intro.md"
-                  onkeydown={(e) => { if (e.key === 'Enter') createFile(); if (e.key === 'Escape') { showNewFile = false; } }}
-                />
-                <button onclick={createFile}>{t('common.add')}</button>
-              </div>
-            {:else}
-              <button class="add-file-btn" onclick={() => { showNewFile = true; }}>+ {t('seriesEditor.newFile')}</button>
-            {/if}
-          </div>
+          <FilePanel
+            files={files.map(f => ({ path: f.path, is_dir: false }))}
+            {activeFile}
+            onSelect={openFile}
+            onCreate={createFile}
+            onDelete={doDeleteFile}
+          />
         </aside>
       {/if}
 
