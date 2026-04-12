@@ -11,6 +11,7 @@
   import type { SeriesDetail, SeriesArticle } from '../lib/types';
   import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
   import TypstEditor from 'pijul-editor/TypstEditor.svelte';
+  import JsonView from 'pijul-editor/JsonView.svelte';
   import ChannelPanel from 'pijul-editor/ChannelPanel.svelte';
   import FilePanel from 'pijul-editor/FilePanel.svelte';
 
@@ -293,7 +294,9 @@
 
         <div class="editor-content">
           {#if activeFile}
-            {#if ext(activeFile) === 'md'}
+            {#if ext(activeFile) === 'json'}
+              <JsonView value={editorContent} />
+            {:else if ext(activeFile) === 'md'}
               <MarkdownEditor bind:value={editorContent} fillHeight={true} />
             {:else if ext(activeFile) === 'typ'}
               <TypstEditor bind:value={editorContent} fillHeight={true} />
