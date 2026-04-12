@@ -298,7 +298,12 @@
           pname = "fedi-xanadu-bin";
           version = "0.1.0";
           src = serverSrc;
-          cargoLock.lockFile = ./Cargo.lock;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            outputHashes = {
+              "pijul-knot-0.1.0" = "sha256-o/MjfVsAsRz9OnZKxPMxnVgaTVNveMjAJc1udPy0ems=";
+            };
+          };
           nativeBuildInputs = with pkgs; [ pkg-config ];
           buildInputs = with pkgs; [ openssl postgresql ];
           doCheck = false;
@@ -315,7 +320,12 @@
           pname = "fx-cli";
           version = "0.1.0";
           src = rustSrc;
-          cargoLock.lockFile = ./Cargo.lock;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            outputHashes = {
+              "pijul-knot-0.1.0" = "sha256-o/MjfVsAsRz9OnZKxPMxnVgaTVNveMjAJc1udPy0ems=";
+            };
+          };
           nativeBuildInputs = with pkgs; [ pkg-config ];
           buildInputs = with pkgs; [ openssl postgresql ];
           doCheck = false;
