@@ -757,7 +757,7 @@
           <div class="sb-field" style="padding: 8px 12px; border-bottom: 1px solid var(--border);">
             <label>{t('newArticle.formatLabel')}</label>
             <select value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
-              <option value="markdown">Markdown + KaTeX</option>
+              <option value="markdown">Markdown</option>
               <option value="typst">Typst</option>
               {#if contentFormat === 'html'}<option value="html">HTML (只读)</option>{/if}
             </select>

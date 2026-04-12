@@ -289,7 +289,7 @@
         {#each FORMATS as fmt}
           <label class="radio-row">
             <input type="radio" name="format" value={fmt} bind:group={defaultFormat} />
-            <span>{fmt === 'typst' ? 'Typst' : 'Markdown + KaTeX'}</span>
+            <span>{fmt === 'typst' ? 'Typst' : 'Markdown'}</span>
           </label>
         {/each}
       </div>
