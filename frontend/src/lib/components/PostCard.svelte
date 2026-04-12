@@ -2,7 +2,7 @@
   import { tagName } from '../display';
   import { authorName } from '../display';
   import { t } from '../i18n/index.svelte';
-  import { getArticleContent } from '../api';
+  import { getArticleContent, getSeries } from '../api';
   import type { Article, ArticleContent, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
 
   type CardVariant = 'home' | 'profile';
@@ -38,6 +38,8 @@
   interface TocItem { id: string; text: string; level: number }
   let tocItems = $state<TocItem[]>([]);
 
+  let expandedTitle = $state('');
+
   async function toggleExpand(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -45,11 +47,19 @@
       expanded = false;
       return;
     }
-    if (!article) return;
     if (!expandedContent) {
       expandLoading = true;
       try {
-        expandedContent = await getArticleContent(article.at_uri);
+        if (article) {
+          expandedContent = await getArticleContent(article.at_uri);
+          expandedTitle = article.title;
+        } else if (series) {
+          const detail = await getSeries(series.id);
+          if (detail.articles.length > 0) {
+            expandedContent = await getArticleContent(detail.articles[0].article_uri);
+            expandedTitle = detail.articles[0].title;
+          }
+        }
       } catch { /* */ }
       expandLoading = false;
     }
@@ -126,7 +136,7 @@
   {#if expanded && expandedContent}
     <div class="expanded-full">
       <div class="expanded-header">
-        <h1 class="expanded-title">{article.title}</h1>
+        <h1 class="expanded-title">{expandedTitle}</h1>
         <div class="expanded-meta">
           <a href="/profile?did={encodeURIComponent(article.did)}">{authorName(article)}</a>
           <span>&middot;</span>
@@ -172,8 +182,39 @@
       <span class="card-stats">
         <span class="stat">{articleCount} {variant === 'home' ? t('home.lectures') : t('profile.lectureCount')}</span>
       </span>
+      <button class="expand-btn" onclick={toggleExpand} title={expanded ? t('home.collapse') : t('home.expand')}>
+        {#if expandLoading}...{:else}{expanded ? '▲' : '▼'}{/if}
+      </button>
     </div>
   </a>
+
+  {#if expanded && expandedContent}
+    <div class="expanded-full">
+      <div class="expanded-header">
+        <h1 class="expanded-title">{expandedTitle}</h1>
+        <div class="expanded-meta">
+          <span>{seriesAuthor(series)}</span>
+          <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
+        </div>
+      </div>
+      <div class="expanded-layout">
+        {#if tocItems.length > 1}
+          <aside class="expanded-toc-aside">
+            <nav class="toc">
+              <ul>
+                {#each tocItems as item}
+                  <li class="toc-{item.level}">
+                    <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
+                  </li>
+                {/each}
+              </ul>
+            </nav>
+          </aside>
+        {/if}
+        <div class="content" bind:this={contentEl}>{@html expandedContent.html}</div>
+      </div>
+    </div>
+  {/if}
 {/if}
 
 <style>

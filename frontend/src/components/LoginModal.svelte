@@ -91,6 +91,7 @@
         </label>
       {:else}
         <p class="hint small">{t('auth.oauthHint') || 'You will be redirected to your PDS to authorize.'}</p>
+        <p class="hint small register-hint">{t('auth.noAccount') || 'No account?'} <a href="https://bsky.app" target="_blank" rel="noopener">Bluesky</a> {t('auth.registerHint') || '— register there first, then login here with your handle.'}</p>
       {/if}
 
       <div class="actions">

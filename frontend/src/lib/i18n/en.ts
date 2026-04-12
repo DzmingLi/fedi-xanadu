@@ -52,6 +52,9 @@ export default {
   'home.expand': 'Expand',
   'home.collapse': 'Collapse',
 
+  'auth.noAccount': 'No account?',
+  'auth.registerHint': '— register there first, then login here with your handle.',
+
   // Notifications
   'notification.commentReply': 'replied to your comment',
   'notification.articleComment': 'commented on your article',

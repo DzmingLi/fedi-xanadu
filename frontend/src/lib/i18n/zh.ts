@@ -52,6 +52,9 @@ export default {
   'home.expand': '展开全文',
   'home.collapse': '收起',
 
+  'auth.noAccount': '没有帐号？',
+  'auth.registerHint': '— 先去注册，然后用你的 handle 登录。',
+
   // Notifications
   'notification.commentReply': '回复了你的评论',
   'notification.articleComment': '评论了你的文章',

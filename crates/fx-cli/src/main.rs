@@ -55,6 +55,9 @@ enum Command {
         /// Tags (comma-separated tag IDs)
         #[arg(long, value_delimiter = ',')]
         tags: Vec<String>,
+        /// Prereqs (tag_id:type, e.g. calculus:required,linalg:recommended)
+        #[arg(long, value_delimiter = ',')]
+        prereqs: Vec<String>,
         /// License (default: CC-BY-SA-4.0)
         #[arg(long, default_value = "CC-BY-SA-4.0")]
         license: String,
@@ -820,7 +823,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        Command::Upload { file, title, desc, lang, tags, license, category, book_id, series, resource } => {
+        Command::Upload { file, title, desc, lang, tags, prereqs, license, category, book_id, series, resource } => {
             let token = config.token()?;
 
             let content = std::fs::read_to_string(&file)
@@ -845,6 +848,8 @@ async fn main() -> Result<()> {
                     .to_string()
             });
 
+            let parsed_prereqs = parse_prereqs(&prereqs)?;
+
             let body = CreateArticle {
                 title: title.clone(),
                 description: Some(desc.unwrap_or_default()),
@@ -858,7 +863,7 @@ async fn main() -> Result<()> {
                 book_id,
                 edition_id: None,
                 tags,
-                prereqs: vec![],
+                prereqs: parsed_prereqs,
                 series_id: series.clone(),
                 invites: vec![],
             };
@@ -1550,6 +1555,24 @@ async fn handle_tree(base: &str, config: &Config, action: TreeCommand) -> Result
 
 /// Validate that an HTML file is a content fragment, not a full page.
 /// Rejects files containing <html>, <head>, <body>, or <script> tags.
+fn parse_prereqs(raw: &[String]) -> Result<Vec<fx_core::models::ArticlePrereq>> {
+    use fx_core::content::PrereqType;
+    raw.iter().map(|s| {
+        let (tag_id, prereq_type) = if let Some((t, p)) = s.split_once(':') {
+            let pt = match p {
+                "required" | "r" => PrereqType::Required,
+                "recommended" | "rec" => PrereqType::Recommended,
+                "suggested" | "s" => PrereqType::Suggested,
+                _ => bail!("Invalid prereq type '{p}' (use required/recommended/suggested)"),
+            };
+            (t.to_string(), pt)
+        } else {
+            (s.clone(), PrereqType::Required)
+        };
+        Ok(fx_core::models::ArticlePrereq { tag_id, prereq_type })
+    }).collect()
+}
+
 fn validate_html_fragment(content: &str) -> Result<()> {
     let lower = content.to_ascii_lowercase();
     let forbidden = [
