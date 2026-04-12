@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getQuestionDetail, postAnswer, castVote, getMyVote, getArticleContent } from '../lib/api';
+  import { getQuestionDetail, postAnswer, castVote, getMyVote, getArticleContent, addBookmark, removeBookmark } from '../lib/api';
   import { authorName } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
@@ -8,6 +8,8 @@
   import CommentThread from '../lib/components/CommentThread.svelte';
 
   let expandedComments = $state(new Set<string>());
+  let answerVotes = $state(new Map<string, number>());
+  let answerBookmarks = $state(new Set<string>());
 
   let { uri } = $props<{ uri: string }>();
 
@@ -53,11 +55,19 @@
         );
       }
 
-      // Load vote
+      // Load votes for question and answers
       if (getAuth()) {
         contentPromises.push(
           getMyVote(uri).then(v => { myVote = v.value; }).catch(() => {})
         );
+        for (const a of d.answers) {
+          contentPromises.push(
+            getMyVote(a.at_uri).then(v => {
+              answerVotes.set(a.at_uri, v.value);
+              answerVotes = new Map(answerVotes);
+            }).catch(() => {})
+          );
+        }
       }
 
       await Promise.all(contentPromises);
@@ -77,6 +87,36 @@
         detail.question.vote_score = result.score;
         detail = { ...detail };
       }
+    } catch { /* */ }
+  }
+
+  async function voteAnswer(answerUri: string, value: number) {
+    if (!getAuth()) return;
+    const current = answerVotes.get(answerUri) || 0;
+    const v = current === value ? 0 : value;
+    try {
+      const result = await castVote(answerUri, v);
+      answerVotes.set(answerUri, v);
+      answerVotes = new Map(answerVotes);
+      if (detail) {
+        const a = detail.answers.find(a => a.at_uri === answerUri);
+        if (a) a.vote_score = result.score;
+        detail = { ...detail };
+      }
+    } catch { /* */ }
+  }
+
+  async function bookmarkAnswer(answerUri: string) {
+    if (!getAuth()) return;
+    try {
+      if (answerBookmarks.has(answerUri)) {
+        await removeBookmark(answerUri);
+        answerBookmarks.delete(answerUri);
+      } else {
+        await addBookmark(answerUri);
+        answerBookmarks.add(answerUri);
+      }
+      answerBookmarks = new Set(answerBookmarks);
     } catch { /* */ }
   }
 
@@ -195,7 +235,10 @@
             <p class="meta">{t('common.loading')}</p>
           {/if}
           <div class="answer-actions">
-            <span class="vote-score">&#9650; {answer.vote_score}</span>
+            <button class="vote-btn" class:active={(answerVotes.get(answer.at_uri) || 0) > 0} onclick={() => voteAnswer(answer.at_uri, 1)}>&#9650;</button>
+            <span class="vote-score">{answer.vote_score}</span>
+            <button class="vote-btn" class:active={(answerVotes.get(answer.at_uri) || 0) < 0} onclick={() => voteAnswer(answer.at_uri, -1)}>&#9660;</button>
+            <button class="bookmark-btn" class:active={answerBookmarks.has(answer.at_uri)} onclick={() => bookmarkAnswer(answer.at_uri)} title={t('article.bookmark')}>&#9733;</button>
             <button class="comment-toggle" onclick={() => {
               const s = new Set(expandedComments);
               if (s.has(answer.at_uri)) s.delete(answer.at_uri); else s.add(answer.at_uri);
@@ -401,6 +444,19 @@
     align-items: center;
   }
 
+  .bookmark-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 13px;
+    color: var(--text-hint);
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: 4px;
+  }
+  .bookmark-btn:hover { border-color: #d4a017; color: #d4a017; }
+  .bookmark-btn.active { background: #d4a017; color: white; border-color: #d4a017; }
   .comment-toggle {
     background: none;
     border: none;
