@@ -20,7 +20,7 @@ fx-core = { path = "crates/fx-core" }
 pijul-knot = { git = "https://github.com/DzmingLi/pijul-knot.git" }
 fx-atproto = { path = "crates/fx-atproto" }
 fx-search = { path = "crates/fx-search" }
-fx-renderer = { path = "../fx-renderer" }
+fx-renderer = { git = "https://github.com/DzmingLi/typst-render.git" }
 fx-client = { path = "crates/fx-client" }
 
 # Web
