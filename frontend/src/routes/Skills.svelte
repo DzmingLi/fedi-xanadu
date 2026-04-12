@@ -20,6 +20,7 @@
   // Field navigation & selection
   let activeField = $state('');
   let selectedNodeId = $state<string | null>(null);
+  let collapsedNodes = $state(new Set<string>());
 
   // Tag search
   let allTags = $state<Tag[]>([]);
@@ -95,7 +96,9 @@
       visited.add(id);
       while (byDepth.length <= depth) byDepth.push([]);
       byDepth[depth].push(id);
-      for (const ch of (childrenOf.map.get(id) || [])) visit(ch, depth + 1);
+      if (!collapsedNodes.has(id)) {
+        for (const ch of (childrenOf.map.get(id) || [])) visit(ch, depth + 1);
+      }
     }
     for (const ch of (childrenOf.map.get(activeField) || [])) visit(ch, 0);
 
@@ -176,6 +179,17 @@
     }));
     return { ...node, prereqs, unlocks };
   });
+
+  function toggleCollapse(id: string, e: MouseEvent) {
+    e.stopPropagation();
+    const s = new Set(collapsedNodes);
+    if (s.has(id)) s.delete(id); else s.add(id);
+    collapsedNodes = s;
+  }
+
+  function hasChildren(id: string): boolean {
+    return (childrenOf.map.get(id) || []).length > 0;
+  }
 
   // --- Actions ---
   async function setSkillStatus(tagId: string, status: 'learning' | 'mastered' | 'none') {
@@ -302,7 +316,7 @@
           <button
             class="field-tab"
             class:active={activeField === field}
-            onclick={() => { activeField = field; selectedNodeId = null; }}
+            onclick={() => { activeField = field; selectedNodeId = null; collapsedNodes = new Set(); }}
           >
             {resolveName(field)}
           </button>
@@ -387,6 +401,11 @@
                   {/if}
                 </span>
                 <span class="node-name">{node.name}</span>
+                {#if hasChildren(node.id)}
+                  <button class="collapse-toggle" onclick={(e) => toggleCollapse(node.id, e)} title={collapsedNodes.has(node.id) ? 'Expand' : 'Collapse'}>
+                    {collapsedNodes.has(node.id) ? '+' : '−'}
+                  </button>
+                {/if}
               </button>
             {/each}
           </div>
@@ -674,6 +693,26 @@
     font-family: var(--font-sans);
     line-height: 1.2;
   }
+  .collapse-toggle {
+    position: absolute;
+    right: 2px;
+    bottom: 1px;
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.1);
+    color: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .collapse-toggle:hover { background: rgba(0,0,0,0.2); }
 
   /* Locked */
   .st-locked {
