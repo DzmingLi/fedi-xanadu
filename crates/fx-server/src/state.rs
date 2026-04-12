@@ -14,6 +14,14 @@ pub struct AppState {
     pub at_client: AtClient,
     pub admin_secret: Option<String>,
     pub instance_mode: InstanceMode,
+    pub session_store: Arc<dyn atproto_auth::SessionStore>,
+}
+
+// Allow atproto-auth's AuthUser extractor to pull SessionStore from AppState.
+impl axum::extract::FromRef<AppState> for Arc<dyn atproto_auth::SessionStore> {
+    fn from_ref(state: &AppState) -> Self {
+        state.session_store.clone()
+    }
 }
 
 impl AppState {
@@ -30,6 +38,9 @@ impl AppState {
         std::fs::create_dir_all(&packages_dir)?;
         fx_render::set_packages_dir(packages_dir);
 
+        let session_store: Arc<dyn atproto_auth::SessionStore> =
+            Arc::new(atproto_auth::PgSessionStore::new(pool.clone()));
+
         tracing::info!("instance mode: {}", instance_mode.as_str());
 
         Ok(Self {
@@ -38,6 +49,7 @@ impl AppState {
             at_client,
             admin_secret: config.admin_secret.clone(),
             instance_mode,
+            session_store,
         })
     }
 }

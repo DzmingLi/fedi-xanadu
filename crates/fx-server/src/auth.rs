@@ -77,8 +77,32 @@ impl FromRequestParts<AppState> for MaybeAuth {
 }
 
 async fn extract_auth_user(pool: &sqlx::PgPool, headers: &HeaderMap) -> Option<AuthUser> {
-    let token = extract_bearer_token(headers)?;
-    let did = auth_service::get_did_by_token(pool, token).await.ok()??;
+    // Try Bearer token first (platform-local sessions), then cookie (OAuth sessions)
+    let token = extract_bearer_token(headers)
+        .map(|t| t.to_string())
+        .or_else(|| {
+            headers.get_all("cookie")
+                .iter()
+                .filter_map(|v| v.to_str().ok())
+                .flat_map(|s| s.split(';'))
+                .find_map(|c| {
+                    let c = c.trim();
+                    c.strip_prefix("pad_session=").map(|v| v.to_string())
+                })
+        })?;
+    let token_ref = token.as_str();
+
+    // Check legacy sessions table first, then oauth_sessions
+    let did = match auth_service::get_did_by_token(pool, token_ref).await.ok()? {
+        Some(d) => d,
+        None => {
+            // Try oauth_sessions
+            let row: Option<(String,)> = sqlx::query_as(
+                "SELECT did FROM oauth_sessions WHERE token = $1 AND expires_at > NOW()"
+            ).bind(token_ref).fetch_optional(pool).await.ok()?;
+            row?.0
+        }
+    };
 
     // Fetch ban status and phone verification in one query
     let row: Option<(bool, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
@@ -96,7 +120,7 @@ async fn extract_auth_user(pool: &sqlx::PgPool, headers: &HeaderMap) -> Option<A
 
     Some(AuthUser {
         did,
-        token: token.to_string(),
+        token,
         banned,
         phone_verified,
     })

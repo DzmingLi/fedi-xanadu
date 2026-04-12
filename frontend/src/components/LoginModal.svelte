@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { login as apiLogin } from '../lib/api';
+  import { login as apiLogin, startOAuthLogin } from '../lib/api';
   import { setAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
 
   let { open = $bindable(false) } = $props();
 
+  let mode = $state<'platform' | 'atproto'>('atproto');
   let handle = $state('');
   let password = $state('');
   let error = $state('');
@@ -12,6 +13,16 @@
 
   async function doLogin() {
     error = '';
+    if (!handle) return;
+
+    if (mode === 'atproto') {
+      // OAuth redirect — no password needed
+      startOAuthLogin(handle);
+      return;
+    }
+
+    // Platform-local login
+    if (!password) return;
     loading = true;
     try {
       const user = await apiLogin(handle, password);
@@ -27,7 +38,10 @@
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') open = false;
-    if (e.key === 'Enter' && handle && password) doLogin();
+    if (e.key === 'Enter') {
+      if (mode === 'atproto' && handle) doLogin();
+      else if (mode === 'platform' && handle && password) doLogin();
+    }
   }
 </script>
 
@@ -39,7 +53,15 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal" onclick={(e) => e.stopPropagation()}>
       <h2>{t('nav.login')}</h2>
-      <p class="hint">{t('auth.loginHint')}</p>
+
+      <div class="tabs">
+        <button class="tab" class:active={mode === 'atproto'} onclick={() => { mode = 'atproto'; error = ''; }}>
+          AT Protocol
+        </button>
+        <button class="tab" class:active={mode === 'platform'} onclick={() => { mode = 'platform'; error = ''; }}>
+          {t('auth.platformLogin') || 'Platform'}
+        </button>
+      </div>
 
       {#if error}
         <div class="error">{error}</div>
@@ -56,25 +78,31 @@
         />
       </label>
 
-      <label>
-        {t('auth.password')}
-        <input
-          type="password"
-          bind:value={password}
-          onkeydown={onKeydown}
-          placeholder="xxxx-xxxx-xxxx-xxxx"
-          disabled={loading}
-        />
-      </label>
-
-      <p class="hint small">
-        <a href="https://bsky.app/settings/app-passwords" target="_blank" rel="noopener">{t('auth.createAppPw')}</a>
-      </p>
+      {#if mode === 'platform'}
+        <label>
+          {t('auth.password')}
+          <input
+            type="password"
+            bind:value={password}
+            onkeydown={onKeydown}
+            placeholder="xxxx-xxxx-xxxx-xxxx"
+            disabled={loading}
+          />
+        </label>
+      {:else}
+        <p class="hint small">{t('auth.oauthHint') || 'You will be redirected to your PDS to authorize.'}</p>
+      {/if}
 
       <div class="actions">
         <button class="btn-cancel" onclick={() => { open = false; }} disabled={loading}>{t('common.cancel')}</button>
-        <button class="btn-login" onclick={doLogin} disabled={loading || !handle || !password}>
-          {loading ? t('common.loading') : t('auth.submit')}
+        <button class="btn-login" onclick={doLogin} disabled={loading || !handle || (mode === 'platform' && !password)}>
+          {#if loading}
+            {t('common.loading')}
+          {:else if mode === 'atproto'}
+            {t('auth.submit') || 'Login'}
+          {:else}
+            {t('auth.submit')}
+          {/if}
         </button>
       </div>
     </div>
@@ -103,19 +131,33 @@
   .modal h2 {
     font-family: var(--font-serif);
     font-weight: 400;
-    margin: 0 0 4px;
+    margin: 0 0 12px;
   }
-  .hint {
+  .tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    flex: 1;
+    padding: 8px 12px;
     font-size: 13px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
     color: var(--text-secondary);
-    margin: 0 0 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
   }
   .hint.small {
     font-size: 12px;
-    margin: 8px 0 16px;
-  }
-  .hint a {
-    color: var(--accent);
+    color: var(--text-secondary);
+    margin: 4px 0 16px;
   }
   .error {
     background: #fef2f2;

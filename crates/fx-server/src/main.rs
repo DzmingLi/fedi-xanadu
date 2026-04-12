@@ -24,7 +24,28 @@ async fn main() -> Result<()> {
 
     let config = config::Config::load()?;
     let state = state::AppState::new(&config).await?;
-    let app = routes::router(state.clone(), &config);
+
+    // OAuth setup
+    let public_url = if config.public_url.is_empty() {
+        format!("http://{}:{}", config.host, config.port)
+    } else {
+        config.public_url.clone()
+    };
+    let oauth_config = atproto_auth::OAuthConfig::new_dev(&public_url, &config.instance_name)?;
+    tracing::info!("OAuth client_id: {}", oauth_config.client_id());
+
+    let oauth_request_store: std::sync::Arc<dyn atproto_oauth::storage::OAuthRequestStorage> =
+        std::sync::Arc::new(atproto_auth::MemoryRequestStore::new());
+
+    let oauth_state = atproto_auth::OAuthState {
+        config: oauth_config,
+        request_store: oauth_request_store,
+        session_store: state.session_store.clone(),
+        http_client: reqwest::Client::new(),
+    };
+
+    let app = routes::router(state.clone(), &config)
+        .nest("/oauth", atproto_auth::oauth_router(oauth_state));
 
     // Background task: clean up expired sessions every hour
     let cleanup_pool = state.pool.clone();

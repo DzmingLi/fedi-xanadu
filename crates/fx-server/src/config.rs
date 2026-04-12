@@ -21,6 +21,10 @@ pub struct Config {
     /// and content visibility rules. Set via FX_INSTANCE_MODE env var.
     #[serde(default)]
     pub instance_mode: String,
+    /// Public URL of this instance (for OAuth client_id and callback).
+    /// e.g. "https://xanadu.example.com". Set via FX_PUBLIC_URL env var.
+    #[serde(default)]
+    pub public_url: String,
 }
 
 impl Default for Config {
@@ -34,6 +38,7 @@ impl Default for Config {
             cors_origins: String::new(),
             admin_secret: None,
             instance_mode: String::new(),
+            public_url: String::new(),
         }
     }
 }

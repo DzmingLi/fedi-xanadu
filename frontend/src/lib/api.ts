@@ -23,7 +23,7 @@ function authHeaders(): Record<string, string> {
 }
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { headers: authHeaders(), signal });
+  const res = await fetch(`${BASE}${path}`, { headers: authHeaders(), credentials: 'same-origin', signal });
   if (!res.ok) {
     handleUnauthorized(res.status);
     if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
@@ -36,6 +36,7 @@ async function post<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'same-origin',
     body: body ? JSON.stringify(body) : undefined,
     signal,
   });
@@ -53,6 +54,7 @@ async function put<T>(path: string, body?: unknown, signal?: AbortSignal): Promi
   const res = await fetch(`${BASE}${path}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'same-origin',
     body: body ? JSON.stringify(body) : undefined,
     signal,
   });
@@ -70,6 +72,7 @@ async function del<T>(path: string, body?: unknown, signal?: AbortSignal): Promi
   const res = await fetch(`${BASE}${path}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'same-origin',
     body: body ? JSON.stringify(body) : undefined,
     signal,
   });
@@ -83,11 +86,24 @@ async function del<T>(path: string, body?: unknown, signal?: AbortSignal): Promi
   return res.json();
 }
 
-// Auth
+// Auth — platform-local login (password)
 export const login = (identifier: string, password: string) =>
   post<AuthUser>('/auth/login', { identifier, password });
 export const logout = () => post<void>('/auth/logout');
 export const authMe = () => get<AuthUser>('/auth/me');
+
+// Auth — AT Protocol OAuth login (redirect-based)
+export function startOAuthLogin(handle: string) {
+  window.location.href = `/oauth/login?handle=${encodeURIComponent(handle)}`;
+}
+// OAuth me (cookie-based)
+export const oauthMe = async (): Promise<{ did: string; handle: string | null } | null> => {
+  try {
+    const res = await fetch('/oauth/me', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+};
 
 // Tags
 export const listTags = () => get<Tag[]>('/tags');

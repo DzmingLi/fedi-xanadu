@@ -72,3 +72,7 @@ dirs-next = "2.0"
 # Config
 toml = { version = "0.8", features = ["preserve_order"] }
 figment = { version = "0.10", features = ["toml", "env"] }
+
+# AT Protocol OAuth
+atproto-auth = { git = "https://github.com/DzmingLi/atproto-auth.git" }
+atproto-oauth = "0.14"
