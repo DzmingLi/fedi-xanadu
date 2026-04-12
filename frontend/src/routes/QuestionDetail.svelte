@@ -377,11 +377,15 @@
   .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .answer-card {
-    background: var(--bg-white);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 16px 20px;
-    margin-bottom: 12px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    padding: 20px 0;
+    margin-bottom: 0;
+  }
+  .answer-card:last-child {
+    border-bottom: none;
   }
   .answer-meta {
     display: flex;

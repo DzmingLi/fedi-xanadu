@@ -49,6 +49,9 @@ export default {
   'creator.last30days': 'Last 30 Days',
   'creator.titleCol': 'Title',
 
+  'home.expand': 'Expand',
+  'home.collapse': 'Collapse',
+
   // Notifications
   'notification.commentReply': 'replied to your comment',
   'notification.articleComment': 'commented on your article',

@@ -2,7 +2,8 @@
   import { tagName } from '../display';
   import { authorName } from '../display';
   import { t } from '../i18n/index.svelte';
-  import type { Article, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
+  import { getArticleContent } from '../api';
+  import type { Article, ArticleContent, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
 
   type CardVariant = 'home' | 'profile';
 
@@ -28,6 +29,49 @@
     e.stopPropagation();
     window.location.hash = `#/tag?id=${encodeURIComponent(tagId)}`;
   }
+
+  let expanded = $state(false);
+  let expandedContent = $state<ArticleContent | null>(null);
+  let expandLoading = $state(false);
+  let contentEl = $state<HTMLDivElement | undefined>(undefined);
+
+  interface TocItem { id: string; text: string; level: number }
+  let tocItems = $state<TocItem[]>([]);
+
+  async function toggleExpand(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (expanded) {
+      expanded = false;
+      return;
+    }
+    if (!article) return;
+    if (!expandedContent) {
+      expandLoading = true;
+      try {
+        expandedContent = await getArticleContent(article.at_uri);
+      } catch { /* */ }
+      expandLoading = false;
+    }
+    expanded = true;
+  }
+
+  $effect(() => {
+    if (!contentEl || !expandedContent) return;
+    const headings = contentEl.querySelectorAll('h2, h3, h4');
+    const items: TocItem[] = [];
+    const usedIds = new Set<string>();
+    headings.forEach(h => {
+      let id = h.id || h.textContent!.trim().toLowerCase().replace(/[^\w\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '');
+      let finalId = id;
+      let n = 1;
+      while (usedIds.has(finalId)) { finalId = `${id}-${n++}`; }
+      usedIds.add(finalId);
+      h.id = finalId;
+      items.push({ id: finalId, text: h.textContent!.trim(), level: parseInt(h.tagName[1]) });
+    });
+    tocItems = items;
+  });
 
   function seriesAuthor(s: Series): string {
     if (s.author_handle) return `@${s.author_handle}`;
@@ -73,8 +117,26 @@
           {/if}
         </span>
       {/if}
+      <button class="expand-btn" onclick={toggleExpand} title={expanded ? t('home.collapse') : t('home.expand')}>
+        {#if expandLoading}...{:else}{expanded ? '▲' : '▼'}{/if}
+      </button>
     </div>
   </a>
+
+  {#if expanded && expandedContent}
+    <div class="expanded-article">
+      <div class="expanded-body">
+        {#if tocItems.length > 1}
+          <nav class="expanded-toc">
+            {#each tocItems as item}
+              <a href="#{item.id}" class="toc-item toc-h{item.level}">{item.text}</a>
+            {/each}
+          </nav>
+        {/if}
+        <div class="content" bind:this={contentEl}>{@html expandedContent.html}</div>
+      </div>
+    </div>
+  {/if}
 {:else if series}
   <a href="#/series?id={encodeURIComponent(series.id)}" class="post-card series-card">
     <div class="card-top">
@@ -177,6 +239,67 @@
     flex-shrink: 0;
     white-space: nowrap;
   }
+  /* Expand button */
+  .expand-btn {
+    background: none;
+    border: none;
+    font-size: 11px;
+    color: var(--text-hint);
+    cursor: pointer;
+    padding: 2px 6px;
+    margin-left: 8px;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .expand-btn:hover { background: var(--bg-hover); color: var(--accent); }
+
+  /* Expanded article content */
+  .expanded-article {
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    margin-top: -13px;
+    margin-bottom: 12px;
+    background: var(--bg-white);
+    overflow: hidden;
+  }
+  .expanded-body {
+    display: flex;
+    gap: 0;
+  }
+  .expanded-toc {
+    width: 180px;
+    flex-shrink: 0;
+    padding: 16px 12px;
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .toc-item {
+    display: block;
+    font-size: 12px;
+    color: var(--text-hint);
+    text-decoration: none;
+    padding: 3px 0;
+    line-height: 1.4;
+  }
+  .toc-item:hover { color: var(--accent); }
+  .toc-h3 { padding-left: 12px; }
+  .toc-h4 { padding-left: 24px; }
+  .expanded-article :global(.content) {
+    flex: 1;
+    min-width: 0;
+    padding: 20px 28px;
+    max-height: none;
+  }
+
+  @media (max-width: 768px) {
+    .expanded-toc { display: none; }
+  }
+
   .series-badge {
     font-size: 11px;
     font-weight: 600;

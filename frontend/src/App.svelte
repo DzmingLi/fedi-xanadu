@@ -85,7 +85,7 @@
       <main class="layout-main">
         <Home />
       </main>
-      <RightSidebar />
+      <!-- RightSidebar removed temporarily -->
     </div>
   </div>
 {:else if route.page === 'new'}

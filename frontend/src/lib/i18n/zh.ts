@@ -49,6 +49,9 @@ export default {
   'creator.last30days': '近30天趋势',
   'creator.titleCol': '标题',
 
+  'home.expand': '展开全文',
+  'home.collapse': '收起',
+
   // Notifications
   'notification.commentReply': '回复了你的评论',
   'notification.articleComment': '评论了你的文章',
