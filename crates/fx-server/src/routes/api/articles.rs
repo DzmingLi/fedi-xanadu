@@ -60,7 +60,7 @@ pub async fn get_article_content(
     }
 
     let format = article_service::get_content_format(&state.pool, &uri).await?;
-    let src_ext = fx_render::format_extension(&format);
+    let src_ext = fx_renderer::format_extension(&format);
 
     // Check if this is a compile-generated heading slice
     let heading_info: Option<(String, String)> = sqlx::query_as(
@@ -252,7 +252,7 @@ async fn is_series_cache_fresh(
     let Ok(cache_time) = cache_meta.modified() else { return false };
     for ch in chapters {
         let chapter_id = ch.article_uri.rsplit('/').next().unwrap_or("");
-        let ext = fx_render::format_extension(&ch.content_format);
+        let ext = fx_renderer::format_extension(&ch.content_format);
         let src = series_repo.join("chapters").join(format!("{chapter_id}.{ext}"));
         if let Ok(src_meta) = tokio::fs::metadata(&src).await {
             if let Ok(st) = src_meta.modified() {
@@ -281,7 +281,8 @@ async fn typst_series_render(
 
     let repo = series_repo.clone();
     let rendered = tokio::task::spawn_blocking(move || {
-        fx_render::render_series_to_html(&chapter_ids, &repo)
+        let config = fx_renderer::fx_render_config();
+        fx_renderer::typst_render::render_series_to_html_with_config(&chapter_ids, &repo, &config)
     }).await.ok()?;
 
     match rendered {
@@ -315,7 +316,7 @@ async fn anchor_rewrite_series_render(
     for ch in chapters {
         let node = uri_to_node_id(&ch.article_uri);
         let repo = state.pijul.repo_path(&node);
-        let ext = fx_render::format_extension(&ch.content_format);
+        let ext = fx_renderer::format_extension(&ch.content_format);
         let src_path = repo.join(format!("content.{ext}"));
         let html_path = repo.join("content.html");
 
@@ -329,7 +330,8 @@ async fn anchor_rewrite_series_render(
             let src = source.clone();
             let rp = repo.clone();
             let rendered = tokio::task::spawn_blocking(move || {
-                fx_render::render_to_html(&fmt, &src, &rp)
+                let config = fx_renderer::fx_render_config();
+                fx_renderer::render_to_html_with_config(&fmt, &src, &rp, &config)
             }).await.ok()?.ok()?;
             let _ = tokio::fs::write(&html_path, &rendered).await;
             rendered
@@ -399,7 +401,8 @@ async fn is_cached_fresh(cache: &std::path::Path, source: &std::path::Path) -> b
 }
 
 pub(super) fn render_content(format: &str, source: &str, repo_path: &std::path::Path) -> Result<String, AppError> {
-    fx_render::render_to_html(format, source, repo_path)
+    let config = fx_renderer::fx_render_config();
+    fx_renderer::render_to_html_with_config(format, source, repo_path, &config)
         .map_err(|e| { tracing::warn!("render error: {e}"); AppError(fx_core::Error::Render(e.to_string())) })
 }
 
@@ -451,7 +454,7 @@ pub(super) async fn publish_article_content(
     message: &str,
 ) -> Result<std::path::PathBuf, AppError> {
     let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
-    let src_ext = fx_render::format_extension(format.as_str());
+    let src_ext = fx_renderer::format_extension(format.as_str());
 
     if let Some(sid) = series_id {
         let pijul_node_id: Option<String> = sqlx::query_scalar(
@@ -565,7 +568,7 @@ pub(super) async fn save_article_content(
     content: &str,
     format: &str,
 ) -> Result<(), AppError> {
-    let src_ext = fx_render::format_extension(format);
+    let src_ext = fx_renderer::format_extension(format);
     let series_info = get_series_pijul_info(state, uri).await;
 
     if let Some((series_node_id, chapter_id)) = series_info {
@@ -768,7 +771,7 @@ pub async fn get_article_full(
     let content = if has_access {
         let node_id = uri_to_node_id(&uri);
         let repo = state.pijul.repo_path(&node_id);
-        let src_ext = fx_render::format_extension(article.content_format.as_str());
+        let src_ext = fx_renderer::format_extension(article.content_format.as_str());
         let src_path = repo.join(format!("content.{src_ext}"));
         let html_path = repo.join("content.html");
 
@@ -927,11 +930,11 @@ pub async fn fork_article(
             return Err(AppError(fx_core::Error::Validation(vec![e])));
         }
         let fork_repo = state.pijul.repo_path(&fork_node_id);
-        let old_ext = fx_render::format_extension(source.content_format.as_str());
-        let new_ext = fx_render::format_extension(target_format);
+        let old_ext = fx_renderer::format_extension(source.content_format.as_str());
+        let new_ext = fx_renderer::format_extension(target_format);
         let old_path = fork_repo.join(format!("content.{old_ext}"));
         let src_content = tokio::fs::read_to_string(&old_path).await?;
-        let converted = fx_render::convert_format(&src_content, source.content_format.as_str(), target_format)
+        let converted = fx_renderer::convert_format(&src_content, source.content_format.as_str(), target_format)
             .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?;
         // Write new format file and remove old one
         let new_path = fork_repo.join(format!("content.{new_ext}"));
@@ -948,7 +951,7 @@ pub async fn fork_article(
 
     // Record initial version for the fork
     let fork_repo = state.pijul.repo_path(&fork_node_id);
-    let fork_src_ext = fx_render::format_extension(target_format);
+    let fork_src_ext = fx_renderer::format_extension(target_format);
     let fork_src_file = format!("content.{fork_src_ext}");
     if let Ok(source_text) = tokio::fs::read_to_string(&fork_repo.join(&fork_src_file)).await {
         let _ = version_service::record_version(
@@ -1016,7 +1019,7 @@ pub async fn convert_content(
     if let Err(e) = fx_core::validation::validate_content_format(&input.to) {
         return Err(AppError(fx_core::Error::Validation(vec![e])));
     }
-    let converted = fx_render::convert_format(&input.content, &input.from, &input.to)
+    let converted = fx_renderer::convert_format(&input.content, &input.from, &input.to)
         .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?;
     Ok(Json(ConvertOutput { content: converted }))
 }
@@ -1263,7 +1266,7 @@ pub async fn record_article(
 
     // Read current content from working copy
     let format = article_service::get_content_format(&state.pool, &input.uri).await?;
-    let src_ext = fx_render::format_extension(&format);
+    let src_ext = fx_renderer::format_extension(&format);
     let series_info = get_series_pijul_info(&state, &input.uri).await;
 
     let content = if let Some((series_node_id, chapter_id)) = &series_info {
@@ -1506,7 +1509,7 @@ pub async fn unrecord_article_change(
 
     // Read the restored content from the working copy
     let src_ext = article_service::get_content_format(&state.pool, &input.uri).await?;
-    let ext = fx_render::format_extension(&src_ext);
+    let ext = fx_renderer::format_extension(&src_ext);
     let content = state.pijul.get_file_content(&node_id, &format!("content.{ext}"))
         .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
     let content_str = String::from_utf8_lossy(&content).to_string();
@@ -1562,7 +1565,7 @@ pub async fn apply_change(
 
     // Read the updated working copy.
     let src_ext = article_service::get_content_format(&state.pool, &input.target_uri).await?;
-    let ext = fx_render::format_extension(&src_ext);
+    let ext = fx_renderer::format_extension(&src_ext);
     let content_bytes = state.pijul.get_file_content(&target_node_id, &format!("content.{ext}"))
         .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
     let content = String::from_utf8_lossy(&content_bytes).to_string();

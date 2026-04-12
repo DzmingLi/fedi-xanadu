@@ -4,7 +4,6 @@ members = [
     "crates/fx-core",
     "crates/fx-atproto",
     "crates/fx-search",
-    "crates/fx-render",
     "crates/fx-cli",
     "crates/fx-client",
 ]
@@ -21,7 +20,7 @@ fx-core = { path = "crates/fx-core" }
 pijul-knot = { git = "https://github.com/DzmingLi/pijul-knot.git" }
 fx-atproto = { path = "crates/fx-atproto" }
 fx-search = { path = "crates/fx-search" }
-fx-render = { path = "crates/fx-render" }
+fx-renderer = { path = "../fx-renderer" }
 fx-client = { path = "crates/fx-client" }
 
 # Web

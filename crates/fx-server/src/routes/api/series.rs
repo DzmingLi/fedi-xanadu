@@ -482,7 +482,8 @@ pub async fn compile_series(
     let repo = series_repo.clone();
     let full_html = if has_typst || series_repo.join("main.typ").exists() {
         tokio::task::spawn_blocking(move || {
-            fx_render::render_series_full_html(&repo)
+            let config = fx_renderer::fx_render_config();
+            fx_renderer::typst_render::render_series_full_html_with_config(&repo, &config)
         }).await.map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))??
     } else if has_markdown {
         // Read all .md chapters
@@ -498,16 +499,16 @@ pub async fn compile_series(
                 md_chapters.push((uri, content));
             }
         }
-        fx_render::render_markdown_series(&md_chapters)
+        fx_renderer::render_markdown_series(&md_chapters)
             .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?
     } else {
         return Err(AppError(fx_core::Error::BadRequest("No compilable content found".into())));
     };
 
     // Extract headings and split
-    let headings = fx_render::heading_extract::extract_headings(&full_html);
-    let slices = fx_render::heading_extract::split_at_level(&full_html, &headings, split_level);
-    let heading_tree = fx_render::heading_extract::build_heading_tree(&headings);
+    let headings = fx_renderer::heading_extract::extract_headings(&full_html);
+    let slices = fx_renderer::heading_extract::split_at_level(&full_html, &headings, split_level);
+    let heading_tree = fx_renderer::heading_extract::build_heading_tree(&headings);
 
     // Load existing heading-based articles
     let existing: Vec<(String, String)> = sqlx::query_as(
@@ -617,7 +618,7 @@ pub async fn compile_series(
         .await?;
 
     fn insert_heading_tree(
-        nodes: &[fx_render::heading_extract::HeadingNode],
+        nodes: &[fx_renderer::heading_extract::HeadingNode],
         series_id: &str,
         parent_id: Option<i32>,
         order_start: &mut i32,

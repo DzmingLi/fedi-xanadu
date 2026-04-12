@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 fx-core.workspace = true
-fx-render.workspace = true
+fx-renderer.workspace = true
 fx-search.workspace = true
 fx-atproto.workspace = true
 pijul-knot.workspace = true

@@ -115,7 +115,7 @@ pub async fn apply_discussion_change(
 
     // Read updated content and check conflicts
     let src_ext = article_service::get_content_format(&state.pool, &disc.discussion.target_uri).await?;
-    let ext = fx_render::format_extension(&src_ext);
+    let ext = fx_renderer::format_extension(&src_ext);
     let content_bytes = state.pijul.get_file_content(&target_node, &format!("content.{ext}"))
         .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
     let content = String::from_utf8_lossy(&content_bytes).to_string();
@@ -173,7 +173,7 @@ pub async fn apply_all_discussion_changes(
 
     // Final state: read content, check conflicts, render, record
     let src_ext = article_service::get_content_format(&state.pool, &disc.discussion.target_uri).await?;
-    let ext = fx_render::format_extension(&src_ext);
+    let ext = fx_renderer::format_extension(&src_ext);
     let content_bytes = state.pijul.get_file_content(&target_node, &format!("content.{ext}"))
         .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
     let content = String::from_utf8_lossy(&content_bytes).to_string();

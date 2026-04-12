@@ -1,5 +1,5 @@
 use axum::Json;
-use fx_render::typst_render::render_typst_to_html;
+use fx_renderer::typst_render::render_typst_to_html;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiResult;
@@ -36,6 +36,25 @@ pub async fn render_typst_snippet(
     };
 
     let html = tokio::task::spawn_blocking(move || render_typst_to_html(&source))
+        .await
+        .map_err(|e| Error::Internal(e.to_string()))?
+        .map_err(|e| Error::Internal(e.to_string()))?;
+
+    Ok(Json(SnippetResponse { html }))
+}
+
+/// POST /api/render/latex-snippet
+/// Converts a LaTeX math formula to MathML HTML.
+pub async fn render_latex_snippet(
+    Json(body): Json<SnippetRequest>,
+) -> ApiResult<Json<SnippetResponse>> {
+    let formula = body.formula.trim().to_string();
+    if formula.is_empty() {
+        return Ok(Json(SnippetResponse { html: String::new() }));
+    }
+
+    let display = body.display;
+    let html = tokio::task::spawn_blocking(move || fx_renderer::render_latex_to_mathml(&formula, display))
         .await
         .map_err(|e| Error::Internal(e.to_string()))?
         .map_err(|e| Error::Internal(e.to_string()))?;

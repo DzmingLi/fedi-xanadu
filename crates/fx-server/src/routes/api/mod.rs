@@ -356,6 +356,7 @@ fn member_routes() -> Router<AppState> {
 fn render_routes() -> Router<AppState> {
     Router::new()
         .route("/render/typst-snippet", post(render::render_typst_snippet))
+        .route("/render/latex-snippet", post(render::render_latex_snippet))
 }
 
 fn book_routes() -> Router<AppState> {

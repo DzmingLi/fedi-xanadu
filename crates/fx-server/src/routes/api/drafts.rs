@@ -101,10 +101,14 @@ pub async fn publish_draft(
     tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &draft.content).await?;
 
     let rendered_html = match draft.content_format.as_str() {
-        "markdown" => fx_render::render_markdown_to_html(&draft.content)
+        "markdown" => fx_renderer::render_markdown_to_html(&draft.content)
             .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?,
-        _ => fx_render::render_typst_to_html_with_images(&draft.content, &repo_path)
-            .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?,
+        _ => {
+            let config = fx_renderer::fx_render_config();
+            let world = fx_renderer::typst_render::RenderWorld::with_config(&draft.content, Some(&repo_path), &config);
+            fx_renderer::typst_render::render_world(&world)
+                .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?
+        }
     };
     let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
 

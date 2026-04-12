@@ -48,7 +48,7 @@ impl AppState {
 
         let packages_dir = std::path::PathBuf::from(&config.pijul_store_path).join("typst-packages");
         std::fs::create_dir_all(&packages_dir)?;
-        fx_render::set_packages_dir(packages_dir);
+        fx_renderer::set_packages_dir(packages_dir);
 
         let session_store: Arc<dyn atproto_auth::SessionStore> =
             Arc::new(atproto_auth::PgSessionStore::new(pool.clone()));

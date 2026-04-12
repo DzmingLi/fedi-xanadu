@@ -1909,7 +1909,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fx-render"
+name = "fx-renderer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1949,7 +1949,7 @@ dependencies = [
  "figment",
  "fx-atproto",
  "fx-core",
- "fx-render",
+ "fx-renderer",
  "fx-search",
  "pijul-knot",
  "rand 0.10.0",
