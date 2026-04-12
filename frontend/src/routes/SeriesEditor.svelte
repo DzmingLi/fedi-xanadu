@@ -165,10 +165,35 @@
     }
   }
 
+  async function doReorderFiles(paths: string[]) {
+    // Rename files with numeric prefixes to reflect new order
+    for (let i = 0; i < paths.length; i++) {
+      const oldPath = paths[i];
+      const fileName = oldPath.replace(/^chapters\//, '');
+      // Strip existing numeric prefix (e.g. "01-" or "1-")
+      const baseName = fileName.replace(/^\d+-/, '');
+      const prefix = String(i + 1).padStart(2, '0');
+      const newPath = `chapters/${prefix}-${baseName}`;
+      if (oldPath !== newPath) {
+        // Read content, write to new path, delete old
+        const content = currentChannel === 'main'
+          ? await readSeriesFile(id, oldPath)
+          : (await readChannelFile(id, currentChannel, oldPath)).content;
+        if (currentChannel === 'main') {
+          await writeSeriesFile(id, newPath, content);
+        } else {
+          await writeChannelFile(id, currentChannel, newPath, content);
+        }
+        await deleteSeriesFile(id, oldPath);
+        if (activeFile === oldPath) activeFile = newPath;
+      }
+    }
+    files = await listSeriesFiles(id);
+  }
+
   function ext(path: string) {
     return path.split('.').pop() ?? '';
   }
-
 
   // Prereqs
   function prereqsFor(articleUri: string): SeriesArticle[] {
@@ -239,9 +264,11 @@
           <FilePanel
             files={files.map(f => ({ path: f.path, is_dir: false }))}
             {activeFile}
+            sortable={true}
             onSelect={openFile}
             onCreate={createFile}
             onDelete={doDeleteFile}
+            onReorder={doReorderFiles}
           />
         </aside>
       {/if}
