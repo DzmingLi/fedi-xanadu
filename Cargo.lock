@@ -3858,7 +3858,7 @@ dependencies = [
 [[package]]
 name = "pijul-knot"
 version = "0.1.0"
-source = "git+https://github.com/DzmingLi/pijul-knot.git#5ab7b711775229773ef2724a88c709d07d17a8bd"
+source = "git+https://github.com/DzmingLi/pijul-knot.git#9d1e5d3b345fbd84c41f0e701b3be1766e230ea7"
 dependencies = [
  "anyhow",
  "async-trait",
