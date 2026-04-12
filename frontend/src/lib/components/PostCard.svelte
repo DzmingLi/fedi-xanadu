@@ -35,8 +35,6 @@
   let expandLoading = $state(false);
   let contentEl = $state<HTMLDivElement | undefined>(undefined);
 
-  interface TocItem { id: string; text: string; level: number }
-  let tocItems = $state<TocItem[]>([]);
 
   let expandedTitle = $state('');
 
@@ -66,22 +64,6 @@
     expanded = true;
   }
 
-  $effect(() => {
-    if (!contentEl || !expandedContent) return;
-    const headings = contentEl.querySelectorAll('h2, h3, h4');
-    const items: TocItem[] = [];
-    const usedIds = new Set<string>();
-    headings.forEach(h => {
-      let id = h.id || h.textContent!.trim().toLowerCase().replace(/[^\w\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '');
-      let finalId = id;
-      let n = 1;
-      while (usedIds.has(finalId)) { finalId = `${id}-${n++}`; }
-      usedIds.add(finalId);
-      h.id = finalId;
-      items.push({ id: finalId, text: h.textContent!.trim(), level: parseInt(h.tagName[1]) });
-    });
-    tocItems = items;
-  });
 
   function seriesAuthor(s: Series): string {
     if (s.author_handle) return `@${s.author_handle}`;
@@ -146,22 +128,7 @@
           <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
         </div>
       </div>
-      <div class="expanded-layout">
-        {#if tocItems.length > 1}
-          <aside class="expanded-toc-aside">
-            <nav class="toc">
-              <ul>
-                {#each tocItems as item}
-                  <li class="toc-{item.level}">
-                    <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
-                  </li>
-                {/each}
-              </ul>
-            </nav>
-          </aside>
-        {/if}
-        <div class="content" bind:this={contentEl}>{@html expandedContent.html}</div>
-      </div>
+      <div class="content" bind:this={contentEl}>{@html expandedContent.html}</div>
     </div>
   {/if}
 {:else if series}
@@ -197,22 +164,7 @@
           <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
         </div>
       </div>
-      <div class="expanded-layout">
-        {#if tocItems.length > 1}
-          <aside class="expanded-toc-aside">
-            <nav class="toc">
-              <ul>
-                {#each tocItems as item}
-                  <li class="toc-{item.level}">
-                    <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
-                  </li>
-                {/each}
-              </ul>
-            </nav>
-          </aside>
-        {/if}
-        <div class="content" bind:this={contentEl}>{@html expandedContent.html}</div>
-      </div>
+      <div class="content" bind:this={contentEl}>{@html expandedContent.html}</div>
     </div>
   {/if}
 {/if}
@@ -319,8 +271,10 @@
   /* Full-width expanded article */
   .expanded-full {
     margin-bottom: 24px;
-    border-top: 1px solid var(--border);
-    padding-top: 20px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px 24px;
+    background: var(--bg-white);
   }
   .expanded-header {
     margin-bottom: 16px;
@@ -352,23 +306,6 @@
     cursor: pointer;
   }
   .collapse-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .expanded-layout {
-    position: relative;
-  }
-  .expanded-toc-aside {
-    position: absolute;
-    left: -200px;
-    top: 0;
-    width: 180px;
-  }
-  .expanded-toc-aside :global(.toc) {
-    position: sticky;
-    top: 4rem;
-  }
-
-  @media (max-width: 75rem) {
-    .expanded-toc-aside { display: none; }
-  }
 
   .series-badge {
     font-size: 11px;
