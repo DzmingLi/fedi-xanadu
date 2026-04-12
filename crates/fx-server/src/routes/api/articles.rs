@@ -1318,9 +1318,8 @@ pub async fn delete_article(
     if let Some((series_node_id, chapter_id)) = series_info {
         // Remove chapter file and cache from series repo
         let series_repo = state.pijul.series_repo_path(&series_node_id);
-        let chapters_dir = series_repo.join("chapters");
-        // Remove any file matching this chapter_id (any extension)
-        if let Ok(entries) = tokio::fs::read_dir(&chapters_dir).await {
+        // Remove any file matching this chapter_id (any extension) from repo root
+        if let Ok(entries) = tokio::fs::read_dir(&series_repo).await {
             let mut entries = entries;
             while let Ok(Some(entry)) = entries.next_entry().await {
                 if entry.file_name().to_string_lossy().starts_with(&chapter_id) {

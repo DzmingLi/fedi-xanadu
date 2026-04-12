@@ -465,14 +465,13 @@ pub async fn compile_series(
 
     let series_repo = state.pijul.series_repo_path(&node_id);
 
-    // Determine content format from chapter files
-    let chapters_dir = series_repo.join("chapters");
-    let has_typst = chapters_dir.exists() && std::fs::read_dir(&chapters_dir)
+    // Determine content format from repo root files
+    let has_typst = std::fs::read_dir(&series_repo)
         .map(|entries| entries.flatten().any(|e| {
             e.file_name().to_string_lossy().ends_with(".typ")
         }))
         .unwrap_or(false);
-    let has_markdown = chapters_dir.exists() && std::fs::read_dir(&chapters_dir)
+    let has_markdown = std::fs::read_dir(&series_repo)
         .map(|entries| entries.flatten().any(|e| {
             e.file_name().to_string_lossy().ends_with(".md")
         }))
@@ -486,17 +485,13 @@ pub async fn compile_series(
             fx_renderer::typst_render::render_series_full_html_with_config(&repo, &config)
         }).await.map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))??
     } else if has_markdown {
-        // Read all .md chapters
+        // Read .md chapters in meta.json order (or sorted fallback)
+        let md_order = fx_renderer::read_chapter_order(&series_repo, ".md");
         let mut md_chapters = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&chapters_dir) {
-            let mut files: Vec<_> = entries.flatten().filter(|e| {
-                e.file_name().to_string_lossy().ends_with(".md")
-            }).collect();
-            files.sort_by_key(|e| e.file_name());
-            for entry in files {
-                let content = tokio::fs::read_to_string(entry.path()).await?;
-                let uri = entry.file_name().to_string_lossy().to_string();
-                md_chapters.push((uri, content));
+        for name in &md_order {
+            let path = series_repo.join(name);
+            if let Ok(content) = tokio::fs::read_to_string(&path).await {
+                md_chapters.push((name.clone(), content));
             }
         }
         fx_renderer::render_markdown_series(&md_chapters)
