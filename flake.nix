@@ -301,7 +301,7 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
-              "pijul-knot-0.1.0" = "sha256-o/MjfVsAsRz9OnZKxPMxnVgaTVNveMjAJc1udPy0ems=";
+              "pijul-knot-0.1.0" = "sha256-1ch8qgwJQw0qig5Hle7P7kgu+bpwrelE6uvF6rjEe1c=";
             };
           };
           nativeBuildInputs = with pkgs; [ pkg-config ];
@@ -323,7 +323,7 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
-              "pijul-knot-0.1.0" = "sha256-o/MjfVsAsRz9OnZKxPMxnVgaTVNveMjAJc1udPy0ems=";
+              "pijul-knot-0.1.0" = "sha256-1ch8qgwJQw0qig5Hle7P7kgu+bpwrelE6uvF6rjEe1c=";
             };
           };
           nativeBuildInputs = with pkgs; [ pkg-config ];
