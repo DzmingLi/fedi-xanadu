@@ -38,7 +38,7 @@
     try {
       await apiBlockUser(article.did);
       addBlocked(article.did);
-      window.location.hash = '#/';
+      window.location.href = '/';
     } catch { /* */ }
   }
 
@@ -194,7 +194,7 @@
 
   function doFork() {
     if (!article) return;
-    window.location.hash = `#/new?fork_of=${encodeURIComponent(article.at_uri)}`;
+    window.location.href = `/new?fork_of=${encodeURIComponent(article.at_uri)}`;
   }
 
   async function loadForkAhead(forkUri: string) {
@@ -248,14 +248,14 @@
       showCreateDisc = false;
       discTitle = '';
       discBody = '';
-      window.location.hash = `#/discussion?id=${encodeURIComponent(disc.id)}`;
+      window.location.href = `/discussion?id=${encodeURIComponent(disc.id)}`;
     } catch { /* */ }
     creatingDisc = false;
   }
 
   function doEdit() {
     if (!article) return;
-    window.location.hash = `#/new?edit=${encodeURIComponent(article.at_uri)}`;
+    window.location.href = `/new?edit=${encodeURIComponent(article.at_uri)}`;
   }
 
   async function toggleRestricted() {
@@ -283,7 +283,7 @@
   async function doDelete() {
     if (!article || !confirm(t('article.deleteConfirm'))) return;
     await deleteArticle(uri);
-    window.location.hash = '#/';
+    window.location.href = '/';
   }
 
   // --- Quote comment ---
@@ -522,7 +522,7 @@ try {
             <div class="sidebar-forks">
               <span class="sidebar-forks-title">Forks ({forks.length})</span>
               {#each topForks as f}
-                <a href="#/article?uri={encodeURIComponent(f.forked_uri)}" class="sidebar-fork-item">
+                <a href="/article?uri={encodeURIComponent(f.forked_uri)}" class="sidebar-fork-item">
                   <span class="sf-title">{f.title}</span>
                   <span class="sf-meta">
                     {f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}
@@ -531,7 +531,7 @@ try {
                 </a>
               {/each}
               {#if forks.length > 3}
-                <a href="#/forks?uri={encodeURIComponent(uri)}" class="sidebar-fork-more">{t('article.viewAllForks', forks.length)}</a>
+                <a href="/forks?uri={encodeURIComponent(uri)}" class="sidebar-fork-more">{t('article.viewAllForks', forks.length)}</a>
               {/if}
             </div>
           {/if}
@@ -543,12 +543,12 @@ try {
     {#if !seriesId}
     {#each seriesContext as ctx}
       {#if ctx.prev.length > 0}
-        <a href="#/article?uri={encodeURIComponent(ctx.prev[0].article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="series-nav series-prev" title={t('article.seriesPrev', ctx.prev[0].title)}>
+        <a href="/article?uri={encodeURIComponent(ctx.prev[0].article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="series-nav series-prev" title={t('article.seriesPrev', ctx.prev[0].title)}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
         </a>
       {/if}
       {#if ctx.next.length > 0}
-        <a href="#/article?uri={encodeURIComponent(ctx.next[0].article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="series-nav series-next" title={t('article.seriesNext', ctx.next[0].title)}>
+        <a href="/article?uri={encodeURIComponent(ctx.next[0].article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="series-nav series-next" title={t('article.seriesNext', ctx.next[0].title)}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </a>
       {/if}
@@ -561,14 +561,14 @@ try {
       {#if seriesContext.length > 0}
         {#each seriesContext as ctx}
           <div class="series-banner">
-            <a href="#/series?id={encodeURIComponent(ctx.series_id)}" class="series-link">{ctx.series_title}</a>
+            <a href="/series?id={encodeURIComponent(ctx.series_id)}" class="series-link">{ctx.series_title}</a>
             <span class="series-pos">{t('article.seriesCount', ctx.total)}</span>
             <div class="series-nav-inline">
               {#each ctx.prev as p}
-                <a href="#/article?uri={encodeURIComponent(p.article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="nav-link prev">← {p.title}</a>
+                <a href="/article?uri={encodeURIComponent(p.article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="nav-link prev">← {p.title}</a>
               {/each}
               {#each ctx.next as n}
-                <a href="#/article?uri={encodeURIComponent(n.article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="nav-link next">{n.title} →</a>
+                <a href="/article?uri={encodeURIComponent(n.article_uri)}{seriesId ? `&series_id=${encodeURIComponent(seriesId)}` : ''}" class="nav-link next">{n.title} →</a>
               {/each}
             </div>
           </div>
@@ -581,13 +581,13 @@ try {
         <div class="lang-switcher">
           <span class="lang-current">{LANG_NAMES[article.lang] || article.lang}</span>
           {#each translations as tr}
-            <a href="#/article?uri={encodeURIComponent(tr.at_uri)}" class="lang-option">{LANG_NAMES[tr.lang] || tr.lang}</a>
+            <a href="/article?uri={encodeURIComponent(tr.at_uri)}" class="lang-option">{LANG_NAMES[tr.lang] || tr.lang}</a>
           {/each}
         </div>
       {/if}
 
       <div class="article-meta">
-        <a href="#/profile?did={encodeURIComponent(article.did)}" class="author-link">{article.author_handle ? `@${article.author_handle}` : article.did}</a>
+        <a href="/profile?did={encodeURIComponent(article.did)}" class="author-link">{article.author_handle ? `@${article.author_handle}` : article.did}</a>
         <span>{article.created_at.split(' ')[0]}</span>
         <span>{article.content_format}</span>
         <span>{article.license}</span>
@@ -792,7 +792,7 @@ try {
               {:else}
                 <div class="pr-list">
                   {#each discussions as d (d.id)}
-                    <a href="#/discussion?id={encodeURIComponent(d.id)}" class="disc-link">
+                    <a href="/discussion?id={encodeURIComponent(d.id)}" class="disc-link">
                       <span class="disc-link-title">{d.title}</span>
                       <span class="disc-link-status {d.status === 'open' ? 'status-open' : d.status === 'merged' ? 'status-merged' : 'status-closed'}">
                         {d.status === 'open' ? '开放' : d.status === 'merged' ? '已合并' : '已关闭'}
@@ -810,7 +810,7 @@ try {
                   {#each forks as f (f.fork_uri)}
                     <div class="fork-contrib-item">
                       <div class="fork-contrib-header">
-                        <a href="#/article?uri={encodeURIComponent(f.forked_uri)}" class="fork-contrib-title">{f.title}</a>
+                        <a href="/article?uri={encodeURIComponent(f.forked_uri)}" class="fork-contrib-title">{f.title}</a>
                         <span class="fork-contrib-author">{f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}</span>
                         <span class="fork-contrib-score">+{f.vote_score}</span>
                         <button

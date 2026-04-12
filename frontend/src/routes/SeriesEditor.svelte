@@ -230,7 +230,7 @@
     <!-- Title -->
     <div class="title-area">
       <span class="series-title">{detail.series.title}</span>
-      <a href="#/series?id={encodeURIComponent(id)}" class="view-link">↗ {t('seriesEditor.viewSeries')}</a>
+      <a href="/series?id={encodeURIComponent(id)}" class="view-link">↗ {t('seriesEditor.viewSeries')}</a>
       {#if currentChannel !== 'main'}
         <span class="channel-badge">{currentChannel}</span>
       {/if}

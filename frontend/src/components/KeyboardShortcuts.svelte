@@ -41,12 +41,12 @@
 
   function executeAction(actionId: string) {
     switch (actionId) {
-      case 'goto.home': window.location.hash = '#/'; break;
-      case 'goto.skills': window.location.hash = '#/skills'; break;
-      case 'goto.library': window.location.hash = '#/library'; break;
-      case 'goto.about': window.location.hash = '#/about'; break;
-      case 'goto.newArticle': window.location.hash = '#/new'; break;
-      case 'goto.newSeries': window.location.hash = '#/new-series'; break;
+      case 'goto.home': window.location.href = '/'; break;
+      case 'goto.skills': window.location.href = '/skills'; break;
+      case 'goto.library': window.location.href = '/library'; break;
+      case 'goto.about': window.location.href = '/about'; break;
+      case 'goto.newArticle': window.location.href = '/new'; break;
+      case 'goto.newSeries': window.location.href = '/new-series'; break;
       case 'search':
         // Dispatch custom event for NavBar to pick up
         window.dispatchEvent(new CustomEvent('fx:search'));

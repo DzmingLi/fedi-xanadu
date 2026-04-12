@@ -33,7 +33,7 @@
 {:else if article}
   <h1>Forks of "{article.title}"</h1>
   <p class="meta">
-    <a href="#/article?uri={encodeURIComponent(uri)}">{t('forks.backToOriginal')}</a>
+    <a href="/article?uri={encodeURIComponent(uri)}">{t('forks.backToOriginal')}</a>
     &middot; {forks.length} forks
   </p>
 
@@ -47,9 +47,9 @@
         <div class="fork-card">
           <div class="fork-rank">#{i + 1}</div>
           <div class="fork-body">
-            <a href="#/article?uri={encodeURIComponent(f.forked_uri)}" class="fork-title">{f.title}</a>
+            <a href="/article?uri={encodeURIComponent(f.forked_uri)}" class="fork-title">{f.title}</a>
             <div class="fork-info">
-              <a href="#/profile?did={encodeURIComponent(f.did)}" class="fork-author">
+              <a href="/profile?did={encodeURIComponent(f.did)}" class="fork-author">
                 {f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 24) + '…'}
               </a>
             </div>

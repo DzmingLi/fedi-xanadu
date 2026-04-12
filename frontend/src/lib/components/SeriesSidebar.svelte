@@ -11,7 +11,7 @@
   let loading = $state(true);
 
   function articleHref(uri: string): string {
-    return `#/article?uri=${encodeURIComponent(uri)}&series_id=${encodeURIComponent(seriesId)}`;
+    return `/article?uri=${encodeURIComponent(uri)}&series_id=${encodeURIComponent(seriesId)}`;
   }
 
   // Group headings: top-level (no parent) = chapters, children = article entries
@@ -56,7 +56,7 @@
   </nav>
 {:else if detail}
   <nav class="series-sidebar">
-    <a href="#/series?id={encodeURIComponent(seriesId)}" class="ss-title">
+    <a href="/series?id={encodeURIComponent(seriesId)}" class="ss-title">
       {detail.series.title}
     </a>
 

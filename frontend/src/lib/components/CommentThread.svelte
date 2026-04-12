@@ -176,7 +176,7 @@
   {#snippet commentNode(c: Comment, depth: number)}
     <div class="comment-item" style:margin-left="{depth * 24}px">
       <div class="comment-header">
-        <a href="#/profile?did={encodeURIComponent(c.did)}" class="comment-author">
+        <a href="/profile?did={encodeURIComponent(c.did)}" class="comment-author">
           {c.author_handle ? `@${c.author_handle}` : c.did.slice(0, 20) + '…'}
         </a>
         <span class="comment-date">{c.created_at.split('T')[0]}</span>

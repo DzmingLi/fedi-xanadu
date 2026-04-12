@@ -140,7 +140,7 @@
     forking = true;
     try {
       const forked = await forkSeries(id);
-      window.location.hash = `#/series?id=${encodeURIComponent(forked.id)}`;
+      window.location.href = `/series?id=${encodeURIComponent(forked.id)}`;
     } catch {
       forking = false;
     }
@@ -176,12 +176,12 @@
           {#each prereqMap.get(article.article_uri)! as pUri}
             {@const pArticle = articleByUri.get(pUri)}
             {#if pArticle}
-              <a href="#/article?uri={encodeURIComponent(pUri)}&series_id={encodeURIComponent(id)}" class="prereq-link">{pArticle.title}</a>
+              <a href="/article?uri={encodeURIComponent(pUri)}&series_id={encodeURIComponent(id)}" class="prereq-link">{pArticle.title}</a>
             {/if}
           {/each}
         </div>
       {/if}
-      <a href="#/article?uri={encodeURIComponent(article.article_uri)}&series_id={encodeURIComponent(id)}" class="item-title">
+      <a href="/article?uri={encodeURIComponent(article.article_uri)}&series_id={encodeURIComponent(id)}" class="item-title">
         {article.title}
       </a>
       {#if article.description}
@@ -216,13 +216,13 @@
     {/if}
     <div class="series-meta">
       <span class="meta">{detail.articles.length} {t('series.articles')}</span>
-      <span class="meta"><a href="#/profile?did={encodeURIComponent(detail.series.created_by)}">@{detail.series.author_handle || detail.series.created_by}</a></span>
+      <span class="meta"><a href="/profile?did={encodeURIComponent(detail.series.created_by)}">@{detail.series.author_handle || detail.series.created_by}</a></span>
     </div>
     {#if detail.translations && detail.translations.length > 0}
       <div class="series-translations">
         <span class="lang-current">{detail.series.lang}</span>
         {#each detail.translations as tr (tr.id)}
-          <a href="#/series?id={encodeURIComponent(tr.id)}" class="lang-link">{tr.lang}</a>
+          <a href="/series?id={encodeURIComponent(tr.id)}" class="lang-link">{tr.lang}</a>
         {/each}
       </div>
     {/if}
@@ -245,7 +245,7 @@
                   <div class="series-item">
                     <div class="item-number">{i + 1}</div>
                     <div class="item-content">
-                      <a href="#/article?uri={encodeURIComponent(sec.article_uri!)}&series_id={encodeURIComponent(id)}" class="item-title">
+                      <a href="/article?uri={encodeURIComponent(sec.article_uri!)}&series_id={encodeURIComponent(id)}" class="item-title">
                         {sec.title}
                       </a>
                     </div>
@@ -287,7 +287,7 @@
 
     {#if isOwner}
       <div class="action-separator"></div>
-      <a href="#/series-editor?id={encodeURIComponent(id)}" class="action-btn labeled-btn" title={t('common.edit')}>
+      <a href="/series-editor?id={encodeURIComponent(id)}" class="action-btn labeled-btn" title={t('common.edit')}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         <span class="btn-label">{t('common.edit')}</span>
       </a>

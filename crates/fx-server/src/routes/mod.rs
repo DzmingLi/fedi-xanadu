@@ -1,6 +1,6 @@
 pub mod api;
 
-use axum::Router;
+use axum::{Router, extract::State, response::IntoResponse, http::header};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -33,6 +33,7 @@ pub fn router(state: AppState, config: &Config) -> Router {
 
     Router::new()
         .nest("/api", api::routes())
+        .route("/sitemap.xml", axum::routing::get(sitemap_handler))
         .fallback_service(spa)
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(TraceLayer::new_for_http())
@@ -42,6 +43,30 @@ pub fn router(state: AppState, config: &Config) -> Router {
         // Global body limit: 16 MB (image uploads are max 10 MB + overhead)
         .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024))
         .with_state(state)
+}
+
+async fn sitemap_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let articles: Vec<(String,)> = sqlx::query_as(
+        "SELECT at_uri FROM articles WHERE removed_at IS NULL AND visibility = 'public' ORDER BY created_at DESC"
+    ).fetch_all(&state.pool).await.unwrap_or_default();
+
+    let series: Vec<(String,)> = sqlx::query_as(
+        "SELECT id FROM series WHERE is_published = TRUE ORDER BY created_at DESC"
+    ).fetch_all(&state.pool).await.unwrap_or_default();
+
+    let base = std::env::var("FX_PUBLIC_URL").unwrap_or_else(|_| "https://fedi-xanadu.dzming.li".into());
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
+    xml.push_str(&format!("  <url><loc>{base}/</loc></url>\n"));
+
+    for (uri,) in &articles {
+        xml.push_str(&format!("  <url><loc>{base}/article?uri={}</loc></url>\n", urlencoding::encode(uri)));
+    }
+    for (id,) in &series {
+        xml.push_str(&format!("  <url><loc>{base}/series?id={}</loc></url>\n", urlencoding::encode(id)));
+    }
+
+    xml.push_str("</urlset>");
+    ([(header::CONTENT_TYPE, "application/xml")], xml)
 }
 
 fn build_cors_layer(config: &Config) -> CorsLayer {

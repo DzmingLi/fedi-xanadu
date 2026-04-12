@@ -287,7 +287,7 @@
           <span class="legend-item"><span class="dot locked"></span>{t('skills.locked')}</span>
         </div>
       {:else if isLoggedIn}
-        <a href="#/skill-tree/new" class="create-btn">{t('skills.createTree')}</a>
+        <a href="/skill-tree/new" class="create-btn">{t('skills.createTree')}</a>
       {/if}
     </div>
   </div>
@@ -372,7 +372,7 @@
                 class:selected={selectedNodeId === node.id}
                 style="left:{node.x}px; top:{node.y}px; width:{NODE_W}px; height:{NODE_H}px;"
                 onclick={() => selectedNodeId = selectedNodeId === node.id ? null : node.id}
-                ondblclick={() => window.location.hash = `#/tag?id=${encodeURIComponent(node.id)}`}
+                ondblclick={() => window.location.href = `/tag?id=${encodeURIComponent(node.id)}`}
                 title={node.name}
               >
                 <span class="node-icon">
@@ -412,7 +412,7 @@
               {#each selectedNode.prereqs as p}
                 <div class="prereq-row">
                   <span class="prereq-check" class:met={p.met}>{p.met ? '✓' : '○'}</span>
-                  <a href="#/tag?id={encodeURIComponent(p.id)}" class="prereq-name">{p.name}</a>
+                  <a href="/tag?id={encodeURIComponent(p.id)}" class="prereq-name">{p.name}</a>
                   <span class="prereq-type type-{p.type}">{p.type}</span>
                 </div>
               {/each}
@@ -423,12 +423,12 @@
             <div class="panel-section">
               <h4>{t('skills.unlocks')}</h4>
               {#each selectedNode.unlocks as u}
-                <a href="#/tag?id={encodeURIComponent(u.id)}" class="unlock-link">{u.name}</a>
+                <a href="/tag?id={encodeURIComponent(u.id)}" class="unlock-link">{u.name}</a>
               {/each}
             </div>
           {/if}
 
-          <a href="#/tag?id={encodeURIComponent(selectedNode.id)}" class="panel-link">
+          <a href="/tag?id={encodeURIComponent(selectedNode.id)}" class="panel-link">
             {t('skills.viewTag')} →
           </a>
 
@@ -474,14 +474,14 @@
       {:else if communityTrees.length === 0}
         <div class="empty">
           <p>{t('skills.noTrees')}</p>
-          {#if isLoggedIn}<a href="#/skill-tree/new">{t('skills.createFirst')}</a>{/if}
+          {#if isLoggedIn}<a href="/skill-tree/new">{t('skills.createFirst')}</a>{/if}
         </div>
       {:else}
         <div class="tree-list">
           {#each filteredTrees as tree (tree.at_uri)}
             <div class="tree-card">
               <div class="tree-main">
-                <a href="#/skill-tree?uri={encodeURIComponent(tree.at_uri)}" class="tree-title">{tree.title}</a>
+                <a href="/skill-tree?uri={encodeURIComponent(tree.at_uri)}" class="tree-title">{tree.title}</a>
                 {#if tree.tag_id}
                   <span class="field-badge">{tree.tag_names ? resolveTagName(tree.tag_names, tree.tag_name || tree.tag_id, tree.tag_id) : (tree.tag_name || tree.tag_id)}</span>
                 {/if}

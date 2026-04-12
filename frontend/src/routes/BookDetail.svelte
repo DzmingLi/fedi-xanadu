@@ -311,10 +311,10 @@
           {#if detail.tags.length > 0 || detail.prereqs.length > 0}
             <div class="book-tags">
               {#each detail.tags as tag}
-                <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches">{tag}</a>
+                <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches">{tag}</a>
               {/each}
               {#each detail.prereqs as prereq}
-                <a href="#/tag?id={encodeURIComponent(prereq)}" class="tag-badge prereq">{prereq}</a>
+                <a href="/tag?id={encodeURIComponent(prereq)}" class="tag-badge prereq">{prereq}</a>
               {/each}
             </div>
           {/if}
@@ -405,7 +405,7 @@
               </button>
             {/if}
             {#if getAuth()}
-              <a href="#/new?category=review&book_id={encodeURIComponent(id)}" class="action-btn primary">
+              <a href="/new?category=review&book_id={encodeURIComponent(id)}" class="action-btn primary">
                 {t('books.writeReview')}
               </a>
             {/if}
@@ -528,7 +528,7 @@
                 {/if}
                 <div class="chapter-content">
                   {#if ch.article_uri}
-                    <a href="#/article?uri={encodeURIComponent(ch.article_uri)}" class="chapter-title">{ch.title}</a>
+                    <a href="/article?uri={encodeURIComponent(ch.article_uri)}" class="chapter-title">{ch.title}</a>
                   {:else}
                     <span class="chapter-title">{ch.title}</span>
                   {/if}
@@ -536,7 +536,7 @@
                   {#if ch.teaches.length > 0 || ch.prereqs.length > 0}
                     <div class="chapter-tag-row">
                       {#each ch.teaches as tag}
-                        <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
+                        <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
                       {/each}
                       {#each ch.prereqs as p}
                         <span class="tag-badge prereq sm" title="{p.prereq_type === 'required' ? '必须前置' : '推荐前置'}">{p.tag_id}</span>
@@ -627,14 +627,14 @@
                       {/if}
                       <div class="chapter-content">
                         {#if sub.article_uri}
-                          <a href="#/article?uri={encodeURIComponent(sub.article_uri)}" class="chapter-title">{sub.title}</a>
+                          <a href="/article?uri={encodeURIComponent(sub.article_uri)}" class="chapter-title">{sub.title}</a>
                         {:else}
                           <span class="chapter-title">{sub.title}</span>
                         {/if}
                         {#if sub.teaches.length > 0 || sub.prereqs.length > 0}
                           <div class="chapter-tag-row">
                             {#each sub.teaches as tag}
-                              <a href="#/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
+                              <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
                             {/each}
                             {#each sub.prereqs as p}
                               <span class="tag-badge prereq sm">{p.tag_id}</span>
@@ -769,7 +769,7 @@
         </div>
       {/each}
       {#if getAuth()}
-        <a href="#/book-edition?book_id={encodeURIComponent(id)}" class="add-edition-btn">
+        <a href="/book-edition?book_id={encodeURIComponent(id)}" class="add-edition-btn">
           + {t('books.addEdition')}
         </a>
       {/if}
@@ -796,7 +796,7 @@
         {#if getAuth()}
           <button class="report-dispute-btn" onclick={() => {
             const uri = `book:${id}`;
-            window.location.hash = `#/report?kind=book_dispute&target_uri=${encodeURIComponent(uri)}`;
+            window.location.href = `/report?kind=book_dispute&target_uri=${encodeURIComponent(uri)}`;
           }}>
             {t('books.reportDispute')}
           </button>

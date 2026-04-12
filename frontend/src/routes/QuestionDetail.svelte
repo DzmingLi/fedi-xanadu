@@ -118,7 +118,7 @@
     </div>
 
     <div class="q-meta">
-      <a href="#/profile?did={encodeURIComponent(q.did)}" class="author">{authorName(q)}</a>
+      <a href="/profile?did={encodeURIComponent(q.did)}" class="author">{authorName(q)}</a>
       <span>&middot;</span>
       <span>{q.created_at.split(' ')[0]}</span>
       <span>&middot;</span>
@@ -137,7 +137,7 @@
       <button class="vote-btn" class:active={myVote === -1} onclick={() => vote(-1)}>&#9660; {t('article.downvote')}</button>
 
       {#if getAuth() && q.did === getAuth()?.did}
-        <a href="#/new?edit={encodeURIComponent(q.at_uri)}" class="edit-link">{t('common.edit')}</a>
+        <a href="/new?edit={encodeURIComponent(q.at_uri)}" class="edit-link">{t('common.edit')}</a>
       {/if}
     </div>
   </div>
@@ -183,7 +183,7 @@
         {@const content = answerContents.get(answer.at_uri)}
         <div class="answer-card">
           <div class="answer-meta">
-            <a href="#/profile?did={encodeURIComponent(answer.did)}" class="author">{authorName(answer)}</a>
+            <a href="/profile?did={encodeURIComponent(answer.did)}" class="author">{authorName(answer)}</a>
             <span>&middot;</span>
             <span>{answer.created_at.split(' ')[0]}</span>
           </div>

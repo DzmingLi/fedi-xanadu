@@ -8,18 +8,42 @@
   import Home from './routes/Home.svelte';
   import { matchRoute } from './lib/router';
 
-  let hash = $state(window.location.hash || '#/');
+  let currentPath = $state(window.location.pathname + window.location.search);
 
-  function onHashChange() {
-    hash = window.location.hash || '#/';
+  function onNavigate() {
+    currentPath = window.location.pathname + window.location.search;
   }
 
   $effect(() => {
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    window.addEventListener('popstate', onNavigate);
+    // Intercept all link clicks to use history API instead of full reload
+    function onClick(e: MouseEvent) {
+      const a = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null;
+      if (!a || a.target || a.hasAttribute('download') || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const href = a.getAttribute('href');
+      if (!href || href.startsWith('http') || href.startsWith('mailto:') || href.startsWith('javascript:')) return;
+      // Support legacy hash links during migration
+      if (href.startsWith('#/')) {
+        e.preventDefault();
+        const path = href.slice(1);
+        history.pushState(null, '', path);
+        onNavigate();
+        return;
+      }
+      if (href.startsWith('/') && !href.startsWith('/api/') && !href.startsWith('/oauth/')) {
+        e.preventDefault();
+        history.pushState(null, '', href);
+        onNavigate();
+      }
+    }
+    document.addEventListener('click', onClick);
+    return () => {
+      window.removeEventListener('popstate', onNavigate);
+      document.removeEventListener('click', onClick);
+    };
   });
 
-  let route = $derived(matchRoute(hash));
+  let route = $derived(matchRoute(currentPath));
   let kbShortcuts: KeyboardShortcuts;
 
   // Lazy-load route components (not on the home page)

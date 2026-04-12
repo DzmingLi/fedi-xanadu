@@ -27,7 +27,7 @@
     if (e instanceof KeyboardEvent && e.key !== 'Enter') return;
     e.preventDefault();
     e.stopPropagation();
-    window.location.hash = `#/tag?id=${encodeURIComponent(tagId)}`;
+    window.location.href = `/tag?id=${encodeURIComponent(tagId)}`;
   }
 
   let expanded = $state(false);
@@ -80,7 +80,7 @@
 </script>
 
 {#if article}
-  <a href="#/article?uri={encodeURIComponent(article.at_uri)}" class="post-card">
+  <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card">
     <div class="card-top">
       {#if article.kind === 'question'}
         <span class="question-badge">{t('qa.questionBadge')}</span>
@@ -138,7 +138,7 @@
     </div>
   {/if}
 {:else if series}
-  <a href="#/series?id={encodeURIComponent(series.id)}" class="post-card series-card">
+  <a href="/series?id={encodeURIComponent(series.id)}" class="post-card series-card">
     <div class="card-top">
       <span class="post-title">{series.title}</span>
       <span class="series-badge">{t('home.series')}</span>

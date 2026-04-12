@@ -71,7 +71,7 @@
 
   async function doFork() {
     const result = await forkSkillTree(uri);
-    window.location.hash = `#/skill-tree?uri=${encodeURIComponent(result.at_uri)}`;
+    window.location.href = `/skill-tree?uri=${encodeURIComponent(result.at_uri)}`;
   }
 
   async function doAdopt() {
@@ -126,7 +126,7 @@
     <p class="desc">{detail.tree.description}</p>
   {/if}
   {#if detail.tree.forked_from}
-    <p class="forked-info">Forked from <a href="#/skill-tree?uri={encodeURIComponent(detail.tree.forked_from)}">{detail.tree.forked_from.slice(0, 40)}...</a></p>
+    <p class="forked-info">Forked from <a href="/skill-tree?uri={encodeURIComponent(detail.tree.forked_from)}">{detail.tree.forked_from.slice(0, 40)}...</a></p>
   {/if}
 
   <!-- Tree visualization -->
@@ -172,9 +172,9 @@
     <h3>{t('skillTree.allRelations', detail.edges.length)}</h3>
     {#each detail.edges as e}
       <div class="edge-row">
-        <a href="#/tag?id={encodeURIComponent(e.parent_tag)}" class="tag">{tagName(e.parent_tag)}</a>
+        <a href="/tag?id={encodeURIComponent(e.parent_tag)}" class="tag">{tagName(e.parent_tag)}</a>
         <span class="arrow">→</span>
-        <a href="#/tag?id={encodeURIComponent(e.child_tag)}" class="tag">{tagName(e.child_tag)}</a>
+        <a href="/tag?id={encodeURIComponent(e.child_tag)}" class="tag">{tagName(e.child_tag)}</a>
         {#if isOwner}
           <button class="remove-btn" onclick={() => removeEdge(e)}>×</button>
         {/if}
@@ -192,7 +192,7 @@
     {:else}
       <span class="collapse-spacer"></span>
     {/if}
-    <a href="#/tag?id={encodeURIComponent(id)}" class="node-link">{tagName(id)}</a>
+    <a href="/tag?id={encodeURIComponent(id)}" class="node-link">{tagName(id)}</a>
     {#if treeStructure.children.has(id)}
       <span class="child-count">{treeStructure.children.get(id)!.length}</span>
     {/if}

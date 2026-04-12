@@ -95,9 +95,9 @@
 
   <div class="disc-links">
     <span>来源：</span>
-    <a href="#/article?uri={encodeURIComponent(disc.source_uri)}">Fork 文章</a>
+    <a href="/article?uri={encodeURIComponent(disc.source_uri)}">Fork 文章</a>
     <span>→</span>
-    <a href="#/article?uri={encodeURIComponent(disc.target_uri)}">原文</a>
+    <a href="/article?uri={encodeURIComponent(disc.target_uri)}">原文</a>
   </div>
 
   {#if disc.body}

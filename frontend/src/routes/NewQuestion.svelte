@@ -103,7 +103,7 @@
         }
       }
 
-      window.location.hash = `#/question?uri=${encodeURIComponent(q.at_uri)}`;
+      window.location.href = `/question?uri=${encodeURIComponent(q.at_uri)}`;
     } catch (e: any) {
       toast(e.message || 'Failed', 'error');
     }

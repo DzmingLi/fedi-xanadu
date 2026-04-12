@@ -314,7 +314,7 @@
         {:else}
           <span class="expand-arrow-placeholder"></span>
         {/if}
-        <a href="#/series?id={encodeURIComponent(s.id)}" class="series-tree-title" onclick={(e) => e.stopPropagation()}>
+        <a href="/series?id={encodeURIComponent(s.id)}" class="series-tree-title" onclick={(e) => e.stopPropagation()}>
           {s.title}
         </a>
         <span class="series-badge">{t('profile.seriesBadge')}</span>
@@ -440,7 +440,7 @@
       </div>
     {/if}
     {#if isOwnProfile}
-      <a href="#/settings" class="settings-link">{t('profile.settings')}</a>
+      <a href="/settings" class="settings-link">{t('profile.settings')}</a>
     {/if}
   </div>
 
@@ -530,7 +530,7 @@
         <p class="empty-text">{t('profile.none')}</p>
       {:else}
         {#each list as u}
-          <a href="#/profile?did={encodeURIComponent(u.did)}" class="follow-item">
+          <a href="/profile?did={encodeURIComponent(u.did)}" class="follow-item">
             {#if u.avatar_url}
               <img src={u.avatar_url} alt="" class="follow-avatar" />
             {:else}
@@ -596,15 +596,15 @@
 
     {#if isOwnProfile}
       <div class="create-actions">
-        <a href="#/new" class="create-link">{t('profile.writeArticle')}</a>
-        <a href="#/new-series" class="create-link">{t('profile.createSeries')}</a>
+        <a href="/new" class="create-link">{t('profile.writeArticle')}</a>
+        <a href="/new-series" class="create-link">{t('profile.createSeries')}</a>
       </div>
     {/if}
   {:else if profileTab === 'qa'}
     {#if questions.length > 0}
       <h3 class="section-title">{t('qa.myQuestions')}</h3>
       {#each questions as q}
-        <a href="#/question?uri={encodeURIComponent(q.at_uri)}" class="qa-card question">
+        <a href="/question?uri={encodeURIComponent(q.at_uri)}" class="qa-card question">
           <span class="qa-badge question-badge">{t('qa.questionBadge')}</span>
           <span class="qa-title">{q.title}</span>
           <span class="qa-stat">{t('qa.answerCount', q.answer_count)}</span>
@@ -615,7 +615,7 @@
     {#if answers.length > 0}
       <h3 class="section-title">{t('qa.myAnswers')}</h3>
       {#each answers as a}
-        <a href="#/question?uri={encodeURIComponent(a.question_uri || '')}" class="qa-card answer">
+        <a href="/question?uri={encodeURIComponent(a.question_uri || '')}" class="qa-card answer">
           <span class="qa-badge answer-badge">{t('qa.answerBadge')}</span>
           <span class="qa-title">{a.title}</span>
           <span class="qa-stat">&#9650; {a.vote_score}</span>
@@ -629,12 +629,12 @@
 
     {#if isOwnProfile}
       <div class="create-actions">
-        <a href="#/new-question" class="create-link">{t('qa.askQuestion')}</a>
+        <a href="/new-question" class="create-link">{t('qa.askQuestion')}</a>
       </div>
     {/if}
   {:else if profileTab === 'bookmarks'}
     {#each publicBookmarks as bm}
-      <a href="#/article?uri={encodeURIComponent(bm.article_uri)}" class="bookmark-card">
+      <a href="/article?uri={encodeURIComponent(bm.article_uri)}" class="bookmark-card">
         <div class="bookmark-info">
           <span class="bookmark-title">{bm.title}</span>
           {#if bm.folder_path && bm.folder_path !== '/'}
@@ -651,13 +651,13 @@
     {#each allArticleGroups() as group}
       {#if group.series}
         <div class="all-series-group">
-          <a href="#/series?id={group.series.id}" class="all-series-title">
+          <a href="/series?id={group.series.id}" class="all-series-title">
             {group.series.title}
             <span class="all-series-count">{group.articles.length} 篇</span>
           </a>
           <div class="all-series-articles">
             {#each group.articles as art}
-              <a href="#/article?uri={encodeURIComponent(art.at_uri)}" class="all-article-row">
+              <a href="/article?uri={encodeURIComponent(art.at_uri)}" class="all-article-row">
                 <span class="all-article-title">{art.title || '（无标题）'}</span>
                 {#if art.lang}<span class="all-article-lang">{art.lang}</span>{/if}
               </a>

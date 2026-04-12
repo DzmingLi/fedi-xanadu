@@ -36,16 +36,16 @@
     switch (n.kind) {
       case 'comment_reply':
       case 'article_comment':
-        return n.target_uri ? `#/article?uri=${encodeURIComponent(n.target_uri)}` : '#/';
+        return n.target_uri ? `/article?uri=${encodeURIComponent(n.target_uri)}` : '/';
       case 'article_fork':
-        return n.context_id ? `#/article?uri=${encodeURIComponent(n.context_id)}` : '#/';
+        return n.context_id ? `/article?uri=${encodeURIComponent(n.context_id)}` : '/';
       case 'new_answer':
       case 'invite_answer':
-        return n.target_uri ? `#/question?uri=${encodeURIComponent(n.target_uri)}` : '#/';
+        return n.target_uri ? `/question?uri=${encodeURIComponent(n.target_uri)}` : '/';
       case 'new_follower':
-        return `#/profile?did=${encodeURIComponent(n.actor_did)}`;
+        return `/profile?did=${encodeURIComponent(n.actor_did)}`;
       default:
-        return '#/';
+        return '/';
     }
   }
 
@@ -55,7 +55,7 @@
       n.read = true;
       notifications = [...notifications];
     }
-    window.location.hash = notificationHref(n);
+    window.location.href = notificationHref(n);
   }
 
   async function markAllRead() {

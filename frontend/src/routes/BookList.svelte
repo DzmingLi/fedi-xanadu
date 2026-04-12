@@ -26,7 +26,7 @@
 <p class="subtitle">{t('books.subtitle')}</p>
 
 {#if getAuth()}
-  <a href="#/new-book" class="add-book-btn">{t('books.addBook')}</a>
+  <a href="/new-book" class="add-book-btn">{t('books.addBook')}</a>
 {/if}
 
 {#if loading}
@@ -36,7 +36,7 @@
 {:else}
   <div class="book-grid">
     {#each books as book}
-      <a href="#/book?id={encodeURIComponent(book.id)}" class="book-card">
+      <a href="/book?id={encodeURIComponent(book.id)}" class="book-card">
         {#if book.cover_url}
           <img src={book.cover_url} alt={book.title} class="book-cover" />
         {:else}

@@ -74,7 +74,7 @@
       <div class="column">
         <h2>Top Articles</h2>
         {#each topArticles as a}
-          <a href="#/article?uri={encodeURIComponent(a.at_uri)}" class="article-item">
+          <a href="/article?uri={encodeURIComponent(a.at_uri)}" class="article-item">
             <span class="article-score">{voteMap.get(a.at_uri) ?? 0}</span>
             <div class="article-info">
               <span class="article-title">{a.title}</span>
@@ -90,7 +90,7 @@
       <div class="column">
         <h2>Trending</h2>
         {#each trendingArticles as a}
-          <a href="#/article?uri={encodeURIComponent(a.at_uri)}" class="article-item">
+          <a href="/article?uri={encodeURIComponent(a.at_uri)}" class="article-item">
             <span class="article-score">{voteMap.get(a.at_uri) ?? 0}</span>
             <div class="article-info">
               <span class="article-title">{a.title}</span>

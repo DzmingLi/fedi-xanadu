@@ -77,7 +77,7 @@
       applyResult = result;
       if (result.has_conflicts) {
         // Navigate to editor with conflict content for manual resolution
-        window.location.hash = `#/new?edit_uri=${encodeURIComponent(applyTargetUri)}&resolve_conflicts=1`;
+        window.location.href = `/new?edit_uri=${encodeURIComponent(applyTargetUri)}&resolve_conflicts=1`;
       }
     } catch (e: any) {
       error = e.message;

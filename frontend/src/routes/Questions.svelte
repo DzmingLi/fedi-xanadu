@@ -33,14 +33,14 @@
     if (e instanceof KeyboardEvent && e.key !== 'Enter') return;
     e.preventDefault();
     e.stopPropagation();
-    window.location.hash = `#/tag?id=${encodeURIComponent(tagId)}`;
+    window.location.href = `/tag?id=${encodeURIComponent(tagId)}`;
   }
 </script>
 
 <div class="questions-header">
   <h1>{t('qa.questions')}</h1>
   {#if getAuth()}
-    <a href="#/new-question" class="btn-ask">{t('qa.askQuestion')}</a>
+    <a href="/new-question" class="btn-ask">{t('qa.askQuestion')}</a>
   {/if}
 </div>
 
@@ -50,7 +50,7 @@
   <p class="empty">{t('qa.noQuestions')}</p>
 {:else}
   {#each questions as q}
-    <a href="#/question?uri={encodeURIComponent(q.at_uri)}" class="question-card">
+    <a href="/question?uri={encodeURIComponent(q.at_uri)}" class="question-card">
       <div class="q-top">
         <span class="q-badge">{t('qa.questionBadge')}</span>
         <span class="q-title">{q.title}</span>

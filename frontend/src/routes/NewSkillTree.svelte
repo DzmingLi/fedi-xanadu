@@ -78,7 +78,7 @@
     error = '';
     try {
       const tree = await createSkillTree({ title: title.trim(), description: description.trim() || undefined, tag_id: tagId || undefined, edges });
-      window.location.hash = `#/skill-tree?uri=${encodeURIComponent(tree.at_uri)}`;
+      window.location.href = `/skill-tree?uri=${encodeURIComponent(tree.at_uri)}`;
     } catch (e: any) {
       error = e.message || t('newSkillTree.errCreate');
     }

@@ -42,7 +42,7 @@
         category,
         lang,
       });
-      window.location.hash = `#/series-editor?id=${encodeURIComponent(series.id)}`;
+      window.location.href = `/series-editor?id=${encodeURIComponent(series.id)}`;
     } catch (e: any) {
       error = e.message || t('newSeries.errCreate');
     }

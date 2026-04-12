@@ -112,7 +112,7 @@
           <h3 class="section-title">{t('creator.series')}</h3>
           {#each publishedSeries as s}
             <div class="content-item">
-              <a href="#/series?id={encodeURIComponent(s.id)}" class="item-title">{s.title}</a>
+              <a href="/series?id={encodeURIComponent(s.id)}" class="item-title">{s.title}</a>
               <span class="item-meta">{s.lang} &middot; {s.category}</span>
               <button class="btn-sm" onclick={() => doUnpublish(s.id)}>{t('creator.unpublish')}</button>
             </div>
@@ -136,7 +136,7 @@
             <tbody>
               {#each articles as a}
                 <tr>
-                  <td><a href="#/article?uri={encodeURIComponent(a.at_uri)}">{a.title}</a></td>
+                  <td><a href="/article?uri={encodeURIComponent(a.at_uri)}">{a.title}</a></td>
                   <td class="num">{a.views}</td>
                   <td class="num">{a.comments}</td>
                   <td class="num">{a.bookmarks}</td>
@@ -155,7 +155,7 @@
           <h3 class="section-title">{t('creator.draftSeries')}</h3>
           {#each draftSeries as s}
             <div class="content-item">
-              <a href="#/series-editor?id={encodeURIComponent(s.id)}" class="item-title">{s.title}</a>
+              <a href="/series-editor?id={encodeURIComponent(s.id)}" class="item-title">{s.title}</a>
               <span class="item-meta">{s.lang}</span>
               <button class="btn-sm btn-accent" onclick={() => doPublish(s.id)}>{t('creator.publish')}</button>
             </div>
@@ -168,7 +168,7 @@
         {:else}
           {#each drafts as d}
             <div class="content-item">
-              <a href="#/article/new?draft={encodeURIComponent(d.id)}" class="item-title">{d.title}</a>
+              <a href="/article/new?draft={encodeURIComponent(d.id)}" class="item-title">{d.title}</a>
               <span class="item-meta">{d.content_format}</span>
               <button class="btn-sm btn-danger" onclick={() => doDeleteDraft(d.id)}>{t('common.delete')}</button>
             </div>

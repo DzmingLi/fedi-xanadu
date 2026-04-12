@@ -21,7 +21,7 @@
     try {
       const article = await publishDraft(draft.id);
       drafts = drafts.filter(d => d.id !== draft.id);
-      window.location.hash = `#/article?uri=${encodeURIComponent(article.at_uri)}`;
+      window.location.href = `/article?uri=${encodeURIComponent(article.at_uri)}`;
     } catch (e: any) {
       error = e.message;
     }
@@ -39,7 +39,7 @@
   }
 
   function editDraft(id: string) {
-    window.location.hash = `#/new?draft=${encodeURIComponent(id)}`;
+    window.location.href = `/new?draft=${encodeURIComponent(id)}`;
   }
 
   function formatDate(s: string) {

@@ -556,7 +556,7 @@
           content: content.trim(),
           commit_message: commitMessage.trim() || undefined,
         });
-        window.location.hash = `#/article?uri=${encodeURIComponent(article.at_uri)}`;
+        window.location.href = `/article?uri=${encodeURIComponent(article.at_uri)}`;
       } else if (forkSource) {
         const targetFormat = contentFormat !== originalFormat ? contentFormat : undefined;
         const forked = await forkArticle(forkSource, targetFormat);
@@ -569,7 +569,7 @@
             commit_message: 'Initial fork edits',
           });
         }
-        window.location.hash = `#/article?uri=${encodeURIComponent(forked.at_uri)}`;
+        window.location.href = `/article?uri=${encodeURIComponent(forked.at_uri)}`;
       } else {
         const article = await createArticle({
           title: title.trim(),
@@ -608,7 +608,7 @@
           }
         }
 
-        window.location.hash = `#/article?uri=${encodeURIComponent(article.at_uri)}`;
+        window.location.href = `/article?uri=${encodeURIComponent(article.at_uri)}`;
       }
     } catch (e: any) {
       error = e.message;

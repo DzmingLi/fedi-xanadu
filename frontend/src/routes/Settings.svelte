@@ -343,7 +343,7 @@
       {:else}
         {#each blockedUsers as b}
           <div class="blocked-row">
-            <a href="#/profile?did={encodeURIComponent(b.blocked_did)}" class="blocked-name">
+            <a href="/profile?did={encodeURIComponent(b.blocked_did)}" class="blocked-name">
               {b.display_name || b.handle || b.blocked_did.slice(0, 20)}
             </a>
             <button class="unblock-btn" onclick={() => doUnblock(b.blocked_did)}>{t('block.unblock')}</button>
@@ -365,7 +365,7 @@
       {:else}
         {#each members as m}
           <div class="blocked-row">
-            <a href="#/profile?did={encodeURIComponent(m.member_did)}" class="blocked-name">{m.member_did.slice(0, 24)}…</a>
+            <a href="/profile?did={encodeURIComponent(m.member_did)}" class="blocked-name">{m.member_did.slice(0, 24)}…</a>
             <button class="unblock-btn" onclick={() => doRemoveMember(m.member_did)}>{t('books.removeMember')}</button>
           </div>
         {/each}

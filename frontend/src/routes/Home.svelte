@@ -319,7 +319,7 @@
   {#if filteredFeed.length === 0}
     <div class="empty">
       <p>{t('home.noArticles')}</p>
-      <p class="meta"><a href="#/new">{t('home.writeOne')}</a></p>
+      <p class="meta"><a href="/new">{t('home.writeOne')}</a></p>
     </div>
   {:else}
     {#each filteredFeed as item}

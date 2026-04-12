@@ -39,8 +39,21 @@ export interface MatchResult {
   params: Record<string, string>;
 }
 
-export function matchRoute(hash: string): MatchResult {
-  const path = hash.slice(1) || '/'; // remove '#'
+export function matchRoute(url: string): MatchResult {
+  // Support both path-based and legacy hash-based URLs
+  let path: string;
+  if (url.startsWith('#')) {
+    path = url.slice(1) || '/';
+  } else {
+    // Extract pathname from full URL or path string
+    try {
+      const u = new URL(url, 'http://localhost');
+      path = u.pathname + u.search;
+    } catch {
+      path = url || '/';
+    }
+  }
+
   const [base, query] = path.split('?');
   const params: Record<string, string> = {};
 
@@ -53,14 +66,12 @@ export function matchRoute(hash: string): MatchResult {
 
   const normalizedBase = base === '' ? '/' : base;
 
-  // Try exact match first (longest patterns first for specificity)
   for (const route of routes) {
     if (route.pattern === normalizedBase) {
       return { page: route.page, params };
     }
   }
 
-  // Try param-based pattern match (e.g. /tags/:id)
   for (const route of routes) {
     if (!route.params || route.params.length === 0) continue;
     const patternParts = route.pattern.split('/');
@@ -82,6 +93,11 @@ export function matchRoute(hash: string): MatchResult {
     }
   }
 
-  // Fallback
   return { page: 'home', params };
+}
+
+/** Navigate programmatically using the history API. */
+export function navigate(path: string) {
+  history.pushState(null, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
 }

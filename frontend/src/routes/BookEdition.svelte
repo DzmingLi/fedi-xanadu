@@ -51,7 +51,7 @@
         cover_url: coverUrl.trim() || undefined,
       });
 
-      window.location.hash = `#/book?id=${encodeURIComponent(bookId)}`;
+      window.location.href = `/book?id=${encodeURIComponent(bookId)}`;
     } catch (e: any) {
       error = e.message || t('bookEdition.errCreate');
     }
@@ -134,7 +134,7 @@
     <button class="submit-btn" onclick={submit} disabled={submitting}>
       {submitting ? t('bookEdition.submitting') : t('bookEdition.submit')}
     </button>
-    <a href="#/book?id={encodeURIComponent(bookId)}" class="cancel-link">{t('books.cancel')}</a>
+    <a href="/book?id={encodeURIComponent(bookId)}" class="cancel-link">{t('books.cancel')}</a>
   </div>
 </div>
 

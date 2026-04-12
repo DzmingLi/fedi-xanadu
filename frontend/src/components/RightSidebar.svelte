@@ -72,7 +72,7 @@
   <div class="sidebar-section">
     <div class="sidebar-heading">{t('rsidebar.yourSkills')}</div>
     <p class="sidebar-text">{t('rsidebar.litTags', litCount)}</p>
-    <a href="#/skills" class="sidebar-link-small">{t('rsidebar.manageTree')}</a>
+    <a href="/skills" class="sidebar-link-small">{t('rsidebar.manageTree')}</a>
   </div>
 
   <div class="sidebar-divider"></div>
@@ -86,7 +86,7 @@
     {:else}
       <div class="explore-tags">
         {#each explorableTags as t}
-          <a href="#/tag?id={encodeURIComponent(t.id)}" class="explore-tag">
+          <a href="/tag?id={encodeURIComponent(t.id)}" class="explore-tag">
             <span class="explore-tag-name">{t.name}</span>
             <span class="explore-tag-count">{t.count}</span>
           </a>

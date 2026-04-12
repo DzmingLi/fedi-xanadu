@@ -1,6 +1,7 @@
 pub mod auth;
 mod config;
 mod error;
+mod prerender;
 mod routes;
 mod state;
 
@@ -45,7 +46,11 @@ async fn main() -> Result<()> {
     };
 
     let app = routes::router(state.clone(), &config)
-        .nest("/oauth", atproto_auth::oauth_router(oauth_state));
+        .nest("/oauth", atproto_auth::oauth_router(oauth_state))
+        .layer(axum::middleware::from_fn_with_state(
+            state.pool.clone(),
+            prerender::prerender_middleware,
+        ));
 
     // Background task: clean up expired sessions every hour
     let cleanup_pool = state.pool.clone();
