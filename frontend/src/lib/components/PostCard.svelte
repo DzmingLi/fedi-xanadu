@@ -2,8 +2,10 @@
   import { tagName } from '../display';
   import { authorName } from '../display';
   import { t } from '../i18n/index.svelte';
-  import { getArticleContent, getSeries } from '../api';
+  import { getArticleContent, getSeries, castVote, getMyVote, addBookmark, removeBookmark } from '../api';
+  import { getAuth } from '../auth.svelte';
   import type { Article, ArticleContent, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
+  import CommentThread from './CommentThread.svelte';
 
   type CardVariant = 'home' | 'profile';
 
@@ -37,6 +39,11 @@
 
 
   let expandedTitle = $state('');
+  let expandedUri = $state('');
+  let expandedVote = $state(0);
+  let expandedVoteScore = $state(0);
+  let expandedBookmarked = $state(false);
+  let showComments = $state(false);
 
   async function toggleExpand(e: MouseEvent) {
     e.preventDefault();
@@ -48,15 +55,23 @@
     if (!expandedContent) {
       expandLoading = true;
       try {
+        let uri = '';
         if (article) {
-          expandedContent = await getArticleContent(article.at_uri);
+          uri = article.at_uri;
+          expandedContent = await getArticleContent(uri);
           expandedTitle = article.title;
+          expandedVoteScore = article.vote_score;
         } else if (series) {
           const detail = await getSeries(series.id);
           if (detail.articles.length > 0) {
-            expandedContent = await getArticleContent(detail.articles[0].article_uri);
+            uri = detail.articles[0].article_uri;
+            expandedContent = await getArticleContent(uri);
             expandedTitle = detail.articles[0].title;
           }
+        }
+        expandedUri = uri;
+        if (uri && getAuth()) {
+          getMyVote(uri).then(v => { expandedVote = v.value; }).catch(() => {});
         }
       } catch { /* */ }
       expandLoading = false;
@@ -64,6 +79,29 @@
     expanded = true;
   }
 
+
+  async function doVote(value: number) {
+    if (!getAuth() || !expandedUri) return;
+    const v = expandedVote === value ? 0 : value;
+    try {
+      const result = await castVote(expandedUri, v);
+      expandedVote = v;
+      expandedVoteScore = result.score;
+    } catch { /* */ }
+  }
+
+  async function doBookmark() {
+    if (!getAuth() || !expandedUri) return;
+    try {
+      if (expandedBookmarked) {
+        await removeBookmark(expandedUri);
+        expandedBookmarked = false;
+      } else {
+        await addBookmark(expandedUri);
+        expandedBookmarked = true;
+      }
+    } catch { /* */ }
+  }
 
   function seriesAuthor(s: Series): string {
     if (s.author_handle) return `@${s.author_handle}`;
@@ -118,7 +156,7 @@
   {#if expanded && expandedContent}
     <div class="expanded-full">
       <div class="expanded-header">
-        <h1 class="expanded-title">{expandedTitle}</h1>
+        <h1 class="expanded-title"><a href="/article?uri={encodeURIComponent(expandedUri)}">{expandedTitle}</a></h1>
         <div class="expanded-meta">
           <a href="/profile?did={encodeURIComponent(article.did)}">{authorName(article)}</a>
           <span>&middot;</span>
@@ -129,6 +167,21 @@
         </div>
       </div>
       <div class="content" bind:this={contentEl}>{@html expandedContent.html}</div>
+      <div class="expanded-actions">
+        <button class="vote-btn" class:active={expandedVote > 0} onclick={() => doVote(1)}>&#9650;</button>
+        <span class="vote-score">{expandedVoteScore}</span>
+        <button class="vote-btn" class:active={expandedVote < 0} onclick={() => doVote(-1)}>&#9660;</button>
+        <button class="bookmark-btn" class:active={expandedBookmarked} onclick={doBookmark}>&#9733;</button>
+        <button class="comment-toggle" onclick={() => { showComments = !showComments; }}>
+          {showComments ? t('qa.hideComments') : t('qa.showComments')}
+        </button>
+        <a href="/article?uri={encodeURIComponent(expandedUri)}" class="read-full">{t('home.readFull') || 'Read full →'}</a>
+      </div>
+      {#if showComments && expandedUri}
+        <div class="expanded-comments">
+          <CommentThread contentUri={expandedUri} />
+        </div>
+      {/if}
     </div>
   {/if}
 {:else if series}
@@ -158,13 +211,28 @@
   {#if expanded && expandedContent}
     <div class="expanded-full">
       <div class="expanded-header">
-        <h1 class="expanded-title">{expandedTitle}</h1>
+        <h1 class="expanded-title"><a href="/article?uri={encodeURIComponent(expandedUri)}">{expandedTitle}</a></h1>
         <div class="expanded-meta">
           <span>{seriesAuthor(series)}</span>
           <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
         </div>
       </div>
       <div class="content" bind:this={contentEl}>{@html expandedContent.html}</div>
+      <div class="expanded-actions">
+        <button class="vote-btn" class:active={expandedVote > 0} onclick={() => doVote(1)}>&#9650;</button>
+        <span class="vote-score">{expandedVoteScore}</span>
+        <button class="vote-btn" class:active={expandedVote < 0} onclick={() => doVote(-1)}>&#9660;</button>
+        <button class="bookmark-btn" class:active={expandedBookmarked} onclick={doBookmark}>&#9733;</button>
+        <button class="comment-toggle" onclick={() => { showComments = !showComments; }}>
+          {showComments ? t('qa.hideComments') : t('qa.showComments')}
+        </button>
+        <a href="/article?uri={encodeURIComponent(expandedUri)}" class="read-full">{t('home.readFull') || 'Read full →'}</a>
+      </div>
+      {#if showComments && expandedUri}
+        <div class="expanded-comments">
+          <CommentThread contentUri={expandedUri} />
+        </div>
+      {/if}
     </div>
   {/if}
 {/if}
@@ -268,6 +336,50 @@
   }
   .expand-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
 
+  /* Expanded actions */
+  .expanded-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .expanded-actions .vote-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 3px 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .expanded-actions .vote-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .expanded-actions .vote-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .expanded-actions .vote-score { font-size: 14px; font-weight: 500; min-width: 20px; text-align: center; }
+  .expanded-actions .bookmark-btn {
+    background: none; border: 1px solid var(--border); border-radius: 3px;
+    padding: 3px 8px; font-size: 13px; color: var(--text-hint); cursor: pointer;
+  }
+  .expanded-actions .bookmark-btn:hover { border-color: #d4a017; color: #d4a017; }
+  .expanded-actions .bookmark-btn.active { background: #d4a017; color: white; border-color: #d4a017; }
+  .expanded-actions .comment-toggle {
+    background: none; border: none; font-size: 12px; color: var(--text-hint); cursor: pointer;
+  }
+  .expanded-actions .comment-toggle:hover { color: var(--accent); }
+  .read-full {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-hint);
+    text-decoration: none;
+  }
+  .read-full:hover { color: var(--accent); }
+  .expanded-comments {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
   /* Full-width expanded article */
   .expanded-full {
     margin-bottom: 24px;
@@ -286,6 +398,8 @@
     margin: 0 0 8px;
     line-height: 1.3;
   }
+  .expanded-title a { color: inherit; text-decoration: none; }
+  .expanded-title a:hover { color: var(--accent); }
   .expanded-meta {
     display: flex;
     align-items: center;

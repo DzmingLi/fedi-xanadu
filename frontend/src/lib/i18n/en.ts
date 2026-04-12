@@ -51,6 +51,7 @@ export default {
 
   'home.expand': 'Expand',
   'home.collapse': 'Collapse',
+  'home.readFull': 'Read full →',
 
   'auth.noAccount': 'No account?',
   'auth.registerHint': '— register there first, then login here with your handle.',
