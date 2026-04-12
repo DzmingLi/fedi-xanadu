@@ -361,6 +361,7 @@
       {#if profile.handle}
         <p class="handle">@{profile.handle}</p>
       {/if}
+      <a href="/feed/{encodeURIComponent(did)}.xml" class="rss-link" title="RSS Feed">RSS</a>
       {#if profile.bio}
         <p class="bio">{profile.bio}</p>
       {/if}
@@ -744,6 +745,16 @@
     color: var(--text-secondary);
     margin: 2px 0 0;
   }
+  .rss-link {
+    font-size: 11px;
+    color: #f59e0b;
+    background: rgba(245,158,11,0.1);
+    padding: 2px 8px;
+    border-radius: 3px;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .rss-link:hover { background: rgba(245,158,11,0.2); }
   .bio {
     font-size: 14px;
     color: var(--text-secondary);

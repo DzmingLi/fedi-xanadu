@@ -34,6 +34,7 @@ pub fn router(state: AppState, config: &Config) -> Router {
     Router::new()
         .nest("/api", api::routes())
         .route("/sitemap.xml", axum::routing::get(sitemap_handler))
+        .route("/feed/{did}.xml", axum::routing::get(rss_feed_handler))
         .fallback_service(spa)
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(TraceLayer::new_for_http())
@@ -67,6 +68,47 @@ async fn sitemap_handler(State(state): State<AppState>) -> impl IntoResponse {
 
     xml.push_str("</urlset>");
     ([(header::CONTENT_TYPE, "application/xml")], xml)
+}
+
+async fn rss_feed_handler(
+    State(state): State<AppState>,
+    axum::extract::Path(did): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    let base = std::env::var("FX_PUBLIC_URL").unwrap_or_else(|_| "https://fedi-xanadu.dzming.li".into());
+
+    let handle: Option<String> = sqlx::query_scalar("SELECT handle FROM platform_users WHERE did = $1")
+        .bind(&did).fetch_optional(&state.pool).await.ok().flatten();
+    let author = handle.as_deref().unwrap_or(&did);
+
+    let articles: Vec<(String, String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+        "SELECT at_uri, title, description, created_at FROM articles \
+         WHERE did = $1 AND removed_at IS NULL AND visibility = 'public' \
+         ORDER BY created_at DESC LIMIT 50"
+    ).bind(&did).fetch_all(&state.pool).await.unwrap_or_default();
+
+    let mut xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>{author} - Fedi-Xanadu</title>
+  <link>{base}/profile?did={did}</link>
+  <description>Articles by {author} on Fedi-Xanadu</description>
+  <atom:link href="{base}/feed/{did}.xml" rel="self" type="application/rss+xml"/>
+"#
+    );
+
+    for (uri, title, desc, created) in &articles {
+        let link = format!("{base}/article?uri={}", urlencoding::encode(uri));
+        let pub_date = created.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+        let title_escaped = title.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let desc_escaped = desc.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        xml.push_str(&format!(
+            "  <item>\n    <title>{title_escaped}</title>\n    <link>{link}</link>\n    <description>{desc_escaped}</description>\n    <pubDate>{pub_date}</pubDate>\n    <guid>{link}</guid>\n  </item>\n"
+        ));
+    }
+
+    xml.push_str("</channel>\n</rss>");
+    ([(header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")], xml)
 }
 
 fn build_cors_layer(config: &Config) -> CorsLayer {
