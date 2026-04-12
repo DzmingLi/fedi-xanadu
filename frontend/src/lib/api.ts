@@ -228,6 +228,15 @@ export const writeChannelFile = (id: string, channel: string, path: string, cont
   put<{ change_hash: string; merkle: string }>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/file`, { path, content, message });
 export const channelLog = (id: string, channel: string) =>
   get<string[]>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/log`);
+export interface ChangeInfo { hash: string; message: string; author_did?: string }
+export interface ChangeLine { kind: 'add' | 'del' | 'same'; content: string }
+export interface ChangeDetail { lines: ChangeLine[] }
+export const channelLogDetails = (id: string, channel: string) =>
+  get<ChangeInfo[]>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/log-details`);
+export const getSeriesChangeDetail = (id: string, hash: string) =>
+  get<ChangeDetail>(`/series/${encodeURIComponent(id)}/change/${encodeURIComponent(hash)}`);
+export const unrecordSeriesChange = (id: string, hash: string) =>
+  post<void>(`/series/${encodeURIComponent(id)}/change/${encodeURIComponent(hash)}/unrecord`, {});
 export const applyChannelChange = (id: string, targetChannel: string, sourceChannel: string, changeHash: string) =>
   post<void>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(targetChannel)}/apply`, { source_channel: sourceChannel, change_hash: changeHash });
 export const channelDiff = (id: string, a: string, b: string) =>
