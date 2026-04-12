@@ -5,6 +5,9 @@
   import { getAuth } from '../lib/auth.svelte';
   import type { ArticleContent, QuestionDetail, ContentFormat } from '../lib/types';
   import { toast } from '../lib/components/Toast.svelte';
+  import CommentThread from '../lib/components/CommentThread.svelte';
+
+  let expandedComments = $state(new Set<string>());
 
   let { uri } = $props<{ uri: string }>();
 
@@ -193,7 +196,19 @@
           {/if}
           <div class="answer-actions">
             <span class="vote-score">&#9650; {answer.vote_score}</span>
+            <button class="comment-toggle" onclick={() => {
+              const s = new Set(expandedComments);
+              if (s.has(answer.at_uri)) s.delete(answer.at_uri); else s.add(answer.at_uri);
+              expandedComments = s;
+            }}>
+              {expandedComments.has(answer.at_uri) ? t('qa.hideComments') : t('qa.showComments')}
+            </button>
           </div>
+          {#if expandedComments.has(answer.at_uri)}
+            <div class="answer-comments">
+              <CommentThread contentUri={answer.at_uri} />
+            </div>
+          {/if}
         </div>
       {/each}
     {/if}
@@ -382,6 +397,20 @@
     align-items: center;
   }
 
+  .comment-toggle {
+    background: none;
+    border: none;
+    font-size: 12px;
+    color: var(--text-hint);
+    cursor: pointer;
+    margin-left: auto;
+  }
+  .comment-toggle:hover { color: var(--accent); }
+  .answer-comments {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
   .empty { color: var(--text-hint); font-size: 14px; }
   .error { color: #dc2626; }
 </style>

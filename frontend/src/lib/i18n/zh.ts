@@ -387,6 +387,8 @@ export default {
   'qa.postAnswer': '发布回答',
   'qa.answerPlaceholder': '写下你的回答...',
   'qa.questionBadge': '问题',
+  'qa.showComments': '评论',
+  'qa.hideComments': '收起评论',
   'qa.answerBadge': '回答',
   'qa.answerCount': '{0} 个回答',
   'qa.myQuestions': '我的提问',

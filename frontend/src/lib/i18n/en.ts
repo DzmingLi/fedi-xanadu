@@ -391,6 +391,8 @@ export default {
   'qa.postAnswer': 'Post Answer',
   'qa.answerPlaceholder': 'Write your answer...',
   'qa.questionBadge': 'Question',
+  'qa.showComments': 'Comments',
+  'qa.hideComments': 'Hide comments',
   'qa.answerBadge': 'Answer',
   'qa.answerCount': '{0} answers',
   'qa.myQuestions': 'My Questions',
