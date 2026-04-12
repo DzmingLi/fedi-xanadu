@@ -7,6 +7,7 @@ mod blocks;
 mod bookmarks;
 pub(crate) mod books;
 mod comments;
+mod creator;
 mod discussions;
 mod drafts;
 mod follows;
@@ -95,6 +96,7 @@ pub fn routes() -> Router<AppState> {
         .merge(member_routes())
         .merge(book_routes())
         .merge(render_routes())
+        .merge(creator_routes())
 }
 
 // --- Grouped sub-routers ---
@@ -351,6 +353,17 @@ fn member_routes() -> Router<AppState> {
         .route("/members", get(members::list_members).post(members::add_member))
         .route("/members/remove", delete(members::remove_member))
         .route("/members/check", get(members::check_membership))
+}
+
+fn creator_routes() -> Router<AppState> {
+    Router::new()
+        .route("/creator/stats", get(creator::get_stats))
+        .route("/creator/articles", get(creator::list_articles))
+        .route("/creator/series", get(creator::list_series))
+        .route("/creator/timeline", get(creator::get_timeline))
+        .route("/articles/view", post(creator::record_view))
+        .route("/series/{id}/publish", post(creator::publish_series))
+        .route("/series/{id}/unpublish", post(creator::unpublish_series))
 }
 
 fn render_routes() -> Router<AppState> {

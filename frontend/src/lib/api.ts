@@ -498,3 +498,32 @@ export const checkMembership = (author_did: string) =>
 // Typst rendering
 export const renderTypstSnippet = (formula: string, display: boolean) =>
   post<{ html: string }>('/render/typst-snippet', { formula, display });
+
+// Creator Dashboard
+export interface CreatorStats {
+  total_articles: number;
+  total_series: number;
+  total_drafts: number;
+  total_views: number;
+  total_comments: number;
+  total_bookmarks: number;
+}
+export interface ArticleStats {
+  at_uri: string;
+  title: string;
+  content_format: string;
+  created_at: string;
+  views: number;
+  comments: number;
+  bookmarks: number;
+  votes: number;
+}
+export interface TimelinePoint { day: string; views: number; comments: number; bookmarks: number }
+export const getCreatorStats = () => get<CreatorStats>('/creator/stats');
+export const getCreatorArticles = () => get<ArticleStats[]>('/creator/articles');
+export const getCreatorSeries = () => get<any[]>('/creator/series');
+export const getCreatorTimeline = () => get<TimelinePoint[]>('/creator/timeline');
+export const publishSeries = (id: string) => post<void>(`/series/${encodeURIComponent(id)}/publish`, {});
+export const unpublishSeries = (id: string) => post<void>(`/series/${encodeURIComponent(id)}/unpublish`, {});
+export const recordArticleView = (uri: string, viewer_did?: string) =>
+  post<void>('/articles/view', { uri, viewer_did });

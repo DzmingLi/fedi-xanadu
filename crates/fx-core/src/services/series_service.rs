@@ -18,6 +18,7 @@ pub struct SeriesRow {
     pub translation_group: Option<String>,
     pub category: String,
     pub split_level: i32,
+    pub is_published: bool,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -35,6 +36,7 @@ pub struct SeriesListRow {
     pub translation_group: Option<String>,
     pub category: String,
     pub split_level: i32,
+    pub is_published: bool,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -114,9 +116,10 @@ pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesL
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, s.long_description, \
                 s.order_index, s.created_by, pu.handle AS author_handle, s.created_at, \
-                s.lang, s.translation_group, s.category, s.split_level \
+                s.lang, s.translation_group, s.category, s.split_level, s.is_published \
          FROM series s \
          LEFT JOIN platform_users pu ON s.created_by = pu.did \
+         WHERE s.is_published = TRUE \
          ORDER BY s.created_at DESC LIMIT $1",
     )
     .bind(limit)
@@ -169,7 +172,7 @@ pub async fn create_series(
     tx.commit().await?;
 
     let row = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level \
+        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -179,9 +182,42 @@ pub async fn create_series(
     Ok(row)
 }
 
+pub async fn publish_series(pool: &PgPool, id: &str) -> crate::Result<()> {
+    sqlx::query("UPDATE series SET is_published = TRUE WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn unpublish_series(pool: &PgPool, id: &str) -> crate::Result<()> {
+    sqlx::query("UPDATE series SET is_published = FALSE WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// List all series by a creator (including drafts).
+pub async fn list_series_by_creator(pool: &PgPool, did: &str) -> crate::Result<Vec<SeriesListRow>> {
+    let rows = sqlx::query_as::<_, SeriesListRow>(
+        "SELECT s.id, s.title, s.description, s.long_description, \
+                s.order_index, s.created_by, pu.handle AS author_handle, s.created_at, \
+                s.lang, s.translation_group, s.category, s.split_level, s.is_published \
+         FROM series s \
+         LEFT JOIN platform_users pu ON s.created_by = pu.did \
+         WHERE s.created_by = $1 \
+         ORDER BY s.created_at DESC",
+    )
+    .bind(did)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesDetailResponse> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level \
+        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -261,7 +297,7 @@ pub async fn get_series_translations(pool: &PgPool, id: &str) -> crate::Result<V
     };
 
     let rows = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level \
+        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
          FROM series WHERE translation_group = $1 AND id != $2 ORDER BY lang",
     )
     .bind(&group)
@@ -384,7 +420,7 @@ pub async fn all_series_articles(pool: &PgPool, limit: i64) -> crate::Result<Vec
 /// Build a flat tree node for a series (no children — parent series removed).
 pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<SeriesTreeNode> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level \
+        "SELECT id, title, description, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
          FROM series WHERE id = $1",
     )
     .bind(root_id)

@@ -26,7 +26,28 @@ export default {
   'nav.login': '登录',
   'nav.logout': '退出',
   'nav.drafts': '草稿',
+  'nav.creator': '创作中心',
   'nav.notifications': '通知',
+
+  // Creator Dashboard
+  'creator.articles': '文章',
+  'creator.series': '系列',
+  'creator.drafts': '草稿',
+  'creator.views': '阅读',
+  'creator.comments': '评论',
+  'creator.bookmarks': '收藏',
+  'creator.votes': '投票',
+  'creator.published': '已发布',
+  'creator.analytics': '数据分析',
+  'creator.publish': '发布',
+  'creator.unpublish': '取消发布',
+  'creator.draftSeries': '系列草稿',
+  'creator.articleDrafts': '文章草稿',
+  'creator.noArticles': '暂无文章',
+  'creator.noDrafts': '暂无草稿',
+  'creator.noData': '暂无数据',
+  'creator.last30days': '近30天趋势',
+  'creator.titleCol': '标题',
 
   // Notifications
   'notification.commentReply': '回复了你的评论',

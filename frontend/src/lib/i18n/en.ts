@@ -26,7 +26,28 @@ export default {
   'nav.login': 'Login',
   'nav.logout': 'Logout',
   'nav.drafts': 'Drafts',
+  'nav.creator': 'Creator',
   'nav.notifications': 'Notifications',
+
+  // Creator Dashboard
+  'creator.articles': 'Articles',
+  'creator.series': 'Series',
+  'creator.drafts': 'Drafts',
+  'creator.views': 'Views',
+  'creator.comments': 'Comments',
+  'creator.bookmarks': 'Bookmarks',
+  'creator.votes': 'Votes',
+  'creator.published': 'Published',
+  'creator.analytics': 'Analytics',
+  'creator.publish': 'Publish',
+  'creator.unpublish': 'Unpublish',
+  'creator.draftSeries': 'Draft Series',
+  'creator.articleDrafts': 'Article Drafts',
+  'creator.noArticles': 'No articles yet',
+  'creator.noDrafts': 'No drafts',
+  'creator.noData': 'No data available',
+  'creator.last30days': 'Last 30 Days',
+  'creator.titleCol': 'Title',
 
   // Notifications
   'notification.commentReply': 'replied to your comment',

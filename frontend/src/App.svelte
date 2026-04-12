@@ -48,6 +48,7 @@
   const lazyBookEdition = () => import('./routes/BookEdition.svelte');
   const lazySeriesEditor = () => import('./routes/SeriesEditor.svelte');
   const lazyDiscussion = () => import('./routes/Discussion.svelte');
+  const lazyCreator = () => import('./routes/CreatorDashboard.svelte');
 </script>
 
 <Toast />
@@ -156,6 +157,10 @@
       {/await}
     {:else if route.page === 'drafts'}
       {#await lazyDrafts() then mod}
+        <mod.default />
+      {/await}
+    {:else if route.page === 'creator'}
+      {#await lazyCreator() then mod}
         <mod.default />
       {/await}
     {:else if route.page === 'notifications'}

@@ -23,6 +23,7 @@ export const routes: Route[] = [
   { pattern: '/discussion', page: 'discussion' },
   { pattern: '/forks', page: 'forks' },
   { pattern: '/drafts', page: 'drafts' },
+  { pattern: '/creator', page: 'creator' },
   { pattern: '/notifications', page: 'notifications' },
   { pattern: '/questions', page: 'questions' },
   { pattern: '/question', page: 'question' },
