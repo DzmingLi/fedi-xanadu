@@ -32,3 +32,21 @@ pub async fn update_profile_links(
     social_service::update_profile_links(&state.pool, &user.did, &links_json).await?;
     Ok(StatusCode::OK)
 }
+
+#[derive(serde::Deserialize)]
+pub(crate) struct UpdateBioInput {
+    bio: String,
+}
+
+pub async fn update_bio(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<UpdateBioInput>,
+) -> ApiResult<StatusCode> {
+    sqlx::query("UPDATE profiles SET bio = $1 WHERE did = $2")
+        .bind(&input.bio)
+        .bind(&user.did)
+        .execute(&state.pool)
+        .await?;
+    Ok(StatusCode::OK)
+}

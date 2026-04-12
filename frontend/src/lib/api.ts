@@ -174,6 +174,7 @@ export const setInterests = (tag_ids: string[]) => put<void>('/interests', { tag
 export const getProfile = (did: string) => get<ProfileData>(`/profile?did=${encodeURIComponent(did)}`);
 export const updateProfileLinks = (links: { label: string; url: string }[]) =>
   post<void>('/profile/links', { links });
+export const updateBio = (bio: string) => put<void>('/profile/bio', { bio });
 
 // Series
 export const listSeries = () => get<Series[]>('/series');

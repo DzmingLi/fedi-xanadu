@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getSettings, setSettings, getKeybindings, listBlockedUsers, unblockUser as apiUnblockUser, listBookmarkFolders, listMembers, addMember, removeMember } from '../lib/api';
+  import { getSettings, setSettings, getKeybindings, listBlockedUsers, unblockUser as apiUnblockUser, listBookmarkFolders, listMembers, addMember, removeMember, getProfile, updateBio } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale, setLocale, LOCALES } from '../lib/i18n/index.svelte';
   import type { Locale } from '../lib/i18n/index.svelte';
@@ -28,6 +28,7 @@
   let bookmarksPublic = $state(false);
   let publicFolders = $state<string[]>([]);
   let allFolders = $state<string[]>([]);
+  let bio = $state('');
 
   // Blocked users
   let blockedUsers = $state<BlockedUser[]>([]);
@@ -81,6 +82,14 @@
 
     try {
       members = await listMembers();
+    } catch { /* */ }
+
+    try {
+      const auth = getAuth();
+      if (auth) {
+        const profile = await getProfile(auth.did);
+        bio = profile.bio || '';
+      }
     } catch { /* */ }
 
     loading = false;
@@ -293,6 +302,13 @@
           </label>
         {/each}
       </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>{t('settings.bio')}</h2>
+      <p class="hint">{t('settings.bioHint')}</p>
+      <textarea bind:value={bio} class="text-input bio-input" rows="3" placeholder={t('settings.bioPlaceholder')}></textarea>
+      <button class="save-btn small" onclick={async () => { await updateBio(bio); toast(t('settings.saved'), 'success'); }}>{t('common.save')}</button>
     </div>
 
     <div class="settings-section">

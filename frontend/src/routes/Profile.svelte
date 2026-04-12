@@ -361,6 +361,9 @@
       {#if profile.handle}
         <p class="handle">@{profile.handle}</p>
       {/if}
+      {#if profile.bio}
+        <p class="bio">{profile.bio}</p>
+      {/if}
       {#if profile.affiliation}
         <p class="credential-line">
           {profile.affiliation}
@@ -740,6 +743,12 @@
     font-size: 14px;
     color: var(--text-secondary);
     margin: 2px 0 0;
+  }
+  .bio {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 6px 0;
   }
   .credential-line {
     display: inline-flex;

@@ -332,6 +332,7 @@ export interface ProfileData {
   handle: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  bio: string;
   article_count: number;
   series_count: number;
   links: ProfileLink[];
