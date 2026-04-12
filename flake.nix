@@ -309,7 +309,7 @@
             lockFile = ./Cargo.lock;
             outputHashes = {
               "atproto-auth-0.1.0" = "sha256-7U7pGTRXfPnnBLsINTO5ZGgfssO4B53qbfBXpSirM7U=";
-              "fx-renderer-0.1.0" = "sha256-bbdt7B0KvHYMMntgVH9aytIe86cQo5kitBJaPnQzsok=";
+              "fx-renderer-0.1.0" = "sha256-l6j9gVDmAONGhGLHRQMRssvRfY63KdSq1YfWf6hJo8o=";
               "pijul-knot-0.1.0" = "sha256-pe6tyGnbNpTkQV/Fn9BHPX8rCyoNXpC/thX4dpv1LZ4=";
             };
           };
@@ -333,7 +333,7 @@
             lockFile = ./Cargo.lock;
             outputHashes = {
               "atproto-auth-0.1.0" = "sha256-7U7pGTRXfPnnBLsINTO5ZGgfssO4B53qbfBXpSirM7U=";
-              "fx-renderer-0.1.0" = "sha256-bbdt7B0KvHYMMntgVH9aytIe86cQo5kitBJaPnQzsok=";
+              "fx-renderer-0.1.0" = "sha256-l6j9gVDmAONGhGLHRQMRssvRfY63KdSq1YfWf6hJo8o=";
               "pijul-knot-0.1.0" = "sha256-pe6tyGnbNpTkQV/Fn9BHPX8rCyoNXpC/thX4dpv1LZ4=";
             };
           };
