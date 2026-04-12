@@ -1,11 +1,13 @@
 <script lang="ts">
   import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveArticle, recordArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, getArticleHistory, getArticleDiff, unrecordArticleChange, listArticleCollaborators, inviteArticleCollaborator, removeArticleCollaborator, listArticleChannels, readArticleChannelFile, writeArticleChannelFile, articleChannelDiff, applyArticleChannelChange } from '../lib/api';
   import ChannelPanel from 'pijul-editor/ChannelPanel.svelte';
+  import VersionPanel from 'pijul-editor/VersionPanel.svelte';
+  import type { DiffLine } from 'pijul-editor/VersionPanel.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getLangPrefs } from '../lib/langPrefs.svelte';
   import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
   import TypstEditor from 'pijul-editor/TypstEditor.svelte';
-  import type { Tag, Article, BookEdition, ContentFormat, PrereqType, ArticleVersionInfo, VersionDiff } from '../lib/types';
+  import type { Tag, Article, BookEdition, ContentFormat, PrereqType, ArticleVersionInfo } from '../lib/types';
 
   let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
   let isEditing = $state(false);
@@ -67,12 +69,12 @@
 
   // --- Version panel state ---
   let versionHistory = $state<ArticleVersionInfo[]>([]);
-  let selectedVersionDiff = $state<VersionDiff | null>(null);
-  let selectedVersionId = $state<number | null>(null);
-  let recordMessage = $state('');
   let recording = $state(false);
-  let showRecordInput = $state(false);
   let loadingHistory = $state(false);
+
+  // --- Sidebar quick-record popup ---
+  let showRecordInput = $state(false);
+  let recordMessage = $state('');
 
   async function loadHistory() {
     if (!savedArticleUri) return;
@@ -81,28 +83,6 @@
       versionHistory = await getArticleHistory(savedArticleUri);
     } catch { /* ok */ }
     loadingHistory = false;
-  }
-
-  async function selectVersion(v: ArticleVersionInfo) {
-    if (selectedVersionId === v.id) {
-      selectedVersionId = null;
-      selectedVersionDiff = null;
-      return;
-    }
-    selectedVersionId = v.id;
-    const idx = versionHistory.findIndex(h => h.id === v.id);
-    if (idx < 0) return;
-    // Find previous version
-    const prev = idx + 1 < versionHistory.length ? versionHistory[idx + 1] : null;
-    if (!prev) {
-      selectedVersionDiff = null;
-      return;
-    }
-    try {
-      selectedVersionDiff = await getArticleDiff(savedArticleUri, prev.id, v.id);
-    } catch {
-      selectedVersionDiff = null;
-    }
   }
 
   async function doUnrecord(v: ArticleVersionInfo) {
@@ -114,14 +94,12 @@
       const c = await getArticleContent(savedArticleUri);
       content = c.source;
       lastSavedContent = c.source;
-      selectedVersionId = null;
-      selectedVersionDiff = null;
     } catch (e: any) {
       error = e.message;
     }
   }
 
-  async function doRecord() {
+  async function doRecord(message: string) {
     if (!title.trim() || !content.trim()) {
       error = t('newArticle.fillRequired');
       return;
@@ -129,7 +107,7 @@
     recording = true;
     error = '';
     try {
-      const msg = recordMessage.trim() || 'Update';
+      const msg = message;
 
       if (!savedArticleUri) {
         // New article: publish first, which auto-records the initial change
@@ -164,8 +142,6 @@
         }
         versionHistory = await recordArticle(savedArticleUri, msg);
       }
-      recordMessage = '';
-      showRecordInput = false;
     } catch (e: any) {
       error = e.message;
     } finally {
@@ -192,7 +168,6 @@
   }
 
   // Simple line-based diff for the version panel (current changes)
-  interface DiffLine { type: 'same' | 'add' | 'del'; text: string; }
   function computeSimpleDiff(oldText: string, newText: string): DiffLine[] {
     const oldLines = oldText.split('\n');
     const newLines = newText.split('\n');
@@ -223,8 +198,6 @@
         ? content.split('\n').map(l => ({ type: 'add' as const, text: l }))
         : []
   );
-  let addCount = $derived(currentDiffLines.filter(l => l.type === 'add').length);
-  let delCount = $derived(currentDiffLines.filter(l => l.type === 'del').length);
   let hasUnsavedChanges = $derived(savedArticleUri ? content !== lastSavedContent : false);
 
   async function handleFormatChange(newFormat: ContentFormat) {
@@ -439,6 +412,34 @@
     }
   }
 
+  // Image upload callback for editor component (drag/paste/toolbar)
+  async function editorImageUpload(file: File): Promise<{ src: string; alt?: string }> {
+    if (!savedArticleUri) {
+      if (!title.trim() || !content.trim()) throw new Error(t('newArticle.fillTitleContent'));
+      const article = await createArticle({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        content: content.trim(),
+        content_format: contentFormat,
+        lang: lang || getLocale(),
+        license: restricted ? 'All-Rights-Reserved' : (license || undefined),
+        translation_of: translationOf || undefined,
+        restricted: restricted || undefined,
+        category: category || undefined,
+        book_id: bookId || undefined,
+        edition_id: editionId || undefined,
+        tags: selectedTags,
+        prereqs,
+      });
+      savedArticleUri = article.at_uri;
+      lastSavedContent = content;
+      isEditing = true;
+      loadHistory();
+    }
+    const result = await uploadImage(savedArticleUri, file);
+    return { src: result.filename, alt: result.filename };
+  }
+
   // Fork diff (reused from original)
   let diffLines = $derived(
     forkSource && showDiff ? computeSimpleDiff(originalContent, content) : []
@@ -616,10 +617,6 @@
     }
   }
 
-  function formatDate(iso: string): string {
-    const d = new Date(iso);
-    return `${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-  }
 
 </script>
 
@@ -677,84 +674,32 @@
       <!-- Left: Version Panel -->
       {#if versionPanelOpen}
         <aside class="version-panel">
-          <div class="vp-section">
-            <div class="vp-section-header" role="button" tabindex="0">
-              <span>{t('version.diff')}</span>
-              {#if addCount > 0 || delCount > 0}
-                <span class="vp-diff-stats">
-                  <span class="diff-add-count">+{addCount}</span>
-                  <span class="diff-del-count">-{delCount}</span>
-                </span>
-              {/if}
-            </div>
-            <div class="vp-diff-content">
-              {#if currentDiffLines.length === 0}
-                <p class="vp-empty">{t('version.noChanges')}</p>
-              {:else}
-                <pre class="vp-diff">{#each currentDiffLines.filter(l => l.type !== 'same') as line}{#if line.type === 'add'}<span class="line-add">+{line.text}</span>
-{:else}<span class="line-del">-{line.text}</span>
-{/if}{/each}</pre>
-              {/if}
-            </div>
-          </div>
-
-          {#if savedArticleUri}
-            <div class="vp-section">
-              <div class="vp-section-header">
-                <span>{t('version.history')}</span>
-                <span class="vp-count">{versionHistory.length}</span>
-              </div>
-              <div class="vp-history-list">
-                {#if loadingHistory}
-                  <p class="vp-empty">...</p>
-                {:else if versionHistory.length === 0}
-                  <p class="vp-empty">{t('version.noHistory')}</p>
-                {:else}
-                  {#each versionHistory as v (v.id)}
-                    <button
-                      class="vp-history-item"
-                      class:selected={selectedVersionId === v.id}
-                      onclick={() => selectVersion(v)}
-                    >
-                      <span class="vp-h-msg">{v.message}</span>
-                      <span class="vp-h-meta">
-                        {formatDate(v.created_at)}
-                        <code>{v.change_hash.slice(0, 8)}</code>
-                      </span>
-                      {#if v.unrecordable}
-                        <button
-                          class="vp-unrecord"
-                          onclick={(e) => { e.stopPropagation(); doUnrecord(v); }}
-                          title={t('version.unrecord')}
-                        >&times;</button>
-                      {/if}
-                    </button>
-                  {/each}
-                {/if}
-              </div>
-
-              {#if selectedVersionDiff}
-                <div class="vp-version-diff">
-                  <pre class="vp-diff">{#each selectedVersionDiff.hunks as hunk}{#each hunk.lines as line}{#if line.kind === 'add'}<span class="line-add">+{line.content}</span>
-{:else if line.kind === 'remove'}<span class="line-del">-{line.content}</span>
-{:else}<span class="line-ctx"> {line.content}</span>
-{/if}{/each}{/each}</pre>
-                </div>
-              {/if}
-            </div>
-
-            <div class="vp-record">
-              <input
-                class="vp-record-input"
-                bind:value={recordMessage}
-                placeholder={t('version.recordPlaceholder')}
-                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doRecord(); } }}
-              />
-              <button class="vp-record-btn" onclick={doRecord} disabled={recording}>
-                {recording ? '...' : t('version.record')}
-              </button>
-            </div>
-          {/if}
+          <VersionPanel
+            {currentDiffLines}
+            versions={versionHistory}
+            {loadingHistory}
+            {recording}
+            onRecord={doRecord}
+            onUnrecord={doUnrecord}
+            onFetchDiff={async (v) => {
+              const idx = versionHistory.findIndex(h => h.id === v.id);
+              const prev = idx + 1 < versionHistory.length ? versionHistory[idx + 1] : null;
+              if (!prev) return [];
+              const diff = await getArticleDiff(savedArticleUri, prev.id, v.id);
+              return diff.hunks.flatMap(h => h.lines.map(l => ({
+                type: l.kind === 'add' ? 'add' as const : l.kind === 'remove' ? 'del' as const : 'same' as const,
+                text: l.content,
+              })));
+            }}
+            labels={{
+              diff: t('version.diff'),
+              noChanges: t('version.noChanges'),
+              history: t('version.history'),
+              noHistory: t('version.noHistory'),
+              recordPlaceholder: t('version.recordPlaceholder'),
+              record: t('version.record'),
+            }}
+          />
         </aside>
       {/if}
 
@@ -780,9 +725,9 @@
         <!-- Editor content area -->
         <div class="editor-content">
           {#if contentFormat === 'markdown'}
-            <MarkdownEditor bind:value={content} placeholder="# 我的文章&#10;&#10;正文..." fillHeight={true} />
+            <MarkdownEditor bind:value={content} placeholder="# 我的文章&#10;&#10;正文..." fillHeight={true} onImageUpload={editorImageUpload} />
           {:else if contentFormat === 'typst'}
-            <TypstEditor bind:value={content} placeholder="= 我的文章&#10;&#10;正文..." fillHeight={true} />
+            <TypstEditor bind:value={content} placeholder="= 我的文章&#10;&#10;正文..." fillHeight={true} onImageUpload={editorImageUpload} />
           {:else}
             <textarea class="editor-textarea" bind:value={content} placeholder="<!DOCTYPE html>..."></textarea>
           {/if}
@@ -1069,9 +1014,9 @@
                 bind:value={recordMessage}
                 placeholder={t('version.recordPlaceholder')}
                 maxlength={200}
-                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doRecord(); } if (e.key === 'Escape') { showRecordInput = false; } }}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doRecord(recordMessage.trim() || 'Update'); recordMessage = ''; showRecordInput = false; } if (e.key === 'Escape') { showRecordInput = false; } }}
               />
-              <button class="btn btn-primary btn-sm" onclick={doRecord} disabled={recording || (!title.trim() || !content.trim())}>
+              <button class="btn btn-primary btn-sm" onclick={() => { doRecord(recordMessage.trim() || 'Update'); recordMessage = ''; showRecordInput = false; }} disabled={recording || (!title.trim() || !content.trim())}>
                 {recording ? '...' : t('version.record')}
               </button>
             </div>
@@ -1162,152 +1107,7 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    font-size: 13px;
     background: var(--bg-white);
-  }
-  .vp-section {
-    border-bottom: 1px solid var(--border);
-  }
-  .vp-section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-hint);
-    background: var(--bg-hover, #fafafa);
-  }
-  .vp-diff-stats {
-    display: flex;
-    gap: 6px;
-    font-weight: 500;
-  }
-  .vp-count {
-    background: var(--bg-gray, #eee);
-    border-radius: 8px;
-    padding: 0 6px;
-    font-size: 11px;
-  }
-  .vp-empty {
-    padding: 12px;
-    color: var(--text-hint);
-    font-size: 12px;
-    text-align: center;
-    margin: 0;
-  }
-  .vp-diff-content {
-    max-height: 200px;
-    overflow-y: auto;
-  }
-  .vp-diff, .vp-version-diff pre {
-    font-family: var(--font-mono, monospace);
-    font-size: 11px;
-    line-height: 1.5;
-    margin: 0;
-    padding: 4px 0;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-  .vp-version-diff {
-    max-height: 200px;
-    overflow-y: auto;
-    border-top: 1px solid var(--border);
-  }
-  .vp-history-list {
-    max-height: 240px;
-    overflow-y: auto;
-  }
-  .vp-history-item {
-    display: block;
-    width: 100%;
-    padding: 6px 12px;
-    border: none;
-    background: none;
-    text-align: left;
-    cursor: pointer;
-    border-bottom: 1px solid var(--border);
-    position: relative;
-    font-size: 12px;
-    transition: background 0.1s;
-  }
-  .vp-history-item:hover { background: var(--bg-hover, #f5f5f5); }
-  .vp-history-item.selected { background: rgba(95, 155, 101, 0.08); }
-  .vp-h-msg {
-    display: block;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.4;
-  }
-  .vp-h-meta {
-    display: flex;
-    gap: 6px;
-    color: var(--text-hint);
-    font-size: 11px;
-    margin-top: 2px;
-  }
-  .vp-h-meta code {
-    font-size: 10px;
-    background: var(--bg-gray, #eee);
-    padding: 0 3px;
-    border-radius: 2px;
-  }
-  .vp-unrecord {
-    position: absolute;
-    right: 6px;
-    top: 6px;
-    background: none;
-    border: none;
-    color: var(--text-hint);
-    font-size: 14px;
-    cursor: pointer;
-    padding: 0 4px;
-    line-height: 1;
-    border-radius: 2px;
-  }
-  .vp-unrecord:hover { color: #dc2626; background: #fef2f2; }
-
-  .vp-record {
-    display: flex;
-    gap: 4px;
-    padding: 8px;
-    border-top: 1px solid var(--border);
-  }
-  .vp-record-input {
-    flex: 1;
-    padding: 4px 8px;
-    font-size: 12px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: var(--bg-white);
-    color: var(--text-primary);
-  }
-  .vp-record-input::placeholder { color: var(--text-hint); }
-  .vp-record-btn {
-    padding: 4px 10px;
-    font-size: 12px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .vp-record-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  /* Shared diff line styles */
-  .line-add { display: block; background: #e6ffec; color: #22863a; padding: 0 8px; }
-  .line-del { display: block; background: #ffebe9; color: #cb2431; padding: 0 8px; }
-  .line-same, .line-ctx { display: block; padding: 0 8px; color: var(--text-hint); }
-  .line-collapse {
-    display: block; padding: 4px 8px; color: var(--text-hint);
-    background: var(--bg-hover); text-align: center; font-style: italic;
-    font-size: 11px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-    margin: 2px 0;
   }
 
   /* === Editor main === */
