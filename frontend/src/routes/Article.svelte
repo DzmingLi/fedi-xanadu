@@ -486,22 +486,20 @@ try {
 {:else}
   {#if seriesId}
     <div class="series-left-panel">
+      {#if tocItems.length > 0}
+        <nav class="toc toc-in-sidebar">
+          <ul>
+            {#each tocItems as item}
+              <li class="toc-{item.level}" class:active={activeId === item.id}>
+                <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
+              </li>
+            {/each}
+          </ul>
+        </nav>
+      {/if}
       <div class="series-left-col">
         <SeriesSidebar {seriesId} currentUri={uri} />
       </div>
-      {#if tocItems.length > 0}
-        <div class="series-toc-col">
-          <nav class="toc toc-in-sidebar">
-            <ul>
-              {#each tocItems as item}
-                <li class="toc-{item.level}" class:active={activeId === item.id}>
-                  <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
-                </li>
-              {/each}
-            </ul>
-          </nav>
-        </div>
-      {/if}
     </div>
   {/if}
   <div class="article-layout" class:has-series-sidebar={!!seriesId}>
@@ -877,7 +875,7 @@ try {
     overflow-y: auto;
   }
   .series-left-col {
-    width: 220px;
+    width: clamp(180px, 18vw, 240px);
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
@@ -891,15 +889,11 @@ try {
     border-right: none;
     width: auto;
   }
-  .series-toc-col {
-    width: 200px;
-    flex-shrink: 0;
-    overflow-y: auto;
-    border-right: 1px solid var(--border);
-  }
   .toc-in-sidebar {
-    padding: 12px 16px;
+    padding: 12px 16px 8px;
     margin: 0;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
 
   @media (max-width: 860px) {
