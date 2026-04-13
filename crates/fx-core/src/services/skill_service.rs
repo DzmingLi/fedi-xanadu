@@ -114,15 +114,10 @@ pub struct UserTagPrereq {
 }
 
 pub async fn get_user_tag_prereqs(pool: &PgPool, did: &str) -> crate::Result<Vec<UserTagPrereq>> {
-    // Merge user-defined prereqs + active skill tree prereqs.
-    // UNION deduplicates, user-defined takes priority via ordering.
+    // Each user owns their own prereq definitions.
+    // When adopting a community tree, its prereqs are copied into this table.
     let prereqs = sqlx::query_as::<_, UserTagPrereq>(
-        "SELECT DISTINCT ON (from_tag, to_tag) from_tag, to_tag, prereq_type FROM ( \
-           SELECT from_tag, to_tag, prereq_type, 1 AS priority FROM user_tag_prereqs WHERE did = $1 \
-           UNION ALL \
-           SELECT p.from_tag, p.to_tag, p.prereq_type, 2 AS priority \
-           FROM skill_tree_prereqs p JOIN user_active_tree ua ON ua.tree_uri = p.tree_uri WHERE ua.did = $1 \
-         ) combined ORDER BY from_tag, to_tag, priority",
+        "SELECT from_tag, to_tag, prereq_type FROM user_tag_prereqs WHERE did = $1",
     )
     .bind(did)
     .fetch_all(pool)
