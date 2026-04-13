@@ -34,7 +34,7 @@ pub fn router(state: AppState, config: &Config) -> Router {
     Router::new()
         .nest("/api", api::routes())
         .route("/sitemap.xml", axum::routing::get(sitemap_handler))
-        .route("/feed/{did}.xml", axum::routing::get(rss_feed_handler))
+        .route("/feed/{filename}", axum::routing::get(rss_feed_handler))
         .fallback_service(spa)
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(TraceLayer::new_for_http())
@@ -72,8 +72,9 @@ async fn sitemap_handler(State(state): State<AppState>) -> impl IntoResponse {
 
 async fn rss_feed_handler(
     State(state): State<AppState>,
-    axum::extract::Path(did): axum::extract::Path<String>,
+    axum::extract::Path(filename): axum::extract::Path<String>,
 ) -> impl IntoResponse {
+    let did = filename.strip_suffix(".xml").unwrap_or(&filename).to_string();
     let base = std::env::var("FX_PUBLIC_URL").unwrap_or_else(|_| "https://fedi-xanadu.dzming.li".into());
 
     let handle: Option<String> = sqlx::query_scalar("SELECT handle FROM platform_users WHERE did = $1")
