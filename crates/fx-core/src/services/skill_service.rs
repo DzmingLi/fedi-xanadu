@@ -114,40 +114,21 @@ pub struct UserTagPrereq {
 }
 
 pub async fn get_user_tag_prereqs(pool: &PgPool, did: &str) -> crate::Result<Vec<UserTagPrereq>> {
-    // First try user's personal prereq table
+    // Merge all prereq sources: user-defined + skill tree + content-derived.
+    // UNION deduplicates, user-defined takes priority via ordering.
     let prereqs = sqlx::query_as::<_, UserTagPrereq>(
-        "SELECT from_tag, to_tag, prereq_type FROM user_tag_prereqs WHERE did = $1",
+        "SELECT DISTINCT ON (from_tag, to_tag) from_tag, to_tag, prereq_type FROM ( \
+           SELECT from_tag, to_tag, prereq_type, 1 AS priority FROM user_tag_prereqs WHERE did = $1 \
+           UNION ALL \
+           SELECT p.from_tag, p.to_tag, p.prereq_type, 2 AS priority \
+           FROM skill_tree_prereqs p JOIN user_active_tree ua ON ua.tree_uri = p.tree_uri WHERE ua.did = $1 \
+           UNION ALL \
+           SELECT DISTINCT cp.tag_id AS from_tag, ct.tag_id AS to_tag, cp.prereq_type, 3 AS priority \
+           FROM content_prereqs cp JOIN content_teaches ct ON ct.content_uri = cp.content_uri \
+           WHERE cp.tag_id != ct.tag_id \
+         ) combined ORDER BY from_tag, to_tag, priority",
     )
     .bind(did)
-    .fetch_all(pool)
-    .await?;
-
-    if !prereqs.is_empty() {
-        return Ok(prereqs);
-    }
-
-    // Fall back to the user's active skill tree prereqs
-    let prereqs = sqlx::query_as::<_, UserTagPrereq>(
-        "SELECT p.from_tag, p.to_tag, p.prereq_type \
-         FROM skill_tree_prereqs p \
-         JOIN user_active_tree ua ON ua.tree_uri = p.tree_uri \
-         WHERE ua.did = $1",
-    )
-    .bind(did)
-    .fetch_all(pool)
-    .await?;
-
-    if !prereqs.is_empty() {
-        return Ok(prereqs);
-    }
-
-    // Final fallback: content-derived prereqs (from article tag declarations)
-    let prereqs = sqlx::query_as::<_, UserTagPrereq>(
-        "SELECT DISTINCT cp.tag_id AS from_tag, ct.tag_id AS to_tag, cp.prereq_type \
-         FROM content_prereqs cp \
-         JOIN content_teaches ct ON ct.content_uri = cp.content_uri \
-         WHERE cp.tag_id != ct.tag_id",
-    )
     .fetch_all(pool)
     .await?;
 
