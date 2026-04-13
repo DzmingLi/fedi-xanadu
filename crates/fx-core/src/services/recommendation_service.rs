@@ -97,7 +97,7 @@ frontier_tags AS (
 
 -- Language preference
 lang_settings AS (
-    SELECT native_lang, known_langs, prefer_native, hide_unknown
+    SELECT did, native_lang, known_langs, prefer_native, hide_unknown
     FROM user_settings WHERE did = $1
 ),
 
