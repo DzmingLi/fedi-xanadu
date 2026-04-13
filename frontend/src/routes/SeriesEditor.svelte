@@ -211,6 +211,20 @@
     detail = await getSeries(id);
   }
 
+  async function reorderChapters(_parentDir: string, paths: string[]) {
+    // Update meta.json chapter_order so compile uses the new order
+    let meta: Record<string, unknown> = {};
+    try {
+      const raw = await readSeriesFile(id, 'meta.json');
+      meta = JSON.parse(raw);
+    } catch { /* no meta.json yet, create one */ }
+    meta.chapter_order = paths;
+    await writeSeriesFile(id, 'meta.json', JSON.stringify(meta, null, 2), 'reorder chapters');
+    // Reorder local file list to match
+    const order = new Map(paths.map((p, i) => [p, i]));
+    files = [...files].sort((a, b) => (order.get(a.path) ?? 999) - (order.get(b.path) ?? 999));
+  }
+
   function onKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
@@ -267,6 +281,7 @@
           onSelect={openFile}
           onCreate={createFile}
           onDelete={doDeleteFile}
+          onReorder={reorderChapters}
         />
       </aside>
 
