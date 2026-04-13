@@ -585,6 +585,28 @@ enum TreeCommand {
         /// Skill tree AT URI
         uri: String,
     },
+    /// Add a prerequisite relationship between two tags
+    #[command(name = "add-prereq")]
+    AddPrereq {
+        /// Source tag (must be mastered first)
+        from: String,
+        /// Target tag (requires the source)
+        to: String,
+        /// Prereq type: required or recommended
+        #[arg(long, default_value = "required")]
+        prereq_type: String,
+    },
+    /// Remove a prerequisite relationship
+    #[command(name = "rm-prereq")]
+    RmPrereq {
+        /// Source tag
+        from: String,
+        /// Target tag
+        to: String,
+    },
+    /// List all prerequisite relationships
+    #[command(name = "list-prereqs", alias = "prereqs")]
+    ListPrereqs,
 }
 
 /// TOML manifest for uploading book chapters.
@@ -1547,6 +1569,46 @@ async fn handle_tree(base: &str, config: &Config, action: TreeCommand) -> Result
                 .error_for_status().context("Adopt failed")?;
 
             println!("Adopted skill tree as active.");
+        }
+        TreeCommand::AddPrereq { from, to, prereq_type } => {
+            let token = config.token()?;
+            client()
+                .post(format!("{base}/tag-prereqs"))
+                .bearer_auth(token)
+                .json(&serde_json::json!({ "from_tag": from, "to_tag": to, "prereq_type": prereq_type }))
+                .send().await?
+                .error_for_status().context("Add prereq failed")?;
+            println!("Added prereq: {from} -> {to} ({prereq_type})");
+        }
+        TreeCommand::RmPrereq { from, to } => {
+            let token = config.token()?;
+            client()
+                .delete(format!("{base}/tag-prereqs"))
+                .bearer_auth(token)
+                .json(&serde_json::json!({ "from_tag": from, "to_tag": to }))
+                .send().await?
+                .error_for_status().context("Remove prereq failed")?;
+            println!("Removed prereq: {from} -> {to}");
+        }
+        TreeCommand::ListPrereqs => {
+            let token = config.token()?;
+            let resp: Vec<serde_json::Value> = client()
+                .get(format!("{base}/tag-prereqs"))
+                .bearer_auth(token)
+                .send().await?
+                .error_for_status().context("List prereqs failed")?
+                .json().await?;
+            if resp.is_empty() {
+                println!("No prerequisite relationships defined.");
+            } else {
+                for e in &resp {
+                    println!("{} -> {} ({})",
+                        e["from_tag"].as_str().unwrap_or("?"),
+                        e["to_tag"].as_str().unwrap_or("?"),
+                        e["prereq_type"].as_str().unwrap_or("?"));
+                }
+                println!("\nTotal: {} prereqs", resp.len());
+            }
         }
     }
 

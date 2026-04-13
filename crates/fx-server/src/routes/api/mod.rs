@@ -185,7 +185,7 @@ fn skill_routes() -> Router<AppState> {
         .route("/skills", get(skills::list_user_skills).post(skills::light_skill))
         .route("/skills/unlight", delete(skills::delete_skill))
         .route("/tag-tree", get(skills::get_user_tag_tree).post(skills::add_tag_child))
-        .route("/tag-prereqs", get(skills::get_user_tag_prereqs))
+        .route("/tag-prereqs", get(skills::get_user_tag_prereqs).post(skills::add_user_tag_prereq).delete(skills::remove_user_tag_prereq))
 }
 
 fn skill_tree_routes() -> Router<AppState> {

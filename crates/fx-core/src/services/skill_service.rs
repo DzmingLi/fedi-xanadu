@@ -137,6 +137,20 @@ pub async fn get_user_tag_prereqs(pool: &PgPool, did: &str) -> crate::Result<Vec
     .fetch_all(pool)
     .await?;
 
+    if !prereqs.is_empty() {
+        return Ok(prereqs);
+    }
+
+    // Final fallback: content-derived prereqs (from article tag declarations)
+    let prereqs = sqlx::query_as::<_, UserTagPrereq>(
+        "SELECT DISTINCT cp.tag_id AS from_tag, ct.tag_id AS to_tag, cp.prereq_type \
+         FROM content_prereqs cp \
+         JOIN content_teaches ct ON ct.at_uri = cp.at_uri \
+         WHERE cp.tag_id != ct.tag_id",
+    )
+    .fetch_all(pool)
+    .await?;
+
     Ok(prereqs)
 }
 

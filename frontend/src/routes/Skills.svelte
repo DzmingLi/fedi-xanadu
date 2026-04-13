@@ -882,7 +882,7 @@
   .group-box {
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: var(--bg-white);
+    background: transparent;
     overflow: hidden;
     transition: border-color 0.2s;
   }

@@ -9,7 +9,7 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use crate::auth::{WriteAuth, MaybeAuth};
+use crate::auth::{Auth, WriteAuth, MaybeAuth};
 use super::TagIdQuery;
 
 pub async fn list_user_skills(
@@ -63,6 +63,35 @@ pub async fn get_user_tag_prereqs(
     let did = user.map(|u| u.did).unwrap_or_default();
     let prereqs = skill_service::get_user_tag_prereqs(&state.pool, &did).await?;
     Ok(Json(prereqs))
+}
+
+#[derive(serde::Deserialize)]
+pub struct PrereqInput { from_tag: String, to_tag: String, prereq_type: Option<String> }
+
+pub async fn add_user_tag_prereq(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Json(input): Json<PrereqInput>,
+) -> ApiResult<StatusCode> {
+    let pt = input.prereq_type.as_deref().unwrap_or("required");
+    sqlx::query("INSERT INTO user_tag_prereqs (did, from_tag, to_tag, prereq_type) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
+        .bind(&user.did).bind(&input.from_tag).bind(&input.to_tag).bind(pt)
+        .execute(&state.pool).await?;
+    Ok(StatusCode::CREATED)
+}
+
+#[derive(serde::Deserialize)]
+pub struct PrereqDeleteInput { from_tag: String, to_tag: String }
+
+pub async fn remove_user_tag_prereq(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Json(input): Json<PrereqDeleteInput>,
+) -> ApiResult<StatusCode> {
+    sqlx::query("DELETE FROM user_tag_prereqs WHERE did = $1 AND from_tag = $2 AND to_tag = $3")
+        .bind(&user.did).bind(&input.from_tag).bind(&input.to_tag)
+        .execute(&state.pool).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- User Tag Tree ---
