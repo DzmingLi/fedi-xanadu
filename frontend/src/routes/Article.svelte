@@ -484,46 +484,46 @@ try {
 {:else if !article}
   <p class="meta">Loading...</p>
 {:else}
-  {#if tocItems.length > 0 || seriesId || topForks.length > 0}
-    <aside class="article-sidebar">
-      <div class="sidebar-sticky">
-        {#if tocItems.length > 0}
-          <nav class="toc">
-            <ul>
-              {#each tocItems as item}
-                <li class="toc-{item.level}" class:active={activeId === item.id}>
-                  <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
-                </li>
-              {/each}
-            </ul>
-          </nav>
-        {/if}
-        {#if seriesId}
-          <div class="sidebar-series">
-            <SeriesSidebar {seriesId} currentUri={uri} />
-          </div>
-        {/if}
-        {#if topForks.length > 0}
-          <div class="sidebar-forks">
-            <span class="sidebar-forks-title">Forks ({forks.length})</span>
-            {#each topForks as f}
-              <a href="/article?uri={encodeURIComponent(f.forked_uri)}" class="sidebar-fork-item">
-                <span class="sf-title">{f.title}</span>
-                <span class="sf-meta">
-                  {f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}
-                  <span class="sf-score">+{f.vote_score}</span>
-                </span>
-              </a>
-            {/each}
-            {#if forks.length > 3}
-              <a href="/forks?uri={encodeURIComponent(uri)}" class="sidebar-fork-more">{t('article.viewAllForks', forks.length)}</a>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    </aside>
-  {/if}
   <div class="article-layout">
+    {#if tocItems.length > 0 || seriesId || topForks.length > 0}
+      <aside class="article-sidebar">
+        <div class="sidebar-sticky">
+          {#if tocItems.length > 0}
+            <nav class="toc">
+              <ul>
+                {#each tocItems as item}
+                  <li class="toc-{item.level}" class:active={activeId === item.id}>
+                    <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
+                  </li>
+                {/each}
+              </ul>
+            </nav>
+          {/if}
+          {#if seriesId}
+            <div class="sidebar-series">
+              <SeriesSidebar {seriesId} currentUri={uri} />
+            </div>
+          {/if}
+          {#if topForks.length > 0}
+            <div class="sidebar-forks">
+              <span class="sidebar-forks-title">Forks ({forks.length})</span>
+              {#each topForks as f}
+                <a href="/article?uri={encodeURIComponent(f.forked_uri)}" class="sidebar-fork-item">
+                  <span class="sf-title">{f.title}</span>
+                  <span class="sf-meta">
+                    {f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}
+                    <span class="sf-score">+{f.vote_score}</span>
+                  </span>
+                </a>
+              {/each}
+              {#if forks.length > 3}
+                <a href="/forks?uri={encodeURIComponent(uri)}" class="sidebar-fork-more">{t('article.viewAllForks', forks.length)}</a>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      </aside>
+    {/if}
 
     <!-- Series navigation arrows (fixed on sides, hidden when sidebar is shown) -->
     {#if !seriesId}
