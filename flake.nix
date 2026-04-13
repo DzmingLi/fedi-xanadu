@@ -310,7 +310,7 @@
             outputHashes = {
               "atproto-auth-0.1.0" = "sha256-7U7pGTRXfPnnBLsINTO5ZGgfssO4B53qbfBXpSirM7U=";
               "fx-renderer-0.1.0" = "sha256-l6j9gVDmAONGhGLHRQMRssvRfY63KdSq1YfWf6hJo8o=";
-              "pijul-knot-0.1.0" = "sha256-pe6tyGnbNpTkQV/Fn9BHPX8rCyoNXpC/thX4dpv1LZ4=";
+              "pijul-knot-0.1.0" = "sha256-an28iYOXDVpGph8h+LlZD3UG3IVBuEpKYyhRBxnTDf0=";
             };
           };
           nativeBuildInputs = with pkgs; [ pkg-config ];
@@ -334,7 +334,7 @@
             outputHashes = {
               "atproto-auth-0.1.0" = "sha256-7U7pGTRXfPnnBLsINTO5ZGgfssO4B53qbfBXpSirM7U=";
               "fx-renderer-0.1.0" = "sha256-l6j9gVDmAONGhGLHRQMRssvRfY63KdSq1YfWf6hJo8o=";
-              "pijul-knot-0.1.0" = "sha256-pe6tyGnbNpTkQV/Fn9BHPX8rCyoNXpC/thX4dpv1LZ4=";
+              "pijul-knot-0.1.0" = "sha256-an28iYOXDVpGph8h+LlZD3UG3IVBuEpKYyhRBxnTDf0=";
             };
           };
           nativeBuildInputs = with pkgs; [ pkg-config ];
