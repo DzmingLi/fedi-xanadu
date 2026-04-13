@@ -145,7 +145,7 @@ pub async fn get_user_tag_prereqs(pool: &PgPool, did: &str) -> crate::Result<Vec
     let prereqs = sqlx::query_as::<_, UserTagPrereq>(
         "SELECT DISTINCT cp.tag_id AS from_tag, ct.tag_id AS to_tag, cp.prereq_type \
          FROM content_prereqs cp \
-         JOIN content_teaches ct ON ct.at_uri = cp.at_uri \
+         JOIN content_teaches ct ON ct.content_uri = cp.content_uri \
          WHERE cp.tag_id != ct.tag_id",
     )
     .fetch_all(pool)
