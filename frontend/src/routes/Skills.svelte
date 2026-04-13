@@ -25,6 +25,10 @@
   let expandedGroups = $state(new Set<string>());
   let selectedNodeId = $state<string | null>(null);
 
+  // Drag state: user position overrides (nodeId → {x, y} local to group)
+  let dragOverrides = $state(new Map<string, { x: number; y: number }>());
+  let dragging = $state<{ nodeId: string; rootId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
+
   // Tag search
   let allTags = $state<Tag[]>([]);
   let searchQuery = $state('');
@@ -89,10 +93,27 @@
   }
 
   // --- Layout computation per group ---
-  const NODE_W = 136;
   const NODE_H = 52;
   const H_GAP = 24;
   const V_GAP = 56;
+
+  // Estimate rendered width for a node label (CJK chars count as 2 units).
+  function measureNodeWidth(name: string): number {
+    let units = 0;
+    for (const ch of name) {
+      const cp = ch.codePointAt(0) ?? 0;
+      // CJK Unified, CJK Extension A/B, Hiragana, Katakana, Hangul, full-width
+      units += (cp >= 0x1100 && cp <= 0xFFEF) || (cp >= 0x20000 && cp <= 0x2FA1F) ? 2 : 1;
+    }
+    // icon(16) + gap(6) + text(units*7.5) + padding(20) + border(4)
+    const estimated = 16 + 6 + units * 7.5 + 20 + 4;
+    return Math.max(60, Math.min(180, Math.round(estimated)));
+  }
+
+  // NODE_W is now a per-node value; use measureNodeWidth() for layout.
+  // For backwards-compat where a single width is needed (conn endpoints), we
+  // look it up from the node's own width stored in LayoutNode.
+
 
   function getNodeStatus(tagId: string): 'locked' | 'available' | 'learning' | 'mastered' {
     const current = skillMap.get(tagId);
@@ -104,7 +125,7 @@
   }
 
   interface LayoutNode {
-    id: string; name: string; x: number; y: number;
+    id: string; name: string; x: number; y: number; w: number;
     status: 'locked' | 'available' | 'learning' | 'mastered';
     group: string | null; // parent group for visual labeling
   }
@@ -134,6 +155,10 @@
   function computeLayout(rootId: string): GroupLayout {
     const fieldNodes = collectLeaves(rootId);
     if (fieldNodes.size === 0) return { nodes: [], conns: [], w: 0, h: 0, progress: { total: 0, mastered: 0, learning: 0 } };
+
+    // Precompute per-node widths
+    const nodeWidths = new Map<string, number>();
+    for (const id of fieldNodes) nodeWidths.set(id, measureNodeWidth(resolveName(id)));
 
     // Filter prereq edges to within this group
     const localEdges = prereqEdges.filter(e => fieldNodes.has(e.from_tag) && fieldNodes.has(e.to_tag));
@@ -176,38 +201,40 @@
     const unplaced = [...fieldNodes].filter(id => !placed.has(id));
     if (unplaced.length > 0) byDepth.push(unplaced);
 
-    // Position
+    // Position: each row uses adaptive widths; rows are centered within maxRowW
     const positions = new Map<string, { x: number; y: number }>();
-    let maxRowW = 0;
-    for (const row of byDepth) {
-      const rowW = row.length * NODE_W + (row.length - 1) * H_GAP;
-      maxRowW = Math.max(maxRowW, rowW);
-    }
+    const rowWidths: number[] = byDepth.map(row => {
+      return row.reduce((sum, id) => sum + (nodeWidths.get(id) ?? 136), 0) + Math.max(0, row.length - 1) * H_GAP;
+    });
+    const maxRowW = Math.max(0, ...rowWidths);
+
     for (let row = 0; row < byDepth.length; row++) {
       const nodes = byDepth[row];
-      const rowW = nodes.length * NODE_W + (nodes.length - 1) * H_GAP;
+      const rowW = rowWidths[row];
       const offsetX = (maxRowW - rowW) / 2;
-      for (let col = 0; col < nodes.length; col++) {
-        positions.set(nodes[col], {
-          x: offsetX + col * (NODE_W + H_GAP),
-          y: row * (NODE_H + V_GAP),
-        });
+      let curX = offsetX;
+      for (const id of nodes) {
+        positions.set(id, { x: curX, y: row * (NODE_H + V_GAP) });
+        curX += (nodeWidths.get(id) ?? 136) + H_GAP;
       }
     }
 
     const nodes: LayoutNode[] = [];
     for (const [id, pos] of positions) {
-      nodes.push({ id, name: resolveName(id), x: pos.x, y: pos.y, status: getNodeStatus(id), group: findSubGroup(id, rootId) });
+      const w = nodeWidths.get(id) ?? 136;
+      nodes.push({ id, name: resolveName(id), x: pos.x, y: pos.y, w, status: getNodeStatus(id), group: findSubGroup(id, rootId) });
     }
 
     const conns: LayoutConn[] = [];
     for (const e of localEdges) {
       const fp = positions.get(e.from_tag), tp = positions.get(e.to_tag);
+      const fw = nodeWidths.get(e.from_tag) ?? 136;
+      const tw = nodeWidths.get(e.to_tag) ?? 136;
       if (fp && tp) {
         conns.push({
           from: e.from_tag, to: e.to_tag, type: e.prereq_type,
-          x1: fp.x + NODE_W / 2, y1: fp.y + NODE_H,
-          x2: tp.x + NODE_W / 2, y2: tp.y,
+          x1: fp.x + fw / 2, y1: fp.y + NODE_H,
+          x2: tp.x + tw / 2, y2: tp.y,
         });
       }
     }
@@ -218,7 +245,9 @@
       learning: nodes.filter(n => n.status === 'learning').length,
     };
 
-    return { nodes, conns, w: maxRowW + NODE_W, h: byDepth.length * (NODE_H + V_GAP) || NODE_H, progress };
+    // canvas width needs to accommodate max row + the widest single node (already in rowWidths)
+    const canvasW = maxRowW > 0 ? maxRowW : (nodes[0]?.w ?? 136);
+    return { nodes, conns, w: canvasW, h: byDepth.length * (NODE_H + V_GAP) || NODE_H, progress };
   }
 
   // Compute layouts for all expanded roots
@@ -231,6 +260,152 @@
     }
     return map;
   });
+
+  // --- Cross-group DAG overlay ---
+  // DOM refs
+  let scrollContainerEl = $state<HTMLElement | null>(null);
+  // groupEl[rootId] → the .group-box element
+  let groupEls = $state(new Map<string, HTMLElement>());
+  // nodeEl[tagId] → the .skill-node button element
+  let nodeEls = $state(new Map<string, HTMLElement>());
+
+  interface CrossConn {
+    from: string; to: string; type: string;
+    x1: number; y1: number; x2: number; y2: number;
+  }
+  let crossConns = $state<CrossConn[]>([]);
+
+  // Identify cross-group edges: both tags exist in layouts but in different groups
+  let crossGroupEdges = $derived.by(() => {
+    // Build a tagId → rootId map
+    const tagToRoot = new Map<string, string>();
+    for (const [rootId, layout] of groupLayouts) {
+      for (const node of layout.nodes) tagToRoot.set(node.id, rootId);
+    }
+    return prereqEdges.filter(e => {
+      const fr = tagToRoot.get(e.from_tag);
+      const tr = tagToRoot.get(e.to_tag);
+      return fr && tr && fr !== tr;
+    });
+  });
+
+  function recomputeCrossConns() {
+    if (!scrollContainerEl || crossGroupEdges.length === 0) {
+      crossConns = [];
+      return;
+    }
+    const scrollRect = scrollContainerEl.getBoundingClientRect();
+    const scrollTop = scrollContainerEl.scrollTop;
+    const scrollLeft = scrollContainerEl.scrollLeft;
+
+    const result: CrossConn[] = [];
+    for (const edge of crossGroupEdges) {
+      const fromEl = nodeEls.get(edge.from_tag);
+      const toEl = nodeEls.get(edge.to_tag);
+      if (!fromEl || !toEl) continue;
+
+      const fr = fromEl.getBoundingClientRect();
+      const tr = toEl.getBoundingClientRect();
+
+      // Convert from viewport coords to scroll-container local coords
+      const x1 = fr.left - scrollRect.left + scrollLeft + fr.width / 2;
+      const y1 = fr.top - scrollRect.top + scrollTop + fr.height;
+      const x2 = tr.left - scrollRect.left + scrollLeft + tr.width / 2;
+      const y2 = tr.top - scrollRect.top + scrollTop;
+
+      result.push({ from: edge.from_tag, to: edge.to_tag, type: edge.prereq_type, x1, y1, x2, y2 });
+    }
+    crossConns = result;
+  }
+
+  // Recompute after each render cycle that might change layout
+  $effect(() => {
+    // Access reactive dependencies so this re-runs when they change
+    const _gl = groupLayouts;
+    const _eg = expandedGroups;
+    const _cge = crossGroupEdges;
+
+    // Use rAF to ensure DOM has updated before reading positions
+    const id = requestAnimationFrame(recomputeCrossConns);
+    return () => cancelAnimationFrame(id);
+  });
+
+  // Svelte actions for registering DOM elements in our Maps
+  function trackGroup(el: HTMLElement, rootId: string) {
+    groupEls.set(rootId, el);
+    return {
+      update(newId: string) {
+        groupEls.delete(rootId);
+        groupEls.set(newId, el);
+      },
+      destroy() {
+        groupEls.delete(rootId);
+      }
+    };
+  }
+
+  function trackNode(el: HTMLElement, tagId: string) {
+    nodeEls.set(tagId, el);
+    return {
+      update(newId: string) {
+        nodeEls.delete(tagId);
+        nodeEls.set(newId, el);
+      },
+      destroy() {
+        nodeEls.delete(tagId);
+      }
+    };
+  }
+
+  function crossConnPath(c: CrossConn): string {
+    const my = (c.y1 + c.y2) / 2;
+    return `M${c.x1},${c.y1} C${c.x1},${my} ${c.x2},${my} ${c.x2},${c.y2}`;
+  }
+
+  // --- Node dragging ---
+  function onNodePointerDown(e: PointerEvent, nodeId: string, rootId: string, origX: number, origY: number) {
+    if (e.button !== 0) return; // left button only
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragging = { nodeId, rootId, startX: e.clientX, startY: e.clientY, origX, origY };
+  }
+
+  function onNodePointerMove(e: PointerEvent) {
+    if (!dragging) return;
+    const dx = e.clientX - dragging.startX;
+    const dy = e.clientY - dragging.startY;
+    dragOverrides.set(dragging.nodeId, { x: dragging.origX + dx, y: dragging.origY + dy });
+    dragOverrides = new Map(dragOverrides); // trigger reactivity
+  }
+
+  let justDragged = false;
+  function onNodePointerUp(e: PointerEvent) {
+    if (!dragging) return;
+    const dx = Math.abs(e.clientX - dragging.startX);
+    const dy = Math.abs(e.clientY - dragging.startY);
+    justDragged = dx > 3 || dy > 3;
+    dragging = null;
+    // Recompute cross-group arrows after drag
+    requestAnimationFrame(recomputeCrossConns);
+    // Clear justDragged after click event has fired
+    setTimeout(() => { justDragged = false; }, 0);
+  }
+
+  // Apply drag overrides to a layout — returns new layout with overridden positions
+  function applyDragOverrides(layout: GroupLayout): GroupLayout {
+    const nodes = layout.nodes.map(n => {
+      const ov = dragOverrides.get(n.id);
+      return ov ? { ...n, x: ov.x, y: ov.y } : n;
+    });
+    // Recompute connections to follow dragged nodes
+    const nodePos = new Map(nodes.map(n => [n.id, n]));
+    const conns = layout.conns.map(c => {
+      const fn = nodePos.get(c.from), tn = nodePos.get(c.to);
+      if (!fn || !tn) return c;
+      return { ...c, x1: fn.x + fn.w / 2, y1: fn.y + NODE_H, x2: tn.x + tn.w / 2, y2: tn.y };
+    });
+    return { ...layout, nodes, conns };
+  }
 
   // Selected node details
   let selectedNode = $derived.by(() => {
@@ -395,7 +570,11 @@
     {#if loading}
       <div class="center-msg"><p>Loading...</p></div>
     {:else}
-      <div class="groups-scroll" onclick={(e: MouseEvent) => { if ((e.target as HTMLElement).classList.contains('groups-scroll')) selectedNodeId = null; }}>
+      <div class="groups-scroll"
+        bind:this={scrollContainerEl}
+        onscroll={recomputeCrossConns}
+        onclick={(e: MouseEvent) => { if ((e.target as HTMLElement).classList.contains('groups-scroll')) selectedNodeId = null; }}
+      >
         <!-- Frontier skills: next to learn -->
         {#if frontierSkills.length > 0}
           <div class="frontier-section">
@@ -413,9 +592,10 @@
           </div>
         {/if}
         {#each roots as root (root)}
-          {@const layout = groupLayouts.get(root)}
+          {@const rawLayout = groupLayouts.get(root)}
+          {@const layout = rawLayout ? applyDragOverrides(rawLayout) : rawLayout}
           {@const expanded = expandedGroups.has(root)}
-          <div class="group-box" class:expanded>
+          <div class="group-box" class:expanded use:trackGroup={root}>
             <button class="group-header" onclick={() => toggleGroup(root)}>
               <svg class="chevron" class:open={expanded} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
               <span class="group-name">{resolveName(root)}</span>
@@ -455,10 +635,15 @@
                     <button
                       class="skill-node st-{node.status}"
                       class:selected={selectedNodeId === node.id}
-                      style="left:{node.x}px; top:{node.y}px; width:{NODE_W}px; height:{NODE_H}px;"
-                      onclick={() => selectedNodeId = selectedNodeId === node.id ? null : node.id}
+                      class:dragging-node={dragging?.nodeId === node.id}
+                      style="left:{node.x}px; top:{node.y}px; width:{node.w}px; height:{NODE_H}px;"
+                      onclick={() => { if (!justDragged) selectedNodeId = selectedNodeId === node.id ? null : node.id; }}
                       ondblclick={() => window.location.href = `/tag?id=${encodeURIComponent(node.id)}`}
+                      onpointerdown={(e) => onNodePointerDown(e, node.id, root, node.x, node.y)}
+                      onpointermove={onNodePointerMove}
+                      onpointerup={onNodePointerUp}
                       title={node.name}
+                      use:trackNode={node.id}
                     >
                       <span class="node-icon">
                         {#if node.status === 'mastered'}
@@ -481,6 +666,27 @@
             {/if}
           </div>
         {/each}
+
+        <!-- Cross-group DAG overlay -->
+        {#if crossConns.length > 0}
+          <svg class="cross-conn-svg" aria-hidden="true">
+            <defs>
+              <marker id="xarr-req" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                <path d="M0,0 L10,5 L0,10z" fill="#ef4444"/>
+              </marker>
+              <marker id="xarr-rec" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L10,5 L0,10z" fill="#f59e0b"/>
+              </marker>
+            </defs>
+            {#each crossConns as c}
+              <path
+                d={crossConnPath(c)}
+                class="conn conn-{c.type} cross-conn"
+                marker-end={c.type === 'required' ? 'url(#xarr-req)' : 'url(#xarr-rec)'}
+              />
+            {/each}
+          </svg>
+        {/if}
       </div>
 
       <!-- Detail panel -->
@@ -765,6 +971,20 @@
   .conn-required { stroke: #ef4444; stroke-dasharray: 8 4; }
   .conn-recommended { stroke: #f59e0b; stroke-dasharray: 6 4; }
 
+  /* ─── Cross-group overlay SVG ─── */
+  .cross-conn-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 8;
+  }
+  .cross-conn {
+    opacity: 0.5;
+    stroke-width: 1.5;
+  }
+
   /* ─── Skill Nodes ─── */
   .skill-node {
     position: absolute;
@@ -787,6 +1007,12 @@
   .skill-node.selected {
     z-index: 10;
     transform: scale(1.08);
+  }
+  .skill-node.dragging-node {
+    z-index: 20;
+    opacity: 0.85;
+    cursor: grabbing;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
   }
 
   .node-icon {

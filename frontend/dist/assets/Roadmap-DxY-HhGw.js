@@ -1,4 +1,4 @@
-# 路线图
+import{p as o,R as r,k as d,l as s,v as t}from"./index-Ct6Kw0c-.js";import"./legacy-BezBufHO.js";import{g as p,i as l}from"./marked.esm-CFn-LCaS.js";const m=`# 路线图
 
 Fedi-Xanadu 的开发计划。欢迎提 issue 或 PR 参与贡献。
 
@@ -23,3 +23,4 @@ Fedi-Xanadu 的开发计划。欢迎提 issue 或 PR 参与贡献。
 - **移动端适配（PWA）** — 响应式布局 + Service Worker，让移动端用户无需安装即可使用
 - **移动端 App（Tauri Mobile）** — 基于 Tauri 2.0 构建 iOS/Android 原生应用，复用 Rust + Svelte 现有技术栈，支持 Typst 本地渲染和离线缓存
 - **Logseq 插件** — 在 Logseq 中发布和同步 Fedi-Xanadu 文章（低优先级）
+`;var u=t('<div class="content roadmap-content svelte-1cn1z2"></div>');function S(a,e){o(e,!1);const i=p.parse(m);l();var n=u();r(n,()=>i,!0),d(a,n),s()}export{S as default};
