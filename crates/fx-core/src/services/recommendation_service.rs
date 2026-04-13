@@ -192,6 +192,8 @@ best_translation AS (
     FROM articles a
     LEFT JOIN lang_settings ls ON TRUE
     WHERE {vis} AND a.kind = 'article'
+      -- Exclude articles that belong to a series (series are recommended separately)
+      AND NOT EXISTS (SELECT 1 FROM series_articles sa WHERE sa.article_uri = a.at_uri)
       -- Exclude learned
       AND NOT EXISTS (SELECT 1 FROM user_learned ul WHERE ul.article_uri = a.at_uri)
       -- Exclude restricted without access
