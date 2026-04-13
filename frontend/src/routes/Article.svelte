@@ -907,6 +907,7 @@ try {
   .article-layout.has-series-sidebar {
     flex: 1;
     min-width: 0;
+    max-width: 760px;
   }
 
   /* Series navigation */
