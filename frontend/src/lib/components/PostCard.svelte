@@ -45,6 +45,23 @@
   let expandedBookmarked = $state(false);
   let showComments = $state(false);
 
+  // Render KaTeX after expanded content is inserted into DOM
+  $effect(() => {
+    if (contentEl && expandedContent) {
+      import('katex').then(katex => {
+        import('katex/dist/katex.min.css');
+        contentEl!.querySelectorAll('.katex-inline').forEach(span => {
+          const tex = span.textContent || '';
+          try { katex.default.render(tex, span as HTMLElement, { throwOnError: false, displayMode: false }); } catch {}
+        });
+        contentEl!.querySelectorAll('.katex-display').forEach(div => {
+          const tex = div.textContent || '';
+          try { katex.default.render(tex, div as HTMLElement, { throwOnError: false, displayMode: true }); } catch {}
+        });
+      });
+    }
+  });
+
   async function toggleExpand(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -110,7 +127,7 @@
 </script>
 
 {#if article}
-  <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card">
+  <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card" class:hidden={expanded}>
     <div class="card-top">
       {#if article.kind === 'question'}
         <span class="question-badge">{t('qa.questionBadge')}</span>
@@ -238,6 +255,9 @@
 {/if}
 
 <style>
+  .post-card.hidden {
+    display: none;
+  }
   .post-card {
     display: block;
     position: relative;

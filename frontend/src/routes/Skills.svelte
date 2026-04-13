@@ -21,8 +21,8 @@
   // Frontier skills (next to learn)
   let frontierSkills = $state<FrontierSkill[]>([]);
 
-  // Expansion & selection
-  let expandedGroups = $state(new Set<string>());
+  // Field tab & selection
+  let activeField = $state('');
   let selectedNodeId = $state<string | null>(null);
 
   // Drag state: user position overrides (nodeId → {x, y} local to group)
@@ -55,23 +55,15 @@
     [...new Set(tree.map(e => e.parent_tag))].filter(p => !childrenOf.hasParent.has(p))
   );
 
-  // Expand all roots by default
+  // Set first field as active by default
   $effect(() => {
-    if (roots.length > 0 && expandedGroups.size === 0) {
-      expandedGroups = new Set(roots);
-    }
+    if (roots.length > 0 && !activeField) activeField = roots[0];
   });
 
   function resolveName(id: string): string {
     const i18n = tagNamesI18n[id];
     const name = tagNamesMap[id];
     return i18n ? resolveTagName(i18n, name || id, id) : (name || id);
-  }
-
-  function toggleGroup(id: string) {
-    const s = new Set(expandedGroups);
-    if (s.has(id)) s.delete(id); else s.add(id);
-    expandedGroups = s;
   }
 
   // --- Collect DIRECT children that are leaf nodes (no further children) ---
@@ -171,8 +163,8 @@
     return null;
   }
 
-  function computeLayout(rootId: string): GroupLayout {
-    const fieldNodes = collectDirectLeaves(rootId);
+  function computeLayout(rootId: string, deep: boolean = false): GroupLayout {
+    const fieldNodes = deep ? collectAllLeaves(rootId) : collectDirectLeaves(rootId);
     const allLeaves = collectAllLeaves(rootId);
     if (fieldNodes.size === 0 && getSubGroups(rootId).length === 0) return { nodes: [], conns: [], w: 0, h: 0, progress: { total: 0, mastered: 0, learning: 0 } };
 
@@ -270,18 +262,19 @@
     return { nodes, conns, w: canvasW, h: byDepth.length * (NODE_H + V_GAP) || NODE_H, progress };
   }
 
-  // Compute layouts for all expanded groups (roots AND sub-groups)
+  // Compute layouts for active field's sub-groups (shown as side-by-side boxes)
+  let activeSubGroups = $derived(activeField ? getSubGroups(activeField) : []);
+
   let groupLayouts = $derived.by(() => {
     const map = new Map<string, GroupLayout>();
-    function computeRecursive(id: string) {
-      if (!expandedGroups.has(id)) return;
-      map.set(id, computeLayout(id));
-      for (const sub of getSubGroups(id)) {
-        computeRecursive(sub);
-      }
-    }
-    for (const root of roots) {
-      computeRecursive(root);
+    if (!activeField) return map;
+    // Direct leaves of active field (ungrouped)
+    const direct = computeLayout(activeField);
+    if (direct.nodes.length > 0) map.set(activeField, direct);
+    // Each sub-group: deep layout (all descendant leaves)
+    for (const sub of activeSubGroups) {
+      const layout = computeLayout(sub, true);
+      if (layout.nodes.length > 0) map.set(sub, layout);
     }
     return map;
   });
@@ -347,7 +340,7 @@
   $effect(() => {
     // Access reactive dependencies so this re-runs when they change
     const _gl = groupLayouts;
-    const _eg = expandedGroups;
+    const _af = activeField;
     const _cge = crossGroupEdges;
 
     // Use rAF to ensure DOM has updated before reading positions
@@ -595,10 +588,22 @@
     {#if loading}
       <div class="center-msg"><p>Loading...</p></div>
     {:else}
-      <div class="groups-scroll"
+      <!-- Field tabs -->
+      <div class="field-tabs">
+        {#each roots as root (root)}
+          {@const leaves = collectAllLeaves(root)}
+          {@const mastered = [...leaves].filter(id => skillMap.get(id) === 'mastered').length}
+          <button class="field-tab" class:active={activeField === root} onclick={() => activeField = root}>
+            {resolveName(root)}
+            <span class="tab-count">{mastered}/{leaves.size}</span>
+          </button>
+        {/each}
+      </div>
+
+      <div class="field-content"
         bind:this={scrollContainerEl}
         onscroll={recomputeCrossConns}
-        onclick={(e: MouseEvent) => { if ((e.target as HTMLElement).classList.contains('groups-scroll')) selectedNodeId = null; }}
+        onclick={(e: MouseEvent) => { if ((e.target as HTMLElement).classList.contains('field-content')) selectedNodeId = null; }}
       >
         <!-- Frontier skills: next to learn -->
         {#if frontierSkills.length > 0}
@@ -616,37 +621,31 @@
             </div>
           </div>
         {/if}
-        {#snippet renderGroup(groupId: string, depth: number)}
-          {@const rawLayout = groupLayouts.get(groupId)}
-          {@const layout = rawLayout ? applyDragOverrides(rawLayout) : rawLayout}
-          {@const expanded = expandedGroups.has(groupId)}
-          {@const subGroups = getSubGroups(groupId)}
-          <div class="group-box" class:expanded class:sub-group={depth > 0} use:trackGroup={groupId}>
-            <button class="group-header" class:sub-header={depth > 0} onclick={() => toggleGroup(groupId)}>
-              <svg class="chevron" class:open={expanded} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-              <span class="group-name">{resolveName(groupId)}</span>
-              {#if layout}
-                <span class="group-progress">{layout.progress.mastered}/{layout.progress.total}</span>
+
+        <!-- Sub-group boxes arranged side by side -->
+        <div class="subgroup-row">
+          {#each [...groupLayouts.entries()] as [boxId, rawLayout] (boxId)}
+            {@const layout = applyDragOverrides(rawLayout)}
+            <div class="subgroup-box" use:trackGroup={boxId}>
+              <div class="subgroup-header">
+                <span class="subgroup-name">{resolveName(boxId)}</span>
+                <span class="subgroup-progress">{layout.progress.mastered}/{layout.progress.total}</span>
                 {#if layout.progress.total > 0}
                   <div class="group-bar">
                     <div class="bar-fill mastered" style="width:{layout.progress.mastered / layout.progress.total * 100}%"></div>
                     <div class="bar-fill learning" style="width:{layout.progress.learning / layout.progress.total * 100}%"></div>
                   </div>
                 {/if}
-              {/if}
-            </button>
-
-            {#if expanded}
-              <!-- Leaf nodes for this group -->
-              {#if layout && layout.nodes.length > 0}
-                <div class="group-canvas">
-                  <div class="group-content" style="min-width:{layout.w}px; min-height:{layout.h + 20}px;">
+              </div>
+              {#if layout.nodes.length > 0}
+                <div class="subgroup-canvas">
+                  <div class="subgroup-content" style="min-width:{layout.w}px; min-height:{layout.h + 20}px;">
                     <svg class="conn-svg" style="width:{layout.w}px; height:{layout.h + 20}px;">
                       <defs>
-                        <marker id="arr-req-{groupId}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                        <marker id="arr-req-{boxId}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
                           <path d="M0,0 L10,5 L0,10z" fill="#ef4444"/>
                         </marker>
-                        <marker id="arr-rec-{groupId}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                        <marker id="arr-rec-{boxId}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
                           <path d="M0,0 L10,5 L0,10z" fill="#f59e0b"/>
                         </marker>
                       </defs>
@@ -654,7 +653,7 @@
                         <path
                           d={connPath(c)}
                           class="conn conn-{c.type}"
-                          marker-end={c.type === 'required' ? `url(#arr-req-${groupId})` : `url(#arr-rec-${groupId})`}
+                          marker-end={c.type === 'required' ? `url(#arr-req-${boxId})` : `url(#arr-rec-${boxId})`}
                         />
                       {/each}
                     </svg>
@@ -667,7 +666,7 @@
                         style="left:{node.x}px; top:{node.y}px; width:{node.w}px; height:{NODE_H}px;"
                         onclick={() => { if (!justDragged) selectedNodeId = selectedNodeId === node.id ? null : node.id; }}
                         ondblclick={() => window.location.href = `/tag?id=${encodeURIComponent(node.id)}`}
-                        onpointerdown={(e) => onNodePointerDown(e, node.id, groupId, node.x, node.y)}
+                        onpointerdown={(e) => onNodePointerDown(e, node.id, boxId, node.x, node.y)}
                         onpointermove={onNodePointerMove}
                         onpointerup={onNodePointerUp}
                         title={node.name}
@@ -690,24 +689,11 @@
                   </div>
                 </div>
               {/if}
+            </div>
+          {/each}
+        </div>
 
-              <!-- Nested sub-groups -->
-              {#each subGroups as sub (sub)}
-                {@render renderGroup(sub, depth + 1)}
-              {/each}
-
-              {#if (!layout || layout.nodes.length === 0) && subGroups.length === 0}
-                <div class="group-empty">{t('skills.noSkillsInGroup')}</div>
-              {/if}
-            {/if}
-          </div>
-        {/snippet}
-
-        {#each roots as root (root)}
-          {@render renderGroup(root, 0)}
-        {/each}
-
-        <!-- Cross-group DAG overlay -->
+        <!-- Cross-box DAG overlay -->
         {#if crossConns.length > 0}
           <svg class="cross-conn-svg" aria-hidden="true">
             <defs>
@@ -907,70 +893,100 @@
   }
   .search-item:hover { background: var(--bg-gray, #f5f5f5); }
 
-  /* ─── Scrollable groups area ─── */
-  .groups-scroll {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
+  /* ─── Field tabs ─── */
+  .field-tabs {
     display: flex;
-    flex-direction: column;
-    gap: 12px;
-    position: relative;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-white);
+    gap: 0;
+    flex-shrink: 0;
+    overflow-x: auto;
   }
-
-  /* ─── Group box ─── */
-  .group-box {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: transparent;
-    overflow: hidden;
-    transition: border-color 0.2s;
-  }
-  .group-box.expanded {
-    border-color: var(--border-strong, var(--border));
-  }
-  .group-box.sub-group {
-    margin: 4px 12px 8px;
-    border-radius: 6px;
-    border-color: var(--border);
-    background: var(--bg-page, #f9f9f7);
-  }
-  .sub-header {
-    font-size: 13px !important;
-    padding: 6px 12px !important;
-  }
-
-  .group-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 12px 16px;
+  .field-tab {
+    padding: 10px 20px;
     border: none;
     background: none;
     cursor: pointer;
-    font-size: 15px;
-    text-align: left;
-    transition: background 0.15s;
-  }
-  .group-header:hover {
-    background: var(--bg-gray, rgba(0,0,0,0.02));
-  }
-  .chevron {
-    flex-shrink: 0;
-    transition: transform 0.2s;
-    color: var(--text-hint);
-    transform: rotate(0deg);
-  }
-  .chevron.open {
-    transform: rotate(90deg);
-  }
-  .group-name {
+    font-size: 14px;
     font-family: var(--font-serif);
     font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .field-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .field-tab:hover:not(.active) {
     color: var(--text-primary);
   }
-  .group-progress {
+  .tab-count {
+    font-size: 11px;
+    font-family: var(--font-sans);
+    font-weight: 400;
+    color: var(--text-hint);
+    background: var(--bg-gray, rgba(0,0,0,0.04));
+    padding: 1px 6px;
+    border-radius: 8px;
+  }
+  .field-tab.active .tab-count {
+    background: rgba(95,155,101,0.12);
+    color: var(--accent);
+  }
+
+  /* ─── Field content area ─── */
+  .field-content {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    position: relative;
+  }
+
+  /* ─── Sub-group boxes (side by side) ─── */
+  .subgroup-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 16px;
+    min-height: 200px;
+  }
+
+  .subgroup-box {
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-white);
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.2s;
+  }
+  .subgroup-box:hover {
+    border-color: var(--border-strong, var(--border));
+  }
+
+  .subgroup-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-page, #f9f9f7);
+    border-radius: 8px 8px 0 0;
+  }
+  .subgroup-name {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+  }
+  .subgroup-progress {
     font-size: 12px;
     color: var(--text-hint);
     margin-left: auto;
@@ -987,26 +1003,19 @@
   .bar-fill.mastered { background: var(--green, #5f9b65); transition: width 0.3s; }
   .bar-fill.learning { background: var(--amber, #f59e0b); transition: width 0.3s; }
 
-  .group-canvas {
+  .subgroup-canvas {
     padding: 16px 20px 24px;
-    overflow-x: auto;
-    border-top: 1px solid var(--border);
+    overflow: visible;
     background:
       radial-gradient(circle at 1px 1px, var(--grid-dot, rgba(0,0,0,0.03)) 1px, transparent 0);
     background-size: 20px 20px;
   }
-  :global([data-theme="dark"]) .group-canvas {
+  :global([data-theme="dark"]) .subgroup-canvas {
     --grid-dot: rgba(255,255,255,0.03);
   }
-  .group-content {
+  .subgroup-content {
     position: relative;
     margin: 0 auto;
-  }
-  .group-empty {
-    padding: 16px 20px;
-    font-size: 13px;
-    color: var(--text-hint);
-    border-top: 1px solid var(--border);
   }
 
   /* ─── SVG Connections ─── */
