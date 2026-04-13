@@ -336,6 +336,11 @@ export default {
   'skills.resetSkill': 'Reset',
   'skills.completePrereqs': 'Complete prerequisites first',
   'skills.searchTag': 'Search to add skill...',
+  'skills.connectModeOn': 'Connect',
+  'skills.connectModeOff': 'Exit Connect',
+  'skills.addChildTag': 'Add child tag',
+  'skills.addChildHint': 'Add a child tag under "{0}"',
+  'skills.deletePrereq': 'Delete prerequisite',
 
   // Skill Tree View
   'skillTree.adopt': 'Adopt',

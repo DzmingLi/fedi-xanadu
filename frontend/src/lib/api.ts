@@ -156,6 +156,12 @@ export const unlightSkill = (tag_id: string) => del<void>('/skills/unlight', { t
 // Tag tree & prereqs
 export const getTagTree = () => get<TagTreeEntry[]>('/tag-tree');
 export const getTagPrereqs = () => get<UserTagPrereq[]>('/tag-prereqs');
+export const addTagPrereq = (from_tag: string, to_tag: string, prereq_type: string = 'required') =>
+  post<void>('/tag-prereqs', { from_tag, to_tag, prereq_type });
+export const removeTagPrereq = (from_tag: string, to_tag: string) =>
+  del<void>('/tag-prereqs', { from_tag, to_tag });
+export const addTagChild = (parent_tag: string, child_tag: string) =>
+  post<void>('/tag-tree', { parent_tag, child_tag });
 
 // Recommendations
 export const getRecommendations = (limit = 30, offset = 0, category?: string) => {

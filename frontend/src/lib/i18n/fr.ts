@@ -281,6 +281,11 @@ export default {
   'skills.resetSkill': 'Réinitialiser',
   'skills.completePrereqs': 'Complétez d\'abord les prérequis',
   'skills.searchTag': 'Rechercher une compétence...',
+  'skills.connectModeOn': 'Connecter',
+  'skills.connectModeOff': 'Quitter connexion',
+  'skills.addChildTag': 'Ajouter un sous-tag',
+  'skills.addChildHint': 'Ajouter un sous-tag sous « {0} »',
+  'skills.deletePrereq': 'Supprimer le prérequis',
 
   // Skill Tree View
   'skillTree.adopt': 'Adopter',

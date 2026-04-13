@@ -332,6 +332,11 @@ export default {
   'skills.resetSkill': '重置',
   'skills.completePrereqs': '请先完成前置要求',
   'skills.searchTag': '搜索添加技能...',
+  'skills.connectModeOn': '连线模式',
+  'skills.connectModeOff': '退出连线',
+  'skills.addChildTag': '添加子标签',
+  'skills.addChildHint': '为「{0}」添加子标签',
+  'skills.deletePrereq': '删除前置依赖',
 
   // Skill Tree View
   'skillTree.adopt': '采用',

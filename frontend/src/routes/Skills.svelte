@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getActiveTree, getTagTree, getTagPrereqs, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote, getFrontierSkills } from '../lib/api';
+  import { getActiveTree, getTagTree, getTagPrereqs, addTagPrereq, removeTagPrereq, addTagChild, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote, getFrontierSkills } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import { authorName, tagName as resolveTagName } from '../lib/display';
@@ -28,6 +28,17 @@
   // Drag state: user position overrides (nodeId → {x, y} local to group)
   let dragOverrides = $state(new Map<string, { x: number; y: number }>());
   let dragging = $state<{ nodeId: string; rootId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  // Connect mode: drag from one node to another to create prereq
+  let connectMode = $state(false);
+  let connecting = $state<{ fromId: string; fromX: number; fromY: number; curX: number; curY: number } | null>(null);
+
+  // Context menu
+  let contextMenu = $state<{ x: number; y: number; nodeId?: string; edgeFrom?: string; edgeTo?: string } | null>(null);
+
+  // Add child tag dialog
+  let addChildDialog = $state<{ parentId: string } | null>(null);
+  let newChildTagId = $state('');
 
   // Tag search
   let allTags = $state<Tag[]>([]);
@@ -530,6 +541,110 @@
     communityTrees = await listSkillTrees();
   }
 
+  // --- Connect mode handlers ---
+  function onConnectPointerDown(e: PointerEvent, nodeId: string) {
+    if (!connectMode || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = nodeEls.get(nodeId);
+    if (!el || !scrollContainerEl) return;
+    const scrollRect = scrollContainerEl.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const x = r.left - scrollRect.left + scrollContainerEl.scrollLeft + r.width / 2;
+    const y = r.top - scrollRect.top + scrollContainerEl.scrollTop + r.height;
+    connecting = { fromId: nodeId, fromX: x, fromY: y, curX: x, curY: y };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onConnectPointerMove(e: PointerEvent) {
+    if (!connecting || !scrollContainerEl) return;
+    const scrollRect = scrollContainerEl.getBoundingClientRect();
+    connecting = {
+      ...connecting,
+      curX: e.clientX - scrollRect.left + scrollContainerEl.scrollLeft,
+      curY: e.clientY - scrollRect.top + scrollContainerEl.scrollTop,
+    };
+  }
+
+  async function onConnectPointerUp(e: PointerEvent) {
+    if (!connecting || !scrollContainerEl) { connecting = null; return; }
+    // Find which node is under the pointer
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const nodeBtn = el?.closest('.skill-node') as HTMLElement | null;
+    let targetId: string | null = null;
+    if (nodeBtn) {
+      for (const [id, nel] of nodeEls) {
+        if (nel === nodeBtn) { targetId = id; break; }
+      }
+    }
+    const fromId = connecting.fromId;
+    connecting = null;
+    if (targetId && targetId !== fromId) {
+      try {
+        await addTagPrereq(fromId, targetId, 'required');
+        // Reload prereqs
+        prereqEdges = await getTagPrereqs();
+      } catch (err: any) {
+        console.error('Failed to add prereq:', err);
+      }
+    }
+  }
+
+  // --- Context menu handlers ---
+  function onNodeContextMenu(e: MouseEvent, nodeId: string) {
+    e.preventDefault();
+    contextMenu = { x: e.clientX, y: e.clientY, nodeId };
+  }
+
+  function onEdgeContextMenu(e: MouseEvent, from: string, to: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    contextMenu = { x: e.clientX, y: e.clientY, edgeFrom: from, edgeTo: to };
+  }
+
+  function closeContextMenu() {
+    contextMenu = null;
+  }
+
+  async function ctxDeletePrereq() {
+    if (!contextMenu?.edgeFrom || !contextMenu?.edgeTo) return;
+    try {
+      await removeTagPrereq(contextMenu.edgeFrom, contextMenu.edgeTo);
+      prereqEdges = await getTagPrereqs();
+    } catch (err: any) {
+      console.error('Failed to remove prereq:', err);
+    }
+    contextMenu = null;
+  }
+
+  async function ctxAddChild() {
+    if (!contextMenu?.nodeId) return;
+    addChildDialog = { parentId: contextMenu.nodeId };
+    contextMenu = null;
+  }
+
+  async function submitAddChild() {
+    if (!addChildDialog || !newChildTagId.trim()) return;
+    try {
+      await addTagChild(addChildDialog.parentId, newChildTagId.trim());
+      tree = await getTagTree();
+      newChildTagId = '';
+      addChildDialog = null;
+    } catch (err: any) {
+      console.error('Failed to add child tag:', err);
+    }
+  }
+
+  function ctxViewTag() {
+    if (!contextMenu?.nodeId) return;
+    window.location.href = `/tag?id=${encodeURIComponent(contextMenu.nodeId)}`;
+  }
+
+  // Close context menu on any click
+  function onGlobalClick() {
+    if (contextMenu) contextMenu = null;
+  }
+
   // SVG path helper
   function connPath(c: LayoutConn): string {
     const my = (c.y1 + c.y2) / 2;
@@ -537,7 +652,8 @@
   }
 </script>
 
-<div class="skills-page">
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<div class="skills-page" onclick={onGlobalClick}>
   <!-- Top toolbar -->
   <div class="skills-toolbar">
     <div class="toolbar-left">
@@ -572,6 +688,13 @@
             </div>
           {/if}
         </div>
+        {#if isLoggedIn}
+          <button class="connect-toggle" class:active={connectMode} onclick={() => connectMode = !connectMode}
+            title={connectMode ? t('skills.connectModeOff') : t('skills.connectModeOn')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            {connectMode ? t('skills.connectModeOff') : t('skills.connectModeOn')}
+          </button>
+        {/if}
         <div class="legend">
           <span class="legend-item"><span class="dot mastered"></span>{t('skills.mastered')}</span>
           <span class="legend-item"><span class="dot learning"></span>{t('skills.learning')}</span>
@@ -650,6 +773,12 @@
                         </marker>
                       </defs>
                       {#each layout.conns as c}
+                        <!-- Invisible wide hit area for right-click -->
+                        <path
+                          d={connPath(c)}
+                          class="conn-hit"
+                          oncontextmenu={(e) => onEdgeContextMenu(e, c.from, c.to)}
+                        />
                         <path
                           d={connPath(c)}
                           class="conn conn-{c.type}"
@@ -663,12 +792,14 @@
                         class="skill-node st-{node.status}"
                         class:selected={selectedNodeId === node.id}
                         class:dragging-node={dragging?.nodeId === node.id}
+                        class:connect-mode={connectMode}
                         style="left:{node.x}px; top:{node.y}px; width:{node.w}px; height:{NODE_H}px;"
-                        onclick={() => { if (!justDragged) selectedNodeId = selectedNodeId === node.id ? null : node.id; }}
-                        ondblclick={() => window.location.href = `/tag?id=${encodeURIComponent(node.id)}`}
-                        onpointerdown={(e) => onNodePointerDown(e, node.id, boxId, node.x, node.y)}
-                        onpointermove={onNodePointerMove}
-                        onpointerup={onNodePointerUp}
+                        onclick={() => { if (!justDragged && !connectMode) selectedNodeId = selectedNodeId === node.id ? null : node.id; }}
+                        ondblclick={() => { if (!connectMode) window.location.href = `/tag?id=${encodeURIComponent(node.id)}`; }}
+                        onpointerdown={(e) => connectMode ? onConnectPointerDown(e, node.id) : onNodePointerDown(e, node.id, boxId, node.x, node.y)}
+                        onpointermove={(e) => connectMode ? onConnectPointerMove(e) : onNodePointerMove(e)}
+                        onpointerup={(e) => connectMode ? onConnectPointerUp(e) : onNodePointerUp(e)}
+                        oncontextmenu={(e) => onNodeContextMenu(e, node.id)}
                         title={node.name}
                         use:trackNode={node.id}
                       >
@@ -693,6 +824,16 @@
           {/each}
         </div>
 
+        <!-- Connect mode: dragging line -->
+        {#if connecting}
+          <svg class="cross-conn-svg" aria-hidden="true" style="pointer-events:none;">
+            <path
+              d={`M${connecting.fromX},${connecting.fromY} C${connecting.fromX},${(connecting.fromY+connecting.curY)/2} ${connecting.curX},${(connecting.fromY+connecting.curY)/2} ${connecting.curX},${connecting.curY}`}
+              class="conn conn-preview"
+            />
+          </svg>
+        {/if}
+
         <!-- Cross-box DAG overlay -->
         {#if crossConns.length > 0}
           <svg class="cross-conn-svg" aria-hidden="true">
@@ -705,6 +846,11 @@
               </marker>
             </defs>
             {#each crossConns as c}
+              <path
+                d={crossConnPath(c)}
+                class="conn-hit"
+                oncontextmenu={(e) => onEdgeContextMenu(e, c.from, c.to)}
+              />
               <path
                 d={crossConnPath(c)}
                 class="conn conn-{c.type} cross-conn"
@@ -776,6 +922,46 @@
                 {t('skills.resetSkill')}
               </button>
             {/if}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Context menu -->
+      {#if contextMenu}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div class="ctx-menu" style="left:{contextMenu.x}px; top:{contextMenu.y}px;" onclick={(e) => e.stopPropagation()}>
+          {#if contextMenu.nodeId}
+            <button class="ctx-item" onclick={ctxAddChild}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              {t('skills.addChildTag')}
+            </button>
+            <button class="ctx-item" onclick={ctxViewTag}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              {t('skills.viewTag')}
+            </button>
+          {:else if contextMenu.edgeFrom && contextMenu.edgeTo}
+            <button class="ctx-item ctx-danger" onclick={ctxDeletePrereq}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              {t('skills.deletePrereq')}
+            </button>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Add child tag dialog -->
+      {#if addChildDialog}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div class="dialog-overlay" onclick={() => addChildDialog = null}>
+          <div class="dialog-box" onclick={(e) => e.stopPropagation()}>
+            <h3>{t('skills.addChildTag')}</h3>
+            <p class="dialog-hint">{t('skills.addChildHint', resolveName(addChildDialog.parentId))}</p>
+            <input type="text" bind:value={newChildTagId} placeholder="tag-id" class="dialog-input"
+              onkeydown={(e) => { if (e.key === 'Enter') submitAddChild(); }}
+            />
+            <div class="dialog-actions">
+              <button class="dialog-cancel" onclick={() => addChildDialog = null}>{t('common.cancel')}</button>
+              <button class="dialog-ok" onclick={submitAddChild}>{t('common.add')}</button>
+            </div>
           </div>
         </div>
       {/if}
@@ -1038,6 +1224,9 @@
     pointer-events: none;
     overflow: visible;
     z-index: 8;
+  }
+  .cross-conn-svg .conn-hit {
+    pointer-events: stroke;
   }
   .cross-conn {
     opacity: 0.5;
@@ -1322,4 +1511,98 @@
     background: rgba(255,255,255,0.25);
     color: white;
   }
+
+  /* ─── Connect Mode ─── */
+  .connect-toggle {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: var(--bg-white); color: var(--text-secondary);
+    cursor: pointer; transition: all 0.15s;
+    font-family: var(--font-sans);
+  }
+  .connect-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .connect-toggle.active {
+    background: var(--accent); color: white; border-color: var(--accent);
+  }
+  .skill-node.connect-mode { cursor: crosshair; }
+  .conn-preview {
+    fill: none; stroke: var(--accent); stroke-width: 2;
+    stroke-dasharray: 6 4; opacity: 0.7;
+  }
+  .conn-hit {
+    fill: none; stroke: transparent; stroke-width: 12;
+    cursor: pointer; pointer-events: stroke;
+  }
+
+  /* ─── Context Menu ─── */
+  .ctx-menu {
+    position: fixed;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    z-index: 100;
+    min-width: 160px;
+    padding: 4px 0;
+  }
+  .ctx-item {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; padding: 8px 14px;
+    border: none; background: none;
+    font-size: 13px; color: var(--text-primary);
+    cursor: pointer; text-align: left;
+    font-family: var(--font-sans);
+  }
+  .ctx-item:hover { background: var(--bg-gray, #f5f5f5); }
+  .ctx-item.ctx-danger { color: #dc2626; }
+  .ctx-item.ctx-danger:hover { background: rgba(239,68,68,0.06); }
+
+  /* ─── Add Child Dialog ─── */
+  .dialog-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200;
+  }
+  .dialog-box {
+    background: var(--bg-white);
+    border-radius: 8px;
+    padding: 24px;
+    width: 360px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  .dialog-box h3 {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    margin: 0 0 8px;
+  }
+  .dialog-hint {
+    font-size: 13px; color: var(--text-secondary);
+    margin: 0 0 12px;
+  }
+  .dialog-input {
+    width: 100%; box-sizing: border-box;
+    padding: 8px 12px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: 4px;
+    font-family: var(--font-sans);
+    margin-bottom: 16px;
+  }
+  .dialog-input:focus { border-color: var(--accent); outline: none; }
+  .dialog-actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+  .dialog-cancel {
+    padding: 6px 14px; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: none; color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .dialog-ok {
+    padding: 6px 14px; font-size: 13px;
+    border: none; border-radius: 4px;
+    background: var(--accent); color: white;
+    cursor: pointer;
+  }
+  .dialog-ok:hover { opacity: 0.85; }
 </style>
