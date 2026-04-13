@@ -299,6 +299,13 @@ export interface UserTagPrereq {
   prereq_type: 'required' | 'recommended';
 }
 
+export interface FrontierSkill {
+  tag_id: string;
+  tag_name: string;
+  tag_names: Record<string, string>;
+  article_count: number;
+}
+
 export interface SeriesContextItem {
   series_id: string;
   series_title: string;

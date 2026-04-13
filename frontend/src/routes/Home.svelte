@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { listArticles, getAllArticleTeaches, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles } from '../lib/api';
+  import { getRecommendations, getAllArticleTeaches, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { authorName, tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
@@ -110,13 +110,11 @@
   // Active tab
   let activeTab = $state('all');
 
-  // Trending score: combines recency and votes
-  function trendingScore(a: Article): number {
-    const score = a.vote_score || 0;
-    const created = new Date(a.created_at).getTime();
-    const now = Date.now();
-    const ageHours = Math.max(1, (now - created) / (1000 * 60 * 60));
-    return (score + 1) / Math.pow(ageHours, 1.5);
+  // Articles are pre-sorted by backend recommendation algorithm.
+  // Use inverse index as sort key to preserve server ordering.
+  function serverRank(a: Article): number {
+    const idx = articles.indexOf(a);
+    return idx >= 0 ? 1.0 / (idx + 1) : 0;
   }
 
   // Feed items: standalone articles + series cards
@@ -143,7 +141,7 @@
         items.push({
           type: 'article',
           article: a,
-          sortKey: trendingScore(a),
+          sortKey: serverRank(a),
         });
       }
     }
@@ -172,7 +170,7 @@
   let filteredFeed = $derived.by(() => {
     let candidateArticles: Article[];
     if (activeTab === 'all') {
-      candidateArticles = [...articles].sort((a, b) => trendingScore(b) - trendingScore(a));
+      candidateArticles = [...articles]; // Already sorted by recommendation engine
     } else {
       const desc = categoryDescendants.get(activeTab);
       if (!desc) return [];
@@ -194,7 +192,7 @@
   $effect(() => {
     const fetchData = async () => {
       const [arts, tags, prereqs, tgs, tree, seriesList, seriesArts] = await Promise.all([
-        listArticles(),
+        getRecommendations(100),
         getAllArticleTeaches(),
         getAllArticlePrereqs(),
         listTags(),

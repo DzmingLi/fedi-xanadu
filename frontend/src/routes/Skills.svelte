@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { getActiveTree, getTagTree, getTagPrereqs, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote } from '../lib/api';
+  import { getActiveTree, getTagTree, getTagPrereqs, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote, getFrontierSkills } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import { authorName, tagName as resolveTagName } from '../lib/display';
-  import type { TagTreeEntry, UserTagPrereq, Tag, SkillTree } from '../lib/types';
+  import type { TagTreeEntry, UserTagPrereq, Tag, SkillTree, FrontierSkill } from '../lib/types';
 
   // --- Tab state ---
   let activeTab = $state<'my' | 'community'>('my');
@@ -17,6 +17,9 @@
   let skillMap = $state(new Map<string, 'mastered' | 'learning'>());
   let masteredCount = $derived([...skillMap.values()].filter(s => s === 'mastered').length);
   let learningCount = $derived([...skillMap.values()].filter(s => s === 'learning').length);
+
+  // Frontier skills (next to learn)
+  let frontierSkills = $state<FrontierSkill[]>([]);
 
   // Expansion & selection
   let expandedGroups = $state(new Set<string>());
@@ -290,6 +293,10 @@
       }
       skillMap = new Map(sk.map(s => [s.tag_id, s.status]));
       loading = false;
+      // Load frontier skills if logged in
+      if (getAuth()) {
+        getFrontierSkills().then(fs => frontierSkills = fs).catch(() => {});
+      }
     });
   });
 
@@ -389,6 +396,22 @@
       <div class="center-msg"><p>Loading...</p></div>
     {:else}
       <div class="groups-scroll" onclick={(e: MouseEvent) => { if ((e.target as HTMLElement).classList.contains('groups-scroll')) selectedNodeId = null; }}>
+        <!-- Frontier skills: next to learn -->
+        {#if frontierSkills.length > 0}
+          <div class="frontier-section">
+            <h3 class="frontier-title">{t('skills.nextToLearn')}</h3>
+            <div class="frontier-chips">
+              {#each frontierSkills as fs}
+                <a href="/tag?id={encodeURIComponent(fs.tag_id)}" class="frontier-chip">
+                  <span class="frontier-name">{resolveTagName(fs.tag_names, fs.tag_name, fs.tag_id)}</span>
+                  {#if fs.article_count > 0}
+                    <span class="frontier-count">{fs.article_count}</span>
+                  {/if}
+                </a>
+              {/each}
+            </div>
+          </div>
+        {/if}
         {#each roots as root (root)}
           {@const layout = groupLayouts.get(root)}
           {@const expanded = expandedGroups.has(root)}
@@ -962,4 +985,56 @@
   .adopt-btn:hover:not(:disabled) { background: var(--accent); color: white; }
   .adopt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .empty { color: var(--text-hint); }
+
+  /* ─── Frontier Skills ─── */
+  .frontier-section {
+    padding: 16px 20px;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    border-left: 3px solid var(--accent);
+  }
+  .frontier-title {
+    font-family: var(--font-serif);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 10px;
+  }
+  .frontier-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .frontier-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid var(--accent);
+    border-radius: 16px;
+    background: rgba(95,155,101,0.06);
+    color: var(--accent);
+    font-size: 13px;
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .frontier-chip:hover {
+    background: var(--accent);
+    color: white;
+    text-decoration: none;
+  }
+  .frontier-name { font-family: var(--font-sans); }
+  .frontier-count {
+    font-size: 11px;
+    background: rgba(95,155,101,0.15);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+  .frontier-chip:hover .frontier-count {
+    background: rgba(255,255,255,0.25);
+    color: white;
+  }
 </style>

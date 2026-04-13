@@ -312,6 +312,7 @@ export default {
   'skills.browseHint': '浏览社区分享的技能树，采用你喜欢的，或 fork 后自定义',
   'skills.noTrees': '还没有技能树',
   'skills.noSkillsInGroup': '该分组暂无技能。',
+  'skills.nextToLearn': '下一步学什么',
   'skills.createFirst': '创建第一棵',
   'skills.edgeCount': '条关系',
   'skills.adoptCount': '人采用',

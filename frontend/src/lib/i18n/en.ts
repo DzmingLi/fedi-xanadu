@@ -316,6 +316,7 @@ export default {
   'skills.browseHint': 'Browse community skill trees. Adopt one you like, or fork and customize.',
   'skills.noTrees': 'No skill trees yet',
   'skills.noSkillsInGroup': 'No skills in this group yet.',
+  'skills.nextToLearn': 'Next to Learn',
   'skills.createFirst': 'Create the first one',
   'skills.edgeCount': 'edges',
   'skills.adoptCount': 'adopters',

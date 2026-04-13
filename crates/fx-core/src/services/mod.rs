@@ -22,3 +22,4 @@ pub mod member_service;
 pub mod version_service;
 pub mod collaboration_service;
 pub mod discussion_service;
+pub mod recommendation_service;

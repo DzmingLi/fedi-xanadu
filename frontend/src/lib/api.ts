@@ -2,7 +2,7 @@ import type {
   Tag, Article, ArticleContent, ArticlePrereqRow, ContentTeachRow, ContentPrereqBulkRow,
   ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, SeriesHeading, ProfileData, SeriesContextItem,
-  SkillTree, SkillTreeDetail, SkillTreeEdge, SkillTreePrereq, UserTagPrereq, Comment, Draft, CommentVoteResult, MyCommentVote,
+  SkillTree, SkillTreeDetail, SkillTreeEdge, SkillTreePrereq, UserTagPrereq, FrontierSkill, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
   BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter, ChapterPrereqEntry,
   ArticleVersion, ArticleVersionInfo, ArticleVersionFull, VersionDiff,
@@ -156,6 +156,14 @@ export const unlightSkill = (tag_id: string) => del<void>('/skills/unlight', { t
 // Tag tree & prereqs
 export const getTagTree = () => get<TagTreeEntry[]>('/tag-tree');
 export const getTagPrereqs = () => get<UserTagPrereq[]>('/tag-prereqs');
+
+// Recommendations
+export const getRecommendations = (limit = 30, offset = 0, category?: string) => {
+  let path = `/recommendations?limit=${limit}&offset=${offset}`;
+  if (category) path += `&category=${encodeURIComponent(category)}`;
+  return get<Article[]>(path);
+};
+export const getFrontierSkills = () => get<FrontierSkill[]>('/frontier-skills');
 
 // Bookmarks
 export const listBookmarks = () => get<BookmarkWithTitle[]>('/bookmarks');

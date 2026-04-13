@@ -19,6 +19,7 @@ mod members;
 mod notifications;
 mod profile;
 mod questions;
+mod recommendations;
 mod reports;
 mod series;
 mod settings;
@@ -97,6 +98,7 @@ pub fn routes() -> Router<AppState> {
         .merge(book_routes())
         .merge(render_routes())
         .merge(creator_routes())
+        .merge(recommendation_routes())
 }
 
 // --- Grouped sub-routers ---
@@ -295,6 +297,12 @@ fn settings_routes() -> Router<AppState> {
 
 fn graph_routes() -> Router<AppState> {
     Router::new().route("/graph", get(graph::get_graph))
+}
+
+fn recommendation_routes() -> Router<AppState> {
+    Router::new()
+        .route("/recommendations", get(recommendations::get_recommendations))
+        .route("/frontier-skills", get(recommendations::get_frontier_skills))
 }
 
 fn question_routes() -> Router<AppState> {
