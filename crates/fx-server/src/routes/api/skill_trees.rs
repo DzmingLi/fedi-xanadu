@@ -31,6 +31,8 @@ pub struct CreateSkillTreeInput {
     description: Option<String>,
     tag_id: Option<String>,
     edges: Vec<EdgeInput>,
+    #[serde(default)]
+    prereqs: Vec<PrereqInput>,
 }
 
 #[derive(serde::Deserialize)]
@@ -38,6 +40,16 @@ pub(crate) struct EdgeInput {
     parent_tag: String,
     child_tag: String,
 }
+
+#[derive(serde::Deserialize)]
+pub(crate) struct PrereqInput {
+    from_tag: String,
+    to_tag: String,
+    #[serde(default = "default_prereq_type")]
+    prereq_type: String,
+}
+
+fn default_prereq_type() -> String { "required".to_string() }
 
 pub async fn create_skill_tree(
     State(state): State<AppState>,
@@ -55,6 +67,7 @@ pub async fn create_skill_tree(
         description: input.description,
         tag_id: input.tag_id,
         edges: input.edges.into_iter().map(|e| (e.parent_tag, e.child_tag)).collect(),
+        prereqs: input.prereqs.into_iter().map(|p| (p.from_tag, p.to_tag, p.prereq_type)).collect(),
     };
 
     let row = skill_tree_service::create_skill_tree(&state.pool, &at_uri, &user.did, &svc_input).await?;
@@ -120,6 +133,33 @@ pub async fn adopt_skill_tree(
     Json(input): Json<AdoptTreeInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::adopt_skill_tree(&state.pool, &user.did, &input.tree_uri).await?;
+    Ok(StatusCode::OK)
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct SkillTreePrereqInput {
+    tree_uri: String,
+    from_tag: String,
+    to_tag: String,
+    #[serde(default = "default_prereq_type")]
+    prereq_type: String,
+}
+
+pub async fn add_skill_tree_prereq(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<SkillTreePrereqInput>,
+) -> ApiResult<StatusCode> {
+    skill_tree_service::add_prereq(&state.pool, &input.tree_uri, &user.did, &input.from_tag, &input.to_tag, &input.prereq_type).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn remove_skill_tree_prereq(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<SkillTreePrereqInput>,
+) -> ApiResult<StatusCode> {
+    skill_tree_service::remove_prereq(&state.pool, &input.tree_uri, &user.did, &input.from_tag, &input.to_tag).await?;
     Ok(StatusCode::OK)
 }
 

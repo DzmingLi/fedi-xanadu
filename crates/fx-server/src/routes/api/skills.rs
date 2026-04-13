@@ -54,6 +54,17 @@ pub async fn delete_skill(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// --- User Tag Prereqs ---
+
+pub async fn get_user_tag_prereqs(
+    State(state): State<AppState>,
+    MaybeAuth(user): MaybeAuth,
+) -> ApiResult<Json<Vec<skill_service::UserTagPrereq>>> {
+    let did = user.map(|u| u.did).unwrap_or_default();
+    let prereqs = skill_service::get_user_tag_prereqs(&state.pool, &did).await?;
+    Ok(Json(prereqs))
+}
+
 // --- User Tag Tree ---
 
 pub async fn get_user_tag_tree(

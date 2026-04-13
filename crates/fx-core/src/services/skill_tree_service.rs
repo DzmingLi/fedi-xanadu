@@ -45,11 +45,20 @@ pub struct SkillTreeEdgeRow {
     pub child_tag: String,
 }
 
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct SkillTreePrereqRow {
+    pub from_tag: String,
+    pub to_tag: String,
+    pub prereq_type: String,
+}
+
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SkillTreeDetailResponse {
     pub tree: SkillTreeRow,
     pub edges: Vec<SkillTreeEdgeRow>,
+    pub prereqs: Vec<SkillTreePrereqRow>,
     pub tag_names_map: HashMap<String, String>,
     pub tag_names_i18n: HashMap<String, HashMap<String, String>>,
 }
@@ -59,6 +68,7 @@ pub struct CreateSkillTree {
     pub description: Option<String>,
     pub tag_id: Option<String>,
     pub edges: Vec<(String, String)>,
+    pub prereqs: Vec<(String, String, String)>,
 }
 
 const TREE_SELECT: &str = "SELECT at_uri, did, title, description, tag_id, forked_from, created_at FROM skill_trees";
@@ -95,7 +105,8 @@ pub async fn get_skill_tree(pool: &PgPool, uri: &str) -> Result<SkillTreeRow> {
 pub async fn get_skill_tree_detail(pool: &PgPool, uri: &str) -> Result<SkillTreeDetailResponse> {
     let tree = get_skill_tree(pool, uri).await?;
     let edges = get_edges(pool, uri).await?;
-    let (mut names_map, mut names_i18n) = collect_tag_names(pool, &edges).await?;
+    let prereqs = get_prereqs(pool, uri).await?;
+    let (mut names_map, mut names_i18n) = collect_tag_names(pool, &edges, &prereqs).await?;
     // Also resolve the tree's tag name if present
     if let Some(ref tid) = tree.tag_id {
         if !names_map.contains_key(tid) {
@@ -106,7 +117,7 @@ pub async fn get_skill_tree_detail(pool: &PgPool, uri: &str) -> Result<SkillTree
             names_i18n.extend(fi_map);
         }
     }
-    Ok(SkillTreeDetailResponse { tree, edges, tag_names_map: names_map, tag_names_i18n: names_i18n })
+    Ok(SkillTreeDetailResponse { tree, edges, prereqs, tag_names_map: names_map, tag_names_i18n: names_i18n })
 }
 
 pub async fn create_skill_tree(
@@ -133,6 +144,18 @@ pub async fn create_skill_tree(
             .bind(at_uri)
             .bind(parent)
             .bind(child)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    for (from_tag, to_tag, prereq_type) in &input.prereqs {
+        super::tag_service::ensure_tag(&mut *tx, from_tag, did).await?;
+        super::tag_service::ensure_tag(&mut *tx, to_tag, did).await?;
+        sqlx::query("INSERT INTO skill_tree_prereqs (tree_uri, from_tag, to_tag, prereq_type) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
+            .bind(at_uri)
+            .bind(from_tag)
+            .bind(to_tag)
+            .bind(prereq_type)
             .execute(&mut *tx)
             .await?;
     }
@@ -166,6 +189,15 @@ pub async fn fork_skill_tree(
     sqlx::query(
         "INSERT INTO skill_tree_edges (tree_uri, parent_tag, child_tag) \
          SELECT $1, parent_tag, child_tag FROM skill_tree_edges WHERE tree_uri = $2",
+    )
+    .bind(new_uri)
+    .bind(source_uri)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO skill_tree_prereqs (tree_uri, from_tag, to_tag, prereq_type) \
+         SELECT $1, from_tag, to_tag, prereq_type FROM skill_tree_prereqs WHERE tree_uri = $2",
     )
     .bind(new_uri)
     .bind(source_uri)
@@ -214,6 +246,47 @@ pub async fn remove_edge(
     Ok(())
 }
 
+pub async fn add_prereq(
+    pool: &PgPool,
+    tree_uri: &str,
+    did: &str,
+    from_tag: &str,
+    to_tag: &str,
+    prereq_type: &str,
+) -> Result<()> {
+    verify_owner(pool, tree_uri, did).await?;
+
+    super::tag_service::ensure_tag(pool, from_tag, did).await?;
+    super::tag_service::ensure_tag(pool, to_tag, did).await?;
+
+    sqlx::query("INSERT INTO skill_tree_prereqs (tree_uri, from_tag, to_tag, prereq_type) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
+        .bind(tree_uri)
+        .bind(from_tag)
+        .bind(to_tag)
+        .bind(prereq_type)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn remove_prereq(
+    pool: &PgPool,
+    tree_uri: &str,
+    did: &str,
+    from_tag: &str,
+    to_tag: &str,
+) -> Result<()> {
+    verify_owner(pool, tree_uri, did).await?;
+
+    sqlx::query("DELETE FROM skill_tree_prereqs WHERE tree_uri = $1 AND from_tag = $2 AND to_tag = $3")
+        .bind(tree_uri)
+        .bind(from_tag)
+        .bind(to_tag)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn adopt_skill_tree(pool: &PgPool, did: &str, tree_uri: &str) -> Result<()> {
     let mut tx = pool.begin().await?;
 
@@ -223,7 +296,7 @@ pub async fn adopt_skill_tree(pool: &PgPool, did: &str, tree_uri: &str) -> Resul
         .execute(&mut *tx)
         .await?;
 
-    // Sync skill tree edges into user's personal tag tree
+    // Sync hierarchy edges
     sqlx::query("DELETE FROM user_tag_tree WHERE did = $1")
         .bind(did)
         .execute(&mut *tx)
@@ -232,6 +305,22 @@ pub async fn adopt_skill_tree(pool: &PgPool, did: &str, tree_uri: &str) -> Resul
     sqlx::query(
         "INSERT INTO user_tag_tree (did, parent_tag, child_tag) \
          SELECT $1, parent_tag, child_tag FROM skill_tree_edges WHERE tree_uri = $2 \
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(did)
+    .bind(tree_uri)
+    .execute(&mut *tx)
+    .await?;
+
+    // Sync prereq edges
+    sqlx::query("DELETE FROM user_tag_prereqs WHERE did = $1")
+        .bind(did)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query(
+        "INSERT INTO user_tag_prereqs (did, from_tag, to_tag, prereq_type) \
+         SELECT $1, from_tag, to_tag, prereq_type FROM skill_tree_prereqs WHERE tree_uri = $2 \
          ON CONFLICT DO NOTHING",
     )
     .bind(did)
@@ -260,9 +349,10 @@ pub async fn get_active_tree(pool: &PgPool, did: &str) -> Result<Option<SkillTre
     let Some(tree) = tree else { return Ok(None) };
 
     let edges = get_edges(pool, &uri).await?;
-    let (tag_names_map, tag_names_i18n) = collect_tag_names(pool, &edges).await?;
+    let prereqs = get_prereqs(pool, &uri).await?;
+    let (tag_names_map, tag_names_i18n) = collect_tag_names(pool, &edges, &prereqs).await?;
 
-    Ok(Some(SkillTreeDetailResponse { tree, edges, tag_names_map, tag_names_i18n }))
+    Ok(Some(SkillTreeDetailResponse { tree, edges, prereqs, tag_names_map, tag_names_i18n }))
 }
 
 // --- Helpers ---
@@ -277,20 +367,39 @@ async fn get_edges(pool: &PgPool, tree_uri: &str) -> Result<Vec<SkillTreeEdgeRow
     Ok(edges)
 }
 
-/// Batch-fetch tag names and i18n names for all tags referenced in the given edges.
+async fn get_prereqs(pool: &PgPool, tree_uri: &str) -> Result<Vec<SkillTreePrereqRow>> {
+    let prereqs = sqlx::query_as::<_, SkillTreePrereqRow>(
+        "SELECT from_tag, to_tag, prereq_type FROM skill_tree_prereqs WHERE tree_uri = $1",
+    )
+    .bind(tree_uri)
+    .fetch_all(pool)
+    .await?;
+    Ok(prereqs)
+}
+
+/// Batch-fetch tag names and i18n names for all tags referenced in edges and prereqs.
 async fn collect_tag_names(
     pool: &PgPool,
     edges: &[SkillTreeEdgeRow],
+    prereqs: &[SkillTreePrereqRow],
 ) -> Result<(HashMap<String, String>, HashMap<String, HashMap<String, String>>)> {
     use std::collections::HashSet;
     let mut seen = HashSet::new();
     let mut tag_ids = Vec::new();
     for e in edges {
-        if seen.insert(&e.parent_tag) {
+        if seen.insert(e.parent_tag.as_str()) {
             tag_ids.push(e.parent_tag.clone());
         }
-        if seen.insert(&e.child_tag) {
+        if seen.insert(e.child_tag.as_str()) {
             tag_ids.push(e.child_tag.clone());
+        }
+    }
+    for p in prereqs {
+        if seen.insert(p.from_tag.as_str()) {
+            tag_ids.push(p.from_tag.clone());
+        }
+        if seen.insert(p.to_tag.as_str()) {
+            tag_ids.push(p.to_tag.clone());
         }
     }
     let names = super::tag_service::get_tag_names(pool, &tag_ids).await?;

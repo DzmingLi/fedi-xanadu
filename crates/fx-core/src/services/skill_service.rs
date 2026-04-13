@@ -105,6 +105,41 @@ pub async fn get_user_tag_tree(pool: &PgPool, did: &str) -> crate::Result<Vec<Ta
     Ok(tree)
 }
 
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct UserTagPrereq {
+    pub from_tag: String,
+    pub to_tag: String,
+    pub prereq_type: String,
+}
+
+pub async fn get_user_tag_prereqs(pool: &PgPool, did: &str) -> crate::Result<Vec<UserTagPrereq>> {
+    // First try user's personal prereq table
+    let prereqs = sqlx::query_as::<_, UserTagPrereq>(
+        "SELECT from_tag, to_tag, prereq_type FROM user_tag_prereqs WHERE did = $1",
+    )
+    .bind(did)
+    .fetch_all(pool)
+    .await?;
+
+    if !prereqs.is_empty() {
+        return Ok(prereqs);
+    }
+
+    // Fall back to the user's active skill tree prereqs
+    let prereqs = sqlx::query_as::<_, UserTagPrereq>(
+        "SELECT p.from_tag, p.to_tag, p.prereq_type \
+         FROM skill_tree_prereqs p \
+         JOIN user_active_tree ua ON ua.tree_uri = p.tree_uri \
+         WHERE ua.did = $1",
+    )
+    .bind(did)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(prereqs)
+}
+
 pub async fn add_tag_child(
     pool: &PgPool,
     did: &str,

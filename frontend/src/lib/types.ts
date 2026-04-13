@@ -279,11 +279,24 @@ export interface SkillTreeEdge {
   child_tag: string;
 }
 
+export interface SkillTreePrereq {
+  from_tag: string;
+  to_tag: string;
+  prereq_type: 'required' | 'recommended';
+}
+
 export interface SkillTreeDetail {
   tree: SkillTree;
   edges: SkillTreeEdge[];
+  prereqs: SkillTreePrereq[];
   tag_names_map: Record<string, string>;
   tag_names_i18n: Record<string, Record<string, string>>;
+}
+
+export interface UserTagPrereq {
+  from_tag: string;
+  to_tag: string;
+  prereq_type: 'required' | 'recommended';
 }
 
 export interface SeriesContextItem {

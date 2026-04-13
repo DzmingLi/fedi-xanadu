@@ -183,6 +183,7 @@ fn skill_routes() -> Router<AppState> {
         .route("/skills", get(skills::list_user_skills).post(skills::light_skill))
         .route("/skills/unlight", delete(skills::delete_skill))
         .route("/tag-tree", get(skills::get_user_tag_tree).post(skills::add_tag_child))
+        .route("/tag-prereqs", get(skills::get_user_tag_prereqs))
 }
 
 fn skill_tree_routes() -> Router<AppState> {
@@ -192,6 +193,8 @@ fn skill_tree_routes() -> Router<AppState> {
         .route("/skill-trees/fork", post(skill_trees::fork_skill_tree))
         .route("/skill-trees/edges", post(skill_trees::add_skill_tree_edge))
         .route("/skill-trees/edges/remove", delete(skill_trees::remove_skill_tree_edge))
+        .route("/skill-trees/prereqs", post(skill_trees::add_skill_tree_prereq))
+        .route("/skill-trees/prereqs/remove", delete(skill_trees::remove_skill_tree_prereq))
         .route("/skill-trees/adopt", post(skill_trees::adopt_skill_tree))
         .route("/skill-trees/active", get(skill_trees::get_active_tree))
 }

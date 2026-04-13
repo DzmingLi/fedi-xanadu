@@ -2,7 +2,7 @@ import type {
   Tag, Article, ArticleContent, ArticlePrereqRow, ContentTeachRow, ContentPrereqBulkRow,
   ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, SeriesHeading, ProfileData, SeriesContextItem,
-  SkillTree, SkillTreeDetail, SkillTreeEdge, Comment, Draft, CommentVoteResult, MyCommentVote,
+  SkillTree, SkillTreeDetail, SkillTreeEdge, SkillTreePrereq, UserTagPrereq, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
   BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter, ChapterPrereqEntry,
   ArticleVersion, ArticleVersionInfo, ArticleVersionFull, VersionDiff,
@@ -153,8 +153,9 @@ export const lightSkill = (tag_id: string, status: 'mastered' | 'learning' = 'ma
   post<void>('/skills', { tag_id, status });
 export const unlightSkill = (tag_id: string) => del<void>('/skills/unlight', { tag_id });
 
-// Tag tree
+// Tag tree & prereqs
 export const getTagTree = () => get<TagTreeEntry[]>('/tag-tree');
+export const getTagPrereqs = () => get<UserTagPrereq[]>('/tag-prereqs');
 
 // Bookmarks
 export const listBookmarks = () => get<BookmarkWithTitle[]>('/bookmarks');
@@ -309,13 +310,17 @@ export const applyAllDiscussionChanges = (id: string) =>
 // Skill Trees
 export const listSkillTrees = () => get<SkillTree[]>('/skill-trees');
 export const getSkillTree = (uri: string) => get<SkillTreeDetail>(`/skill-trees/by-uri?uri=${encodeURIComponent(uri)}`);
-export const createSkillTree = (data: { title: string; description?: string; tag_id?: string; edges: SkillTreeEdge[] }) =>
+export const createSkillTree = (data: { title: string; description?: string; tag_id?: string; edges: SkillTreeEdge[]; prereqs?: SkillTreePrereq[] }) =>
   post<SkillTree>('/skill-trees', data);
 export const forkSkillTree = (uri: string) => post<SkillTree>('/skill-trees/fork', { uri });
 export const addSkillTreeEdge = (tree_uri: string, parent_tag: string, child_tag: string) =>
   post<void>('/skill-trees/edges', { tree_uri, parent_tag, child_tag });
 export const removeSkillTreeEdge = (tree_uri: string, parent_tag: string, child_tag: string) =>
   post<void>('/skill-trees/edges/remove', { tree_uri, parent_tag, child_tag });
+export const addSkillTreePrereq = (tree_uri: string, from_tag: string, to_tag: string, prereq_type: string = 'required') =>
+  post<void>('/skill-trees/prereqs', { tree_uri, from_tag, to_tag, prereq_type });
+export const removeSkillTreePrereq = (tree_uri: string, from_tag: string, to_tag: string) =>
+  del<void>('/skill-trees/prereqs/remove', { tree_uri, from_tag, to_tag });
 export const adoptSkillTree = (tree_uri: string) => post<void>('/skill-trees/adopt', { tree_uri });
 export const getActiveTree = () => get<SkillTreeDetail | null>('/skill-trees/active');
 export const createTagInline = (id: string, name: string) => post<Tag>('/tags', { id, name });

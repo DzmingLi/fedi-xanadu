@@ -315,6 +315,7 @@ export default {
   'skills.createTree': 'Create Skill Tree',
   'skills.browseHint': 'Browse community skill trees. Adopt one you like, or fork and customize.',
   'skills.noTrees': 'No skill trees yet',
+  'skills.noSkillsInGroup': 'No skills in this group yet.',
   'skills.createFirst': 'Create the first one',
   'skills.edgeCount': 'edges',
   'skills.adoptCount': 'adopters',
@@ -341,8 +342,13 @@ export default {
   'skillTree.parentTag': 'Parent tag ID',
   'skillTree.childTag': 'Child tag ID',
   'skillTree.autoCreateHint': 'Non-existent tag IDs will be created automatically',
-  'skillTree.allRelations': 'All relations ({0})',
+  'skillTree.allRelations': 'Hierarchy ({0})',
   'skillTree.collapse': 'Toggle collapse',
+  'skillTree.editPrereqs': 'Edit Prerequisites',
+  'skillTree.prereqFrom': 'Prerequisite tag',
+  'skillTree.prereqTo': 'Target tag',
+  'skillTree.allPrereqs': 'Prerequisites ({0})',
+  'skillTree.noPrereqs': 'No prerequisites defined yet.',
 
   // New Skill Tree
   'newSkillTree.title': 'Create Skill Tree',
@@ -360,6 +366,10 @@ export default {
   'newSkillTree.errTitle': 'Please enter a title',
   'newSkillTree.errRelations': 'Add at least one relation',
   'newSkillTree.errCreate': 'Creation failed',
+  'newSkillTree.addPrereq': 'Add Prerequisites',
+  'newSkillTree.prereqHint': 'Define learning dependencies between tags. A prerequisite must be mastered before the target skill is unlocked.',
+  'newSkillTree.prereqFromPlaceholder': 'Prerequisite tag',
+  'newSkillTree.prereqToPlaceholder': 'Target tag',
 
   // Forks
   'forks.backToOriginal': '← Back to original',

@@ -311,6 +311,7 @@ export default {
   'skills.createTree': '创建技能树',
   'skills.browseHint': '浏览社区分享的技能树，采用你喜欢的，或 fork 后自定义',
   'skills.noTrees': '还没有技能树',
+  'skills.noSkillsInGroup': '该分组暂无技能。',
   'skills.createFirst': '创建第一棵',
   'skills.edgeCount': '条关系',
   'skills.adoptCount': '人采用',
@@ -337,8 +338,13 @@ export default {
   'skillTree.parentTag': '父节点 tag ID',
   'skillTree.childTag': '子节点 tag ID',
   'skillTree.autoCreateHint': '输入不存在的 tag ID 会自动创建新 tag',
-  'skillTree.allRelations': '所有关系 ({0})',
+  'skillTree.allRelations': '层级分组 ({0})',
   'skillTree.collapse': '展开/折叠',
+  'skillTree.editPrereqs': '编辑前置依赖',
+  'skillTree.prereqFrom': '前置技能 tag',
+  'skillTree.prereqTo': '目标技能 tag',
+  'skillTree.allPrereqs': '前置依赖 ({0})',
+  'skillTree.noPrereqs': '尚未定义前置依赖。',
 
   // New Skill Tree
   'newSkillTree.title': '创建技能树',
@@ -356,6 +362,10 @@ export default {
   'newSkillTree.errTitle': '请输入标题',
   'newSkillTree.errRelations': '至少添加一条关系',
   'newSkillTree.errCreate': '创建失败',
+  'newSkillTree.addPrereq': '添加前置依赖',
+  'newSkillTree.prereqHint': '定义技能之间的学习依赖。前置技能需要先掌握，目标技能才会解锁。',
+  'newSkillTree.prereqFromPlaceholder': '前置技能 tag',
+  'newSkillTree.prereqToPlaceholder': '目标技能 tag',
 
   // Forks
   'forks.backToOriginal': '← 返回原文',

@@ -2,7 +2,7 @@
   import { createSkillTree, listTags, searchTags } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
-  import type { Tag, SkillTreeEdge } from '../lib/types';
+  import type { Tag, SkillTreeEdge, SkillTreePrereq } from '../lib/types';
 
   let title = $state('');
   let description = $state('');
@@ -11,12 +11,16 @@
   let fieldSuggestions = $state<Tag[]>([]);
   let showFieldSugg = $state(false);
   let edges = $state<SkillTreeEdge[]>([]);
+  let prereqs = $state<SkillTreePrereq[]>([]);
   let allTags = $state<Tag[]>([]);
   let error = $state('');
   let creating = $state(false);
 
   let newParent = $state('');
   let newChild = $state('');
+  let newPqFrom = $state('');
+  let newPqTo = $state('');
+  let newPqType = $state<'required' | 'recommended'>('required');
 
   let parentSuggestions = $derived(
     newParent ? allTags.filter(t => t.id.includes(newParent) || t.name.toLowerCase().includes(newParent.toLowerCase())).slice(0, 6) : []
@@ -25,8 +29,17 @@
     newChild ? allTags.filter(t => t.id.includes(newChild) || t.name.toLowerCase().includes(newChild.toLowerCase())).slice(0, 6) : []
   );
 
+  let pqFromSuggestions = $derived(
+    newPqFrom ? allTags.filter(t => t.id.includes(newPqFrom) || t.name.toLowerCase().includes(newPqFrom.toLowerCase())).slice(0, 6) : []
+  );
+  let pqToSuggestions = $derived(
+    newPqTo ? allTags.filter(t => t.id.includes(newPqTo) || t.name.toLowerCase().includes(newPqTo.toLowerCase())).slice(0, 6) : []
+  );
+
   let showParentSugg = $state(false);
   let showChildSugg = $state(false);
+  let showPqFromSugg = $state(false);
+  let showPqToSugg = $state(false);
 
   let fieldDebounce: ReturnType<typeof setTimeout>;
   function onFieldInput() {
@@ -65,6 +78,19 @@
     edges = edges.filter((_, idx) => idx !== i);
   }
 
+  function addPrereq() {
+    const f = newPqFrom.trim();
+    const t = newPqTo.trim();
+    if (!f || !t || f === t) return;
+    if (prereqs.some(p => p.from_tag === f && p.to_tag === t)) return;
+    prereqs = [...prereqs, { from_tag: f, to_tag: t, prereq_type: newPqType }];
+    newPqFrom = ''; newPqTo = '';
+  }
+
+  function removePrereq(i: number) {
+    prereqs = prereqs.filter((_, idx) => idx !== i);
+  }
+
   function tagDisplay(id: string): string {
     const t = allTags.find(t => t.id === id);
     return t ? t.name : id;
@@ -77,7 +103,7 @@
     creating = true;
     error = '';
     try {
-      const tree = await createSkillTree({ title: title.trim(), description: description.trim() || undefined, tag_id: tagId || undefined, edges });
+      const tree = await createSkillTree({ title: title.trim(), description: description.trim() || undefined, tag_id: tagId || undefined, edges, prereqs: prereqs.length > 0 ? prereqs : undefined });
       window.location.href = `/skill-tree?uri=${encodeURIComponent(tree.at_uri)}`;
     } catch (e: any) {
       error = e.message || t('newSkillTree.errCreate');
@@ -163,6 +189,54 @@
     </div>
   {/if}
 
+  <h2>{t('newSkillTree.addPrereq')}</h2>
+  <p class="hint">{t('newSkillTree.prereqHint')}</p>
+
+  <div class="edge-form">
+    <div class="input-wrap">
+      <input type="text" bind:value={newPqFrom} placeholder={t('newSkillTree.prereqFromPlaceholder')}
+        onfocus={() => showPqFromSugg = true} onblur={() => setTimeout(() => showPqFromSugg = false, 200)} />
+      {#if showPqFromSugg && pqFromSuggestions.length > 0}
+        <div class="suggestions">
+          {#each pqFromSuggestions as s}
+            <button onmousedown={() => { newPqFrom = s.id; showPqFromSugg = false; }}>{s.name} <span class="sg-id">{s.id}</span></button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    <span class="arrow">→</span>
+    <div class="input-wrap">
+      <input type="text" bind:value={newPqTo} placeholder={t('newSkillTree.prereqToPlaceholder')}
+        onfocus={() => showPqToSugg = true} onblur={() => setTimeout(() => showPqToSugg = false, 200)} />
+      {#if showPqToSugg && pqToSuggestions.length > 0}
+        <div class="suggestions">
+          {#each pqToSuggestions as s}
+            <button onmousedown={() => { newPqTo = s.id; showPqToSugg = false; }}>{s.name} <span class="sg-id">{s.id}</span></button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    <select bind:value={newPqType} class="pq-type-select">
+      <option value="required">Required</option>
+      <option value="recommended">Recommended</option>
+    </select>
+    <button class="add-btn" onclick={addPrereq}>{t('common.add')}</button>
+  </div>
+
+  {#if prereqs.length > 0}
+    <div class="edge-list">
+      {#each prereqs as p, i}
+        <div class="edge-row">
+          <span class="tag">{tagDisplay(p.from_tag)}</span>
+          <span class="arrow">→</span>
+          <span class="tag">{tagDisplay(p.to_tag)}</span>
+          <span class="prereq-badge badge-{p.prereq_type}">{p.prereq_type}</span>
+          <button class="remove-btn" onclick={() => removePrereq(i)}>×</button>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   <button class="submit-btn" onclick={submit} disabled={creating}>
     {creating ? t('newSkillTree.creating') : t('newSkillTree.create')}
   </button>
@@ -217,4 +291,13 @@
     font-size: 16px; padding: 0 4px;
   }
   .field-clear:hover { color: var(--text-primary); }
+  .pq-type-select {
+    padding: 6px 8px; font-size: 13px; border: 1px solid var(--border);
+    border-radius: 4px; background: var(--bg-white); font-family: var(--font-sans);
+  }
+  .prereq-badge {
+    font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 4px;
+  }
+  .badge-required { background: rgba(239,68,68,0.1); color: #dc2626; }
+  .badge-recommended { background: rgba(245,158,11,0.1); color: #b45309; }
 </style>

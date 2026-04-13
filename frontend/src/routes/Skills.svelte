@@ -1,26 +1,26 @@
 <script lang="ts">
-  import { getGraph, getTagTree, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote } from '../lib/api';
+  import { getActiveTree, getTagTree, getTagPrereqs, listSkills, lightSkill, unlightSkill, listTags, createTagInline, listSkillTrees, adoptSkillTree, castVote } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import { authorName, tagName as resolveTagName } from '../lib/display';
-  import type { GraphNode, GraphEdge, TagTreeEntry, Tag, SkillTree } from '../lib/types';
+  import type { TagTreeEntry, UserTagPrereq, Tag, SkillTree } from '../lib/types';
 
   // --- Tab state ---
   let activeTab = $state<'my' | 'community'>('my');
 
   // --- My Skills state ---
   let loading = $state(true);
-  let graphNodes = $state<GraphNode[]>([]);
-  let graphEdges = $state<GraphEdge[]>([]);
+  let prereqEdges = $state<UserTagPrereq[]>([]);
   let tree = $state<TagTreeEntry[]>([]);
+  let tagNamesMap = $state<Record<string, string>>({});
+  let tagNamesI18n = $state<Record<string, Record<string, string>>>({});
   let skillMap = $state(new Map<string, 'mastered' | 'learning'>());
   let masteredCount = $derived([...skillMap.values()].filter(s => s === 'mastered').length);
   let learningCount = $derived([...skillMap.values()].filter(s => s === 'learning').length);
 
-  // Field navigation & selection
-  let activeField = $state('');
+  // Expansion & selection
+  let expandedGroups = $state(new Set<string>());
   let selectedNodeId = $state<string | null>(null);
-  let collapsedNodes = $state(new Set<string>());
 
   // Tag search
   let allTags = $state<Tag[]>([]);
@@ -31,7 +31,7 @@
     return allTags.filter(t => t.id.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)).slice(0, 8);
   });
 
-  // --- Tree structure computation ---
+  // --- Hierarchy: parent-child grouping ---
   let childrenOf = $derived.by(() => {
     const map = new Map<string, string[]>();
     const hasParent = new Set<string>();
@@ -48,19 +48,44 @@
     [...new Set(tree.map(e => e.parent_tag))].filter(p => !childrenOf.hasParent.has(p))
   );
 
-  let nodeMap = $derived(new Map(graphNodes.map(n => [n.id, n])));
-
-  function resolveName(id: string): string {
-    const gn = nodeMap.get(id);
-    return gn ? resolveTagName(gn.names, gn.name, id) : id;
-  }
-
-  // Set first field
+  // Expand all roots by default
   $effect(() => {
-    if (roots.length > 0 && !activeField) activeField = roots[0];
+    if (roots.length > 0 && expandedGroups.size === 0) {
+      expandedGroups = new Set(roots);
+    }
   });
 
-  // --- Layout computation ---
+  function resolveName(id: string): string {
+    const i18n = tagNamesI18n[id];
+    const name = tagNamesMap[id];
+    return i18n ? resolveTagName(i18n, name || id, id) : (name || id);
+  }
+
+  function toggleGroup(id: string) {
+    const s = new Set(expandedGroups);
+    if (s.has(id)) s.delete(id); else s.add(id);
+    expandedGroups = s;
+  }
+
+  // --- Collect leaf descendants (skip intermediate groups) ---
+  function collectLeaves(groupId: string): Set<string> {
+    const result = new Set<string>();
+    const stack = [...(childrenOf.map.get(groupId) || [])];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      const children = childrenOf.map.get(id) || [];
+      if (children.length === 0) {
+        result.add(id); // leaf
+      } else {
+        // intermediate group — collect its leaves too
+        result.add(id);
+        for (const ch of children) stack.push(ch);
+      }
+    }
+    return result;
+  }
+
+  // --- Layout computation per group ---
   const NODE_W = 136;
   const NODE_H = 52;
   const H_GAP = 24;
@@ -70,44 +95,89 @@
     const current = skillMap.get(tagId);
     if (current === 'mastered') return 'mastered';
     if (current === 'learning') return 'learning';
-    const required = graphEdges.filter(e => e.to === tagId && e.type === 'required');
+    const required = prereqEdges.filter(e => e.to_tag === tagId && e.prereq_type === 'required');
     if (required.length === 0) return 'available';
-    return required.every(e => skillMap.get(e.from) === 'mastered') ? 'available' : 'locked';
+    return required.every(e => skillMap.get(e.from_tag) === 'mastered') ? 'available' : 'locked';
   }
 
   interface LayoutNode {
     id: string; name: string; x: number; y: number;
     status: 'locked' | 'available' | 'learning' | 'mastered';
+    group: string | null; // parent group for visual labeling
   }
   interface LayoutConn {
     from: string; to: string; type: string;
     x1: number; y1: number; x2: number; y2: number;
   }
+  interface GroupLayout {
+    nodes: LayoutNode[];
+    conns: LayoutConn[];
+    w: number;
+    h: number;
+    progress: { total: number; mastered: number; learning: number };
+  }
 
-  let fieldLayout = $derived.by(() => {
-    if (!activeField) return { nodes: [] as LayoutNode[], conns: [] as LayoutConn[], w: 0, h: 0 };
-
-    // BFS to collect nodes by depth
-    const byDepth: string[][] = [];
-    const visited = new Set<string>();
-
-    function visit(id: string, depth: number) {
-      if (visited.has(id)) return;
-      visited.add(id);
-      while (byDepth.length <= depth) byDepth.push([]);
-      byDepth[depth].push(id);
-      if (!collapsedNodes.has(id)) {
-        for (const ch of (childrenOf.map.get(id) || [])) visit(ch, depth + 1);
-      }
+  // Find the immediate sub-group a node belongs to (direct child of root)
+  function findSubGroup(nodeId: string, rootId: string): string | null {
+    const directChildren = childrenOf.map.get(rootId) || [];
+    for (const child of directChildren) {
+      if (child === nodeId) return null; // direct child of root, no sub-group
+      const descendants = collectLeaves(child);
+      if (descendants.has(nodeId)) return child;
     }
-    for (const ch of (childrenOf.map.get(activeField) || [])) visit(ch, 0);
+    return null;
+  }
 
-    // Position nodes centered per row
+  function computeLayout(rootId: string): GroupLayout {
+    const fieldNodes = collectLeaves(rootId);
+    if (fieldNodes.size === 0) return { nodes: [], conns: [], w: 0, h: 0, progress: { total: 0, mastered: 0, learning: 0 } };
+
+    // Filter prereq edges to within this group
+    const localEdges = prereqEdges.filter(e => fieldNodes.has(e.from_tag) && fieldNodes.has(e.to_tag));
+
+    // Topological sort (Kahn's)
+    const inDeg = new Map<string, number>();
+    const adj = new Map<string, string[]>();
+    for (const id of fieldNodes) { inDeg.set(id, 0); adj.set(id, []); }
+    for (const e of localEdges) {
+      adj.get(e.from_tag)!.push(e.to_tag);
+      inDeg.set(e.to_tag, (inDeg.get(e.to_tag) || 0) + 1);
+    }
+
+    const byDepth: string[][] = [];
+    let frontier = [...fieldNodes].filter(id => (inDeg.get(id) || 0) === 0);
+    const placed = new Set<string>();
+
+    while (frontier.length > 0) {
+      // Group by sub-group within same level for visual coherence
+      frontier.sort((a, b) => {
+        const ga = findSubGroup(a, rootId) || '';
+        const gb = findSubGroup(b, rootId) || '';
+        if (ga !== gb) return ga.localeCompare(gb);
+        return resolveName(a).localeCompare(resolveName(b));
+      });
+      byDepth.push(frontier);
+      for (const id of frontier) placed.add(id);
+
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const to of (adj.get(id) || [])) {
+          const d = inDeg.get(to)! - 1;
+          inDeg.set(to, d);
+          if (d === 0 && !placed.has(to)) next.push(to);
+        }
+      }
+      frontier = next;
+    }
+
+    const unplaced = [...fieldNodes].filter(id => !placed.has(id));
+    if (unplaced.length > 0) byDepth.push(unplaced);
+
+    // Position
     const positions = new Map<string, { x: number; y: number }>();
     let maxRowW = 0;
-    for (let row = 0; row < byDepth.length; row++) {
-      const nodes = byDepth[row];
-      const rowW = nodes.length * NODE_W + (nodes.length - 1) * H_GAP;
+    for (const row of byDepth) {
+      const rowW = row.length * NODE_W + (row.length - 1) * H_GAP;
       maxRowW = Math.max(maxRowW, rowW);
     }
     for (let row = 0; row < byDepth.length; row++) {
@@ -124,72 +194,60 @@
 
     const nodes: LayoutNode[] = [];
     for (const [id, pos] of positions) {
-      nodes.push({ id, name: resolveName(id), x: pos.x, y: pos.y, status: getNodeStatus(id) });
+      nodes.push({ id, name: resolveName(id), x: pos.x, y: pos.y, status: getNodeStatus(id), group: findSubGroup(id, rootId) });
     }
 
-    // Connections: prerequisite edges within this field
     const conns: LayoutConn[] = [];
-    for (const e of graphEdges) {
-      const fp = positions.get(e.from), tp = positions.get(e.to);
+    for (const e of localEdges) {
+      const fp = positions.get(e.from_tag), tp = positions.get(e.to_tag);
       if (fp && tp) {
         conns.push({
-          from: e.from, to: e.to, type: e.type,
-          x1: fp.x + NODE_W / 2, y1: fp.y + NODE_H,
-          x2: tp.x + NODE_W / 2, y2: tp.y,
-        });
-      }
-    }
-    // Tree hierarchy connections (shown as subtle lines when no prereq edge exists)
-    for (const entry of tree) {
-      const fp = positions.get(entry.parent_tag), tp = positions.get(entry.child_tag);
-      if (fp && tp && !conns.some(c => c.from === entry.parent_tag && c.to === entry.child_tag)) {
-        conns.push({
-          from: entry.parent_tag, to: entry.child_tag, type: 'hierarchy',
+          from: e.from_tag, to: e.to_tag, type: e.prereq_type,
           x1: fp.x + NODE_W / 2, y1: fp.y + NODE_H,
           x2: tp.x + NODE_W / 2, y2: tp.y,
         });
       }
     }
 
-    return { nodes, conns, w: maxRowW + NODE_W, h: byDepth.length * (NODE_H + V_GAP) || NODE_H };
-  });
-
-  // Progress
-  let fieldProgress = $derived.by(() => {
-    const all = fieldLayout.nodes;
-    return {
-      total: all.length,
-      mastered: all.filter(n => n.status === 'mastered').length,
-      learning: all.filter(n => n.status === 'learning').length,
+    const progress = {
+      total: nodes.length,
+      mastered: nodes.filter(n => n.status === 'mastered').length,
+      learning: nodes.filter(n => n.status === 'learning').length,
     };
+
+    return { nodes, conns, w: maxRowW + NODE_W, h: byDepth.length * (NODE_H + V_GAP) || NODE_H, progress };
+  }
+
+  // Compute layouts for all expanded roots
+  let groupLayouts = $derived.by(() => {
+    const map = new Map<string, GroupLayout>();
+    for (const root of roots) {
+      if (expandedGroups.has(root)) {
+        map.set(root, computeLayout(root));
+      }
+    }
+    return map;
   });
 
   // Selected node details
   let selectedNode = $derived.by(() => {
     if (!selectedNodeId) return null;
-    const node = fieldLayout.nodes.find(n => n.id === selectedNodeId);
-    if (!node) return null;
-
-    const prereqs = graphEdges.filter(e => e.to === selectedNodeId).map(e => ({
-      id: e.from, name: resolveName(e.from), type: e.type,
-      met: skillMap.get(e.from) === 'mastered',
-    }));
-    const unlocks = graphEdges.filter(e => e.from === selectedNodeId).map(e => ({
-      id: e.to, name: resolveName(e.to),
-    }));
-    return { ...node, prereqs, unlocks };
+    // Find in any expanded group
+    for (const [, layout] of groupLayouts) {
+      const node = layout.nodes.find(n => n.id === selectedNodeId);
+      if (node) {
+        const prereqs = prereqEdges.filter(e => e.to_tag === selectedNodeId).map(e => ({
+          id: e.from_tag, name: resolveName(e.from_tag), type: e.prereq_type,
+          met: skillMap.get(e.from_tag) === 'mastered',
+        }));
+        const unlocks = prereqEdges.filter(e => e.from_tag === selectedNodeId).map(e => ({
+          id: e.to_tag, name: resolveName(e.to_tag),
+        }));
+        return { ...node, prereqs, unlocks };
+      }
+    }
+    return null;
   });
-
-  function toggleCollapse(id: string, e: MouseEvent) {
-    e.stopPropagation();
-    const s = new Set(collapsedNodes);
-    if (s.has(id)) s.delete(id); else s.add(id);
-    collapsedNodes = s;
-  }
-
-  function hasChildren(id: string): boolean {
-    return (childrenOf.map.get(id) || []).length > 0;
-  }
 
   // --- Actions ---
   async function setSkillStatus(tagId: string, status: 'learning' | 'mastered' | 'none') {
@@ -223,16 +281,19 @@
 
   // --- Data loading ---
   $effect(() => {
-    Promise.all([getGraph(), getTagTree(), listSkills()]).then(([data, tr, sk]) => {
-      graphNodes = data.nodes;
-      graphEdges = data.edges;
+    Promise.all([getActiveTree(), getTagTree(), getTagPrereqs(), listSkills()]).then(([active, tr, pq, sk]) => {
       tree = tr;
+      prereqEdges = pq;
+      if (active) {
+        tagNamesMap = active.tag_names_map;
+        tagNamesI18n = active.tag_names_i18n;
+      }
       skillMap = new Map(sk.map(s => [s.tag_id, s.status]));
       loading = false;
     });
   });
 
-  // --- Community state (unchanged) ---
+  // --- Community state ---
   let treesLoading = $state(true);
   let communityTrees = $state<SkillTree[]>([]);
   let filterField = $state('');
@@ -294,35 +355,6 @@
     </div>
     <div class="toolbar-right">
       {#if activeTab === 'my'}
-        <div class="legend">
-          <span class="legend-item"><span class="dot mastered"></span>{t('skills.mastered')}</span>
-          <span class="legend-item"><span class="dot learning"></span>{t('skills.learning')}</span>
-          <span class="legend-item"><span class="dot available"></span>{t('skills.available')}</span>
-          <span class="legend-item"><span class="dot locked"></span>{t('skills.locked')}</span>
-        </div>
-      {:else if isLoggedIn}
-        <a href="/skill-tree/new" class="create-btn">{t('skills.createTree')}</a>
-      {/if}
-    </div>
-  </div>
-
-  {#if activeTab === 'my'}
-    {#if loading}
-      <div class="center-msg"><p>Loading...</p></div>
-    {:else}
-      <!-- Field tabs -->
-      <div class="field-bar">
-        {#each roots as field}
-          <button
-            class="field-tab"
-            class:active={activeField === field}
-            onclick={() => { activeField = field; selectedNodeId = null; collapsedNodes = new Set(); }}
-          >
-            {resolveName(field)}
-          </button>
-        {/each}
-
-        <!-- Search -->
         <div class="search-box">
           <input
             type="text"
@@ -340,76 +372,92 @@
             </div>
           {/if}
         </div>
-      </div>
-
-      <!-- Progress -->
-      {#if fieldProgress.total > 0}
-        <div class="progress-row">
-          <div class="progress-track">
-            <div class="progress-fill mastered" style="width:{fieldProgress.total ? (fieldProgress.mastered / fieldProgress.total * 100) : 0}%"></div>
-            <div class="progress-fill learning" style="width:{fieldProgress.total ? (fieldProgress.learning / fieldProgress.total * 100) : 0}%"></div>
-          </div>
-          <span class="progress-text">{fieldProgress.mastered}/{fieldProgress.total}</span>
+        <div class="legend">
+          <span class="legend-item"><span class="dot mastered"></span>{t('skills.mastered')}</span>
+          <span class="legend-item"><span class="dot learning"></span>{t('skills.learning')}</span>
+          <span class="legend-item"><span class="dot available"></span>{t('skills.available')}</span>
+          <span class="legend-item"><span class="dot locked"></span>{t('skills.locked')}</span>
         </div>
+      {:else if isLoggedIn}
+        <a href="/skill-tree/new" class="create-btn">{t('skills.createTree')}</a>
       {/if}
+    </div>
+  </div>
 
-      <!-- Tree canvas -->
-      <div class="tree-canvas" onclick={(e: MouseEvent) => { if (e.target === e.currentTarget) selectedNodeId = null; }}>
-        <div class="tree-scroll">
-          <div class="tree-content" style="min-width:{fieldLayout.w}px; min-height:{fieldLayout.h + 40}px;">
-            <!-- SVG connections -->
-            <svg class="conn-svg" style="width:{fieldLayout.w}px; height:{fieldLayout.h + 40}px;">
-              <defs>
-                <marker id="arr-req" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
-                  <path d="M0,0 L10,5 L0,10z" fill="#ef4444"/>
-                </marker>
-                <marker id="arr-rec" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-                  <path d="M0,0 L10,5 L0,10z" fill="#f59e0b"/>
-                </marker>
-                <marker id="arr-hier" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-                  <path d="M0,0 L10,5 L0,10z" fill="var(--conn-hier, #c4b5a0)"/>
-                </marker>
-              </defs>
-              {#each fieldLayout.conns as c}
-                <path
-                  d={connPath(c)}
-                  class="conn conn-{c.type}"
-                  marker-end={c.type === 'required' ? 'url(#arr-req)' : c.type === 'recommended' ? 'url(#arr-rec)' : 'url(#arr-hier)'}
-                />
-              {/each}
-            </svg>
-
-            <!-- Nodes -->
-            {#each fieldLayout.nodes as node (node.id)}
-              <button
-                class="skill-node st-{node.status}"
-                class:selected={selectedNodeId === node.id}
-                style="left:{node.x}px; top:{node.y}px; width:{NODE_W}px; height:{NODE_H}px;"
-                onclick={() => selectedNodeId = selectedNodeId === node.id ? null : node.id}
-                ondblclick={() => window.location.href = `/tag?id=${encodeURIComponent(node.id)}`}
-                title={node.name}
-              >
-                <span class="node-icon">
-                  {#if node.status === 'mastered'}
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
-                  {:else if node.status === 'learning'}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
-                  {:else if node.status === 'available'}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
-                  {:else}
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="11" rx="2"/><path d="M8 11V7a4 4 0 118 0v4"/></svg>
-                  {/if}
-                </span>
-                <span class="node-name">{node.name}</span>
-                {#if hasChildren(node.id)}
-                  <button class="collapse-toggle" onclick={(e) => toggleCollapse(node.id, e)} title={collapsedNodes.has(node.id) ? 'Expand' : 'Collapse'}>
-                    {collapsedNodes.has(node.id) ? '+' : '−'}
-                  </button>
+  {#if activeTab === 'my'}
+    {#if loading}
+      <div class="center-msg"><p>Loading...</p></div>
+    {:else}
+      <div class="groups-scroll" onclick={(e: MouseEvent) => { if ((e.target as HTMLElement).classList.contains('groups-scroll')) selectedNodeId = null; }}>
+        {#each roots as root (root)}
+          {@const layout = groupLayouts.get(root)}
+          {@const expanded = expandedGroups.has(root)}
+          <div class="group-box" class:expanded>
+            <button class="group-header" onclick={() => toggleGroup(root)}>
+              <svg class="chevron" class:open={expanded} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              <span class="group-name">{resolveName(root)}</span>
+              {#if layout}
+                <span class="group-progress">{layout.progress.mastered}/{layout.progress.total}</span>
+                {#if layout.progress.total > 0}
+                  <div class="group-bar">
+                    <div class="bar-fill mastered" style="width:{layout.progress.mastered / layout.progress.total * 100}%"></div>
+                    <div class="bar-fill learning" style="width:{layout.progress.learning / layout.progress.total * 100}%"></div>
+                  </div>
                 {/if}
-              </button>
-            {/each}
+              {/if}
+            </button>
+
+            {#if expanded && layout && layout.nodes.length > 0}
+              <div class="group-canvas">
+                <div class="group-content" style="min-width:{layout.w}px; min-height:{layout.h + 20}px;">
+                  <svg class="conn-svg" style="width:{layout.w}px; height:{layout.h + 20}px;">
+                    <defs>
+                      <marker id="arr-req-{root}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                        <path d="M0,0 L10,5 L0,10z" fill="#ef4444"/>
+                      </marker>
+                      <marker id="arr-rec-{root}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                        <path d="M0,0 L10,5 L0,10z" fill="#f59e0b"/>
+                      </marker>
+                    </defs>
+                    {#each layout.conns as c}
+                      <path
+                        d={connPath(c)}
+                        class="conn conn-{c.type}"
+                        marker-end={c.type === 'required' ? `url(#arr-req-${root})` : `url(#arr-rec-${root})`}
+                      />
+                    {/each}
+                  </svg>
+
+                  {#each layout.nodes as node (node.id)}
+                    <button
+                      class="skill-node st-{node.status}"
+                      class:selected={selectedNodeId === node.id}
+                      style="left:{node.x}px; top:{node.y}px; width:{NODE_W}px; height:{NODE_H}px;"
+                      onclick={() => selectedNodeId = selectedNodeId === node.id ? null : node.id}
+                      ondblclick={() => window.location.href = `/tag?id=${encodeURIComponent(node.id)}`}
+                      title={node.name}
+                    >
+                      <span class="node-icon">
+                        {#if node.status === 'mastered'}
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
+                        {:else if node.status === 'learning'}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
+                        {:else if node.status === 'available'}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
+                        {:else}
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="11" rx="2"/><path d="M8 11V7a4 4 0 118 0v4"/></svg>
+                        {/if}
+                      </span>
+                      <span class="node-name">{node.name}</span>
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {:else if expanded && layout && layout.nodes.length === 0}
+              <div class="group-empty">{t('skills.noSkillsInGroup')}</div>
+            {/if}
           </div>
-        </div>
+        {/each}
       </div>
 
       <!-- Detail panel -->
@@ -479,7 +527,7 @@
     {/if}
 
   {:else}
-    <!-- Community tab (unchanged) -->
+    <!-- Community tab -->
     <div class="community-section">
       <p class="subtitle">{t('skills.browseHint')}</p>
       <div class="field-filter">
@@ -570,28 +618,8 @@
   .dot.available { background: transparent; border: 2px solid var(--green, #5f9b65); box-sizing: border-box; }
   .dot.locked { background: #d1d5db; }
 
-  /* ─── Field tabs bar ─── */
-  .field-bar {
-    display: flex; align-items: center; gap: 0;
-    padding: 0 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-white);
-    flex-shrink: 0;
-  }
-  .field-tab {
-    padding: 10px 20px; font-size: 14px;
-    font-family: var(--font-serif);
-    border: none; border-bottom: 2px solid transparent;
-    background: none; color: var(--text-secondary);
-    cursor: pointer; transition: all 0.15s;
-  }
-  .field-tab.active {
-    color: var(--accent); border-bottom-color: var(--accent); font-weight: 600;
-  }
-  .field-tab:hover:not(.active) { color: var(--text-primary); }
-
   .search-box {
-    position: relative; margin-left: auto;
+    position: relative;
   }
   .search-box input {
     width: 180px; padding: 5px 10px; font-size: 13px;
@@ -610,39 +638,96 @@
   }
   .search-item:hover { background: var(--bg-gray, #f5f5f5); }
 
-  /* ─── Progress ─── */
-  .progress-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 8px 20px; flex-shrink: 0;
-  }
-  .progress-track {
-    flex: 1; height: 6px; background: var(--border);
-    border-radius: 3px; overflow: hidden; display: flex;
-  }
-  .progress-fill.mastered { background: var(--green, #5f9b65); transition: width 0.3s; }
-  .progress-fill.learning { background: var(--amber, #f59e0b); transition: width 0.3s; }
-  .progress-text { font-size: 12px; color: var(--text-hint); white-space: nowrap; }
-
-  /* ─── Tree Canvas ─── */
-  .tree-canvas {
-    flex: 1; overflow: hidden; position: relative;
-    background:
-      radial-gradient(circle at 1px 1px, var(--grid-dot, rgba(0,0,0,0.04)) 1px, transparent 0);
-    background-size: 24px 24px;
-  }
-  :global([data-theme="dark"]) .tree-canvas {
-    --grid-dot: rgba(255,255,255,0.04);
-  }
-  .tree-scroll {
-    width: 100%; height: 100%;
-    overflow: auto;
+  /* ─── Scrollable groups area ─── */
+  .groups-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
     display: flex;
-    justify-content: center;
-    padding: 32px 40px 60px;
-  }
-  .tree-content {
+    flex-direction: column;
+    gap: 12px;
     position: relative;
+  }
+
+  /* ─── Group box ─── */
+  .group-box {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-white);
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .group-box.expanded {
+    border-color: var(--border-strong, var(--border));
+  }
+
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 16px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 15px;
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .group-header:hover {
+    background: var(--bg-gray, rgba(0,0,0,0.02));
+  }
+  .chevron {
     flex-shrink: 0;
+    transition: transform 0.2s;
+    color: var(--text-hint);
+    transform: rotate(0deg);
+  }
+  .chevron.open {
+    transform: rotate(90deg);
+  }
+  .group-name {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .group-progress {
+    font-size: 12px;
+    color: var(--text-hint);
+    margin-left: auto;
+  }
+  .group-bar {
+    width: 80px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    display: flex;
+    flex-shrink: 0;
+  }
+  .bar-fill.mastered { background: var(--green, #5f9b65); transition: width 0.3s; }
+  .bar-fill.learning { background: var(--amber, #f59e0b); transition: width 0.3s; }
+
+  .group-canvas {
+    padding: 16px 20px 24px;
+    overflow-x: auto;
+    border-top: 1px solid var(--border);
+    background:
+      radial-gradient(circle at 1px 1px, var(--grid-dot, rgba(0,0,0,0.03)) 1px, transparent 0);
+    background-size: 20px 20px;
+  }
+  :global([data-theme="dark"]) .group-canvas {
+    --grid-dot: rgba(255,255,255,0.03);
+  }
+  .group-content {
+    position: relative;
+    margin: 0 auto;
+  }
+  .group-empty {
+    padding: 16px 20px;
+    font-size: 13px;
+    color: var(--text-hint);
+    border-top: 1px solid var(--border);
   }
 
   /* ─── SVG Connections ─── */
@@ -656,9 +741,6 @@
   }
   .conn-required { stroke: #ef4444; stroke-dasharray: 8 4; }
   .conn-recommended { stroke: #f59e0b; stroke-dasharray: 6 4; }
-  .conn-suggested { stroke: #86efac; stroke-dasharray: 4 4; }
-  .conn-hierarchy { stroke: var(--conn-hier, #c4b5a0); stroke-opacity: 0.5; }
-  :global([data-theme="dark"]) .conn-hierarchy { --conn-hier: #6b6152; }
 
   /* ─── Skill Nodes ─── */
   .skill-node {
@@ -693,26 +775,6 @@
     font-family: var(--font-sans);
     line-height: 1.2;
   }
-  .collapse-toggle {
-    position: absolute;
-    right: 2px;
-    bottom: 1px;
-    width: 16px;
-    height: 16px;
-    border: none;
-    border-radius: 50%;
-    background: rgba(0,0,0,0.1);
-    color: inherit;
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-  }
-  .collapse-toggle:hover { background: rgba(0,0,0,0.2); }
 
   /* Locked */
   .st-locked {
@@ -760,8 +822,8 @@
 
   /* ─── Detail Panel ─── */
   .detail-panel {
-    position: absolute; right: 0; top: 0;
-    width: 280px; height: 100%;
+    position: fixed; right: 0; top: 3.5rem;
+    width: 280px; height: calc(100vh - 3.5rem);
     background: var(--bg-white);
     border-left: 1px solid var(--border);
     padding: 20px;
@@ -810,7 +872,6 @@
   }
   .type-required { background: rgba(239,68,68,0.1); color: #dc2626; }
   .type-recommended { background: rgba(245,158,11,0.1); color: #b45309; }
-  .type-suggested { background: rgba(134,239,172,0.15); color: #16a34a; }
 
   .unlock-link {
     display: block; font-size: 13px; padding: 2px 0;
@@ -846,7 +907,7 @@
     color: var(--text-hint);
   }
 
-  /* ─── Community Section (unchanged) ─── */
+  /* ─── Community Section ─── */
   .community-section { flex: 1; overflow-y: auto; padding: 20px; }
   .subtitle { font-size: 14px; color: var(--text-secondary); margin: 0 0 16px; }
   .create-btn {
