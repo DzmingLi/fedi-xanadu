@@ -74,22 +74,41 @@
     expandedGroups = s;
   }
 
-  // --- Collect leaf descendants (skip intermediate groups) ---
-  function collectLeaves(groupId: string): Set<string> {
+  // --- Collect DIRECT children that are leaf nodes (no further children) ---
+  function collectDirectLeaves(groupId: string): Set<string> {
+    const result = new Set<string>();
+    for (const ch of (childrenOf.map.get(groupId) || [])) {
+      if (!(childrenOf.map.get(ch) || []).length) {
+        result.add(ch); // leaf
+      }
+    }
+    return result;
+  }
+
+  // --- Collect ALL descendant leaves (for progress counting) ---
+  function collectAllLeaves(groupId: string): Set<string> {
     const result = new Set<string>();
     const stack = [...(childrenOf.map.get(groupId) || [])];
     while (stack.length > 0) {
       const id = stack.pop()!;
       const children = childrenOf.map.get(id) || [];
       if (children.length === 0) {
-        result.add(id); // leaf
-      } else {
-        // intermediate group — collect its leaves too
         result.add(id);
+      } else {
         for (const ch of children) stack.push(ch);
       }
     }
     return result;
+  }
+
+  // --- Get sub-groups (direct children that have their own children) ---
+  function getSubGroups(groupId: string): string[] {
+    return (childrenOf.map.get(groupId) || []).filter(ch => (childrenOf.map.get(ch) || []).length > 0);
+  }
+
+  // Legacy: collect all leaves for cross-group edge detection
+  function collectLeaves(groupId: string): Set<string> {
+    return collectAllLeaves(groupId);
   }
 
   // --- Layout computation per group ---
@@ -153,8 +172,9 @@
   }
 
   function computeLayout(rootId: string): GroupLayout {
-    const fieldNodes = collectLeaves(rootId);
-    if (fieldNodes.size === 0) return { nodes: [], conns: [], w: 0, h: 0, progress: { total: 0, mastered: 0, learning: 0 } };
+    const fieldNodes = collectDirectLeaves(rootId);
+    const allLeaves = collectAllLeaves(rootId);
+    if (fieldNodes.size === 0 && getSubGroups(rootId).length === 0) return { nodes: [], conns: [], w: 0, h: 0, progress: { total: 0, mastered: 0, learning: 0 } };
 
     // Precompute per-node widths
     const nodeWidths = new Map<string, number>();
@@ -240,9 +260,9 @@
     }
 
     const progress = {
-      total: nodes.length,
-      mastered: nodes.filter(n => n.status === 'mastered').length,
-      learning: nodes.filter(n => n.status === 'learning').length,
+      total: allLeaves.size,
+      mastered: [...allLeaves].filter(id => skillMap.get(id) === 'mastered').length,
+      learning: [...allLeaves].filter(id => skillMap.get(id) === 'learning').length,
     };
 
     // canvas width needs to accommodate max row + the widest single node (already in rowWidths)
@@ -250,13 +270,18 @@
     return { nodes, conns, w: canvasW, h: byDepth.length * (NODE_H + V_GAP) || NODE_H, progress };
   }
 
-  // Compute layouts for all expanded roots
+  // Compute layouts for all expanded groups (roots AND sub-groups)
   let groupLayouts = $derived.by(() => {
     const map = new Map<string, GroupLayout>();
-    for (const root of roots) {
-      if (expandedGroups.has(root)) {
-        map.set(root, computeLayout(root));
+    function computeRecursive(id: string) {
+      if (!expandedGroups.has(id)) return;
+      map.set(id, computeLayout(id));
+      for (const sub of getSubGroups(id)) {
+        computeRecursive(sub);
       }
+    }
+    for (const root of roots) {
+      computeRecursive(root);
     }
     return map;
   });
@@ -591,14 +616,15 @@
             </div>
           </div>
         {/if}
-        {#each roots as root (root)}
-          {@const rawLayout = groupLayouts.get(root)}
+        {#snippet renderGroup(groupId: string, depth: number)}
+          {@const rawLayout = groupLayouts.get(groupId)}
           {@const layout = rawLayout ? applyDragOverrides(rawLayout) : rawLayout}
-          {@const expanded = expandedGroups.has(root)}
-          <div class="group-box" class:expanded use:trackGroup={root}>
-            <button class="group-header" onclick={() => toggleGroup(root)}>
+          {@const expanded = expandedGroups.has(groupId)}
+          {@const subGroups = getSubGroups(groupId)}
+          <div class="group-box" class:expanded class:sub-group={depth > 0} use:trackGroup={groupId}>
+            <button class="group-header" class:sub-header={depth > 0} onclick={() => toggleGroup(groupId)}>
               <svg class="chevron" class:open={expanded} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-              <span class="group-name">{resolveName(root)}</span>
+              <span class="group-name">{resolveName(groupId)}</span>
               {#if layout}
                 <span class="group-progress">{layout.progress.mastered}/{layout.progress.total}</span>
                 {#if layout.progress.total > 0}
@@ -610,61 +636,75 @@
               {/if}
             </button>
 
-            {#if expanded && layout && layout.nodes.length > 0}
-              <div class="group-canvas">
-                <div class="group-content" style="min-width:{layout.w}px; min-height:{layout.h + 20}px;">
-                  <svg class="conn-svg" style="width:{layout.w}px; height:{layout.h + 20}px;">
-                    <defs>
-                      <marker id="arr-req-{root}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
-                        <path d="M0,0 L10,5 L0,10z" fill="#ef4444"/>
-                      </marker>
-                      <marker id="arr-rec-{root}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-                        <path d="M0,0 L10,5 L0,10z" fill="#f59e0b"/>
-                      </marker>
-                    </defs>
-                    {#each layout.conns as c}
-                      <path
-                        d={connPath(c)}
-                        class="conn conn-{c.type}"
-                        marker-end={c.type === 'required' ? `url(#arr-req-${root})` : `url(#arr-rec-${root})`}
-                      />
-                    {/each}
-                  </svg>
+            {#if expanded}
+              <!-- Leaf nodes for this group -->
+              {#if layout && layout.nodes.length > 0}
+                <div class="group-canvas">
+                  <div class="group-content" style="min-width:{layout.w}px; min-height:{layout.h + 20}px;">
+                    <svg class="conn-svg" style="width:{layout.w}px; height:{layout.h + 20}px;">
+                      <defs>
+                        <marker id="arr-req-{groupId}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                          <path d="M0,0 L10,5 L0,10z" fill="#ef4444"/>
+                        </marker>
+                        <marker id="arr-rec-{groupId}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                          <path d="M0,0 L10,5 L0,10z" fill="#f59e0b"/>
+                        </marker>
+                      </defs>
+                      {#each layout.conns as c}
+                        <path
+                          d={connPath(c)}
+                          class="conn conn-{c.type}"
+                          marker-end={c.type === 'required' ? `url(#arr-req-${groupId})` : `url(#arr-rec-${groupId})`}
+                        />
+                      {/each}
+                    </svg>
 
-                  {#each layout.nodes as node (node.id)}
-                    <button
-                      class="skill-node st-{node.status}"
-                      class:selected={selectedNodeId === node.id}
-                      class:dragging-node={dragging?.nodeId === node.id}
-                      style="left:{node.x}px; top:{node.y}px; width:{node.w}px; height:{NODE_H}px;"
-                      onclick={() => { if (!justDragged) selectedNodeId = selectedNodeId === node.id ? null : node.id; }}
-                      ondblclick={() => window.location.href = `/tag?id=${encodeURIComponent(node.id)}`}
-                      onpointerdown={(e) => onNodePointerDown(e, node.id, root, node.x, node.y)}
-                      onpointermove={onNodePointerMove}
-                      onpointerup={onNodePointerUp}
-                      title={node.name}
-                      use:trackNode={node.id}
-                    >
-                      <span class="node-icon">
-                        {#if node.status === 'mastered'}
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
-                        {:else if node.status === 'learning'}
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
-                        {:else if node.status === 'available'}
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
-                        {:else}
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="11" rx="2"/><path d="M8 11V7a4 4 0 118 0v4"/></svg>
-                        {/if}
-                      </span>
-                      <span class="node-name">{node.name}</span>
-                    </button>
-                  {/each}
+                    {#each layout.nodes as node (node.id)}
+                      <button
+                        class="skill-node st-{node.status}"
+                        class:selected={selectedNodeId === node.id}
+                        class:dragging-node={dragging?.nodeId === node.id}
+                        style="left:{node.x}px; top:{node.y}px; width:{node.w}px; height:{NODE_H}px;"
+                        onclick={() => { if (!justDragged) selectedNodeId = selectedNodeId === node.id ? null : node.id; }}
+                        ondblclick={() => window.location.href = `/tag?id=${encodeURIComponent(node.id)}`}
+                        onpointerdown={(e) => onNodePointerDown(e, node.id, groupId, node.x, node.y)}
+                        onpointermove={onNodePointerMove}
+                        onpointerup={onNodePointerUp}
+                        title={node.name}
+                        use:trackNode={node.id}
+                      >
+                        <span class="node-icon">
+                          {#if node.status === 'mastered'}
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
+                          {:else if node.status === 'learning'}
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
+                          {:else if node.status === 'available'}
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
+                          {:else}
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="11" rx="2"/><path d="M8 11V7a4 4 0 118 0v4"/></svg>
+                          {/if}
+                        </span>
+                        <span class="node-name">{node.name}</span>
+                      </button>
+                    {/each}
+                  </div>
                 </div>
-              </div>
-            {:else if expanded && layout && layout.nodes.length === 0}
-              <div class="group-empty">{t('skills.noSkillsInGroup')}</div>
+              {/if}
+
+              <!-- Nested sub-groups -->
+              {#each subGroups as sub (sub)}
+                {@render renderGroup(sub, depth + 1)}
+              {/each}
+
+              {#if (!layout || layout.nodes.length === 0) && subGroups.length === 0}
+                <div class="group-empty">{t('skills.noSkillsInGroup')}</div>
+              {/if}
             {/if}
           </div>
+        {/snippet}
+
+        {#each roots as root (root)}
+          {@render renderGroup(root, 0)}
         {/each}
 
         <!-- Cross-group DAG overlay -->
@@ -888,6 +928,16 @@
   }
   .group-box.expanded {
     border-color: var(--border-strong, var(--border));
+  }
+  .group-box.sub-group {
+    margin: 4px 12px 8px;
+    border-radius: 6px;
+    border-color: var(--border);
+    background: var(--bg-page, #f9f9f7);
+  }
+  .sub-header {
+    font-size: 13px !important;
+    padding: 6px 12px !important;
   }
 
   .group-header {
