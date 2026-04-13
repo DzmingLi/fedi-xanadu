@@ -85,10 +85,10 @@
     <mod.default />
   {/await}
 {:else if route.page === 'article'}
-  <div class={route.params.series_id ? 'top-nav-series' : 'top-nav'}>
+  <div class="top-nav">
     <NavBar />
   </div>
-  <div class={route.params.series_id ? 'container-series' : 'container article-view'}>
+  <div class="container article-view">
     {#await lazyArticle() then mod}
       <mod.default uri={route.params.uri || ''} seriesId={route.params.series_id || ''} />
     {/await}
@@ -233,18 +233,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-  }
-  .top-nav-series {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 1rem;
-  }
-  .container-series {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 1rem;
-    display: flex;
-    gap: 1.5rem;
   }
   .top-nav {
     max-width: 760px;

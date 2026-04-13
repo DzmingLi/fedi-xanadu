@@ -484,60 +484,46 @@ try {
 {:else if !article}
   <p class="meta">Loading...</p>
 {:else}
-  {#if seriesId}
-    <div class="series-left-panel">
-      {#if tocItems.length > 0}
-        <nav class="toc toc-in-sidebar">
-          <ul>
-            {#each tocItems as item}
-              <li class="toc-{item.level}" class:active={activeId === item.id}>
-                <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
-              </li>
-            {/each}
-          </ul>
-        </nav>
-      {/if}
-      <div class="series-left-col">
-        <SeriesSidebar {seriesId} currentUri={uri} />
-      </div>
-    </div>
-  {/if}
-  <div class="article-layout" class:has-series-sidebar={!!seriesId}>
-    <!-- Left floating TOC + forks (only when no series sidebar) -->
-    {#if !seriesId && (tocItems.length > 0 || topForks.length > 0)}
-      <aside class="toc-box">
-        <div class="toc-sticky">
-          {#if tocItems.length > 0}
-            <nav class="toc">
-              <ul>
-                {#each tocItems as item}
-                  <li class="toc-{item.level}" class:active={activeId === item.id}>
-                    <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
-                  </li>
-                {/each}
-              </ul>
-            </nav>
-          {/if}
-          {#if topForks.length > 0}
-            <div class="sidebar-forks">
-              <span class="sidebar-forks-title">Forks ({forks.length})</span>
-              {#each topForks as f}
-                <a href="/article?uri={encodeURIComponent(f.forked_uri)}" class="sidebar-fork-item">
-                  <span class="sf-title">{f.title}</span>
-                  <span class="sf-meta">
-                    {f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}
-                    <span class="sf-score">+{f.vote_score}</span>
-                  </span>
-                </a>
+  {#if tocItems.length > 0 || seriesId || topForks.length > 0}
+    <aside class="article-sidebar">
+      <div class="sidebar-sticky">
+        {#if tocItems.length > 0}
+          <nav class="toc">
+            <ul>
+              {#each tocItems as item}
+                <li class="toc-{item.level}" class:active={activeId === item.id}>
+                  <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
+                </li>
               {/each}
-              {#if forks.length > 3}
-                <a href="/forks?uri={encodeURIComponent(uri)}" class="sidebar-fork-more">{t('article.viewAllForks', forks.length)}</a>
-              {/if}
-            </div>
-          {/if}
-        </div>
-      </aside>
-    {/if}
+            </ul>
+          </nav>
+        {/if}
+        {#if seriesId}
+          <div class="sidebar-series">
+            <SeriesSidebar {seriesId} currentUri={uri} />
+          </div>
+        {/if}
+        {#if topForks.length > 0}
+          <div class="sidebar-forks">
+            <span class="sidebar-forks-title">Forks ({forks.length})</span>
+            {#each topForks as f}
+              <a href="/article?uri={encodeURIComponent(f.forked_uri)}" class="sidebar-fork-item">
+                <span class="sf-title">{f.title}</span>
+                <span class="sf-meta">
+                  {f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}
+                  <span class="sf-score">+{f.vote_score}</span>
+                </span>
+              </a>
+            {/each}
+            {#if forks.length > 3}
+              <a href="/forks?uri={encodeURIComponent(uri)}" class="sidebar-fork-more">{t('article.viewAllForks', forks.length)}</a>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </aside>
+  {/if}
+  <div class="article-layout">
 
     <!-- Series navigation arrows (fixed on sides, hidden when sidebar is shown) -->
     {#if !seriesId}
@@ -865,49 +851,36 @@ try {
 
 <style>
 
-  .series-left-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    flex-shrink: 0;
+  .article-sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 100%;
+  }
+  .sidebar-sticky {
     position: sticky;
-    top: 4rem;
+    top: 3rem;
+    width: clamp(12rem, calc((100vw - 52rem) / 2 - 3rem), 20rem);
+    margin-left: calc(-1 * clamp(12rem, calc((100vw - 52rem) / 2 - 3rem), 20rem) - 2rem);
     max-height: calc(100vh - 4rem);
     overflow-y: auto;
-    border-right: 1px solid var(--border);
   }
-  .series-left-col {
-    width: clamp(180px, 18vw, 240px);
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
+  .sidebar-series {
+    margin-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
   }
-  .series-left-col :global(.series-sidebar) {
+  .sidebar-series :global(.series-sidebar) {
     position: static;
     max-height: none;
     overflow-y: visible;
     border-right: none;
     width: auto;
   }
-  .toc-in-sidebar {
-    padding: 12px 16px 8px;
-    margin: 0;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  @media (max-width: 860px) {
-    .series-left-panel { display: none; }
-  }
 
   .article-layout {
     position: relative;
-  }
-  .article-layout.has-series-sidebar {
-    flex: 1;
-    min-width: 0;
-    max-width: 760px;
   }
 
   /* Series navigation */
@@ -1150,22 +1123,7 @@ try {
   .sidebar-fork-more:hover { text-decoration: underline; }
 
 
-  /* Left floating TOC */
-  .toc-box {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 0;
-    height: 100%;
-  }
-  .toc-sticky {
-    position: sticky;
-    top: 3rem;
-    width: clamp(12rem, calc((100vw - 52rem) / 2 - 3rem), 20rem);
-    margin-left: calc(-1 * clamp(12rem, calc((100vw - 52rem) / 2 - 3rem), 20rem) - 2rem);
-    max-height: calc(100vh - 4rem);
-    overflow-y: auto;
-  }
+  /* Left floating sidebar (TOC, series nav, forks) — positioned in left viewport margin */
   .toc {
     border-left: 2px solid var(--border);
     padding-left: 0.75rem;
@@ -1265,9 +1223,9 @@ try {
     display: none;
   }
 
-  /* Responsive: hide TOC and sidenotes on narrow screens */
+  /* Responsive: hide sidebar on narrow screens */
   @media (max-width: 75rem) {
-    .toc-box {
+    .article-sidebar {
       display: none;
     }
   }
