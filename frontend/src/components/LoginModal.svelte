@@ -1,37 +1,41 @@
 <script lang="ts">
-  import { login as apiLogin, startOAuthLogin } from '../lib/api';
+  import { login as apiLogin, register as apiRegister, startOAuthLogin } from '../lib/api';
   import { setAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
 
   let { open = $bindable(false) } = $props();
 
-  let mode = $state<'platform' | 'atproto'>('atproto');
+  let mode = $state<'platform' | 'atproto'>('platform');
+  let isRegister = $state(false);
   let handle = $state('');
   let password = $state('');
+  let displayName = $state('');
   let error = $state('');
   let loading = $state(false);
 
-  async function doLogin() {
+  async function doSubmit() {
     error = '';
     if (!handle) return;
 
     if (mode === 'atproto') {
-      // OAuth redirect — no password needed
       startOAuthLogin(handle);
       return;
     }
 
-    // Platform-local login
     if (!password) return;
     loading = true;
     try {
-      const user = await apiLogin(handle, password);
+      const user = isRegister
+        ? await apiRegister(handle, password, displayName || undefined)
+        : await apiLogin(handle, password);
       setAuth(user);
       open = false;
       handle = '';
       password = '';
+      displayName = '';
+      isRegister = false;
     } catch (e: any) {
-      error = e.message || 'Login failed';
+      error = e.message || (isRegister ? 'Registration failed' : 'Login failed');
     }
     loading = false;
   }
@@ -39,8 +43,8 @@
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') open = false;
     if (e.key === 'Enter') {
-      if (mode === 'atproto' && handle) doLogin();
-      else if (mode === 'platform' && handle && password) doLogin();
+      if (mode === 'atproto' && handle) doSubmit();
+      else if (mode === 'platform' && handle && password) doSubmit();
     }
   }
 </script>
@@ -52,14 +56,14 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal" onclick={(e) => e.stopPropagation()}>
-      <h2>{t('nav.login')}</h2>
+      <h2>{isRegister ? (t('auth.register') || 'Register') : t('nav.login')}</h2>
 
       <div class="tabs">
-        <button class="tab" class:active={mode === 'atproto'} onclick={() => { mode = 'atproto'; error = ''; }}>
-          AT Protocol
-        </button>
         <button class="tab" class:active={mode === 'platform'} onclick={() => { mode = 'platform'; error = ''; }}>
           {t('auth.platformLogin') || 'Platform'}
+        </button>
+        <button class="tab" class:active={mode === 'atproto'} onclick={() => { mode = 'atproto'; error = ''; isRegister = false; }}>
+          AT Protocol
         </button>
       </div>
 
@@ -67,42 +71,76 @@
         <div class="error">{error}</div>
       {/if}
 
-      <label>
-        {t('auth.handle')}
-        <input
-          type="text"
-          bind:value={handle}
-          onkeydown={onKeydown}
-          placeholder="alice.bsky.social"
-          disabled={loading}
-        />
-      </label>
-
       {#if mode === 'platform'}
+        <label>
+          {t('auth.handle') || 'Username'}
+          <input
+            type="text"
+            bind:value={handle}
+            onkeydown={onKeydown}
+            placeholder="alice"
+            disabled={loading}
+          />
+        </label>
+
+        {#if isRegister}
+          <label>
+            {t('auth.displayName') || 'Display Name'}
+            <input
+              type="text"
+              bind:value={displayName}
+              onkeydown={onKeydown}
+              placeholder={t('auth.displayNamePlaceholder') || 'Optional'}
+              disabled={loading}
+            />
+          </label>
+        {/if}
+
         <label>
           {t('auth.password')}
           <input
             type="password"
             bind:value={password}
             onkeydown={onKeydown}
-            placeholder="xxxx-xxxx-xxxx-xxxx"
+            placeholder={isRegister ? (t('auth.passwordMin') || '8+ characters') : ''}
             disabled={loading}
           />
         </label>
+
+        <p class="hint small toggle-hint">
+          {#if isRegister}
+            {t('auth.hasAccount') || 'Already have an account?'}
+            <button class="link-btn" onclick={() => { isRegister = false; error = ''; }}>{t('nav.login')}</button>
+          {:else}
+            {t('auth.noAccountLocal') || "Don't have an account?"}
+            <button class="link-btn" onclick={() => { isRegister = true; error = ''; }}>{t('auth.register') || 'Register'}</button>
+          {/if}
+        </p>
       {:else}
+        <label>
+          {t('auth.handle')}
+          <input
+            type="text"
+            bind:value={handle}
+            onkeydown={onKeydown}
+            placeholder="alice.bsky.social"
+            disabled={loading}
+          />
+        </label>
         <p class="hint small">{t('auth.oauthHint') || 'You will be redirected to your PDS to authorize.'}</p>
-        <p class="hint small register-hint">{t('auth.noAccount') || 'No account?'} <a href="https://bsky.app" target="_blank" rel="noopener">Bluesky</a> {t('auth.registerHint') || '— register there first, then login here with your handle.'}</p>
       {/if}
 
       <div class="actions">
         <button class="btn-cancel" onclick={() => { open = false; }} disabled={loading}>{t('common.cancel')}</button>
-        <button class="btn-login" onclick={doLogin} disabled={loading || !handle || (mode === 'platform' && !password)}>
+        <button class="btn-login" onclick={doSubmit} disabled={loading || !handle || (mode === 'platform' && !password)}>
           {#if loading}
             {t('common.loading')}
           {:else if mode === 'atproto'}
             {t('auth.submit') || 'Login'}
+          {:else if isRegister}
+            {t('auth.register') || 'Register'}
           {:else}
-            {t('auth.submit')}
+            {t('auth.submit') || 'Login'}
           {/if}
         </button>
       </div>
@@ -159,6 +197,18 @@
     font-size: 12px;
     color: var(--text-secondary);
     margin: 4px 0 16px;
+  }
+  .toggle-hint {
+    margin-top: 0;
+  }
+  .link-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    text-decoration: underline;
   }
   .error {
     background: #fef2f2;

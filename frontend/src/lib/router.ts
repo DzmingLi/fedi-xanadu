@@ -32,6 +32,7 @@ export const routes: Route[] = [
   { pattern: '/books', page: 'books' },
   { pattern: '/book-edition', page: 'book-edition' },
   { pattern: '/book', page: 'book' },
+  { pattern: '/admin', page: 'admin' },
 ];
 
 export interface MatchResult {

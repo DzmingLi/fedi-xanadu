@@ -170,6 +170,7 @@
         getAllSeriesArticles(),
       ]);
       profile = prof;
+      document.title = `${prof.display_name || '@' + prof.handle} — NightBoat`;
       articles = arts;
       questions = qs;
       answers = ans;

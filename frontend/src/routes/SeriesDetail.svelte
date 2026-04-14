@@ -64,6 +64,7 @@
       const [d, h] = await Promise.all([getSeries(id), getSeriesHeadings(id)]);
       detail = d;
       headings = h;
+      document.title = `${d.series.title} — NightBoat`;
 
       // Collect all article URIs for vote fetching
       const allArticleUris = new Set<string>();

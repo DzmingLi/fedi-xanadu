@@ -27,6 +27,7 @@
     loading = true;
     Promise.all([getTag(id), getArticlesByTag(id), listSkills()]).then(async ([t, arts, sk]) => {
       tag = t;
+      document.title = `${t.name} — NightBoat`;
       articles = arts;
       skills = sk;
 

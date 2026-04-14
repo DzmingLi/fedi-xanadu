@@ -104,6 +104,7 @@
       myVote = data.my_vote;
       learned = data.learned;
       accessDenied = data.access_denied;
+      document.title = `${data.article.title} — NightBoat`;
       // Load access grants if owner of restricted article
       if (data.article.restricted && data.article.did === getAuth()?.did) {
         listAccessGrants(uri).then(g => { accessGrants = g; }).catch(() => {});

@@ -25,6 +25,69 @@ pub struct LoginOutput {
     avatar: Option<String>,
 }
 
+#[derive(serde::Deserialize)]
+pub struct RegisterInput {
+    handle: String,
+    password: String,
+    display_name: Option<String>,
+}
+
+/// Self-service registration for platform-local users.
+pub async fn register(
+    State(state): State<AppState>,
+    Json(input): Json<RegisterInput>,
+) -> ApiResult<(StatusCode, Json<LoginOutput>)> {
+    let handle = input.handle.trim().to_lowercase();
+
+    // Basic validation
+    if handle.len() < 2 || handle.len() > 32 {
+        return Err(AppError(fx_core::Error::BadRequest("Handle must be 2-32 characters".into())));
+    }
+    if !handle.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return Err(AppError(fx_core::Error::BadRequest("Handle may only contain a-z, 0-9, _ and -".into())));
+    }
+    if input.password.len() < 8 {
+        return Err(AppError(fx_core::Error::BadRequest("Password must be at least 8 characters".into())));
+    }
+
+    let did = platform_user_service::create_platform_user(
+        &state.pool,
+        &handle,
+        input.display_name.as_deref(),
+        &input.password,
+    ).await.map_err(|e| {
+        if e.to_string().contains("duplicate") || e.to_string().contains("unique") {
+            AppError(fx_core::Error::BadRequest("Handle already taken".into()))
+        } else {
+            AppError(e)
+        }
+    })?;
+
+    // Auto-login after registration
+    let token = gen_session_token();
+    auth_service::create_session(
+        &state.pool,
+        &auth_service::CreateSessionInput {
+            token: &token,
+            did: &did,
+            handle: &handle,
+            display_name: input.display_name.as_deref(),
+            avatar: None,
+            pds_url: "",
+            access_jwt: "",
+            refresh_jwt: None,
+        },
+    ).await?;
+
+    Ok((StatusCode::CREATED, Json(LoginOutput {
+        token,
+        did,
+        handle,
+        display_name: input.display_name,
+        avatar: None,
+    })))
+}
+
 /// Platform-local user login only. AT Protocol users use OAuth at /oauth/login.
 pub async fn login(
     State(state): State<AppState>,

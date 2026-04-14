@@ -86,9 +86,11 @@ async function del<T>(path: string, body?: unknown, signal?: AbortSignal): Promi
   return res.json();
 }
 
-// Auth — platform-local login (password)
+// Auth — platform-local login & registration
 export const login = (identifier: string, password: string) =>
   post<AuthUser>('/auth/login', { identifier, password });
+export const register = (handle: string, password: string, display_name?: string) =>
+  post<AuthUser>('/auth/register', { handle, password, display_name });
 export const logout = () => post<void>('/auth/logout');
 export const authMe = () => get<AuthUser>('/auth/me');
 
@@ -169,6 +171,7 @@ export const getRecommendations = (limit = 30, offset = 0, category?: string) =>
   if (category) path += `&category=${encodeURIComponent(category)}`;
   return get<Article[]>(path);
 };
+export const getRecommendedQuestions = (limit = 8) => get<Article[]>(`/recommended-questions?limit=${limit}`);
 export const getFrontierSkills = () => get<FrontierSkill[]>('/frontier-skills');
 
 // Bookmarks
@@ -457,6 +460,10 @@ export const markLearned = (article_uri: string) => post<void>('/learned', { art
 export const unmarkLearned = (article_uri: string) => post<void>('/learned/remove', { article_uri });
 export const isLearned = (uri: string) => get<{ learned: boolean }>(`/learned/check?uri=${encodeURIComponent(uri)}`);
 
+// Article search
+export const searchArticles = (q: string, limit = 20) =>
+  get<Article[]>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+
 // Tag search
 export const searchTags = (q: string) => get<Tag[]>(`/tags/search?q=${encodeURIComponent(q)}`);
 
@@ -547,3 +554,98 @@ export const publishSeries = (id: string) => post<void>(`/series/${encodeURIComp
 export const unpublishSeries = (id: string) => post<void>(`/series/${encodeURIComponent(id)}/unpublish`, {});
 export const recordArticleView = (uri: string, viewer_did?: string) =>
   post<void>('/articles/view', { uri, viewer_did });
+
+// --- Admin API ---
+// All admin endpoints require x-admin-secret header
+
+function adminHeaders(secret: string): Record<string, string> {
+  return { 'x-admin-secret': secret, 'Content-Type': 'application/json' };
+}
+
+async function adminGet<T>(path: string, secret: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { headers: adminHeaders(secret) });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+async function adminPost<T>(path: string, secret: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: adminHeaders(secret),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+export interface AdminReport {
+  id: string;
+  reporter_did: string;
+  reporter_handle: string | null;
+  target_did: string;
+  target_handle: string | null;
+  target_uri: string | null;
+  kind: string;
+  reason: string;
+  status: string;
+  admin_note: string | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface AdminAppeal {
+  id: string;
+  did: string;
+  kind: string;
+  target_uri: string | null;
+  reason: string;
+  status: string;
+  admin_response: string | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface AdminBannedUser {
+  did: string;
+  handle: string;
+  display_name: string | null;
+  banned_at: string | null;
+  ban_reason: string | null;
+}
+
+export interface AdminPlatformUser {
+  did: string;
+  handle: string;
+  display_name: string | null;
+  created_at: string;
+}
+
+// Reports
+export const adminListReports = (secret: string, status?: string) =>
+  adminGet<AdminReport[]>(`/admin/reports${status ? `?status=${status}` : ''}`, secret);
+export const adminResolveReport = (secret: string, id: string, status: string, admin_note?: string) =>
+  adminPost<unknown>('/admin/reports/resolve', secret, { id, status, admin_note });
+
+// Appeals
+export const adminListAppeals = (secret: string) =>
+  adminGet<AdminAppeal[]>('/admin/appeals', secret);
+export const adminResolveAppeal = (secret: string, id: string, status: string, response?: string) =>
+  adminPost<AdminAppeal>('/admin/appeals/resolve', secret, { id, status, response });
+
+// Bans
+export const adminListBannedUsers = (secret: string) =>
+  adminGet<AdminBannedUser[]>('/admin/banned-users', secret);
+export const adminBanUser = (secret: string, did: string, reason?: string) =>
+  adminPost<unknown>('/admin/ban-user', secret, { did, reason });
+export const adminUnbanUser = (secret: string, did: string) =>
+  adminPost<unknown>('/admin/unban-user', secret, { did });
+
+// Users
+export const adminListUsers = (secret: string) =>
+  adminGet<AdminPlatformUser[]>('/admin/platform-users', secret);
+
+// Articles
+export const adminDeleteArticle = (secret: string, uri: string, reason?: string) =>
+  adminPost<unknown>('/admin/articles/delete', secret, { uri, reason });
+export const adminSetVisibility = (secret: string, uri: string, visibility: string, reason?: string) =>
+  adminPost<unknown>('/admin/articles/visibility', secret, { uri, visibility, reason });

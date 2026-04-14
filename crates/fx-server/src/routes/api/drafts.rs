@@ -13,6 +13,7 @@ use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
 use crate::auth::{Auth, WriteAuth, pds_create_record, pds_delete_record};
 use fx_core::util::{tid, content_hash, uri_to_node_id, now_rfc3339};
+use super::articles::get_user_knot_url;
 
 pub async fn list_drafts(
     State(state): State<AppState>,
@@ -93,12 +94,31 @@ pub async fn publish_draft(
 
     // Set up pijul repo and write content
     let node_id = uri_to_node_id(&at_uri);
-    state.pijul.init_repo(&node_id)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+    let knot_url = get_user_knot_url(&state.pool, &user.did).await;
 
+    if let Some(ref knot) = knot_url {
+        let client = pijul_knot::KnotClient::new(knot);
+        if let Err(e) = client.init_repo(&node_id).await {
+            tracing::warn!("knot init_repo failed: {e}");
+        }
+        let src_ext = if draft.content_format == ContentFormat::Markdown { "md" } else { "typ" };
+        if let Err(e) = client.write_file(&node_id, &format!("content.{src_ext}"), draft.content.as_bytes()).await {
+            tracing::warn!("knot write_file failed: {e}");
+        }
+    } else {
+        state.pijul.init_repo(&node_id)
+            .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+    }
+
+    // Always maintain local repo for rendering
+    let _ = state.pijul.init_repo(&node_id);
     let repo_path = state.pijul.repo_path(&node_id);
     let src_ext = if draft.content_format == ContentFormat::Markdown { "md" } else { "typ" };
-    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &draft.content).await?;
+    if knot_url.is_some() {
+        let _ = tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &draft.content).await;
+    } else {
+        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &draft.content).await?;
+    }
 
     let rendered_html = match draft.content_format.as_str() {
         "markdown" => fx_renderer::render_markdown_to_html(&draft.content)
@@ -112,7 +132,16 @@ pub async fn publish_draft(
     };
     let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
 
-    match state.pijul.record(&node_id, "Initial publish", Some(&user.did)) {
+    let record_result = if let Some(ref knot) = knot_url {
+        let client = pijul_knot::KnotClient::new(knot);
+        client.record(&node_id, "Initial publish", Some(&user.did)).await.ok()
+            .flatten().map(|r| Ok(Some(r)))
+            .unwrap_or(Ok(None))
+    } else {
+        state.pijul.record(&node_id, "Initial publish", Some(&user.did))
+    };
+
+    match record_result {
         Ok(Some((hash, new_state))) => {
             let _ = version_service::record_version(
                 &state.pool, &at_uri, &hash, &user.did, "Initial publish", &draft.content,
@@ -130,7 +159,7 @@ pub async fn publish_draft(
         &state.pool, &draft, &at_uri, &hash, default_visibility(user.phone_verified),
     ).await?;
 
-    // PDS: create article record, delete draft record
+    // PDS: create article metadata record, delete draft record
     let record = serde_json::json!({
         "$type": fx_atproto::lexicon::ARTICLE,
         "title": draft.title,

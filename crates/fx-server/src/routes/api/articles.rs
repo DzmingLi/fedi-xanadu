@@ -15,6 +15,18 @@ use crate::auth::{WriteAuth, pds_create_record};
 use fx_core::util::{content_hash, tid, uri_to_node_id, now_rfc3339};
 use super::UriQuery;
 
+/// Look up a user's knot_url from user_settings. Returns None if not set.
+pub(super) async fn get_user_knot_url(pool: &sqlx::PgPool, did: &str) -> Option<String> {
+    sqlx::query_scalar::<_, Option<String>>("SELECT knot_url FROM user_settings WHERE did = $1")
+        .bind(did)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .filter(|u| !u.is_empty())
+}
+
 /// Pre-compiled regex for extracting anchor IDs from HTML.
 static ANCHOR_ID_RE: std::sync::LazyLock<regex_lite::Regex> =
     std::sync::LazyLock::new(|| regex_lite::Regex::new(r##"id="([^"]+)""##).unwrap());
@@ -442,7 +454,13 @@ pub struct ForkAheadQuery {
     pub original_uri: String,
 }
 
+/// Result of publishing article content: repo path + rendered HTML.
+pub(super) struct PublishResult {
+    pub repo_path: std::path::PathBuf,
+}
+
 /// Shared: write source file, render, record pijul, track version.
+/// Supports both local PijulStore and remote KnotClient based on user's knot_url setting.
 pub(super) async fn publish_article_content(
     state: &AppState,
     at_uri: &str,
@@ -452,10 +470,10 @@ pub(super) async fn publish_article_content(
     format: ContentFormat,
     series_id: Option<&str>,
     message: &str,
-) -> Result<std::path::PathBuf, AppError> {
+) -> Result<PublishResult, AppError> {
     let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
     let src_ext = fx_renderer::format_extension(format.as_str());
-
+    let knot_url = get_user_knot_url(&state.pool, did).await;
     if let Some(sid) = series_id {
         let pijul_node_id: Option<String> = sqlx::query_scalar(
             "SELECT pijul_node_id FROM series WHERE id = $1",
@@ -470,10 +488,19 @@ pub(super) async fn publish_article_content(
         })?;
 
         let series_repo = state.pijul.series_repo_path(&node_id);
-        tokio::fs::write(
-            series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}")),
-            content,
-        ).await?;
+
+        if let Some(ref knot) = knot_url {
+            let client = pijul_knot::KnotClient::new(knot);
+            let path = format!("chapters/{chapter_id}.{src_ext}");
+            if let Err(e) = client.write_file(&node_id, &path, content.as_bytes()).await {
+                tracing::warn!("knot write_file failed: {e}");
+            }
+        } else {
+            tokio::fs::write(
+                series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}")),
+                content,
+            ).await?;
+        }
 
         if format != ContentFormat::Html {
             let rendered = render_content(format.as_str(), content, &series_repo)?;
@@ -482,7 +509,16 @@ pub(super) async fn publish_article_content(
             let _ = tokio::fs::write(cache_dir.join(format!("{chapter_id}.html")), &rendered).await;
         }
 
-        match state.pijul.record_series(&node_id, message, Some(did)) {
+        let record_result = if let Some(ref knot) = knot_url {
+            let client = pijul_knot::KnotClient::new(knot);
+            client.record(&node_id, message, Some(did)).await.ok()
+                .flatten().map(|r| Ok(Some(r)))
+                .unwrap_or(Ok(None))
+        } else {
+            state.pijul.record_series(&node_id, message, Some(did))
+        };
+
+        match record_result {
             Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, at_uri, &hash, did, message, content,
@@ -493,21 +529,49 @@ pub(super) async fn publish_article_content(
             Err(e) => tracing::warn!("pijul record failed for series {node_id}: {e}"),
         }
 
-        Ok(series_repo)
+        Ok(PublishResult { repo_path: series_repo })
     } else {
         let node_id = uri_to_node_id(at_uri);
-        state.pijul.init_repo(&node_id)
-            .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
 
+        if let Some(ref knot) = knot_url {
+            let client = pijul_knot::KnotClient::new(knot);
+            if let Err(e) = client.init_repo(&node_id).await {
+                tracing::warn!("knot init_repo failed: {e}");
+            }
+            let path = format!("content.{src_ext}");
+            if let Err(e) = client.write_file(&node_id, &path, content.as_bytes()).await {
+                tracing::warn!("knot write_file failed: {e}");
+            }
+        } else {
+            state.pijul.init_repo(&node_id)
+                .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+            let repo_path = state.pijul.repo_path(&node_id);
+            tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
+        }
+
+        // Always maintain local repo for rendering/caching even when using remote knot
+        let _ = state.pijul.init_repo(&node_id);
         let repo_path = state.pijul.repo_path(&node_id);
-        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
 
         if format != ContentFormat::Html {
+            // Write locally for rendering even if knot is remote
+            if knot_url.is_some() {
+                let _ = tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await;
+            }
             let rendered = render_content(format.as_str(), content, &repo_path)?;
             let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
         }
 
-        match state.pijul.record(&node_id, message, Some(did)) {
+        let record_result = if let Some(ref knot) = knot_url {
+            let client = pijul_knot::KnotClient::new(knot);
+            client.record(&node_id, message, Some(did)).await.ok()
+                .flatten().map(|r| Ok(Some(r)))
+                .unwrap_or(Ok(None))
+        } else {
+            state.pijul.record(&node_id, message, Some(did))
+        };
+
+        match record_result {
             Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, at_uri, &hash, did, message, content,
@@ -518,7 +582,7 @@ pub(super) async fn publish_article_content(
             Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
         }
 
-        Ok(repo_path)
+        Ok(PublishResult { repo_path })
     }
 }
 
@@ -602,6 +666,7 @@ pub(super) async fn save_article_content(
 }
 
 /// Record the current working copy state as a pijul change and store version metadata.
+/// Also syncs rendered HTML to the user's PDS.
 pub(super) async fn record_pijul_change(
     state: &AppState,
     uri: &str,
@@ -611,9 +676,19 @@ pub(super) async fn record_pijul_change(
     message: &str,
 ) -> Result<(), AppError> {
     let series_info = get_series_pijul_info(state, uri).await;
+    let knot_url = get_user_knot_url(&state.pool, did).await;
 
     if let Some((series_node_id, _chapter_id)) = series_info {
-        match state.pijul.record_series(&series_node_id, message, Some(did)) {
+        let record_result = if let Some(ref knot) = knot_url {
+            let client = pijul_knot::KnotClient::new(knot);
+            client.record(&series_node_id, message, Some(did)).await.ok()
+                .flatten().map(|r| Ok(Some(r)))
+                .unwrap_or(Ok(None))
+        } else {
+            state.pijul.record_series(&series_node_id, message, Some(did))
+        };
+
+        match record_result {
             Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, uri, &hash, did, message, content,
@@ -627,7 +702,17 @@ pub(super) async fn record_pijul_change(
         }
     } else {
         let node_id = uri_to_node_id(uri);
-        match state.pijul.record(&node_id, message, Some(did)) {
+
+        let record_result = if let Some(ref knot) = knot_url {
+            let client = pijul_knot::KnotClient::new(knot);
+            client.record(&node_id, message, Some(did)).await.ok()
+                .flatten().map(|r| Ok(Some(r)))
+                .unwrap_or(Ok(None))
+        } else {
+            state.pijul.record(&node_id, message, Some(did))
+        };
+
+        match record_result {
             Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, uri, &hash, did, message, content,
@@ -658,7 +743,7 @@ pub async fn create_article(
         require_owner(Some(&owner), &user.did)?;
     }
 
-    let repo_path = publish_article_content(
+    let publish = publish_article_content(
         &state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
         input.series_id.as_deref(), "Initial publish",
     ).await?;
@@ -675,7 +760,7 @@ pub async fn create_article(
             input.category.as_deref(),
             input.content_format.as_str(),
         );
-        if let Err(e) = fx_core::meta::write_meta_file(&repo_path, &meta) {
+        if let Err(e) = fx_core::meta::write_meta_file(&publish.repo_path, &meta) {
             tracing::warn!("failed to write meta.json: {e}");
         }
         let node_id = uri_to_node_id(&at_uri);

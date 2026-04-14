@@ -40,6 +40,7 @@
     try {
       const d = await getQuestionDetail(uri);
       detail = d;
+      document.title = `${d.question.title} — NightBoat`;
 
       // Load question content and all answer contents in parallel
       const contentPromises: Promise<void>[] = [];

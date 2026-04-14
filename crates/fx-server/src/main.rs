@@ -45,11 +45,23 @@ async fn main() -> Result<()> {
         http_client: reqwest::Client::new(),
     };
 
+    let seo_template = std::fs::read_to_string("frontend/dist/index.html")
+        .unwrap_or_else(|_| {
+            tracing::warn!("frontend/dist/index.html not found, SEO meta injection disabled");
+            String::new()
+        });
+
+    let seo_state = prerender::SeoState {
+        pool: state.pool.clone(),
+        template: std::sync::Arc::new(seo_template),
+        public_url: public_url.clone(),
+    };
+
     let app = routes::router(state.clone(), &config)
         .nest("/oauth", atproto_auth::oauth_router(oauth_state))
         .layer(axum::middleware::from_fn_with_state(
-            state.pool.clone(),
-            prerender::prerender_middleware,
+            seo_state,
+            prerender::seo_middleware,
         ));
 
     // Background task: clean up expired sessions every hour

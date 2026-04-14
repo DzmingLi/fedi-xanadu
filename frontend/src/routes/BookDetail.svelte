@@ -44,6 +44,7 @@
     loading = true;
     try {
       detail = await getBook(id);
+      document.title = `${detail.book.title} — NightBoat`;
       avgRating = detail.rating.avg_rating;
       ratingCount = detail.rating.rating_count;
       myRating = detail.my_rating || 0;

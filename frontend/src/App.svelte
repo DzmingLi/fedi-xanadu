@@ -65,6 +65,7 @@
   const lazySeriesEditor = () => import('./routes/SeriesEditor.svelte');
   const lazyDiscussion = () => import('./routes/Discussion.svelte');
   const lazyCreator = () => import('./routes/CreatorDashboard.svelte');
+  const lazyAdmin = () => import('./routes/Admin.svelte');
 </script>
 
 <Toast />
@@ -101,7 +102,7 @@
       <main class="layout-main">
         <Home />
       </main>
-      <!-- RightSidebar removed temporarily -->
+      <RightSidebar />
     </div>
   </div>
 {:else if route.page === 'new'}
@@ -206,6 +207,10 @@
     {:else if route.page === 'book-edition'}
       {#await lazyBookEdition() then mod}
         <mod.default bookId={route.params.book_id || ''} />
+      {/await}
+    {:else if route.page === 'admin'}
+      {#await lazyAdmin() then mod}
+        <mod.default />
       {/await}
     {/if}
   </div>

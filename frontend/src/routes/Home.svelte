@@ -201,6 +201,7 @@
         getAllSeriesArticles(),
       ]);
 
+      document.title = 'NightBoat';
       articles = arts;
       allTags = tgs;
       tagTree = tree;

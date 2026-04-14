@@ -65,6 +65,7 @@ pub fn routes() -> Router<AppState> {
 
     let auth_limited = Router::new()
         .route("/auth/login", post(auth::login))
+        .route("/auth/register", post(auth::register))
         .layer(tower_governor::GovernorLayer::new(auth_governor_conf));
 
     Router::new()
@@ -302,6 +303,7 @@ fn graph_routes() -> Router<AppState> {
 fn recommendation_routes() -> Router<AppState> {
     Router::new()
         .route("/recommendations", get(recommendations::get_recommendations))
+        .route("/recommended-questions", get(recommendations::get_recommended_questions))
         .route("/frontier-skills", get(recommendations::get_frontier_skills))
 }
 

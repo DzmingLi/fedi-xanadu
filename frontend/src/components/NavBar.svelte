@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { listArticles, logout as apiLogout, getUnreadCount } from '../lib/api';
+  import { searchArticles, logout as apiLogout, getUnreadCount } from '../lib/api';
   import { getAuth, setAuth } from '../lib/auth.svelte';
   import { t, getLocale, setLocale, LOCALES } from '../lib/i18n/index.svelte';
   import { loadLangPrefs, clearLangPrefs } from '../lib/langPrefs.svelte';
@@ -33,8 +33,9 @@
   let searchOpen = $state(false);
   let query = $state('');
   let results = $state<Article[]>([]);
-  let allArticles = $state<Article[]>([]);
+  let selectedIdx = $state(-1);
   let searchEl: HTMLInputElement | undefined = $state();
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   let loginOpen = $state(false);
   let user = $derived(getAuth());
@@ -47,9 +48,6 @@
 
   async function openSearch() {
     searchOpen = true;
-    if (allArticles.length === 0) {
-      allArticles = await listArticles();
-    }
     setTimeout(() => searchEl?.focus(), 0);
   }
 
@@ -64,18 +62,33 @@
     searchOpen = false;
     query = '';
     results = [];
+    selectedIdx = -1;
   }
 
   function onInput() {
-    const q = query.trim().toLowerCase();
-    if (!q) { results = []; return; }
-    results = allArticles
-      .filter(a => a.title.toLowerCase().includes(q) || a.description.toLowerCase().includes(q))
-      .slice(0, 8);
+    const q = query.trim();
+    if (!q) { results = []; selectedIdx = -1; return; }
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      try {
+        results = await searchArticles(q, 20);
+        selectedIdx = -1;
+      } catch { results = []; }
+    }, 200);
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') closeSearch();
+    if (e.key === 'Escape') { closeSearch(); return; }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (results.length > 0) selectedIdx = (selectedIdx + 1) % results.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (results.length > 0) selectedIdx = selectedIdx <= 0 ? results.length - 1 : selectedIdx - 1;
+    } else if (e.key === 'Enter' && selectedIdx >= 0 && selectedIdx < results.length) {
+      e.preventDefault();
+      goToArticle(results[selectedIdx].at_uri);
+    }
   }
 
   function goToArticle(uri: string) {
@@ -102,7 +115,7 @@
 </script>
 
 <nav>
-  <a href="/" class="brand">Fedi-Xanadu</a>
+  <a href="/" class="brand">NightBoat</a>
   <div class="nav-links">
     <a href="/questions">{t('nav.questions')}</a>
     <a href="/skills">{t('nav.skills')}</a>
@@ -189,8 +202,8 @@
       />
       {#if results.length > 0}
         <div class="search-results">
-          {#each results as a}
-            <button type="button" class="search-result" onclick={() => goToArticle(a.at_uri)}>
+          {#each results as a, i}
+            <button type="button" class="search-result" class:selected={i === selectedIdx} onclick={() => goToArticle(a.at_uri)}>
               <span class="result-title">{a.title}</span>
               {#if a.description}
                 <span class="result-desc">{a.description}</span>
@@ -472,7 +485,7 @@
     transition: background 0.1s;
   }
   .search-result:last-child { border-bottom: none; }
-  .search-result:hover { background: var(--bg-hover); }
+  .search-result:hover, .search-result.selected { background: var(--bg-hover); }
   .result-title {
     font-family: var(--font-serif);
     font-size: 15px;
