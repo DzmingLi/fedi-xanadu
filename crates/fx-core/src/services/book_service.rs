@@ -171,7 +171,9 @@ pub struct BookListItem {
 
 pub async fn list_books_rich(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<BookListItem>> {
     let rows = sqlx::query_as::<_, BookListItem>(
-        "SELECT b.id, b.title, b.authors, b.description, b.cover_url, b.created_at, \
+        "SELECT b.id, b.title, b.authors, b.description, \
+         COALESCE(b.cover_url, (SELECT e.cover_url FROM book_editions e WHERE e.book_id = b.id AND e.cover_url IS NOT NULL LIMIT 1)) AS cover_url, \
+         b.created_at, \
          COALESCE(r.avg, 0) AS avg_rating, \
          COALESCE(r.cnt, 0) AS rating_count, \
          COALESCE(rd.cnt, 0) AS reader_count, \

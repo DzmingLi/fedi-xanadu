@@ -177,6 +177,7 @@
     <div class="comment-item" style:margin-left="{depth * 24}px">
       <div class="comment-header">
         <a href="/profile?did={encodeURIComponent(c.did)}" class="comment-author">
+          <img src="/api/avatars/{encodeURIComponent(c.did)}" alt="" class="comment-avatar" onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           {c.author_handle ? `@${c.author_handle}` : c.did.slice(0, 20) + '…'}
         </a>
         <span class="comment-date">{c.created_at.split('T')[0]}</span>
@@ -324,6 +325,16 @@
     font-weight: 500;
     color: var(--text-secondary);
     text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .comment-avatar {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
   }
   .comment-author:hover { color: var(--accent); }
   .comment-date {

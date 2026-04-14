@@ -236,6 +236,8 @@ fn profile_routes() -> Router<AppState> {
         .route("/profile/projects", put(profile::update_projects))
         .route("/profile/teaching", put(profile::update_teaching))
         .route("/profile/listings", get(profile::get_user_listings))
+        .route("/profile/avatar", post(profile::upload_avatar))
+        .route("/avatars/{id}", get(profile::get_avatar))
 }
 
 fn series_routes() -> Router<AppState> {
@@ -424,6 +426,7 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/reading-status", post(books::set_reading_status).delete(books::remove_reading_status))
         .route("/books/{id}/history", get(books::get_edit_history))
         .route("/books/{id}/cover", post(books::upload_cover))
+        .route("/books/{id}/editions/{eid}/cover", post(books::upload_edition_cover))
         .route("/book-covers/{id}", get(books::get_cover))
 }
 

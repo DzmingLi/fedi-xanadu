@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updatePublications, updateProjects, updateTeaching, getUserListings } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
@@ -365,6 +365,19 @@
         <img src={profile.avatar_url} alt="avatar" class="avatar" />
       {:else}
         <div class="avatar placeholder">{(profile.handle || profile.did).charAt(0).toUpperCase()}</div>
+      {/if}
+      {#if isOwnProfile}
+        <label class="avatar-upload" title="Upload avatar">
+          <input type="file" accept="image/*" class="sr-only" onchange={async (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (!file) return;
+            try {
+              const url = await uploadAvatar(file);
+              profile!.avatar_url = url;
+            } catch { /* */ }
+          }} />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </label>
       {/if}
     </div>
     <div class="profile-info">
@@ -884,12 +897,31 @@
     padding-bottom: 20px;
     border-bottom: 1px solid var(--border);
   }
+  .avatar-wrap { position: relative; }
   .avatar {
     width: 72px;
     height: 72px;
     border-radius: 50%;
     object-fit: cover;
   }
+  .avatar-upload {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 24px;
+    height: 24px;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-hint);
+    transition: all 0.15s;
+  }
+  .avatar-upload:hover { color: var(--accent); border-color: var(--accent); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
   .avatar.placeholder {
     display: flex;
     align-items: center;

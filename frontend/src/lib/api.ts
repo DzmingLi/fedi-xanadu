@@ -199,6 +199,14 @@ export const updatePublications = (pubs: import('./types').PublicationEntry[]) =
 export const updateProjects = (projects: import('./types').ProjectEntry[]) => put<void>('/profile/projects', projects);
 export const updateTeaching = (teaching: import('./types').TeachingEntry[]) => put<void>('/profile/teaching', teaching);
 export const getUserListings = (did: string) => get<import('./types').Listing[]>(`/profile/listings?did=${encodeURIComponent(did)}`);
+export const uploadAvatar = async (file: File): Promise<string> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/profile/avatar`, { method: 'POST', headers: authHeaders(), body: form });
+  if (!res.ok) throw new Error(`${res.status}`);
+  const data = await res.json();
+  return data.avatar_url;
+};
 
 // Series
 export const listSeries = () => get<Series[]>('/series');

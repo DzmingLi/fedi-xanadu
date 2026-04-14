@@ -1,11 +1,12 @@
 use axum::{
     Json,
-    extract::{Query, State},
-    http::StatusCode,
+    body::Body,
+    extract::{Multipart, Query, State},
+    http::{StatusCode, Response, header},
 };
 use fx_core::services::social_service;
 
-use crate::error::ApiResult;
+use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
 use crate::auth::WriteAuth;
 use super::DidQuery;
@@ -82,6 +83,83 @@ pub async fn update_teaching(
     sqlx::query("UPDATE profiles SET teaching = $1 WHERE did = $2")
         .bind(&json).bind(&user.did).execute(&state.pool).await?;
     Ok(StatusCode::OK)
+}
+
+// --- Avatar upload & serve ---
+
+const AVATAR_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const MAX_AVATAR_SIZE: usize = 2 * 1024 * 1024; // 2 MB
+
+pub async fn upload_avatar(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    mut multipart: Multipart,
+) -> ApiResult<Json<serde_json::Value>> {
+    let mut file_data: Option<Vec<u8>> = None;
+    let mut file_name: Option<String> = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        AppError(fx_core::Error::BadRequest(format!("Multipart error: {e}")))
+    })? {
+        if field.name() == Some("file") {
+            file_name = field.file_name().map(|s| s.to_string());
+            file_data = Some(field.bytes().await
+                .map_err(|e| AppError(fx_core::Error::BadRequest(e.to_string())))?.to_vec());
+        }
+    }
+
+    let data = file_data.ok_or(AppError(fx_core::Error::BadRequest("Missing file".into())))?;
+    if data.len() > MAX_AVATAR_SIZE {
+        return Err(AppError(fx_core::Error::BadRequest("Avatar too large (max 2MB)".into())));
+    }
+
+    let ext = file_name.as_deref()
+        .and_then(|n| std::path::Path::new(n).extension())
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_else(|| "jpg".into());
+    if !AVATAR_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(AppError(fx_core::Error::BadRequest("Use jpg, png, or webp".into())));
+    }
+
+    let safe_did: String = user.did.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.' || *c == ':')
+        .collect();
+
+    let avatars_dir = state.data_dir.join("avatars");
+    let _ = tokio::fs::create_dir_all(&avatars_dir).await;
+    tokio::fs::write(avatars_dir.join(format!("{safe_did}.{ext}")), &data).await?;
+
+    let avatar_url = format!("/api/avatars/{safe_did}");
+    sqlx::query("UPDATE profiles SET avatar_url = $1 WHERE did = $2")
+        .bind(&avatar_url).bind(&user.did).execute(&state.pool).await?;
+
+    Ok(Json(serde_json::json!({ "avatar_url": avatar_url })))
+}
+
+pub async fn get_avatar(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response<Body> {
+    let safe_id: String = id.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.' || *c == ':')
+        .collect();
+
+    let avatars_dir = state.data_dir.join("avatars");
+    for ext in AVATAR_EXTENSIONS {
+        let path = avatars_dir.join(format!("{safe_id}.{ext}"));
+        if path.exists() {
+            let ct = match *ext { "png" => "image/png", "webp" => "image/webp", _ => "image/jpeg" };
+            if let Ok(data) = tokio::fs::read(&path).await {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, ct)
+                    .header(header::CACHE_CONTROL, "public, max-age=3600")
+                    .body(Body::from(data)).unwrap();
+            }
+        }
+    }
+    Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
 }
 
 pub async fn get_user_listings(

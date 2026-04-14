@@ -153,7 +153,13 @@
 
     <div class="card-bottom">
       <span class="post-meta">
-        {#if variant === 'home'}{authorName(article)}{#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if} &middot; {/if}{article.created_at.split(' ')[0]}
+        {#if variant === 'home'}
+          <a href="/profile?did={encodeURIComponent(article.did)}" class="author-link">
+            <img src="/api/avatars/{encodeURIComponent(article.did)}" alt="" class="post-avatar" onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            {authorName(article)}
+          </a>
+          {#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if} &middot;
+        {/if}{article.created_at.split(' ')[0]}
       </span>
       {#if variant === 'home'}
         <span class="card-stats">
@@ -315,6 +321,9 @@
     font-size: 13px;
     color: var(--text-hint);
   }
+  .author-link { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; }
+  .author-link:hover { color: var(--accent); text-decoration: none; }
+  .post-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
   .rep-badge {
     display: inline-block;
     font-size: 11px;

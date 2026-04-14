@@ -461,3 +461,47 @@ pub async fn upload_cover(
 
     Ok(Json(serde_json::json!({ "cover_url": cover_url })))
 }
+
+/// Upload a cover for a specific edition.
+pub async fn upload_edition_cover(
+    State(state): State<AppState>,
+    Path((book_id, edition_id)): Path<(String, String)>,
+    WriteAuth(_user): WriteAuth,
+    mut multipart: Multipart,
+) -> ApiResult<Json<serde_json::Value>> {
+    let mut file_data: Option<Vec<u8>> = None;
+    let mut file_name: Option<String> = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        AppError(fx_core::Error::BadRequest(format!("Multipart error: {e}")))
+    })? {
+        if field.name() == Some("file") {
+            file_name = field.file_name().map(|s| s.to_string());
+            file_data = Some(field.bytes().await
+                .map_err(|e| AppError(fx_core::Error::BadRequest(e.to_string())))?.to_vec());
+        }
+    }
+
+    let data = file_data.ok_or(AppError(fx_core::Error::BadRequest("Missing file".into())))?;
+    if data.len() > MAX_COVER_SIZE {
+        return Err(AppError(fx_core::Error::BadRequest("Cover too large (max 5MB)".into())));
+    }
+
+    let ext = std::path::Path::new(file_name.as_deref().unwrap_or(""))
+        .extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_else(|| "jpg".into());
+    if !COVER_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(AppError(fx_core::Error::BadRequest("Use jpg, png, or webp".into())));
+    }
+
+    let safe_id: String = edition_id.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
+
+    let dest = state.data_dir.join("book-covers").join(format!("{safe_id}.{ext}"));
+    tokio::fs::write(&dest, &data).await?;
+
+    let cover_url = format!("/api/book-covers/{safe_id}");
+    sqlx::query("UPDATE book_editions SET cover_url = $1 WHERE id = $2 AND book_id = $3")
+        .bind(&cover_url).bind(&edition_id).bind(&book_id).execute(&state.pool).await?;
+
+    Ok(Json(serde_json::json!({ "cover_url": cover_url })))
+}
