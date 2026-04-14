@@ -64,15 +64,28 @@ pub async fn record_version(
     message: &str,
     source_text: &str,
 ) -> crate::Result<()> {
+    record_version_with_html(pool, article_uri, change_hash, editor_did, message, source_text, None).await
+}
+
+pub async fn record_version_with_html(
+    pool: &PgPool,
+    article_uri: &str,
+    change_hash: &str,
+    editor_did: &str,
+    message: &str,
+    source_text: &str,
+    rendered_html: Option<&str>,
+) -> crate::Result<()> {
     sqlx::query(
-        "INSERT INTO article_versions (article_uri, change_hash, editor_did, message, source_text)
-         VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO article_versions (article_uri, change_hash, editor_did, message, source_text, rendered_html)
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(article_uri)
     .bind(change_hash)
     .bind(editor_did)
     .bind(message)
     .bind(source_text)
+    .bind(rendered_html)
     .execute(pool)
     .await?;
     Ok(())

@@ -98,19 +98,25 @@ pub async fn get_article_content(
     let kind: Option<String> = sqlx::query_scalar("SELECT kind::TEXT FROM articles WHERE at_uri = $1")
         .bind(&uri).fetch_optional(&state.pool).await?;
     if kind.as_deref() == Some("thought") {
-        let source: String = sqlx::query_scalar(
-            "SELECT source_text FROM article_versions WHERE article_uri = $1 ORDER BY created_at DESC LIMIT 1"
-        ).bind(&uri).fetch_optional(&state.pool).await?
+        let row: Option<(String, Option<String>)> = sqlx::query_as(
+            "SELECT source_text, rendered_html FROM article_versions WHERE article_uri = $1 ORDER BY created_at DESC LIMIT 1"
+        ).bind(&uri).fetch_optional(&state.pool).await?;
+
+        let (source, cached_html) = row
             .ok_or(AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?;
 
-        let html = if format == "html" {
+        let html = if let Some(h) = cached_html {
+            h
+        } else if format == "html" {
             source.clone()
         } else {
-            // Render in a temp dir (thoughts have no repo)
             let tmp = std::env::temp_dir().join(format!("nb-thought-{}", tid()));
             let _ = tokio::fs::create_dir_all(&tmp).await;
             let rendered = render_content(&format, &source, &tmp)?;
             let _ = tokio::fs::remove_dir_all(&tmp).await;
+            // Backfill cache for future requests
+            let _ = sqlx::query("UPDATE article_versions SET rendered_html = $1 WHERE article_uri = $2 AND rendered_html IS NULL")
+                .bind(&rendered).bind(&uri).execute(&state.pool).await;
             rendered
         };
         return Ok(Json(ArticleContent { source, html }));

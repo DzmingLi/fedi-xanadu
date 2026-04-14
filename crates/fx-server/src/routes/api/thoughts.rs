@@ -46,9 +46,20 @@ pub async fn create_thought(
         default_visibility(user.phone_verified), ContentKind::Thought, None,
     ).await?;
 
-    // Store source text directly in article_versions (single version, no pijul)
-    let _ = version_service::record_version(
-        &state.pool, &at_uri, &hash, &user.did, "Published", &input.content,
+    // Render and store source + HTML in article_versions (no pijul)
+    let rendered = if input.content_format.as_str() == "html" {
+        input.content.clone()
+    } else {
+        let tmp = std::env::temp_dir().join(format!("nb-thought-{}", tid()));
+        let _ = tokio::fs::create_dir_all(&tmp).await;
+        let html = super::articles::render_content(input.content_format.as_str(), &input.content, &tmp)
+            .unwrap_or_else(|_| input.content.clone());
+        let _ = tokio::fs::remove_dir_all(&tmp).await;
+        html
+    };
+
+    let _ = version_service::record_version_with_html(
+        &state.pool, &at_uri, &hash, &user.did, "Published", &input.content, Some(&rendered),
     ).await;
 
     // Sync to PDS — thoughts are lightweight, content fits in the record
