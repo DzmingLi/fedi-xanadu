@@ -764,7 +764,7 @@
                   <span class="review-edition">{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</span>
                 {/if}
               {/if}
-              <PostCard article={review} articleTeaches={[]} variant="profile" />
+              <PostCard article={review} articleTeaches={[]} />
             </div>
           {/each}
         {/if}

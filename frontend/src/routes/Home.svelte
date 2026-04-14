@@ -332,7 +332,7 @@
   {:else}
     <div class="feed">
       {#each followingArticles as article (article.at_uri)}
-        <PostCard {article} articleTeaches={articleTeaches.get(article.at_uri) ?? []} variant="home" />
+        <PostCard {article} articleTeaches={articleTeaches.get(article.at_uri) ?? []} />
       {/each}
     </div>
   {/if}
@@ -365,13 +365,13 @@
           article={item.article}
           articleTeaches={articleTeaches.get(item.article.at_uri) || []}
           articlePrereqs={articlePrereqs.get(item.article.at_uri) || []}
-          variant="home"
+         
         />
       {:else if item.type === 'series' && item.series}
         <PostCard
           series={item.series}
           articleCount={item.articleCount}
-          variant="home"
+         
         />
       {/if}
     {/each}

@@ -6,22 +6,18 @@
   import type { Article, ArticleContent, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
   import CommentThread from './CommentThread.svelte';
 
-  type CardVariant = 'home' | 'profile';
-
   let {
     article = undefined,
     series = undefined,
     articleCount = 0,
     articleTeaches = [],
     articlePrereqs = [],
-    variant = 'home' as CardVariant,
   }: {
     article?: Article;
     series?: Series;
     articleCount?: number;
     articleTeaches?: ContentTeachRow[];
     articlePrereqs?: ContentPrereqBulkRow[];
-    variant?: CardVariant;
   } = $props();
 
   function navToTag(e: MouseEvent | KeyboardEvent, tagId: string) {
@@ -153,27 +149,24 @@
 
     <div class="card-bottom">
       <span class="post-meta">
-        {#if variant === 'home'}
-          <a href="/profile?did={encodeURIComponent(article.did)}" class="author-link">
-            <img src="/api/avatars/{encodeURIComponent(article.did)}" alt="" class="post-avatar" onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            {authorName(article)}
-          </a>
-          {#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if} &middot;
-        {/if}{article.created_at.split(' ')[0]}
-      </span>
-      {#if variant === 'home'}
-        <span class="card-stats">
-          {#if article.vote_score !== 0}
-            <span class="stat" title={t('home.votes')}>&#9650; {article.vote_score}</span>
-          {/if}
-          {#if article.bookmark_count > 0}
-            <span class="stat" title={t('home.bookmarks')}>&#9733; {article.bookmark_count}</span>
-          {/if}
+        <span class="author-link" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(article.did)}`; }}>
+          <img src="/api/avatars/{encodeURIComponent(article.did)}" alt="" class="post-avatar" onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          {authorName(article)}
         </span>
-      {/if}
+        {#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if}
+        &middot; {article.created_at.split(' ')[0]}
+      </span>
+      <span class="card-stats">
+        {#if article.vote_score !== 0}
+          <span class="stat" title={t('home.votes')}>&#9650; {article.vote_score}</span>
+        {/if}
+        {#if article.bookmark_count > 0}
+          <span class="stat" title={t('home.bookmarks')}>&#9733; {article.bookmark_count}</span>
+        {/if}
+      </span>
     </div>
-    <button class="expand-btn" onclick={toggleExpand} title={expanded ? t('home.collapse') : t('home.expand')}>
-      {#if expandLoading}...{:else}{expanded ? '▲' : '▼'}{/if}
+    <button class="expand-btn" onclick={toggleExpand}>
+      {#if expandLoading}...{:else}{expanded ? t('home.collapse') : t('home.expand')}{/if}
     </button>
   </a>
 
@@ -222,14 +215,14 @@
 
     <div class="card-bottom">
       <span class="post-meta">
-        {#if variant === 'home'}{seriesAuthor(series)} &middot; {/if}{series.created_at.split(' ')[0]}
+        {seriesAuthor(series)} &middot; {series.created_at.split(' ')[0]}
       </span>
       <span class="card-stats">
-        <span class="stat">{articleCount} {variant === 'home' ? t('home.lectures') : t('profile.lectureCount')}</span>
+        <span class="stat">{articleCount} {t('home.lectures')}</span>
       </span>
     </div>
-    <button class="expand-btn" onclick={toggleExpand} title={expanded ? t('home.collapse') : t('home.expand')}>
-      {#if expandLoading}...{:else}{expanded ? '▲' : '▼'}{/if}
+    <button class="expand-btn" onclick={toggleExpand}>
+      {#if expandLoading}...{:else}{expanded ? t('home.collapse') : t('home.expand')}{/if}
     </button>
   </a>
 

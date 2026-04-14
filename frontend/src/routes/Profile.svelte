@@ -348,7 +348,7 @@
           <PostCard
             article={art}
             articleTeaches={articleTeaches.get(art.at_uri) || []}
-            variant="profile"
+           
           />
         {/if}
       {/each}
@@ -700,7 +700,7 @@
         <PostCard
           article={item.article}
           articleTeaches={articleTeaches.get(item.article.at_uri) || []}
-          variant="profile"
+         
         />
       {:else if item.type === 'series' && item.series}
         {@render seriesTree(item.series, item.articleCount)}
@@ -783,7 +783,7 @@
         </div>
       {:else}
         {#each group.articles as art}
-          <PostCard article={art} articleTeaches={articleTeaches.get(art.at_uri) || []} variant="profile" />
+          <PostCard article={art} articleTeaches={articleTeaches.get(art.at_uri) || []} />
         {/each}
       {/if}
     {/each}
