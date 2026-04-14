@@ -27,6 +27,18 @@
     window.location.href = `/tag?id=${encodeURIComponent(tagId)}`;
   }
 
+  function fmtTime(iso: string): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso.slice(0, 10);
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    if (diff < 60_000) return '刚刚';
+    if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+    if (diff < 86400_000) return `${Math.floor(diff / 3600_000)} 小时前`;
+    if (diff < 7 * 86400_000) return `${Math.floor(diff / 86400_000)} 天前`;
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
   let expanded = $state(false);
   let expandedContent = $state<ArticleContent | null>(null);
   let expandLoading = $state(false);
@@ -154,7 +166,7 @@
           {authorName(article)}
         </span>
         {#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if}
-        &middot; {article.created_at.split(' ')[0]}
+        &middot; {fmtTime(article.created_at)}
       </span>
       <span class="card-stats">
         {#if article.vote_score !== 0}
@@ -178,7 +190,7 @@
           <a href="/profile?did={encodeURIComponent(article.did)}">{authorName(article)}</a>
           {#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if}
           <span>&middot;</span>
-          <span>{article.created_at.split(' ')[0]}</span>
+          <span>{fmtTime(article.created_at)}</span>
           <span>&middot;</span>
           <span>{article.content_format}</span>
           <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
@@ -215,7 +227,7 @@
 
     <div class="card-bottom">
       <span class="post-meta">
-        {seriesAuthor(series)} &middot; {series.created_at.split(' ')[0]}
+        {seriesAuthor(series)} &middot; {fmtTime(series.created_at)}
       </span>
       <span class="card-stats">
         <span class="stat">{articleCount} {t('home.lectures')}</span>

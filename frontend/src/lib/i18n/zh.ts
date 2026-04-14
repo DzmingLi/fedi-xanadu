@@ -489,8 +489,9 @@ export default {
   'newArticle.categoryLabel': '类型',
 
   // Footer
-  'footer.terms': '使用条款',
+  'footer.guidelines': '社区公约',
   'footer.rights': '保留所有权利。',
+  'guidelines.comingSoon': '社区公约正在起草中，敬请期待。',
 
   // Thoughts
   'nav.thoughts': '想法',

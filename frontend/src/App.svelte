@@ -67,6 +67,7 @@
   const lazyDiscussion = () => import('./routes/Discussion.svelte');
   const lazyCreator = () => import('./routes/CreatorDashboard.svelte');
   const lazyThoughts = () => import('./routes/Thoughts.svelte');
+  const lazyGuidelines = () => import('./routes/Guidelines.svelte');
   const lazyAdmin = () => import('./routes/Admin.svelte');
   const lazyListings = () => import('./routes/Listings.svelte');
   const lazyListingDetail = () => import('./routes/ListingDetail.svelte');
@@ -228,6 +229,10 @@
     {:else if route.page === 'new-listing'}
       {#await lazyNewListing() then mod}
         <mod.default editId={route.params.edit || ''} />
+      {/await}
+    {:else if route.page === 'guidelines'}
+      {#await lazyGuidelines() then mod}
+        <mod.default />
       {/await}
     {:else if route.page === 'admin'}
       {#await lazyAdmin() then mod}

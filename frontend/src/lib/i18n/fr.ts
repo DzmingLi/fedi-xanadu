@@ -421,8 +421,9 @@ export default {
   'newArticle.categoryLabel': 'Catégorie',
 
   // Footer
-  'footer.terms': 'Conditions',
+  'footer.guidelines': 'Règles',
   'footer.rights': 'Tous droits réservés.',
+  'guidelines.comingSoon': 'Les règles de la communauté sont en cours de rédaction.',
 
   // Thoughts
   'nav.thoughts': 'Pensées',

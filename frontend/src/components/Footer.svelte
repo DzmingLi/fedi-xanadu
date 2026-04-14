@@ -7,7 +7,7 @@
     <div class="footer-links">
       <a href="/about">{t('nav.about')}</a>
       <a href="/roadmap">{t('nav.roadmap')}</a>
-      <a href="/guide">{t('footer.terms') || 'Terms'}</a>
+      <a href="/guidelines">{t('footer.guidelines') || 'Guidelines'}</a>
       <a href="https://github.com/DzmingLi/fedi-xanadu" target="_blank" rel="noopener">GitHub</a>
     </div>
     <p class="footer-copy">&copy; {new Date().getFullYear()} NightBoat. {t('footer.rights') || 'All rights reserved.'}</p>

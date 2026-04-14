@@ -493,8 +493,9 @@ export default {
   'newArticle.categoryLabel': 'Category',
 
   // Footer
-  'footer.terms': 'Terms',
+  'footer.guidelines': 'Guidelines',
   'footer.rights': 'All rights reserved.',
+  'guidelines.comingSoon': 'Community guidelines are being drafted. Check back soon.',
 
   // Thoughts
   'nav.thoughts': 'Thoughts',

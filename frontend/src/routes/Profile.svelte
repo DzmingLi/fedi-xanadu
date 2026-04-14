@@ -907,10 +907,18 @@
       {#each editEdu as edu, i}
         <div class="modal-entry">
           <div class="modal-row">
-            <input type="text" bind:value={edu.degree} placeholder="Degree (e.g. B.S. Computer Science)" />
+            <select bind:value={edu.degree} class="degree-select">
+              <option value="">-- Degree --</option>
+              <option value="Bachelor">Bachelor / 本科</option>
+              <option value="Master">Master / 硕士</option>
+              <option value="PhD">PhD / 博士</option>
+              <option value="Postdoc">Postdoc / 博士后</option>
+              <option value="Associate">Associate / 专科</option>
+              <option value="Other">Other</option>
+            </select>
+            <input type="text" bind:value={edu.school} placeholder="Institution" />
             <input type="text" bind:value={edu.year} placeholder="Year" class="year-input" />
           </div>
-          <input type="text" bind:value={edu.school} placeholder="Institution" />
           <label class="checkbox-label">
             <input type="checkbox" bind:checked={edu.current} /> Currently enrolled
           </label>
