@@ -123,7 +123,7 @@ pub fn validate_create_article(input: &crate::models::CreateArticle) -> Result<(
     Ok(())
 }
 
-/// Thoughts: title is optional, content limited to 2000 chars.
+/// Thoughts: title is optional, content limited to 10KB, no HTML format.
 pub fn validate_create_thought(input: &crate::models::CreateArticle) -> Result<(), Error> {
     let mut errors = Vec::new();
     // Title is optional for thoughts, but if present must be <= 500
@@ -135,6 +135,9 @@ pub fn validate_create_thought(input: &crate::models::CreateArticle) -> Result<(
     }
     if input.content.len() > 10_000 {
         errors.push(ValidationError { field: "content".into(), message: "thought content too long (max 10000 bytes)".into() });
+    }
+    if input.content_format == crate::content::ContentFormat::Html {
+        errors.push(ValidationError { field: "content_format".into(), message: "thoughts do not support HTML format".into() });
     }
     for tag in &input.tags {
         if let Err(e) = validate_tag_id(tag) { errors.push(e); }

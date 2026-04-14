@@ -94,6 +94,28 @@ pub async fn get_article_content(
         return Ok(Json(ArticleContent { source: String::new(), html }));
     }
 
+    // Thoughts: content stored in DB (article_versions), not pijul
+    let kind: Option<String> = sqlx::query_scalar("SELECT kind::TEXT FROM articles WHERE at_uri = $1")
+        .bind(&uri).fetch_optional(&state.pool).await?;
+    if kind.as_deref() == Some("thought") {
+        let source: String = sqlx::query_scalar(
+            "SELECT source_text FROM article_versions WHERE article_uri = $1 ORDER BY created_at DESC LIMIT 1"
+        ).bind(&uri).fetch_optional(&state.pool).await?
+            .ok_or(AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?;
+
+        let html = if format == "html" {
+            source.clone()
+        } else {
+            // Render in a temp dir (thoughts have no repo)
+            let tmp = std::env::temp_dir().join(format!("nb-thought-{}", tid()));
+            let _ = tokio::fs::create_dir_all(&tmp).await;
+            let rendered = render_content(&format, &source, &tmp)?;
+            let _ = tokio::fs::remove_dir_all(&tmp).await;
+            rendered
+        };
+        return Ok(Json(ArticleContent { source, html }));
+    }
+
     // Check if article is in a series with a pijul repo
     let series_info = get_series_pijul_info(&state, &uri).await;
 
