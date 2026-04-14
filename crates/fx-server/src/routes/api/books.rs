@@ -21,10 +21,10 @@ pub struct ListBooksQuery {
 pub async fn list_books(
     State(state): State<AppState>,
     Query(q): Query<ListBooksQuery>,
-) -> ApiResult<Json<Vec<book_service::Book>>> {
+) -> ApiResult<Json<Vec<book_service::BookListItem>>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 200);
     let offset = q.offset.unwrap_or(0).max(0);
-    let books = book_service::list_books(&state.pool, limit, offset).await?;
+    let books = book_service::list_books_rich(&state.pool, limit, offset).await?;
     Ok(Json(books))
 }
 

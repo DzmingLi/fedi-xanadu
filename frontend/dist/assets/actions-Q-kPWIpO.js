@@ -1,0 +1,1 @@
+import{bo as o,bp as b,bq as c,br as i,bs as d}from"./index-CiiSSIWu.js";function p(e,n,s){o(()=>{var r=b(()=>n(e,s==null?void 0:s())||{});if(s&&(r!=null&&r.update)){var a=!1,t={};c(()=>{var f=s();i(f),a&&d(t,f)&&(t=f,r.update(f))}),a=!0}if(r!=null&&r.destroy)return()=>r.destroy()})}export{p as a};

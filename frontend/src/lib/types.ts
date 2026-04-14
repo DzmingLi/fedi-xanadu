@@ -150,6 +150,10 @@ export interface Book {
   cover_url: string | null;
   created_by: string;
   created_at: string;
+  avg_rating?: number;
+  rating_count?: number;
+  reader_count?: number;
+  tags?: string[];
 }
 
 export interface PurchaseLink {

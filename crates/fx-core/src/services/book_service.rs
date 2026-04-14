@@ -154,6 +154,41 @@ pub async fn list_books(pool: &PgPool, limit: i64, offset: i64) -> crate::Result
     Ok(rows)
 }
 
+/// Book with rating stats and tags, for list display.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct BookListItem {
+    pub id: String,
+    pub title: String,
+    pub authors: Vec<String>,
+    pub description: String,
+    pub cover_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub avg_rating: f64,
+    pub rating_count: i64,
+    pub reader_count: i64,
+    pub tags: sqlx::types::Json<Vec<String>>,
+}
+
+pub async fn list_books_rich(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<BookListItem>> {
+    let rows = sqlx::query_as::<_, BookListItem>(
+        "SELECT b.id, b.title, b.authors, b.description, b.cover_url, b.created_at, \
+         COALESCE(r.avg, 0) AS avg_rating, \
+         COALESCE(r.cnt, 0) AS rating_count, \
+         COALESCE(rd.cnt, 0) AS reader_count, \
+         COALESCE((SELECT jsonb_agg(ct.tag_id) FROM content_teaches ct WHERE ct.content_uri = 'book:' || b.id), '[]'::jsonb) AS tags \
+         FROM books b \
+         LEFT JOIN (SELECT book_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM book_ratings GROUP BY book_id) r ON r.book_id = b.id \
+         LEFT JOIN (SELECT book_id, COUNT(*) AS cnt FROM book_reading_status GROUP BY book_id) rd ON rd.book_id = b.id \
+         ORDER BY COALESCE(r.avg, 0) * LN(COALESCE(r.cnt, 0) + 1) + COALESCE(rd.cnt, 0) * 0.5 DESC, b.created_at DESC \
+         LIMIT $1 OFFSET $2",
+    )
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn list_editions(pool: &PgPool, book_id: &str) -> crate::Result<Vec<BookEdition>> {
     let rows = sqlx::query_as::<_, BookEdition>(
         "SELECT * FROM book_editions WHERE book_id = $1 ORDER BY created_at",
