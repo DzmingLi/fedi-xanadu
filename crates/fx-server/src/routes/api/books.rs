@@ -21,11 +21,13 @@ pub struct ListBooksQuery {
 
 pub async fn list_books(
     State(state): State<AppState>,
+    crate::auth::MaybeAuth(user): crate::auth::MaybeAuth,
     Query(q): Query<ListBooksQuery>,
 ) -> ApiResult<Json<Vec<book_service::BookListItem>>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 200);
     let offset = q.offset.unwrap_or(0).max(0);
-    let books = book_service::list_books_rich(&state.pool, limit, offset).await?;
+    let viewer = user.as_ref().map(|u| u.did.as_str());
+    let books = book_service::list_books_rich(&state.pool, viewer, limit, offset).await?;
     Ok(Json(books))
 }
 
@@ -273,6 +275,33 @@ pub async fn remove_reading_status(
     Auth(user): Auth,
 ) -> ApiResult<StatusCode> {
     book_service::remove_reading_status(&state.pool, &book_id, &user.did).await?;
+    Ok(StatusCode::OK)
+}
+
+// --- Preferred edition cover ---
+
+#[derive(serde::Deserialize)]
+pub struct SetPreferredEditionInput {
+    pub edition_id: Option<String>,
+}
+
+pub async fn set_preferred_edition(
+    State(state): State<AppState>,
+    Path(book_id): Path<String>,
+    Auth(user): Auth,
+    Json(input): Json<SetPreferredEditionInput>,
+) -> ApiResult<StatusCode> {
+    // Upsert into book_reading_status to store preference (create row if needed)
+    sqlx::query(
+        "INSERT INTO book_reading_status (book_id, user_did, status, preferred_edition_id) \
+         VALUES ($1, $2, 'want_to_read', $3) \
+         ON CONFLICT (book_id, user_did) DO UPDATE SET preferred_edition_id = $3",
+    )
+    .bind(&book_id)
+    .bind(&user.did)
+    .bind(&input.edition_id)
+    .execute(&state.pool)
+    .await?;
     Ok(StatusCode::OK)
 }
 

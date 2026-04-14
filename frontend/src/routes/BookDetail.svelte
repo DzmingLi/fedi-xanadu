@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion } from '../lib/api';
+  import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -835,6 +835,12 @@
               {/each}
             </div>
           {/if}
+          {#if getAuth() && ed.cover_url}
+            <button class="set-cover-btn" onclick={async () => {
+              await setPreferredEdition(id, ed.id);
+              if (detail) detail.book.cover_url = ed.cover_url;
+            }}>{t('books.setAsCover') || 'Use this cover'}</button>
+          {/if}
         </div>
       {/each}
       {#if getAuth()}
@@ -1417,6 +1423,17 @@
     border-radius: 3px;
     z-index: 1;
   }
+  .set-cover-btn {
+    font-size: 11px;
+    color: var(--accent);
+    background: none;
+    border: 1px dashed var(--accent);
+    border-radius: 3px;
+    padding: 2px 8px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .set-cover-btn:hover { background: var(--accent); color: white; }
 
   /* Q&A Section */
   .qa-section { margin-top: 2rem; }

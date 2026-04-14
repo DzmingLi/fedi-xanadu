@@ -568,6 +568,8 @@ export const publishSeries = (id: string) => post<void>(`/series/${encodeURIComp
 export const unpublishSeries = (id: string) => post<void>(`/series/${encodeURIComponent(id)}/unpublish`, {});
 export const recordArticleView = (uri: string, viewer_did?: string) =>
   post<void>('/articles/view', { uri, viewer_did });
+export const setPreferredEdition = (bookId: string, editionId: string | null) =>
+  put<void>(`/books/${encodeURIComponent(bookId)}/preferred-edition`, { edition_id: editionId });
 
 // Thoughts
 export const listThoughts = (limit = 50, offset = 0) =>

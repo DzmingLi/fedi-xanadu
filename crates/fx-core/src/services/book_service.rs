@@ -169,10 +169,17 @@ pub struct BookListItem {
     pub tags: sqlx::types::Json<Vec<String>>,
 }
 
-pub async fn list_books_rich(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<BookListItem>> {
+pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64, offset: i64) -> crate::Result<Vec<BookListItem>> {
+    let did = viewer_did.unwrap_or("");
     let rows = sqlx::query_as::<_, BookListItem>(
         "SELECT b.id, b.title, b.authors, b.description, \
-         COALESCE(b.cover_url, (SELECT e.cover_url FROM book_editions e WHERE e.book_id = b.id AND e.cover_url IS NOT NULL LIMIT 1)) AS cover_url, \
+         COALESCE(\
+           (SELECT e.cover_url FROM book_editions e \
+            JOIN book_reading_status rs ON rs.book_id = b.id AND rs.user_did = $3 AND rs.preferred_edition_id = e.id \
+            WHERE e.book_id = b.id AND e.cover_url IS NOT NULL LIMIT 1), \
+           b.cover_url, \
+           (SELECT e.cover_url FROM book_editions e WHERE e.book_id = b.id AND e.cover_url IS NOT NULL LIMIT 1)\
+         ) AS cover_url, \
          b.created_at, \
          COALESCE(r.avg, 0) AS avg_rating, \
          COALESCE(r.cnt, 0) AS rating_count, \
@@ -186,6 +193,7 @@ pub async fn list_books_rich(pool: &PgPool, limit: i64, offset: i64) -> crate::R
     )
     .bind(limit)
     .bind(offset)
+    .bind(did)
     .fetch_all(pool)
     .await?;
     Ok(rows)
