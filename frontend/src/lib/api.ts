@@ -509,8 +509,8 @@ export const getBookEditHistory = (id: string) =>
   get<any[]>(`/books/${encodeURIComponent(id)}/history`);
 export const rateBook = (book_id: string, rating: number) =>
   post<{ avg_rating: number; rating_count: number }>(`/books/${encodeURIComponent(book_id)}/rate`, { rating });
-export const setReadingStatus = (book_id: string, status: string, progress: number = 0) =>
-  post<void>(`/books/${encodeURIComponent(book_id)}/reading-status`, { status, progress });
+export const setReadingStatus = (book_id: string, status: string, progress: number = 0, edition_id?: string) =>
+  post<void>(`/books/${encodeURIComponent(book_id)}/reading-status`, { status, progress, edition_id });
 export const removeReadingStatus = (book_id: string) =>
   del<void>(`/books/${encodeURIComponent(book_id)}/reading-status`);
 

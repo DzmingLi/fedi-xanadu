@@ -178,7 +178,10 @@ pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64
             JOIN book_reading_status rs ON rs.book_id = b.id AND rs.user_did = $3 AND rs.preferred_edition_id = e.id \
             WHERE e.book_id = b.id AND e.cover_url IS NOT NULL LIMIT 1), \
            b.cover_url, \
-           (SELECT e.cover_url FROM book_editions e WHERE e.book_id = b.id AND e.cover_url IS NOT NULL LIMIT 1)\
+           (SELECT e.cover_url FROM book_editions e \
+            LEFT JOIN (SELECT preferred_edition_id, COUNT(*) AS cnt FROM book_reading_status WHERE book_id = b.id AND preferred_edition_id IS NOT NULL GROUP BY preferred_edition_id) pop ON pop.preferred_edition_id = e.id \
+            WHERE e.book_id = b.id AND e.cover_url IS NOT NULL \
+            ORDER BY COALESCE(pop.cnt, 0) DESC, e.created_at LIMIT 1)\
          ) AS cover_url, \
          b.created_at, \
          COALESCE(r.avg, 0) AS avg_rating, \

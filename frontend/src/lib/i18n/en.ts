@@ -490,6 +490,10 @@ export default {
   'category.review': 'Review',
   'newArticle.categoryLabel': 'Category',
 
+  // Footer
+  'footer.terms': 'Terms',
+  'footer.rights': 'All rights reserved.',
+
   // Thoughts
   'nav.thoughts': 'Thoughts',
   'thoughts.title': 'Thoughts',

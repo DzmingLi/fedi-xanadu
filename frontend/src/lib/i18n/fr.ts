@@ -420,6 +420,10 @@ export default {
   'category.review': 'Critique',
   'newArticle.categoryLabel': 'Catégorie',
 
+  // Footer
+  'footer.terms': 'Conditions',
+  'footer.rights': 'Tous droits réservés.',
+
   // Thoughts
   'nav.thoughts': 'Pensées',
   'thoughts.title': 'Pensées',

@@ -5,6 +5,7 @@
   import Sidebar from './components/Sidebar.svelte';
   import RightSidebar from './components/RightSidebar.svelte';
   import KeyboardShortcuts from './components/KeyboardShortcuts.svelte';
+  import Footer from './components/Footer.svelte';
   import Home from './routes/Home.svelte';
   import { matchRoute } from './lib/router';
 
@@ -245,6 +246,10 @@
       <mod.default id={route.params.id || ''} />
     {/await}
   </div>
+{/if}
+
+{#if route.page !== 'new' && route.page !== 'series-editor'}
+  <Footer />
 {/if}
 
 <style>

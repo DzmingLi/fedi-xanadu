@@ -486,6 +486,10 @@ export default {
   'category.review': '书评',
   'newArticle.categoryLabel': '类型',
 
+  // Footer
+  'footer.terms': '使用条款',
+  'footer.rights': '保留所有权利。',
+
   // Thoughts
   'nav.thoughts': '想法',
   'thoughts.title': '想法',

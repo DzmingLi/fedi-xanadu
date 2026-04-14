@@ -232,6 +232,7 @@ pub struct SetReadingStatusInput {
     pub status: String,
     #[serde(default)]
     pub progress: i16,
+    pub edition_id: Option<String>,
 }
 
 pub async fn set_reading_status(
@@ -247,6 +248,12 @@ pub async fn set_reading_status(
     let progress = input.progress.clamp(0, 100);
     let _ = book_service::get_book(&state.pool, &book_id).await?;
     book_service::set_reading_status(&state.pool, &book_id, &user.did, &input.status, progress).await?;
+
+    // Set preferred edition if specified
+    if let Some(ref eid) = input.edition_id {
+        sqlx::query("UPDATE book_reading_status SET preferred_edition_id = $1 WHERE book_id = $2 AND user_did = $3")
+            .bind(eid).bind(&book_id).bind(&user.did).execute(&state.pool).await?;
+    }
 
     // Auto-learn: when finished, mark book's teaches tags as mastered
     if input.status == "finished" {

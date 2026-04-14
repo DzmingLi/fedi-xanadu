@@ -25,6 +25,8 @@
   // Chapter progress (reactive, keyed by chapter_id)
   let chapterDone = $state(new Map<string, boolean>());
 
+  let selectedEdition = $state('');
+
   // Q&A
   import { authorName } from '../lib/display';
   import type { Article, ContentFormat } from '../lib/types';
@@ -100,7 +102,7 @@
       readingStatus = status;
       if (status === 'finished') readingProgress = 100;
       else if (status === 'want_to_read') readingProgress = 0;
-      try { await setReadingStatus(id, status, readingProgress); } catch { /* */ }
+      try { await setReadingStatus(id, status, readingProgress, selectedEdition || undefined); } catch { /* */ }
     }
   }
 
@@ -415,6 +417,14 @@
               <button class="action-btn" class:active={readingStatus === 'dropped'} onclick={() => setStatus('dropped')}>
                 {t('books.dropped')}
               </button>
+              {#if detail.editions.length > 1}
+                <select class="edition-select" bind:value={selectedEdition} title="Edition">
+                  <option value="">{t('books.anyEdition') || 'Any edition'}</option>
+                  {#each detail.editions as ed}
+                    <option value={ed.id}>{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
+                  {/each}
+                </select>
+              {/if}
             {/if}
             {#if getAuth()}
               <a href="/new?category=review&book_id={encodeURIComponent(id)}" class="action-btn primary">
@@ -1423,6 +1433,7 @@
     border-radius: 3px;
     z-index: 1;
   }
+  .edition-select { font-size: 12px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-white); color: var(--text-secondary); }
   .set-cover-btn {
     font-size: 11px;
     color: var(--accent);
