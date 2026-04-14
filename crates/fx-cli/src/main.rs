@@ -2094,6 +2094,7 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 "translation_of": translation_of,
                 "category": category,
                 "book_id": book_id,
+                "series_id": series,
                 "tags": tags,
                 "prereqs": [],
             });

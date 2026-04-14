@@ -524,8 +524,10 @@ pub(super) async fn publish_article_content(
                 tracing::warn!("knot write_file failed: {e}");
             }
         } else {
+            let chapters_dir = series_repo.join("chapters");
+            let _ = tokio::fs::create_dir_all(&chapters_dir).await;
             tokio::fs::write(
-                series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}")),
+                chapters_dir.join(format!("{chapter_id}.{src_ext}")),
                 content,
             ).await?;
         }
