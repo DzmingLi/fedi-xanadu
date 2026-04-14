@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getQuestionDetail, postAnswer, castVote, getMyVote, getArticleContent, addBookmark, removeBookmark } from '../lib/api';
+  import { getQuestionDetail, postAnswer, castVote, getMyVote, getArticleContent, addBookmark, removeBookmark, getRelatedQuestions } from '../lib/api';
   import { authorName } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
@@ -20,6 +20,7 @@
   let answerContents = $state(new Map<string, ArticleContent>());
   let loading = $state(true);
   let error = $state('');
+  let relatedQuestions = $state<import('../lib/types').Article[]>([]);
 
   // Answer form
   let showAnswerForm = $state(false);
@@ -41,6 +42,9 @@
       const d = await getQuestionDetail(uri);
       detail = d;
       document.title = `${d.question.title} — NightBoat`;
+
+      // Load related questions (non-blocking)
+      getRelatedQuestions(uri).then(rq => { relatedQuestions = rq; }).catch(() => {});
 
       // Load question content and all answer contents in parallel
       const contentPromises: Promise<void>[] = [];
@@ -150,6 +154,8 @@
   <p class="error">{error}</p>
 {:else if detail}
   {@const q = detail.question}
+<div class="q-layout">
+  <main class="q-main">
 
   <!-- Question -->
   <div class="question-section">
@@ -258,9 +264,97 @@
     {/if}
   </div>
 
+  </main>
+
+  {#if relatedQuestions.length > 0}
+    <aside class="q-sidebar">
+      <div class="sidebar-heading">{t('qa.relatedQuestions') || 'Related Questions'}</div>
+      <div class="related-list">
+        {#each relatedQuestions as rq}
+          <a href="/question?uri={encodeURIComponent(rq.at_uri)}" class="related-card">
+            <span class="related-title">{rq.title}</span>
+            <span class="related-meta">
+              {rq.answer_count} {t('qa.answers') || 'answers'}
+              {#if rq.vote_score > 0}&middot; &#9650;{rq.vote_score}{/if}
+            </span>
+          </a>
+        {/each}
+      </div>
+    </aside>
+  {/if}
+</div>
+
 {/if}
 
 <style>
+  .q-layout {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-start;
+  }
+  .q-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .q-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 4rem;
+    align-self: flex-start;
+  }
+  .sidebar-heading {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-hint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+  .related-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .related-card {
+    display: block;
+    padding: 6px 8px;
+    border-left: 2px solid var(--border);
+    text-decoration: none;
+    border-radius: 0 3px 3px 0;
+    transition: all 0.1s;
+  }
+  .related-card:hover {
+    border-left-color: var(--accent);
+    background: var(--bg-hover);
+    text-decoration: none;
+  }
+  .related-title {
+    display: block;
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .related-card:hover .related-title {
+    color: var(--accent);
+  }
+  .related-meta {
+    display: block;
+    font-size: 11px;
+    color: var(--text-hint);
+    margin-top: 2px;
+  }
+
+  @media (max-width: 800px) {
+    .q-layout { flex-direction: column; }
+    .q-sidebar { width: 100%; position: static; border-top: 1px solid var(--border); padding-top: 1rem; }
+  }
+
   .question-section {
     margin-bottom: 32px;
     padding-bottom: 24px;

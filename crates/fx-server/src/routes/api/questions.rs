@@ -213,3 +213,11 @@ pub async fn get_questions_by_tag(
     let questions = article_service::get_questions_by_tag(&state.pool, state.instance_mode, &q.tag_id, limit).await?;
     Ok(Json(questions))
 }
+
+pub async fn get_related_questions(
+    State(state): State<AppState>,
+    Query(UriQuery { uri }): Query<UriQuery>,
+) -> ApiResult<Json<Vec<Article>>> {
+    let related = article_service::get_related_questions(&state.pool, state.instance_mode, &uri, 10).await?;
+    Ok(Json(related))
+}

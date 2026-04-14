@@ -325,6 +325,7 @@ fn question_routes() -> Router<AppState> {
         .route("/questions/by-uri", get(questions::get_question))
         .route("/questions/by-did", get(questions::get_questions_by_did))
         .route("/questions/by-tag", get(questions::get_questions_by_tag))
+        .route("/questions/related", get(questions::get_related_questions))
         .route("/questions/answer", post(questions::post_answer))
         .route("/answers/by-did", get(questions::get_answers_by_did))
 }

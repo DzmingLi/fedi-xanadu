@@ -141,6 +141,7 @@ export const postAnswer = (data: CreateArticle) => post<Article>('/questions/ans
 export const getQuestionsByDid = (did: string, limit = 50) => get<Article[]>(`/questions/by-did?did=${encodeURIComponent(did)}&limit=${limit}`);
 export const getAnswersByDid = (did: string, limit = 50) => get<Article[]>(`/answers/by-did?did=${encodeURIComponent(did)}&limit=${limit}`);
 export const getQuestionsByTag = (tagId: string, limit = 50) => get<Article[]>(`/questions/by-tag?tag_id=${encodeURIComponent(tagId)}&limit=${limit}`);
+export const getRelatedQuestions = (uri: string) => get<Article[]>(`/questions/related?uri=${encodeURIComponent(uri)}`);
 
 // Votes
 export const castVote = (target_uri: string, value: number) =>
