@@ -214,6 +214,21 @@ pub async fn get_questions_by_tag(
     Ok(Json(questions))
 }
 
+#[derive(serde::Deserialize)]
+pub struct BookQuestionsQuery {
+    pub book_id: String,
+    pub limit: Option<i64>,
+}
+
+pub async fn get_questions_by_book(
+    State(state): State<AppState>,
+    Query(q): Query<BookQuestionsQuery>,
+) -> ApiResult<Json<Vec<Article>>> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 100);
+    let questions = article_service::get_questions_by_book(&state.pool, state.instance_mode, &q.book_id, limit).await?;
+    Ok(Json(questions))
+}
+
 pub async fn get_related_questions(
     State(state): State<AppState>,
     Query(UriQuery { uri }): Query<UriQuery>,

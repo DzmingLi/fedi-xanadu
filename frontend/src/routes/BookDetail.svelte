@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags } from '../lib/api';
+  import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -24,6 +24,16 @@
 
   // Chapter progress (reactive, keyed by chapter_id)
   let chapterDone = $state(new Map<string, boolean>());
+
+  // Q&A
+  import { authorName } from '../lib/display';
+  import type { Article, ContentFormat } from '../lib/types';
+  let bookQuestions = $state<Article[]>([]);
+  let showAskForm = $state(false);
+  let askTitle = $state('');
+  let askContent = $state('');
+  let askFormat = $state<ContentFormat>('markdown');
+  let askSubmitting = $state(false);
 
   async function toggleChapter(chapterId: string) {
     const next = !chapterDone.get(chapterId);
@@ -52,6 +62,7 @@
       readingProgress = detail.my_reading_status?.progress || 0;
       chapterDone = new Map(detail.my_chapter_progress.map(p => [p.chapter_id, p.completed]));
       getBookEditHistory(id).then(h => { editHistory = h; }).catch(() => {});
+      getQuestionsByBook(id).then(qs => { bookQuestions = qs; }).catch(() => {});
     } catch { /* */ }
     loading = false;
   }
@@ -740,6 +751,63 @@
       </div>
     </div>
 
+      <!-- Q&A -->
+      <div class="qa-section">
+        <div class="qa-header">
+          <h2>{t('books.qa') || 'Questions & Answers'}</h2>
+          {#if getAuth()}
+            <button class="ask-btn" onclick={() => showAskForm = !showAskForm}>
+              {t('books.askQuestion') || 'Ask a Question'}
+            </button>
+          {/if}
+        </div>
+
+        {#if showAskForm}
+          <div class="ask-form">
+            <input type="text" bind:value={askTitle} placeholder={t('books.askTitlePlaceholder') || 'What do you want to know about this book?'} class="ask-title" />
+            <textarea bind:value={askContent} rows="3" placeholder={t('books.askContentPlaceholder') || 'Add details (optional)...'} class="ask-body"></textarea>
+            <div class="ask-bar">
+              <select bind:value={askFormat} class="format-select">
+                <option value="markdown">Markdown</option>
+                <option value="typst">Typst</option>
+              </select>
+              <button class="btn-cancel" onclick={() => { showAskForm = false; askTitle = ''; askContent = ''; }}>{t('common.cancel')}</button>
+              <button class="btn-submit" disabled={askSubmitting || !askTitle.trim()} onclick={async () => {
+                askSubmitting = true;
+                try {
+                  await createQuestion({ title: askTitle.trim(), content: askContent || ' ', content_format: askFormat, tags: [], prereqs: [], book_id: id } as any);
+                  askTitle = ''; askContent = ''; showAskForm = false;
+                  bookQuestions = await getQuestionsByBook(id);
+                } catch { /* */ }
+                askSubmitting = false;
+              }}>{askSubmitting ? '...' : t('common.submit') || 'Submit'}</button>
+            </div>
+          </div>
+        {/if}
+
+        {#if bookQuestions.length === 0}
+          <p class="empty">{t('books.noQuestions') || 'No questions yet. Be the first to ask!'}</p>
+        {:else}
+          <div class="question-list">
+            {#each bookQuestions as q}
+              <a href="/question?uri={encodeURIComponent(q.at_uri)}" class="q-card">
+                <div class="q-card-main">
+                  <span class="q-card-title">{q.title}</span>
+                  <span class="q-card-meta">
+                    {authorName(q)} &middot; {q.answer_count} {t('qa.answers') || 'answers'}
+                    {#if q.vote_score > 0} &middot; &#9650;{q.vote_score}{/if}
+                  </span>
+                </div>
+                <div class="q-card-answers">
+                  <span class="answer-count" class:has-answers={q.answer_count > 0}>{q.answer_count}</span>
+                  <span class="answer-label">{t('qa.answers') || 'answers'}</span>
+                </div>
+              </a>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
     <!-- Right sidebar: Editions -->
     <aside class="book-sidebar">
       <h3>{t('books.editions')}</h3>
@@ -1349,4 +1417,33 @@
     border-radius: 3px;
     z-index: 1;
   }
+
+  /* Q&A Section */
+  .qa-section { margin-top: 2rem; }
+  .qa-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .qa-header h2 { font-family: var(--font-serif); font-size: 1.2rem; font-weight: 400; margin: 0; }
+  .ask-btn { padding: 4px 14px; font-size: 13px; border: 1px solid var(--accent); border-radius: 3px; background: none; color: var(--accent); cursor: pointer; }
+  .ask-btn:hover { background: var(--accent); color: white; }
+
+  .ask-form { margin-bottom: 16px; }
+  .ask-title { display: block; width: 100%; padding: 8px 10px; font-size: 14px; border: 1px solid var(--border); border-radius: 4px 4px 0 0; font-family: var(--font-sans); border-bottom: none; }
+  .ask-body { display: block; width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid var(--border); border-radius: 0; font-family: var(--font-sans); resize: vertical; border-bottom: none; }
+  .ask-title:focus, .ask-body:focus { outline: none; border-color: var(--accent); }
+  .ask-bar { display: flex; gap: 6px; align-items: center; padding: 6px 8px; border: 1px solid var(--border); border-radius: 0 0 4px 4px; background: var(--bg-page); }
+  .format-select { padding: 3px 6px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-white); }
+  .btn-cancel { padding: 4px 10px; font-size: 12px; border: 1px solid var(--border); border-radius: 3px; background: none; color: var(--text-secondary); cursor: pointer; margin-left: auto; }
+  .btn-submit { padding: 4px 12px; font-size: 12px; border: none; border-radius: 3px; background: var(--accent); color: white; cursor: pointer; }
+  .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .question-list { display: flex; flex-direction: column; gap: 6px; }
+  .q-card { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; color: inherit; transition: border-color 0.15s; }
+  .q-card:hover { border-color: var(--accent); text-decoration: none; }
+  .q-card-main { flex: 1; min-width: 0; }
+  .q-card-title { display: block; font-size: 14px; color: var(--text-primary); font-family: var(--font-serif); }
+  .q-card:hover .q-card-title { color: var(--accent); }
+  .q-card-meta { display: block; font-size: 12px; color: var(--text-hint); margin-top: 2px; }
+  .q-card-answers { text-align: center; flex-shrink: 0; }
+  .answer-count { display: block; font-size: 18px; font-weight: 600; color: var(--text-hint); }
+  .answer-count.has-answers { color: var(--accent); }
+  .answer-label { display: block; font-size: 10px; color: var(--text-hint); }
 </style>
