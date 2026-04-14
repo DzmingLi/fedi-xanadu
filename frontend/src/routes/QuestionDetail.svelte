@@ -154,7 +154,25 @@
   <p class="error">{error}</p>
 {:else if detail}
   {@const q = detail.question}
+
 <div class="q-layout">
+  {#if relatedQuestions.length > 0}
+    <aside class="q-sidebar">
+      <div class="sidebar-heading">{t('qa.relatedQuestions') || 'Related Questions'}</div>
+      <div class="related-list">
+        {#each relatedQuestions as rq}
+          <a href="/question?uri={encodeURIComponent(rq.at_uri)}" class="related-card">
+            <span class="related-title">{rq.title}</span>
+            <span class="related-meta">
+              {rq.answer_count} {t('qa.answers') || 'answers'}
+              {#if rq.vote_score > 0}&middot; &#9650;{rq.vote_score}{/if}
+            </span>
+          </a>
+        {/each}
+      </div>
+    </aside>
+  {/if}
+
   <main class="q-main">
 
   <!-- Question -->
@@ -265,43 +283,25 @@
   </div>
 
   </main>
-
-  {#if relatedQuestions.length > 0}
-    <aside class="q-sidebar">
-      <div class="sidebar-heading">{t('qa.relatedQuestions') || 'Related Questions'}</div>
-      <div class="related-list">
-        {#each relatedQuestions as rq}
-          <a href="/question?uri={encodeURIComponent(rq.at_uri)}" class="related-card">
-            <span class="related-title">{rq.title}</span>
-            <span class="related-meta">
-              {rq.answer_count} {t('qa.answers') || 'answers'}
-              {#if rq.vote_score > 0}&middot; &#9650;{rq.vote_score}{/if}
-            </span>
-          </a>
-        {/each}
-      </div>
-    </aside>
-  {/if}
 </div>
 
 {/if}
 
 <style>
-  .q-layout {
-    display: flex;
-    gap: 2rem;
-    align-items: flex-start;
-  }
-  .q-main {
-    flex: 1;
-    min-width: 0;
-  }
+  /* Widen parent container to fit sidebar + content */
+  .q-layout { display: flex; gap: 1.5rem; align-items: flex-start; margin-left: -240px; }
+  .q-main { flex: 1; min-width: 0; }
   .q-sidebar {
-    width: 220px;
+    width: 210px;
     flex-shrink: 0;
     position: sticky;
     top: 4rem;
     align-self: flex-start;
+  }
+
+  @media (max-width: 1100px) {
+    .q-layout { margin-left: 0; }
+    .q-sidebar { display: none; }
   }
   .sidebar-heading {
     font-size: 12px;
@@ -348,11 +348,6 @@
     font-size: 11px;
     color: var(--text-hint);
     margin-top: 2px;
-  }
-
-  @media (max-width: 800px) {
-    .q-layout { flex-direction: column; }
-    .q-sidebar { width: 100%; position: static; border-top: 1px solid var(--border); padding-top: 1rem; }
   }
 
   .question-section {
