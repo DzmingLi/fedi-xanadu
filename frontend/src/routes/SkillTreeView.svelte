@@ -4,6 +4,7 @@
   import { tagName as resolveTagName } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import type { SkillTreeDetail, SkillTreeEdge, SkillTreePrereq, Tag } from '../lib/types';
+  import SkillTreeGraph from '../lib/components/SkillTreeGraph.svelte';
 
   let { uri } = $props<{ uri: string }>();
 
@@ -12,18 +13,6 @@
   let allTags = $state<Tag[]>([]);
   let isLoggedIn = $derived(!!getAuth());
   let isOwner = $derived(isLoggedIn && detail?.tree.did === getAuth()?.did);
-
-  // Collapse state
-  let collapsed = $state(new Set<string>());
-
-  function toggleCollapse(id: string) {
-    if (collapsed.has(id)) {
-      collapsed.delete(id);
-    } else {
-      collapsed.add(id);
-    }
-    collapsed = new Set(collapsed);
-  }
 
   // Edit: hierarchy edges
   let newParent = $state('');
@@ -102,24 +91,6 @@
     alert(t('skills.adopted'));
   }
 
-  // Build tree structure for visualization (hierarchy only)
-  let treeStructure = $derived.by(() => {
-    if (!detail) return { roots: [] as string[], children: new Map<string, string[]>() };
-    const children = new Map<string, string[]>();
-    const hasParent = new Set<string>();
-    const allNodes = new Set<string>();
-    for (const e of detail.edges) {
-      const arr = children.get(e.parent_tag) || [];
-      arr.push(e.child_tag);
-      children.set(e.parent_tag, arr);
-      hasParent.add(e.child_tag);
-      allNodes.add(e.parent_tag);
-      allNodes.add(e.child_tag);
-    }
-    const roots = [...allNodes].filter(n => !hasParent.has(n)).sort();
-    return { roots, children };
-  });
-
   function tagName(id: string): string {
     const i18nNames = detail?.tag_names_i18n?.[id];
     const fallbackName = detail?.tag_names_map[id] || id;
@@ -152,11 +123,14 @@
     <p class="forked-info">Forked from <a href="/skill-tree?uri={encodeURIComponent(detail.tree.forked_from)}">{detail.tree.forked_from.slice(0, 40)}...</a></p>
   {/if}
 
-  <!-- Tree visualization -->
+  <!-- DAG visualization -->
   <div class="tree-visual">
-    {#each treeStructure.roots as root}
-      {@render treeNode(root, 0)}
-    {/each}
+    <SkillTreeGraph
+      edges={detail.edges}
+      prereqs={detail.prereqs}
+      tagNamesMap={detail.tag_names_map}
+      tagNamesI18n={detail.tag_names_i18n}
+    />
   </div>
 
   <!-- Hierarchy edges (editable if owner) -->
@@ -260,26 +234,6 @@
   </div>
 {/if}
 
-{#snippet treeNode(id: string, depth: number)}
-  <div class="tree-item" style="padding-left: {depth * 24}px">
-    {#if treeStructure.children.has(id)}
-      <button class="collapse-btn" title={t('skillTree.collapse')} class:collapsed={collapsed.has(id)} onclick={() => toggleCollapse(id)}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-      </button>
-    {:else}
-      <span class="collapse-spacer"></span>
-    {/if}
-    <a href="/tag?id={encodeURIComponent(id)}" class="node-link">{tagName(id)}</a>
-    {#if treeStructure.children.has(id)}
-      <span class="child-count">{treeStructure.children.get(id)!.length}</span>
-    {/if}
-  </div>
-  {#if treeStructure.children.has(id) && !collapsed.has(id)}
-    {#each treeStructure.children.get(id)! as child}
-      {@render treeNode(child, depth + 1)}
-    {/each}
-  {/if}
-{/snippet}
 
 <style>
   .tree-header {
@@ -313,56 +267,9 @@
   .forked-info { font-size: 13px; color: var(--text-hint); margin: 0 0 16px; }
   .forked-info a { color: var(--accent); }
 
-  /* Tree visualization */
   .tree-visual {
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 16px;
     margin-bottom: 24px;
-    background: var(--bg-white);
   }
-  .tree-item {
-    padding: 4px 0;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
-  .collapse-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    color: var(--text-hint);
-    transition: transform 0.15s, color 0.15s;
-    width: 16px;
-    flex-shrink: 0;
-    transform: rotate(90deg);
-  }
-  .collapse-btn.collapsed {
-    transform: rotate(0deg);
-  }
-  .collapse-btn:hover { color: var(--accent); }
-  .collapse-spacer {
-    width: 16px;
-    flex-shrink: 0;
-  }
-  .child-count {
-    font-size: 11px;
-    color: var(--text-hint);
-    margin-left: 4px;
-  }
-  .node-link {
-    font-family: var(--font-serif);
-    font-size: 14px;
-    color: var(--text-primary);
-    text-decoration: none;
-    padding: 2px 8px;
-    border-radius: 3px;
-    transition: all 0.15s;
-  }
-  .node-link:hover { color: var(--accent); background: rgba(95,155,101,0.06); }
 
   /* Editor */
   .editor-section {
