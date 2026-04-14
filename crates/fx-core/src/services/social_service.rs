@@ -39,6 +39,47 @@ pub struct EducationEntry {
     pub current: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct PublicationEntry {
+    pub title: String,
+    pub authors: Vec<String>,
+    #[serde(default)]
+    pub venue: String,
+    #[serde(default)]
+    pub year: i32,
+    pub url: Option<String>,
+    pub doi: Option<String>,
+    #[serde(default, rename = "abstract")]
+    pub abstract_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct ProjectEntry {
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    pub url: Option<String>,
+    #[serde(default = "default_active")]
+    pub status: String,
+}
+
+fn default_active() -> String { "active".into() }
+
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct TeachingEntry {
+    pub course_name: String,
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub institution: String,
+    #[serde(default)]
+    pub year: i32,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct ProfileResponse {
@@ -53,6 +94,9 @@ pub struct ProfileResponse {
     pub links: Vec<ProfileLink>,
     pub email: Option<String>,
     pub education: Vec<EducationEntry>,
+    pub publications: Vec<PublicationEntry>,
+    pub projects: Vec<ProjectEntry>,
+    pub teaching: Vec<TeachingEntry>,
     pub affiliation: Option<String>,
     pub credentials_verified: bool,
 }
@@ -152,6 +196,9 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         links: Option<String>,
         email: Option<String>,
         education: serde_json::Value,
+        publications: serde_json::Value,
+        projects: serde_json::Value,
+        teaching: serde_json::Value,
         affiliation: Option<String>,
         credentials_verified: Option<bool>,
         article_count: i64,
@@ -162,7 +209,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         "SELECT \
             p.handle, p.display_name, p.avatar_url, p.bio, p.reputation, p.links, \
             us.email, \
-            p.education, \
+            p.education, p.publications, p.projects, p.teaching, \
             p.affiliation, \
             p.credentials_verified, \
             (SELECT COUNT(*) FROM articles WHERE did = $1) AS article_count, \
@@ -185,6 +232,12 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         Some(r) => {
             let education: Vec<EducationEntry> =
                 serde_json::from_value(r.education).unwrap_or_default();
+            let publications: Vec<PublicationEntry> =
+                serde_json::from_value(r.publications).unwrap_or_default();
+            let projects: Vec<ProjectEntry> =
+                serde_json::from_value(r.projects).unwrap_or_default();
+            let teaching: Vec<TeachingEntry> =
+                serde_json::from_value(r.teaching).unwrap_or_default();
             Ok(ProfileResponse {
                 did: did.to_string(),
                 handle: r.handle,
@@ -197,6 +250,9 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
                 links,
                 email: r.email,
                 education,
+                publications,
+                projects,
+                teaching,
                 affiliation: r.affiliation,
                 credentials_verified: r.credentials_verified.unwrap_or(false),
             })
@@ -213,6 +269,9 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
             links: Vec::new(),
             email: None,
             education: Vec::new(),
+            publications: Vec::new(),
+            projects: Vec::new(),
+            teaching: Vec::new(),
             affiliation: None,
             credentials_verified: false,
         }),

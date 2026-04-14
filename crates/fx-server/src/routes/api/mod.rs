@@ -232,6 +232,10 @@ fn profile_routes() -> Router<AppState> {
         .route("/profile", get(profile::get_profile))
         .route("/profile/links", put(profile::update_profile_links))
         .route("/profile/bio", put(profile::update_bio))
+        .route("/profile/publications", put(profile::update_publications))
+        .route("/profile/projects", put(profile::update_projects))
+        .route("/profile/teaching", put(profile::update_teaching))
+        .route("/profile/listings", get(profile::get_user_listings))
 }
 
 fn series_routes() -> Router<AppState> {

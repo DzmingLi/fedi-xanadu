@@ -1,0 +1,1 @@
+import{bt as b,bu as c,bv as o,bw as i,bx as d}from"./index-CpN-0Nhf.js";function m(e,n,f){b(()=>{var r=c(()=>n(e,f==null?void 0:f())||{});if(f&&(r!=null&&r.update)){var t=!1,a={};o(()=>{var s=f();i(s),t&&d(a,s)&&(a=s,r.update(s))}),t=!0}if(r!=null&&r.destroy)return()=>r.destroy()})}export{m as a};

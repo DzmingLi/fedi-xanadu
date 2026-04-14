@@ -50,3 +50,45 @@ pub async fn update_bio(
         .await?;
     Ok(StatusCode::OK)
 }
+
+pub async fn update_publications(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<Vec<social_service::PublicationEntry>>,
+) -> ApiResult<StatusCode> {
+    let json = serde_json::to_value(&input)?;
+    sqlx::query("UPDATE profiles SET publications = $1 WHERE did = $2")
+        .bind(&json).bind(&user.did).execute(&state.pool).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn update_projects(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<Vec<social_service::ProjectEntry>>,
+) -> ApiResult<StatusCode> {
+    let json = serde_json::to_value(&input)?;
+    sqlx::query("UPDATE profiles SET projects = $1 WHERE did = $2")
+        .bind(&json).bind(&user.did).execute(&state.pool).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn update_teaching(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<Vec<social_service::TeachingEntry>>,
+) -> ApiResult<StatusCode> {
+    let json = serde_json::to_value(&input)?;
+    sqlx::query("UPDATE profiles SET teaching = $1 WHERE did = $2")
+        .bind(&json).bind(&user.did).execute(&state.pool).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn get_user_listings(
+    State(state): State<AppState>,
+    Query(DidQuery { did }): Query<DidQuery>,
+) -> ApiResult<Json<Vec<fx_core::services::listing_service::Listing>>> {
+    let listings = fx_core::services::listing_service::list_my_listings(&state.pool, &did).await?;
+    let open: Vec<_> = listings.into_iter().filter(|l| l.is_open).collect();
+    Ok(Json(open))
+}

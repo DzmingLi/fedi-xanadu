@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updatePublications, updateProjects, updateTeaching, getUserListings } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
@@ -7,7 +7,7 @@
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink, BookmarkWithTitle, EducationEntry } from '../lib/types';
+  import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink, BookmarkWithTitle, EducationEntry, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
 
   // All series (including sub-series) for building tree
   let allUserSeries = $state<Series[]>([]);
@@ -31,6 +31,15 @@
   let newLinkUrl = $state('');
   let editingEmail = $state(false);
   let editEmail = $state('');
+
+  // Academic profile state
+  let userListings = $state<Listing[]>([]);
+  let editingPubs = $state(false);
+  let editPubs = $state<PublicationEntry[]>([]);
+  let editingProjects = $state(false);
+  let editProj = $state<ProjectEntry[]>([]);
+  let editingTeach = $state(false);
+  let editTeach = $state<TeachingEntry[]>([]);
   let userBlocked = $state(false);
   let reportOpen = $state(false);
   let reportReason = $state('');
@@ -171,6 +180,7 @@
       ]);
       profile = prof;
       document.title = `${prof.display_name || '@' + prof.handle} — NightBoat`;
+      getUserListings(did).then(l => { userListings = l; }).catch(() => {});
       articles = arts;
       questions = qs;
       answers = ans;
@@ -364,7 +374,7 @@
       {/if}
       <a href="/feed/{encodeURIComponent(did)}.xml" class="rss-link" title="RSS Feed">RSS</a>
       {#if profile.bio}
-        <p class="bio">{profile.bio}</p>
+        <div class="bio">{profile.bio}</div>
       {/if}
       {#if profile.affiliation}
         <p class="credential-line">
@@ -390,6 +400,94 @@
           {/if}
         </div>
       {/if}
+      <!-- Publications -->
+      {#if profile.publications.length > 0 || isOwnProfile}
+        <div class="academic-section">
+          <div class="section-header">
+            <h3>Publications</h3>
+            {#if isOwnProfile}
+              <button class="edit-section-btn" onclick={() => { editPubs = JSON.parse(JSON.stringify(profile!.publications)); editingPubs = true; }}>
+                {profile.publications.length > 0 ? t('common.edit') : '+ Add'}
+              </button>
+            {/if}
+          </div>
+          {#each profile.publications.sort((a, b) => b.year - a.year) as pub_entry}
+            <div class="pub-entry">
+              <span class="pub-authors">{pub_entry.authors.join(', ')}</span>
+              {#if pub_entry.url || pub_entry.doi}
+                <a href={pub_entry.url || `https://doi.org/${pub_entry.doi}`} target="_blank" rel="noopener" class="pub-title">"{pub_entry.title}"</a>
+              {:else}
+                <span class="pub-title">"{pub_entry.title}"</span>
+              {/if}
+              {#if pub_entry.venue}<span class="pub-venue">{pub_entry.venue}</span>{/if}
+              {#if pub_entry.year}<span class="pub-year">({pub_entry.year})</span>{/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Projects -->
+      {#if profile.projects.length > 0 || isOwnProfile}
+        <div class="academic-section">
+          <div class="section-header">
+            <h3>Projects</h3>
+            {#if isOwnProfile}
+              <button class="edit-section-btn" onclick={() => { editProj = JSON.parse(JSON.stringify(profile!.projects)); editingProjects = true; }}>
+                {profile.projects.length > 0 ? t('common.edit') : '+ Add'}
+              </button>
+            {/if}
+          </div>
+          {#each profile.projects as proj}
+            <div class="proj-entry">
+              <div class="proj-top">
+                {#if proj.url}
+                  <a href={proj.url} target="_blank" rel="noopener" class="proj-title">{proj.title}</a>
+                {:else}
+                  <span class="proj-title">{proj.title}</span>
+                {/if}
+                <span class="status-badge status-{proj.status}">{proj.status}</span>
+              </div>
+              {#if proj.description}<p class="proj-desc">{proj.description}</p>{/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Teaching -->
+      {#if profile.teaching.length > 0 || isOwnProfile}
+        <div class="academic-section">
+          <div class="section-header">
+            <h3>Teaching</h3>
+            {#if isOwnProfile}
+              <button class="edit-section-btn" onclick={() => { editTeach = JSON.parse(JSON.stringify(profile!.teaching)); editingTeach = true; }}>
+                {profile.teaching.length > 0 ? t('common.edit') : '+ Add'}
+              </button>
+            {/if}
+          </div>
+          {#each profile.teaching.sort((a, b) => b.year - a.year) as te}
+            <div class="teach-entry">
+              <strong>{te.course_name}</strong>
+              <span class="teach-meta">{te.role}{#if te.institution}, {te.institution}{/if}{#if te.year} ({te.year}){/if}</span>
+              {#if te.description}<p class="teach-desc">{te.description}</p>{/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Open Listings -->
+      {#if userListings.length > 0}
+        <div class="academic-section">
+          <div class="section-header"><h3>Open Positions</h3></div>
+          {#each userListings as l}
+            <a href="/listing?id={encodeURIComponent(l.id)}" class="listing-mini">
+              <span class="listing-kind">{l.kind.toUpperCase()}</span>
+              <span class="listing-title">{l.title}</span>
+              <span class="listing-inst">{l.institution}</span>
+            </a>
+          {/each}
+        </div>
+      {/if}
+
       {#if profile.email || isOwnProfile}
         <div class="profile-email">
           {#if editingEmail}
@@ -680,6 +778,101 @@
       <p class="empty-text">{t('profile.noWorks')}</p>
     {/if}
   {/if}
+{/if}
+
+<!-- Publications Editor Modal -->
+{#if editingPubs}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={() => editingPubs = false}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal academic-modal" onclick={(e) => e.stopPropagation()}>
+      <h3>Edit Publications</h3>
+      {#each editPubs as pub_entry, i}
+        <div class="modal-entry">
+          <input type="text" bind:value={pub_entry.title} placeholder="Title" />
+          <input type="text" bind:value={pub_entry.venue} placeholder="Venue (e.g. ICML 2025)" />
+          <div class="modal-row">
+            <input type="text" value={pub_entry.authors.join(', ')} oninput={(e) => { pub_entry.authors = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()); }} placeholder="Authors (comma separated)" />
+            <input type="number" bind:value={pub_entry.year} placeholder="Year" class="year-input" />
+          </div>
+          <div class="modal-row">
+            <input type="url" bind:value={pub_entry.url} placeholder="URL" />
+            <input type="text" bind:value={pub_entry.doi} placeholder="DOI" />
+          </div>
+          <button class="remove-entry" onclick={() => { editPubs = editPubs.filter((_, j) => j !== i); }}>Remove</button>
+        </div>
+      {/each}
+      <button class="add-entry" onclick={() => { editPubs = [...editPubs, { title: '', authors: [], venue: '', year: new Date().getFullYear(), url: null, doi: null, abstract_text: null }]; }}>+ Add Publication</button>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick={() => editingPubs = false}>{t('common.cancel')}</button>
+        <button class="btn-save" onclick={async () => { await updatePublications(editPubs); profile!.publications = editPubs; editingPubs = false; }}>{t('common.save')}</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Projects Editor Modal -->
+{#if editingProjects}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={() => editingProjects = false}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal academic-modal" onclick={(e) => e.stopPropagation()}>
+      <h3>Edit Projects</h3>
+      {#each editProj as proj, i}
+        <div class="modal-entry">
+          <input type="text" bind:value={proj.title} placeholder="Project name" />
+          <textarea bind:value={proj.description} placeholder="Description" rows="2"></textarea>
+          <div class="modal-row">
+            <input type="url" bind:value={proj.url} placeholder="URL" />
+            <select bind:value={proj.status}>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+          <button class="remove-entry" onclick={() => { editProj = editProj.filter((_, j) => j !== i); }}>Remove</button>
+        </div>
+      {/each}
+      <button class="add-entry" onclick={() => { editProj = [...editProj, { title: '', description: '', url: null, status: 'active' }]; }}>+ Add Project</button>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick={() => editingProjects = false}>{t('common.cancel')}</button>
+        <button class="btn-save" onclick={async () => { await updateProjects(editProj); profile!.projects = editProj; editingProjects = false; }}>{t('common.save')}</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Teaching Editor Modal -->
+{#if editingTeach}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={() => editingTeach = false}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal academic-modal" onclick={(e) => e.stopPropagation()}>
+      <h3>Edit Teaching</h3>
+      {#each editTeach as te, i}
+        <div class="modal-entry">
+          <input type="text" bind:value={te.course_name} placeholder="Course name" />
+          <div class="modal-row">
+            <input type="text" bind:value={te.role} placeholder="Role (e.g. Instructor, TA)" />
+            <input type="text" bind:value={te.institution} placeholder="Institution" />
+            <input type="number" bind:value={te.year} placeholder="Year" class="year-input" />
+          </div>
+          <button class="remove-entry" onclick={() => { editTeach = editTeach.filter((_, j) => j !== i); }}>Remove</button>
+        </div>
+      {/each}
+      <button class="add-entry" onclick={() => { editTeach = [...editTeach, { course_name: '', role: '', institution: '', year: new Date().getFullYear(), description: null }]; }}>+ Add Course</button>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick={() => editingTeach = false}>{t('common.cancel')}</button>
+        <button class="btn-save" onclick={async () => { await updateTeaching(editTeach); profile!.teaching = editTeach; editingTeach = false; }}>{t('common.save')}</button>
+      </div>
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -1386,4 +1579,55 @@
     border-radius: 3px;
     flex-shrink: 0;
   }
+
+  /* Academic sections */
+  .academic-section { margin: 16px 0; padding-top: 12px; border-top: 1px solid var(--border); }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .section-header h3 { font-family: var(--font-serif); font-weight: 400; font-size: 1rem; margin: 0; }
+  .edit-section-btn { font-size: 12px; color: var(--accent); background: none; border: none; cursor: pointer; }
+
+  .pub-entry { font-size: 13px; margin-bottom: 6px; line-height: 1.5; }
+  .pub-authors { color: var(--text-secondary); }
+  .pub-title { color: var(--text-primary); font-style: italic; }
+  a.pub-title { color: var(--accent); text-decoration: none; }
+  a.pub-title:hover { text-decoration: underline; }
+  .pub-venue { color: var(--text-secondary); font-weight: 500; }
+  .pub-year { color: var(--text-hint); }
+
+  .proj-entry { margin-bottom: 8px; }
+  .proj-top { display: flex; align-items: center; gap: 8px; }
+  .proj-title { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+  a.proj-title { color: var(--accent); text-decoration: none; }
+  a.proj-title:hover { text-decoration: underline; }
+  .proj-desc { font-size: 13px; color: var(--text-secondary); margin: 2px 0 0; }
+  .status-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; }
+  .status-active { background: rgba(16,185,129,0.1); color: #059669; }
+  .status-completed { background: rgba(99,102,241,0.1); color: #4f46e5; }
+  .status-archived { background: var(--bg-page); color: var(--text-hint); }
+
+  .teach-entry { font-size: 13px; margin-bottom: 6px; }
+  .teach-meta { color: var(--text-secondary); margin-left: 6px; }
+  .teach-desc { font-size: 12px; color: var(--text-hint); margin: 2px 0 0; }
+
+  .listing-mini { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; text-decoration: none; transition: background 0.1s; }
+  .listing-mini:hover { background: var(--bg-hover); text-decoration: none; }
+  .listing-kind { font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: var(--bg-page); border: 1px solid var(--border); color: var(--text-secondary); flex-shrink: 0; }
+  .listing-title { font-size: 13px; color: var(--text-primary); }
+  .listing-inst { font-size: 12px; color: var(--text-hint); margin-left: auto; }
+
+  /* Academic edit modals */
+  .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: 300; display: flex; justify-content: center; padding-top: 8vh; }
+  .academic-modal { width: 560px; max-width: 90vw; max-height: 80vh; overflow-y: auto; background: var(--bg-white); border-radius: 8px; padding: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+  .academic-modal h3 { font-family: var(--font-serif); font-weight: 400; margin: 0 0 16px; }
+  .modal-entry { padding: 10px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 6px; }
+  .modal-entry input, .modal-entry textarea, .modal-entry select { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font-size: 13px; border: 1px solid var(--border); border-radius: 3px; font-family: var(--font-sans); }
+  .modal-entry textarea { resize: vertical; }
+  .modal-row { display: flex; gap: 6px; margin-top: 4px; }
+  .modal-row input, .modal-row select { flex: 1; }
+  .year-input { max-width: 80px; }
+  .remove-entry { font-size: 11px; color: #dc2626; background: none; border: none; cursor: pointer; margin-top: 4px; }
+  .add-entry { font-size: 13px; color: var(--accent); background: none; border: 1px dashed var(--accent); border-radius: 4px; padding: 6px 12px; cursor: pointer; width: 100%; margin: 8px 0; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .btn-cancel { padding: 6px 14px; font-size: 13px; border: 1px solid var(--border); border-radius: 3px; background: none; color: var(--text-secondary); cursor: pointer; }
+  .btn-save { padding: 6px 14px; font-size: 13px; border: none; border-radius: 3px; background: var(--accent); color: white; cursor: pointer; }
 </style>

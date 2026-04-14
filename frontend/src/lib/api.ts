@@ -195,6 +195,10 @@ export const getProfile = (did: string) => get<ProfileData>(`/profile?did=${enco
 export const updateProfileLinks = (links: { label: string; url: string }[]) =>
   post<void>('/profile/links', { links });
 export const updateBio = (bio: string) => put<void>('/profile/bio', { bio });
+export const updatePublications = (pubs: import('./types').PublicationEntry[]) => put<void>('/profile/publications', pubs);
+export const updateProjects = (projects: import('./types').ProjectEntry[]) => put<void>('/profile/projects', projects);
+export const updateTeaching = (teaching: import('./types').TeachingEntry[]) => put<void>('/profile/teaching', teaching);
+export const getUserListings = (did: string) => get<import('./types').Listing[]>(`/profile/listings?did=${encodeURIComponent(did)}`);
 
 // Series
 export const listSeries = () => get<Series[]>('/series');

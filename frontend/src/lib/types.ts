@@ -352,6 +352,31 @@ export interface EducationEntry {
   current?: boolean;
 }
 
+export interface PublicationEntry {
+  title: string;
+  authors: string[];
+  venue: string;
+  year: number;
+  url: string | null;
+  doi: string | null;
+  abstract_text: string | null;
+}
+
+export interface ProjectEntry {
+  title: string;
+  description: string;
+  url: string | null;
+  status: 'active' | 'completed' | 'archived';
+}
+
+export interface TeachingEntry {
+  course_name: string;
+  role: string;
+  institution: string;
+  year: number;
+  description: string | null;
+}
+
 export interface ProfileData {
   did: string;
   handle: string | null;
@@ -364,6 +389,9 @@ export interface ProfileData {
   links: ProfileLink[];
   email: string | null;
   education: EducationEntry[];
+  publications: PublicationEntry[];
+  projects: ProjectEntry[];
+  teaching: TeachingEntry[];
   affiliation: string | null;
   credentials_verified: boolean;
 }
