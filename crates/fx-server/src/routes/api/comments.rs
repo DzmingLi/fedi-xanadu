@@ -153,6 +153,13 @@ pub async fn vote_comment(
     let value = input.value.clamp(-1, 1);
     let score = comment_service::vote_comment(&state.pool, &id, &user.did, value).await?;
 
+    // Update comment author's reputation (best-effort, non-blocking)
+    let pool = state.pool.clone();
+    let cid = id.clone();
+    tokio::spawn(async move {
+        let _ = fx_core::services::reputation_service::update_for_comment_vote(&pool, &cid).await;
+    });
+
     Ok(Json(CommentVoteResult {
         comment_id: id,
         score,

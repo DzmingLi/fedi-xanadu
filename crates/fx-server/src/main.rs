@@ -75,6 +75,12 @@ async fn main() -> Result<()> {
                 Err(e) => tracing::warn!("session cleanup failed: {e}"),
                 _ => {}
             }
+            // Recalculate all user reputations (safety net for consistency)
+            match fx_core::services::reputation_service::recalc_all(&cleanup_pool).await {
+                Ok(n) if n > 0 => tracing::debug!("recalculated reputation for {n} users"),
+                Err(e) => tracing::warn!("reputation recalc failed: {e}"),
+                _ => {}
+            }
             // Hard-delete articles removed over 30 days ago
             match fx_core::services::article_service::cleanup_expired_removals(&cleanup_pool).await {
                 Ok(n) if n > 0 => tracing::info!("hard-deleted {n} expired removed articles"),

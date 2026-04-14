@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{Query, State},
 };
-use fx_core::services::vote_service;
+use fx_core::services::{vote_service, reputation_service};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -45,6 +45,13 @@ pub async fn cast_vote(
         value,
     )
     .await?;
+
+    // Update content author's reputation (best-effort, non-blocking)
+    let pool = state.pool.clone();
+    let target = input.target_uri.clone();
+    tokio::spawn(async move {
+        let _ = reputation_service::update_for_content_vote(&pool, &target).await;
+    });
 
     // AT Protocol side-effect (only for non-zero votes)
     if value != 0 {

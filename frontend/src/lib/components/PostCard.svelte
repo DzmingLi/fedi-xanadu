@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { tagName } from '../display';
-  import { authorName } from '../display';
+  import { tagName, authorName, fmtRep } from '../display';
   import { t } from '../i18n/index.svelte';
   import { getArticleContent, getSeries, castVote, getMyVote, addBookmark, removeBookmark } from '../api';
   import { getAuth } from '../auth.svelte';
@@ -131,6 +130,8 @@
     <div class="card-top">
       {#if article.kind === 'question'}
         <span class="question-badge">{t('qa.questionBadge')}</span>
+      {:else if article.category === 'review' && article.book_id}
+        <a href="/book?id={encodeURIComponent(article.book_id)}" class="review-badge" onclick={(e) => e.stopPropagation()}>{t('article.reviewBadge')}</a>
       {/if}
       <span class="post-title">{article.title}</span>
     </div>
@@ -152,7 +153,7 @@
 
     <div class="card-bottom">
       <span class="post-meta">
-        {#if variant === 'home'}{authorName(article)} &middot; {/if}{article.created_at.split(' ')[0]}
+        {#if variant === 'home'}{authorName(article)}{#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if} &middot; {/if}{article.created_at.split(' ')[0]}
       </span>
       {#if variant === 'home'}
         <span class="card-stats">
@@ -176,6 +177,7 @@
         <h1 class="expanded-title"><a href="/article?uri={encodeURIComponent(expandedUri)}">{expandedTitle}</a></h1>
         <div class="expanded-meta">
           <a href="/profile?did={encodeURIComponent(article.did)}">{authorName(article)}</a>
+          {#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if}
           <span>&middot;</span>
           <span>{article.created_at.split(' ')[0]}</span>
           <span>&middot;</span>
@@ -313,6 +315,18 @@
     font-size: 13px;
     color: var(--text-hint);
   }
+  .rep-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-page);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+    margin-left: 4px;
+    vertical-align: baseline;
+  }
   .card-stats {
     display: flex;
     gap: 10px;
@@ -337,6 +351,22 @@
     border-radius: 3px;
     flex-shrink: 0;
     white-space: nowrap;
+  }
+  .review-badge {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: #6366f1;
+    background: rgba(99, 102, 241, 0.1);
+    padding: 2px 8px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+  .review-badge:hover {
+    background: rgba(99, 102, 241, 0.2);
+    text-decoration: none;
   }
   /* Expand button */
   .expand-btn {

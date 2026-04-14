@@ -8,6 +8,13 @@ export function authorName(a: Pick<Article, 'author_handle' | 'did'>): string {
   return a.did.replace('did:plc:', '').replace('did:web:', '').slice(0, 16);
 }
 
+/** Format reputation as compact string (e.g. 1.2k, 15k). */
+export function fmtRep(rep: number): string {
+  if (rep >= 10_000) return `${(rep / 1000).toFixed(0)}k`;
+  if (rep >= 1_000) return `${(rep / 1000).toFixed(1)}k`;
+  return String(rep);
+}
+
 /**
  * Pick the best variant from a translation group.
  * If user has langPrefs and prefer_native is true, prefer native_lang.

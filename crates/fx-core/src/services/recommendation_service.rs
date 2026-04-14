@@ -289,7 +289,8 @@ scored AS (
 )
 
 -- Final SELECT matching Article struct field order
-SELECT a.at_uri, a.did, p.handle AS author_handle, a.kind, a.title, a.description,
+SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS author_reputation,
+       a.kind, a.title, a.description,
        a.content_hash, a.content_format, a.lang, a.translation_group, a.license,
        a.prereq_threshold, a.question_uri, a.answer_count, a.restricted, a.category,
        a.book_id, a.edition_id,
@@ -325,6 +326,92 @@ LIMIT $3 OFFSET $4
         .bind(limit)         // $3
         .bind(offset)        // $4
         .bind(category)      // $5
+        .fetch_all(pool)
+        .await?;
+
+    Ok(rows)
+}
+
+/// Recommended questions for the sidebar.
+///
+/// Scoring favours questions the user can likely answer (mastered the question's
+/// tags), with a boost for unanswered / low-answer questions, plus quality and
+/// recency signals.  Anonymous users get trending unanswered questions.
+pub async fn get_recommended_questions(
+    pool: &PgPool,
+    mode: InstanceMode,
+    viewer_did: Option<&str>,
+    limit: i64,
+) -> crate::Result<Vec<Article>> {
+    let did = viewer_did.unwrap_or("");
+    let vis = visibility_filter(mode);
+
+    let sql = format!(
+        r#"
+WITH
+user_mastered AS (
+    SELECT tag_id FROM user_skills WHERE did = $1 AND status = 'mastered'
+),
+questions AS (
+    SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS author_reputation,
+           a.kind, a.title, a.description,
+           a.content_hash, a.content_format, a.lang, a.translation_group, a.license,
+           a.prereq_threshold, a.question_uri, a.answer_count, a.restricted, a.category,
+           a.book_id, a.edition_id,
+           COALESCE(v.score, 0) AS vote_score,
+           COALESCE(bk.cnt, 0) AS bookmark_count,
+           a.created_at, a.updated_at
+    FROM articles a
+    LEFT JOIN profiles p ON a.did = p.did
+    LEFT JOIN (SELECT target_uri, SUM(value) AS score FROM votes GROUP BY target_uri) v
+        ON v.target_uri = a.at_uri
+    LEFT JOIN (SELECT article_uri, COUNT(*) AS cnt FROM user_bookmarks GROUP BY article_uri) bk
+        ON bk.article_uri = a.at_uri
+    WHERE {vis} AND a.kind = 'question'
+),
+scored AS (
+    SELECT q.*,
+        -- 1. Answerability: fraction of question's teaches-tags that user has mastered
+        CASE WHEN ct_total.cnt IS NULL OR ct_total.cnt = 0 THEN 0.5
+             ELSE COALESCE(ct_mastered.cnt, 0)::float / ct_total.cnt::float
+        END AS answerability,
+        -- 2. Need: fewer answers → higher need (1.0 for 0 answers, decays)
+        1.0 / (q.answer_count + 1.0) AS answer_need,
+        -- 3. Recency: time decay
+        1.0 / POWER(EXTRACT(EPOCH FROM (NOW() - q.created_at)) / 3600.0 + 2.0, 0.8) AS recency,
+        -- 4. Quality: vote score (clamped)
+        LEAST(1.0, GREATEST(0.0, q.vote_score::float / 10.0)) AS quality
+    FROM questions q
+    LEFT JOIN (
+        SELECT ct.content_uri, COUNT(*) AS cnt FROM content_teaches ct GROUP BY ct.content_uri
+    ) ct_total ON ct_total.content_uri = q.at_uri
+    LEFT JOIN (
+        SELECT ct.content_uri, COUNT(*) AS cnt FROM content_teaches ct
+        JOIN user_mastered um ON um.tag_id = ct.tag_id
+        GROUP BY ct.content_uri
+    ) ct_mastered ON ct_mastered.content_uri = q.at_uri
+    -- Exclude user's own questions
+    WHERE q.did != $1
+)
+SELECT at_uri, did, author_handle, author_reputation, kind, title, description,
+       content_hash, content_format, lang, translation_group, license,
+       prereq_threshold, question_uri, answer_count, restricted, category,
+       book_id, edition_id, vote_score, bookmark_count, created_at, updated_at
+FROM scored
+ORDER BY
+    (answerability * 6.0)
+  + (answer_need   * 4.0)
+  + (recency       * 2.0)
+  + (quality       * 1.5)
+  DESC
+LIMIT $2
+"#,
+        vis = vis,
+    );
+
+    let rows = sqlx::query_as::<_, Article>(&sql)
+        .bind(did)
+        .bind(limit)
         .fetch_all(pool)
         .await?;
 

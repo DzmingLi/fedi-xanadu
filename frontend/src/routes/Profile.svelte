@@ -414,6 +414,7 @@
         </div>
       {/if}
       <div class="profile-stats">
+        <span class="rep-stat" title="Reputation"><strong>{profile.reputation.toLocaleString()}</strong> rep</span>
         <span>{profile.article_count} {t('profile.articles')}</span>
         <span>{profile.series_count} {t('profile.seriesCount')}</span>
         <button class="stat-btn" onclick={() => { showFollowTab = showFollowTab === 'following' ? null : 'following'; }}>
@@ -899,6 +900,9 @@
     margin-top: 8px;
     font-size: 13px;
     color: var(--text-hint);
+  }
+  .rep-stat {
+    color: var(--text-primary);
   }
 
   .section-title {

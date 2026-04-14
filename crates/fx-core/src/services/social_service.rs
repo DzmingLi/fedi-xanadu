@@ -47,6 +47,7 @@ pub struct ProfileResponse {
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub bio: String,
+    pub reputation: i32,
     pub article_count: i64,
     pub series_count: i64,
     pub links: Vec<ProfileLink>,
@@ -147,6 +148,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         display_name: Option<String>,
         avatar_url: Option<String>,
         bio: String,
+        reputation: i32,
         links: Option<String>,
         email: Option<String>,
         education: serde_json::Value,
@@ -158,7 +160,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
 
     let row = sqlx::query_as::<_, ProfileRow>(
         "SELECT \
-            p.handle, p.display_name, p.avatar_url, p.bio, p.links, \
+            p.handle, p.display_name, p.avatar_url, p.bio, p.reputation, p.links, \
             us.email, \
             p.education, \
             p.affiliation, \
@@ -189,6 +191,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
                 display_name: r.display_name,
                 avatar_url: r.avatar_url,
                 bio: r.bio,
+                reputation: r.reputation,
                 article_count: r.article_count,
                 series_count: r.series_count,
                 links,
@@ -204,6 +207,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
             display_name: None,
             avatar_url: None,
             bio: String::new(),
+            reputation: 0,
             article_count: 0,
             series_count: 0,
             links: Vec::new(),

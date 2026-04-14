@@ -235,7 +235,8 @@ pub async fn get_book_reviews(
     offset: i64,
 ) -> crate::Result<Vec<crate::models::Article>> {
     let rows = sqlx::query_as::<_, crate::models::Article>(
-        "SELECT a.at_uri, a.did, p.handle AS author_handle, a.kind, a.title, a.description, \
+        "SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS author_reputation, \
+         a.kind, a.title, a.description, \
          a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
          a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
          COALESCE(v.vote_score, 0) AS vote_score, \

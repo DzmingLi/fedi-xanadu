@@ -16,6 +16,7 @@ export interface Article {
   at_uri: string;
   did: string;
   author_handle: string | null;
+  author_reputation: number;
   kind: ContentKind;
   title: string;
   description: string;
@@ -353,6 +354,7 @@ export interface ProfileData {
   display_name: string | null;
   avatar_url: string | null;
   bio: string;
+  reputation: number;
   article_count: number;
   series_count: number;
   links: ProfileLink[];
