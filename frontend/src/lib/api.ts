@@ -556,6 +556,12 @@ export const unpublishSeries = (id: string) => post<void>(`/series/${encodeURICo
 export const recordArticleView = (uri: string, viewer_did?: string) =>
   post<void>('/articles/view', { uri, viewer_did });
 
+// Thoughts
+export const listThoughts = (limit = 50, offset = 0) =>
+  get<Article[]>(`/thoughts?limit=${limit}&offset=${offset}`);
+export const createThought = (data: CreateArticle) =>
+  post<Article>('/thoughts', data);
+
 // Listings (academic recruitment)
 import type { Listing } from './types';
 export const listListings = (kind?: string, tag?: string, limit = 30, offset = 0) => {

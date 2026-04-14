@@ -486,6 +486,14 @@ export default {
   'category.review': '书评',
   'newArticle.categoryLabel': '类型',
 
+  // Thoughts
+  'nav.thoughts': '想法',
+  'thoughts.title': '想法',
+  'thoughts.subtitle': '分享你的灵感、观察和讨论',
+  'thoughts.empty': '暂无想法',
+  'thoughts.new': '发布想法',
+  'thoughts.placeholder': '分享一个想法...',
+
   // Listings
   'nav.listings': '招聘',
 

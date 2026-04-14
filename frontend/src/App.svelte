@@ -65,6 +65,7 @@
   const lazySeriesEditor = () => import('./routes/SeriesEditor.svelte');
   const lazyDiscussion = () => import('./routes/Discussion.svelte');
   const lazyCreator = () => import('./routes/CreatorDashboard.svelte');
+  const lazyThoughts = () => import('./routes/Thoughts.svelte');
   const lazyAdmin = () => import('./routes/Admin.svelte');
   const lazyListings = () => import('./routes/Listings.svelte');
   const lazyListingDetail = () => import('./routes/ListingDetail.svelte');
@@ -210,6 +211,10 @@
     {:else if route.page === 'book-edition'}
       {#await lazyBookEdition() then mod}
         <mod.default bookId={route.params.book_id || ''} />
+      {/await}
+    {:else if route.page === 'thoughts'}
+      {#await lazyThoughts() then mod}
+        <mod.default />
       {/await}
     {:else if route.page === 'listings'}
       {#await lazyListings() then mod}

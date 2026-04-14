@@ -61,6 +61,17 @@ pub async fn list_articles(pool: &PgPool, mode: InstanceMode, limit: i64, offset
     Ok(rows)
 }
 
+pub async fn list_thoughts(pool: &PgPool, mode: InstanceMode, limit: i64, offset: i64) -> crate::Result<Vec<Article>> {
+    let rows = sqlx::query_as::<_, Article>(&format!(
+        "{} AND a.kind = 'thought' ORDER BY a.created_at DESC LIMIT $1 OFFSET $2", visible(mode)
+    ))
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn list_questions(pool: &PgPool, mode: InstanceMode, limit: i64, offset: i64) -> crate::Result<Vec<Article>> {
     let rows = sqlx::query_as::<_, Article>(&format!(
         "{} AND a.kind = 'question' ORDER BY a.created_at DESC LIMIT $1 OFFSET $2", visible(mode)

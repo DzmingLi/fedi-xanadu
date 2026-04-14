@@ -27,6 +27,7 @@ mod settings;
 mod skill_trees;
 mod skills;
 mod tags;
+mod thoughts;
 mod votes;
 
 use axum::{Json, Router, extract::State, routing::{delete, get, patch, post, put}};
@@ -102,6 +103,7 @@ pub fn routes() -> Router<AppState> {
         .merge(creator_routes())
         .merge(recommendation_routes())
         .merge(listing_routes())
+        .merge(thought_routes())
 }
 
 // --- Grouped sub-routers ---
@@ -307,6 +309,11 @@ fn recommendation_routes() -> Router<AppState> {
         .route("/recommendations", get(recommendations::get_recommendations))
         .route("/recommended-questions", get(recommendations::get_recommended_questions))
         .route("/frontier-skills", get(recommendations::get_frontier_skills))
+}
+
+fn thought_routes() -> Router<AppState> {
+    Router::new()
+        .route("/thoughts", get(thoughts::list_thoughts).post(thoughts::create_thought))
 }
 
 fn listing_routes() -> Router<AppState> {

@@ -123,6 +123,28 @@ pub fn validate_create_article(input: &crate::models::CreateArticle) -> Result<(
     Ok(())
 }
 
+/// Thoughts: title is optional, content limited to 2000 chars.
+pub fn validate_create_thought(input: &crate::models::CreateArticle) -> Result<(), Error> {
+    let mut errors = Vec::new();
+    // Title is optional for thoughts, but if present must be <= 500
+    if input.title.len() > 500 {
+        errors.push(ValidationError { field: "title".into(), message: "title too long (max 500)".into() });
+    }
+    if input.content.is_empty() {
+        errors.push(ValidationError { field: "content".into(), message: "content cannot be empty".into() });
+    }
+    if input.content.len() > 10_000 {
+        errors.push(ValidationError { field: "content".into(), message: "thought content too long (max 10000 bytes)".into() });
+    }
+    for tag in &input.tags {
+        if let Err(e) = validate_tag_id(tag) { errors.push(e); }
+    }
+    if !errors.is_empty() {
+        return Err(Error::Validation(errors));
+    }
+    Ok(())
+}
+
 pub fn validate_save_draft(input: &crate::models::SaveDraft) -> Result<(), Error> {
     let mut errors = Vec::new();
     if let Err(e) = validate_title(&input.title) { errors.push(e); }

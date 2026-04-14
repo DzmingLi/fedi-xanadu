@@ -58,7 +58,7 @@ impl std::fmt::Display for ContentFormat {
     }
 }
 
-/// Content kind — article, question, or answer.
+/// Content kind — article, question, answer, or thought.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 #[serde(rename_all = "lowercase")]
@@ -67,6 +67,7 @@ pub enum ContentKind {
     Article,
     Question,
     Answer,
+    Thought,
 }
 
 impl ContentKind {
@@ -75,6 +76,7 @@ impl ContentKind {
             Self::Article => "article",
             Self::Question => "question",
             Self::Answer => "answer",
+            Self::Thought => "thought",
         }
     }
 }
@@ -86,6 +88,7 @@ impl std::str::FromStr for ContentKind {
             "article" => Ok(Self::Article),
             "question" => Ok(Self::Question),
             "answer" => Ok(Self::Answer),
+            "thought" => Ok(Self::Thought),
             other => Err(format!("unknown content kind: {other}")),
         }
     }

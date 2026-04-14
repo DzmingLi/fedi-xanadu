@@ -420,6 +420,14 @@ export default {
   'category.review': 'Critique',
   'newArticle.categoryLabel': 'Catégorie',
 
+  // Thoughts
+  'nav.thoughts': 'Pensées',
+  'thoughts.title': 'Pensées',
+  'thoughts.subtitle': 'Partagez vos idées, observations et discussions',
+  'thoughts.empty': 'Aucune pensée',
+  'thoughts.new': 'Publier',
+  'thoughts.placeholder': 'Partagez une pensée...',
+
   // Listings
   'nav.listings': 'Offres',
 

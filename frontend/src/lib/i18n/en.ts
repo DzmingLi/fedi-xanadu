@@ -490,6 +490,14 @@ export default {
   'category.review': 'Review',
   'newArticle.categoryLabel': 'Category',
 
+  // Thoughts
+  'nav.thoughts': 'Thoughts',
+  'thoughts.title': 'Thoughts',
+  'thoughts.subtitle': 'Share your ideas, observations, and discussions',
+  'thoughts.empty': 'No thoughts yet',
+  'thoughts.new': 'Post Thought',
+  'thoughts.placeholder': 'Share a thought...',
+
   // Listings
   'nav.listings': 'Listings',
 
