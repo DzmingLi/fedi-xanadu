@@ -56,8 +56,6 @@
       .slice(0, 15);
   });
 
-  let litCount = $derived(skills.length);
-
   $effect(() => {
     Promise.all([listSkills(), listTags(), getAllArticlePrereqs(), getAllArticleTeaches()])
       .then(([sk, tg, pr, at]) => {
@@ -98,14 +96,6 @@
       </div>
       <a href="/questions" class="sidebar-link-small">{t('rsidebar.viewAllQuestions')}</a>
     {/if}
-  </div>
-
-  <div class="sidebar-divider"></div>
-
-  <div class="sidebar-section">
-    <div class="sidebar-heading">{t('rsidebar.yourSkills')}</div>
-    <p class="sidebar-text">{t('rsidebar.litTags', litCount)}</p>
-    <a href="/skills" class="sidebar-link-small">{t('rsidebar.manageTree')}</a>
   </div>
 
   <div class="sidebar-divider"></div>
