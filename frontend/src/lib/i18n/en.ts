@@ -490,6 +490,12 @@ export default {
   'category.review': 'Review',
   'newArticle.categoryLabel': 'Category',
 
+  // Listings
+  'nav.listings': 'Listings',
+
+  // Related Questions
+  'qa.relatedQuestions': 'Related Questions',
+
   // Books
   'nav.books': 'Books',
   'books.title': 'Books',

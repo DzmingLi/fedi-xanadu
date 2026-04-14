@@ -486,6 +486,12 @@ export default {
   'category.review': '书评',
   'newArticle.categoryLabel': '类型',
 
+  // Listings
+  'nav.listings': '招聘',
+
+  // Related Questions
+  'qa.relatedQuestions': '相关问题',
+
   // Books
   'nav.books': '图书',
   'books.title': '图书',

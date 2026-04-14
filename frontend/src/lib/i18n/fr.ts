@@ -420,6 +420,12 @@ export default {
   'category.review': 'Critique',
   'newArticle.categoryLabel': 'Catégorie',
 
+  // Listings
+  'nav.listings': 'Offres',
+
+  // Related Questions
+  'qa.relatedQuestions': 'Questions similaires',
+
   // Books
   'nav.books': 'Livres',
   'books.title': 'Livres',
