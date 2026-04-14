@@ -1,4 +1,4 @@
-//! Typed HTTP client for the Fedi-Xanadu API.
+//! Typed HTTP client for the NightBoat API.
 //!
 //! Used by fx-cli and integration tests instead of raw reqwest calls.
 
@@ -9,7 +9,7 @@ pub use error::{ClientError, ClientResult};
 
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 
-/// Typed HTTP client for Fedi-Xanadu.
+/// Typed HTTP client for NightBoat.
 #[derive(Debug, Clone)]
 pub struct FxClient {
     base_url: String,

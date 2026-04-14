@@ -56,6 +56,42 @@ pub struct CreateRecordOutput {
 }
 
 #[derive(Debug, Serialize)]
+pub struct PutRecordInput {
+    pub repo: String,
+    pub collection: String,
+    pub rkey: String,
+    pub record: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PutRecordOutput {
+    pub uri: String,
+    pub cid: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobRef {
+    #[serde(rename = "$type")]
+    pub blob_type: String,
+    #[serde(rename = "ref")]
+    pub ref_link: BlobLink,
+    #[serde(rename = "mimeType")]
+    pub mime_type: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobLink {
+    #[serde(rename = "$link")]
+    pub link: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UploadBlobOutput {
+    blob: BlobRef,
+}
+
+#[derive(Debug, Serialize)]
 pub struct DeleteRecordInput {
     pub repo: String,
     pub collection: String,
@@ -207,6 +243,63 @@ impl AtClient {
         }
 
         Ok(resp.json().await?)
+    }
+
+    /// Create or update a record in the user's PDS repository.
+    pub async fn put_record(
+        &self,
+        pds_url: &str,
+        token: &str,
+        input: &PutRecordInput,
+    ) -> anyhow::Result<PutRecordOutput> {
+        let url = format!(
+            "{}/xrpc/com.atproto.repo.putRecord",
+            pds_url.trim_end_matches('/')
+        );
+        let resp = self
+            .http
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(input)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("putRecord failed: {}", body);
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Upload a blob to the user's PDS.
+    pub async fn upload_blob(
+        &self,
+        pds_url: &str,
+        token: &str,
+        data: Vec<u8>,
+        content_type: &str,
+    ) -> anyhow::Result<BlobRef> {
+        let url = format!(
+            "{}/xrpc/com.atproto.repo.uploadBlob",
+            pds_url.trim_end_matches('/')
+        );
+        let resp = self
+            .http
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", content_type)
+            .body(data)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("uploadBlob failed: {}", body);
+        }
+
+        let output: UploadBlobOutput = resp.json().await?;
+        Ok(output.blob)
     }
 
     /// Delete a record from the user's PDS repository.

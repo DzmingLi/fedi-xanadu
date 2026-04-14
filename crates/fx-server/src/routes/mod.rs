@@ -55,7 +55,7 @@ async fn sitemap_handler(State(state): State<AppState>) -> impl IntoResponse {
         "SELECT id FROM series WHERE is_published = TRUE ORDER BY created_at DESC"
     ).fetch_all(&state.pool).await.unwrap_or_default();
 
-    let base = std::env::var("FX_PUBLIC_URL").unwrap_or_else(|_| "https://fedi-xanadu.dzming.li".into());
+    let base = std::env::var("FX_PUBLIC_URL").unwrap_or_else(|_| "https://nightboat.dzming.li".into());
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
     xml.push_str(&format!("  <url><loc>{base}/</loc></url>\n"));
 
@@ -75,7 +75,7 @@ async fn rss_feed_handler(
     axum::extract::Path(filename): axum::extract::Path<String>,
 ) -> impl IntoResponse {
     let did = filename.strip_suffix(".xml").unwrap_or(&filename).to_string();
-    let base = std::env::var("FX_PUBLIC_URL").unwrap_or_else(|_| "https://fedi-xanadu.dzming.li".into());
+    let base = std::env::var("FX_PUBLIC_URL").unwrap_or_else(|_| "https://nightboat.dzming.li".into());
 
     let handle: Option<String> = sqlx::query_scalar("SELECT handle FROM platform_users WHERE did = $1")
         .bind(&did).fetch_optional(&state.pool).await.ok().flatten();
@@ -91,9 +91,9 @@ async fn rss_feed_handler(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
-  <title>{author} - Fedi-Xanadu</title>
+  <title>{author} - NightBoat</title>
   <link>{base}/profile?did={did}</link>
-  <description>Articles by {author} on Fedi-Xanadu</description>
+  <description>Articles by {author} on NightBoat</description>
   <atom:link href="{base}/feed/{did}.xml" rel="self" type="application/rss+xml"/>
 "#
     );

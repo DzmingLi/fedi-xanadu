@@ -5,11 +5,11 @@ use fx_core::content::ContentFormat;
 use fx_core::models::CreateArticle;
 use serde::{Deserialize, Serialize};
 
-const CONFIG_DIR: &str = "fedi-xanadu";
+const CONFIG_DIR: &str = "nightboat";
 const CONFIG_FILE: &str = "cli.json";
 
 #[derive(Parser)]
-#[command(name = "fx", about = "Fedi-Xanadu CLI — upload and manage articles")]
+#[command(name = "fx", about = "NightBoat CLI — upload and manage articles")]
 struct Cli {
     /// Server URL (default: http://localhost:3847)
     #[arg(long, env = "FX_SERVER", default_value = "http://localhost:3847")]
@@ -1650,7 +1650,7 @@ fn validate_html_fragment(content: &str) -> Result<()> {
                 "HTML file contains {label}.\n\
                  HTML articles should be content fragments (e.g. <h2>, <p>, <div>),\n\
                  not full HTML pages. Remove the page wrapper and try again.\n\
-                 See: https://fedi-xanadu.dzming.li/#/guide for details."
+                 See: https://nightboat.dzming.li/#/guide for details."
             );
         }
     }

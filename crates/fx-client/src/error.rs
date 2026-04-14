@@ -3,7 +3,7 @@
 /// Result type for client operations.
 pub type ClientResult<T> = Result<T, ClientError>;
 
-/// Errors that can occur when using the Fedi-Xanadu client.
+/// Errors that can occur when using the NightBoat client.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     /// HTTP transport error (connection refused, timeout, etc.).

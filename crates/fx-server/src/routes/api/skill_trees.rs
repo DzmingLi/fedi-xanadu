@@ -60,7 +60,7 @@ pub async fn create_skill_tree(
         return Err(AppError(fx_core::Error::Validation(vec![e])));
     }
 
-    let at_uri = format!("at://{}/li.dzming.fedi-xanadu.skilltree/{}", user.did, tid());
+    let at_uri = format!("at://{}/li.dzming.nightboat.skilltree/{}", user.did, tid());
 
     let svc_input = skill_tree_service::CreateSkillTree {
         title: input.title,
@@ -92,7 +92,7 @@ pub async fn fork_skill_tree(
     WriteAuth(user): WriteAuth,
     Json(input): Json<ForkSkillTreeInput>,
 ) -> ApiResult<(StatusCode, Json<skill_tree_service::SkillTreeRow>)> {
-    let new_uri = format!("at://{}/li.dzming.fedi-xanadu.skilltree/{}", user.did, tid());
+    let new_uri = format!("at://{}/li.dzming.nightboat.skilltree/{}", user.did, tid());
     let row = skill_tree_service::fork_skill_tree(&state.pool, &input.uri, &new_uri, &user.did).await?;
     Ok((StatusCode::CREATED, Json(row)))
 }

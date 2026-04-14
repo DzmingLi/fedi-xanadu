@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { listSkills, listTags, getAllArticlePrereqs, getAllArticleTeaches } from '../lib/api';
-  import { tagName as resolveTagName } from '../lib/display';
+  import { listSkills, listTags, getAllArticlePrereqs, getAllArticleTeaches, getRecommendedQuestions } from '../lib/api';
+  import { tagName as resolveTagName, authorName } from '../lib/display';
   import { t } from '../lib/i18n/index.svelte';
-  import type { UserSkill, Tag, ContentPrereqBulkRow, ContentTeachRow } from '../lib/types';
+  import type { Article, UserSkill, Tag, ContentPrereqBulkRow, ContentTeachRow } from '../lib/types';
 
   let skills = $state<UserSkill[]>([]);
   let tags = $state<Tag[]>([]);
   let allPrereqs = $state<ContentPrereqBulkRow[]>([]);
   let allArticleTeaches = $state<ContentTeachRow[]>([]);
   let loading = $state(true);
+  let questions = $state<Article[]>([]);
+  let questionsLoading = $state(true);
 
   // Tags the user can explore: tags that appear on articles whose required prereqs are all satisfied
   let explorableTags = $derived.by(() => {
@@ -65,10 +67,41 @@
         allArticleTeaches = at;
         loading = false;
       });
+    getRecommendedQuestions(6)
+      .then(qs => { questions = qs; })
+      .catch(() => {})
+      .finally(() => { questionsLoading = false; });
   });
 </script>
 
 <aside class="right-sidebar">
+  <!-- Recommended questions -->
+  <div class="sidebar-section">
+    <div class="sidebar-heading">{t('rsidebar.questionsForYou')}</div>
+    {#if questionsLoading}
+      <p class="sidebar-text">{t('common.loading')}</p>
+    {:else if questions.length === 0}
+      <p class="sidebar-text">{t('rsidebar.noQuestions')}</p>
+    {:else}
+      <div class="question-list">
+        {#each questions as q}
+          <a href="/article?uri={encodeURIComponent(q.at_uri)}" class="q-card">
+            <span class="q-title">{q.title}</span>
+            <span class="q-meta">
+              {authorName(q)} &middot; {t('rsidebar.answersCount', q.answer_count)}
+              {#if q.vote_score > 0}
+                &middot; &#9650;{q.vote_score}
+              {/if}
+            </span>
+          </a>
+        {/each}
+      </div>
+      <a href="/questions" class="sidebar-link-small">{t('rsidebar.viewAllQuestions')}</a>
+    {/if}
+  </div>
+
+  <div class="sidebar-divider"></div>
+
   <div class="sidebar-section">
     <div class="sidebar-heading">{t('rsidebar.yourSkills')}</div>
     <p class="sidebar-text">{t('rsidebar.litTags', litCount)}</p>
@@ -169,6 +202,46 @@
     border-radius: 8px;
     min-width: 20px;
     text-align: center;
+  }
+
+  /* Question cards */
+  .question-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 6px;
+  }
+  .q-card {
+    display: block;
+    padding: 5px 8px;
+    border-radius: 3px;
+    text-decoration: none;
+    border-left: 2px solid #d97706;
+    transition: background 0.1s;
+  }
+  .q-card:hover {
+    background: var(--bg-hover);
+    text-decoration: none;
+  }
+  .q-title {
+    display: block;
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .q-card:hover .q-title {
+    color: var(--accent);
+  }
+  .q-meta {
+    display: block;
+    font-size: 11px;
+    color: var(--text-hint);
+    margin-top: 2px;
   }
 
   @media (max-width: 1100px) {

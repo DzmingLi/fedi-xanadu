@@ -86,7 +86,7 @@
   <div class="sidebar-divider"></div>
 
   <div class="sidebar-section">
-    <div class="sidebar-heading">Fedi-Xanadu</div>
+    <div class="sidebar-heading">NightBoat</div>
     <p class="sidebar-text">{t('sidebar.desc')}</p>
     <p class="sidebar-text"><a href="/about">{t('sidebar.learnMore')} &rarr;</a></p>
   </div>

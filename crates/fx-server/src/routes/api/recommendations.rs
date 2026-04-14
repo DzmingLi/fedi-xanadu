@@ -37,6 +37,22 @@ pub async fn get_recommendations(
     Ok(Json(articles))
 }
 
+pub async fn get_recommended_questions(
+    State(state): State<AppState>,
+    MaybeAuth(user): MaybeAuth,
+    Query(params): Query<RecommendationParams>,
+) -> ApiResult<Json<Vec<fx_core::models::Article>>> {
+    let limit = params.limit.unwrap_or(8).clamp(1, 20);
+    let articles = recommendation_service::get_recommended_questions(
+        &state.pool,
+        state.instance_mode,
+        user.as_ref().map(|u| u.did.as_str()),
+        limit,
+    )
+    .await?;
+    Ok(Json(articles))
+}
+
 pub async fn get_frontier_skills(
     State(state): State<AppState>,
     Auth(user): Auth,

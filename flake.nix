@@ -1,5 +1,5 @@
 {
-  description = "Fedi-Xanadu: federated knowledge sharing platform on AT Protocol";
+  description = "NightBoat: federated knowledge sharing platform on AT Protocol";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -14,11 +14,11 @@
     let
       nixosModule = { config, lib, pkgs, ... }:
         let
-          cfg = config.services.fedi-xanadu;
+          cfg = config.services.nightboat;
           pkg = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         in {
-          options.services.fedi-xanadu = {
-            enable = lib.mkEnableOption "Fedi-Xanadu knowledge sharing platform";
+          options.services.nightboat = {
+            enable = lib.mkEnableOption "NightBoat knowledge sharing platform";
             port = lib.mkOption {
               type = lib.types.port;
               default = 3847;
@@ -26,12 +26,12 @@
             };
             dataDir = lib.mkOption {
               type = lib.types.str;
-              default = "/var/lib/fedi-xanadu";
+              default = "/var/lib/nightboat";
               description = "State directory for Pijul store and other data";
             };
             instanceName = lib.mkOption {
               type = lib.types.str;
-              default = "Fedi-Xanadu";
+              default = "NightBoat";
               description = "Display name for this instance";
             };
             corsOrigins = lib.mkOption {
@@ -42,7 +42,7 @@
             publicUrl = lib.mkOption {
               type = lib.types.str;
               default = "";
-              description = "Public URL of this instance (for OAuth client_id and callback). e.g. https://fedi-xanadu.dzming.li";
+              description = "Public URL of this instance (for OAuth client_id and callback). e.g. https://nightboat.dzming.li";
             };
             adminSecretFile = lib.mkOption {
               type = lib.types.nullOr lib.types.path;
@@ -52,12 +52,12 @@
             database = {
               name = lib.mkOption {
                 type = lib.types.str;
-                default = "fedi_xanadu";
+                default = "nightboat";
                 description = "PostgreSQL database name";
               };
               user = lib.mkOption {
                 type = lib.types.str;
-                default = "fedi_xanadu";
+                default = "nightboat";
                 description = "PostgreSQL user name";
               };
             };
@@ -69,7 +69,7 @@
               };
               dir = lib.mkOption {
                 type = lib.types.str;
-                default = "/var/backup/fedi-xanadu";
+                default = "/var/backup/nightboat";
                 description = "Backup directory";
               };
               retention = lib.mkOption {
@@ -92,8 +92,8 @@
             };
 
             # Systemd service
-            systemd.services.fedi-xanadu = {
-              description = "Fedi-Xanadu knowledge sharing platform";
+            systemd.services.nightboat = {
+              description = "NightBoat knowledge sharing platform";
               after = [ "network.target" "postgresql.service" ];
               requires = [ "postgresql.service" ];
               wantedBy = [ "multi-user.target" ];
@@ -111,11 +111,11 @@
                 FX_CORS_ORIGINS = lib.concatStringsSep "," cfg.corsOrigins;
               };
               serviceConfig = {
-                ExecStart = "${pkg}/bin/fedi-xanadu";
-                WorkingDirectory = "${pkg}/share/fedi-xanadu";
+                ExecStart = "${pkg}/bin/nightboat";
+                WorkingDirectory = "${pkg}/share/nightboat";
                 User = cfg.database.user;
                 Group = cfg.database.user;
-                StateDirectory = "fedi-xanadu";
+                StateDirectory = "nightboat";
                 Restart = "on-failure";
                 RestartSec = 5;
 
@@ -152,8 +152,8 @@
             ];
 
             # Daily backup timer
-            systemd.services.fedi-xanadu-backup = lib.mkIf cfg.backup.enable {
-              description = "Fedi-Xanadu database and Pijul store backup";
+            systemd.services.nightboat-backup = lib.mkIf cfg.backup.enable {
+              description = "NightBoat database and Pijul store backup";
               serviceConfig = {
                 Type = "oneshot";
                 User = cfg.database.user;
@@ -184,8 +184,8 @@
               '';
             };
 
-            systemd.timers.fedi-xanadu-backup = lib.mkIf cfg.backup.enable {
-              description = "Daily Fedi-Xanadu backup";
+            systemd.timers.nightboat-backup = lib.mkIf cfg.backup.enable {
+              description = "Daily NightBoat backup";
               wantedBy = [ "timers.target" ];
               timerConfig = {
                 OnCalendar = "daily";
@@ -203,11 +203,11 @@
           pkg = self.packages.${pkgs.stdenv.hostPlatform.system}.fx-cli;
         in {
           options.programs.fx = {
-            enable = lib.mkEnableOption "fx CLI for Fedi-Xanadu";
+            enable = lib.mkEnableOption "fx CLI for NightBoat";
             server = lib.mkOption {
               type = lib.types.str;
-              default = "https://fedi-xanadu.dzming.li";
-              description = "Fedi-Xanadu server URL";
+              default = "https://nightboat.dzming.li";
+              description = "NightBoat server URL";
             };
             handle = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
@@ -290,19 +290,19 @@
 
         # Pre-built frontend assets as a standalone derivation (just a file copy).
         # Only rebuilds when frontend/dist changes; Rust derivation is unaffected.
-        frontendDist = pkgs.runCommand "fedi-xanadu-frontend-dist" {} ''
+        frontendDist = pkgs.runCommand "nightboat-frontend-dist" {} ''
           cp -r ${./frontend/dist} $out
         '';
 
         # Migrations as a standalone derivation.
-        migrationsDrv = pkgs.runCommand "fedi-xanadu-migrations" {} ''
+        migrationsDrv = pkgs.runCommand "nightboat-migrations" {} ''
           cp -r ${./migrations_pg} $out
         '';
 
         # Rust binary only — no frontendDist dependency so frontend changes
         # don't invalidate this derivation and trigger a full Rust recompile.
         rustBinary = pkgs.rustPlatform.buildRustPackage {
-          pname = "fedi-xanadu-bin";
+          pname = "nightboat-bin";
           version = "0.1.0";
           src = serverSrc;
           cargoLock = {
@@ -344,23 +344,23 @@
           cargoBuildFlags = [ "--package" "fx-cli" ];
 
           postInstall = ''
-            rm -f $out/bin/fedi-xanadu
+            rm -f $out/bin/nightboat
           '';
         };
 
         # Final package: assemble binary + frontend + migrations.
         # This runCommand is fast — no Rust compilation here.
         # Frontend changes only rebuild frontendDist + this tiny assembly step.
-        packages.default = pkgs.runCommand "fedi-xanadu" {
+        packages.default = pkgs.runCommand "nightboat" {
           nativeBuildInputs = [ pkgs.makeWrapper ];
         } ''
-          mkdir -p $out/bin $out/share/fedi-xanadu/frontend
-          cp ${rustBinary}/bin/fedi-xanadu $out/bin/fedi-xanadu
-          chmod +x $out/bin/fedi-xanadu
-          wrapProgram $out/bin/fedi-xanadu \
+          mkdir -p $out/bin $out/share/nightboat/frontend
+          cp ${rustBinary}/bin/nightboat $out/bin/nightboat
+          chmod +x $out/bin/nightboat
+          wrapProgram $out/bin/nightboat \
             --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.pandoc ]}
-          cp -r ${frontendDist} $out/share/fedi-xanadu/frontend/dist
-          cp -r ${migrationsDrv} $out/share/fedi-xanadu/migrations_pg
+          cp -r ${frontendDist} $out/share/nightboat/frontend/dist
+          cp -r ${migrationsDrv} $out/share/nightboat/migrations_pg
         '';
 
         devShells.default = pkgs.mkShell {

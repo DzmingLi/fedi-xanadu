@@ -2,11 +2,11 @@
 </script>
 
 <article class="guide">
-  <h1>Fedi-Xanadu 使用指南</h1>
+  <h1>NightBoat 使用指南</h1>
 
   <section>
-    <h2>什么是 Fedi-Xanadu？</h2>
-    <p>Fedi-Xanadu 是一个基于 <a href="https://atproto.com">AT Protocol</a> 的去中心化知识分享平台。</p>
+    <h2>什么是 NightBoat？</h2>
+    <p>NightBoat 是一个基于 <a href="https://atproto.com">AT Protocol</a> 的去中心化知识分享平台。</p>
     <ul>
       <li><strong>前置知识感知</strong> — 每篇文章标注所需前置知识，帮助读者判断是否准备好阅读</li>
       <li><strong>技能树系统</strong> — 社区共建知识图谱，浏览、fork、投票选出最佳学习路径</li>

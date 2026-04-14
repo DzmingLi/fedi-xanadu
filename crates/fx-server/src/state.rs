@@ -70,7 +70,7 @@ impl AppState {
     }
 }
 
-/// PadProjectResolver for fedi-xanadu series — resolves series ID to pijul node_id.
+/// PadProjectResolver for nightboat series — resolves series ID to pijul node_id.
 struct PgSeriesResolver {
     pool: PgPool,
 }
@@ -87,9 +87,26 @@ impl PadProjectResolver for PgSeriesResolver {
             .ok_or(PadError::NotFound("series not found or no pijul repo".into()))
     }
 
-    async fn get_knot_url(&self, _series_id: &str) -> Option<String> {
-        // fedi-xanadu doesn't use knot push/pull for series yet
-        None
+    async fn get_knot_url(&self, series_id: &str) -> Option<String> {
+        // Look up the series author's knot_url from user_settings
+        let author_did: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
+            .bind(series_id)
+            .fetch_optional(&self.pool)
+            .await
+            .ok()
+            .flatten();
+        if let Some(did) = author_did {
+            sqlx::query_scalar::<_, Option<String>>("SELECT knot_url FROM user_settings WHERE did = $1")
+                .bind(&did)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten()
+                .flatten()
+                .filter(|u| !u.is_empty())
+        } else {
+            None
+        }
     }
 
     async fn get_owner_did(&self, series_id: &str) -> Result<String, PadError> {

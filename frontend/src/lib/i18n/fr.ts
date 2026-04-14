@@ -52,6 +52,10 @@ export default {
   'rsidebar.manageTree': 'Gérer l\'arbre →',
   'rsidebar.explore': 'Domaines à explorer',
   'rsidebar.lightMoreHint': 'Maîtrisez plus de compétences pour débloquer de nouveaux domaines',
+  'rsidebar.questionsForYou': 'Questions pour vous',
+  'rsidebar.noQuestions': 'Pas de questions recommandées',
+  'rsidebar.answersCount': '{0} réponses',
+  'rsidebar.viewAllQuestions': 'Voir toutes les questions →',
 
   // Home
   'home.trending': 'Tendances',
@@ -350,6 +354,7 @@ export default {
   'qa.postAnswer': 'Publier',
   'qa.answerPlaceholder': 'Écrivez votre réponse...',
   'qa.questionBadge': 'Question',
+  'article.reviewBadge': 'Critique',
   'qa.answerBadge': 'Réponse',
   'qa.answerCount': '{0} réponses',
   'qa.myQuestions': 'Mes questions',

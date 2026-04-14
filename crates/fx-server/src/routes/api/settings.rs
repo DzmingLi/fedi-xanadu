@@ -19,6 +19,8 @@ pub struct UserSettings {
     pub bookmarks_public: bool,
     #[serde(default)]
     pub public_folders: Vec<String>,
+    #[serde(default)]
+    pub knot_url: Option<String>,
 }
 
 impl Default for UserSettings {
@@ -32,6 +34,7 @@ impl Default for UserSettings {
             email: None,
             bookmarks_public: false,
             public_folders: Vec::new(),
+            knot_url: None,
         }
     }
 }
@@ -50,11 +53,12 @@ pub async fn get_settings(
         email: Option<String>,
         bookmarks_public: bool,
         public_folders: sqlx::types::JsonValue,
+        knot_url: Option<String>,
     }
 
     let row = sqlx::query_as::<_, Row>(
         "SELECT native_lang, known_langs, prefer_native, hide_unknown, default_format, email, \
-         bookmarks_public, public_folders \
+         bookmarks_public, public_folders, knot_url \
          FROM user_settings WHERE did = $1",
     )
     .bind(&user.did)
@@ -74,6 +78,7 @@ pub async fn get_settings(
                 email: r.email,
                 bookmarks_public: r.bookmarks_public,
                 public_folders: folders,
+                knot_url: r.knot_url,
             }
         }
         None => UserSettings::default(),
@@ -96,8 +101,8 @@ pub async fn set_settings(
     let folders_json = serde_json::to_value(&input.public_folders)?;
 
     sqlx::query(
-        "INSERT INTO user_settings (did, native_lang, known_langs, prefer_native, hide_unknown, default_format, email, bookmarks_public, public_folders, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) \
+        "INSERT INTO user_settings (did, native_lang, known_langs, prefer_native, hide_unknown, default_format, email, bookmarks_public, public_folders, knot_url, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) \
          ON CONFLICT(did) DO UPDATE SET \
            native_lang = EXCLUDED.native_lang, \
            known_langs = EXCLUDED.known_langs, \
@@ -107,6 +112,7 @@ pub async fn set_settings(
            email = EXCLUDED.email, \
            bookmarks_public = EXCLUDED.bookmarks_public, \
            public_folders = EXCLUDED.public_folders, \
+           knot_url = EXCLUDED.knot_url, \
            updated_at = NOW()",
     )
     .bind(&user.did)
@@ -118,6 +124,7 @@ pub async fn set_settings(
     .bind(&input.email)
     .bind(input.bookmarks_public)
     .bind(&folders_json)
+    .bind(&input.knot_url)
     .execute(&state.pool)
     .await?;
 

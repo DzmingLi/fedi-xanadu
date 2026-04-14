@@ -32,9 +32,9 @@ impl Default for Config {
         Self {
             host: "127.0.0.1".into(),
             port: 3000,
-            database_url: "postgres://localhost/fedi_xanadu".into(),
+            database_url: "postgres://localhost/nightboat".into(),
             pijul_store_path: "data/pijul-store".into(),
-            instance_name: "Fedi-Xanadu".into(),
+            instance_name: "NightBoat".into(),
             cors_origins: String::new(),
             admin_secret: None,
             instance_mode: String::new(),
@@ -46,7 +46,7 @@ impl Default for Config {
 impl Config {
     pub fn load() -> anyhow::Result<Self> {
         let config: Config = Figment::from(Serialized::defaults(Config::default()))
-            .merge(Toml::file("fedi-xanadu.toml"))
+            .merge(Toml::file("nightboat.toml"))
             .merge(Env::prefixed("FX_"))
             .extract()?;
         Ok(config)

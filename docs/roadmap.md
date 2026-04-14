@@ -1,6 +1,6 @@
 # 路线图
 
-Fedi-Xanadu 的开发计划。欢迎提 issue 或 PR 参与贡献。
+NightBoat 的开发计划。欢迎提 issue 或 PR 参与贡献。
 
 ## 🚧 进行中
 
@@ -18,8 +18,8 @@ Fedi-Xanadu 的开发计划。欢迎提 issue 或 PR 参与贡献。
 - **付费咨询** — 用户向特定领域专家发起一对一付费提问，基于技能树匹配合适的回答者
 - **校园邮箱验证** — 通过校园邮箱自动验证学校身份（目前由管理员认证）
 - **邮件通知系统** — 评论回复、新关注、文章 fork 等事件通过邮件通知用户
-- **Obsidian 插件** — 在 Obsidian 中直接发布、同步 Fedi-Xanadu 文章，利用 Obsidian 的 Typst/LaTeX 生态
-- **VS Code 扩展** — 在 VS Code 中编辑和发布 Fedi-Xanadu 文章，覆盖开发者用户群
+- **Obsidian 插件** — 在 Obsidian 中直接发布、同步 NightBoat 文章，利用 Obsidian 的 Typst/LaTeX 生态
+- **VS Code 扩展** — 在 VS Code 中编辑和发布 NightBoat 文章，覆盖开发者用户群
 - **移动端适配（PWA）** — 响应式布局 + Service Worker，让移动端用户无需安装即可使用
 - **移动端 App（Tauri Mobile）** — 基于 Tauri 2.0 构建 iOS/Android 原生应用，复用 Rust + Svelte 现有技术栈，支持 Typst 本地渲染和离线缓存
-- **Logseq 插件** — 在 Logseq 中发布和同步 Fedi-Xanadu 文章（低优先级）
+- **Logseq 插件** — 在 Logseq 中发布和同步 NightBoat 文章（低优先级）

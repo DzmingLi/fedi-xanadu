@@ -1,4 +1,4 @@
-# Fedi-Xanadu
+# NightBoat
 
 ## Build
 - `nix develop --command cargo check`

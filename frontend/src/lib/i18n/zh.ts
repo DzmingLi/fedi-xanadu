@@ -80,6 +80,10 @@ export default {
   'rsidebar.manageTree': '管理技能树 →',
   'rsidebar.explore': '可探索领域',
   'rsidebar.lightMoreHint': '点亮更多技能以解锁新领域',
+  'rsidebar.questionsForYou': '等你来答',
+  'rsidebar.noQuestions': '暂无推荐问题',
+  'rsidebar.answersCount': '{0} 个回答',
+  'rsidebar.viewAllQuestions': '查看全部问答 →',
 
   // Home
   'home.trending': '热门',
@@ -410,6 +414,7 @@ export default {
   'qa.postAnswer': '发布回答',
   'qa.answerPlaceholder': '写下你的回答...',
   'qa.questionBadge': '问题',
+  'article.reviewBadge': '书评',
   'qa.showComments': '评论',
   'qa.hideComments': '收起评论',
   'qa.answerBadge': '回答',

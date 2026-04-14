@@ -80,6 +80,10 @@ export default {
   'rsidebar.manageTree': 'Manage skill tree →',
   'rsidebar.explore': 'Explorable Topics',
   'rsidebar.lightMoreHint': 'Light more skills to unlock new topics',
+  'rsidebar.questionsForYou': 'Questions for You',
+  'rsidebar.noQuestions': 'No recommended questions',
+  'rsidebar.answersCount': '{0} answers',
+  'rsidebar.viewAllQuestions': 'View all questions →',
 
   // Home
   'home.trending': 'Trending',
@@ -414,6 +418,7 @@ export default {
   'qa.postAnswer': 'Post Answer',
   'qa.answerPlaceholder': 'Write your answer...',
   'qa.questionBadge': 'Question',
+  'article.reviewBadge': 'Book Review',
   'qa.showComments': 'Comments',
   'qa.hideComments': 'Hide comments',
   'qa.answerBadge': 'Answer',
