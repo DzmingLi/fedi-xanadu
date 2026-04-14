@@ -46,11 +46,12 @@ pub async fn cast_vote(
     )
     .await?;
 
-    // Update content author's reputation (best-effort, non-blocking)
+    // Update reputations: content author + voter (best-effort, non-blocking)
     let pool = state.pool.clone();
     let target = input.target_uri.clone();
+    let voter = user.did.clone();
     tokio::spawn(async move {
-        let _ = reputation_service::update_for_content_vote(&pool, &target).await;
+        let _ = reputation_service::update_for_content_vote(&pool, &target, &voter).await;
     });
 
     // AT Protocol side-effect (only for non-zero votes)

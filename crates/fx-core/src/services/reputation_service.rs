@@ -1,12 +1,13 @@
 //! Reputation system.
 //!
 //! Reputation is computed from votes received on a user's content:
-//!   - Article upvote:   +10
-//!   - Answer upvote:    +15
-//!   - Question upvote:   +5
-//!   - Any downvote:      -2
-//!   - Comment upvote:    +2
-//!   - Comment downvote:  -1
+//!   - Article/lecture upvote:  +10
+//!   - Answer upvote:           +10
+//!   - Question upvote:         +10
+//!   - Content downvote:         -2
+//!   - Downvoting others:        -1  (cost to the voter, discourages frivolous downvotes)
+//!   - Fork voted up:            +5
+//!   - Comment votes:        no effect (prevents comment farming)
 //!
 //! The computed value is materialized in `profiles.reputation` and updated
 //! incrementally when votes are cast.
@@ -16,12 +17,10 @@ use sqlx::PgPool;
 use crate::Result;
 
 /// Reputation points per event.
-const ARTICLE_UPVOTE: i64 = 10;
-const ANSWER_UPVOTE: i64 = 15;
-const QUESTION_UPVOTE: i64 = 5;
+const CONTENT_UPVOTE: i64 = 10;
 const CONTENT_DOWNVOTE: i64 = -2;
-const COMMENT_UPVOTE: i64 = 2;
-const COMMENT_DOWNVOTE: i64 = -1;
+const DOWNVOTE_COST: i64 = -1;
+const FORK_UPVOTE: i64 = 5;
 
 /// Recalculate and store reputation for a single user from scratch.
 pub async fn recalc_reputation(pool: &PgPool, did: &str) -> Result<i64> {
@@ -36,14 +35,12 @@ pub async fn recalc_reputation(pool: &PgPool, did: &str) -> Result<i64> {
 
 /// Compute reputation from the vote tables (does not write).
 async fn compute_reputation(pool: &PgPool, did: &str) -> Result<i64> {
-    // Content votes (articles, questions, answers)
+    // 1. Votes received on user's articles/questions/answers (+10 / -2)
     let content_rep: i64 = sqlx::query_scalar(
         "SELECT COALESCE(SUM(\
             CASE \
-                WHEN v.value > 0 AND a.kind = 'answer' THEN $2 \
-                WHEN v.value > 0 AND a.kind = 'question' THEN $3 \
-                WHEN v.value > 0 THEN $4 \
-                WHEN v.value < 0 THEN $5 \
+                WHEN v.value > 0 THEN $2 \
+                WHEN v.value < 0 THEN $3 \
                 ELSE 0 \
             END\
          ), 0) \
@@ -52,33 +49,36 @@ async fn compute_reputation(pool: &PgPool, did: &str) -> Result<i64> {
          WHERE a.did = $1",
     )
     .bind(did)
-    .bind(ANSWER_UPVOTE)
-    .bind(QUESTION_UPVOTE)
-    .bind(ARTICLE_UPVOTE)
+    .bind(CONTENT_UPVOTE)
     .bind(CONTENT_DOWNVOTE)
     .fetch_one(pool)
     .await?;
 
-    // Comment votes
-    let comment_rep: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(\
-            CASE \
-                WHEN cv.value > 0 THEN $2 \
-                WHEN cv.value < 0 THEN $3 \
-                ELSE 0 \
-            END\
-         ), 0) \
-         FROM comment_votes cv \
-         JOIN comments c ON c.id = cv.comment_id \
-         WHERE c.did = $1",
+    // 2. Cost of downvoting others (-1 per downvote cast by this user)
+    let downvote_cost: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(COUNT(*), 0) FROM votes WHERE did = $1 AND value < 0",
     )
     .bind(did)
-    .bind(COMMENT_UPVOTE)
-    .bind(COMMENT_DOWNVOTE)
     .fetch_one(pool)
     .await?;
 
-    Ok((content_rep + comment_rep).max(0))
+    // 3. Fork votes received (+5 per upvote on forks of user's articles)
+    let fork_rep: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(\
+            CASE WHEN v.value > 0 THEN $2 ELSE 0 END\
+         ), 0) \
+         FROM votes v \
+         JOIN forks f ON f.forked_uri = v.target_uri \
+         JOIN articles a ON a.at_uri = f.forked_uri \
+         WHERE a.did = $1",
+    )
+    .bind(did)
+    .bind(FORK_UPVOTE)
+    .fetch_one(pool)
+    .await?;
+
+    let total = content_rep + (downvote_cost * DOWNVOTE_COST) + fork_rep;
+    Ok(total.max(0))
 }
 
 /// Recalculate reputation for ALL users. Used as a background safety net.
@@ -97,7 +97,9 @@ pub async fn recalc_all(pool: &PgPool) -> Result<u64> {
 }
 
 /// Look up the author DID of a vote target (article) and recalculate their reputation.
-pub async fn update_for_content_vote(pool: &PgPool, target_uri: &str) -> Result<()> {
+/// Also recalculates the voter's reputation (downvote cost).
+pub async fn update_for_content_vote(pool: &PgPool, target_uri: &str, voter_did: &str) -> Result<()> {
+    // Update content author's reputation
     let author: Option<String> =
         sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
             .bind(target_uri)
@@ -106,18 +108,7 @@ pub async fn update_for_content_vote(pool: &PgPool, target_uri: &str) -> Result<
     if let Some(did) = author {
         recalc_reputation(pool, &did).await?;
     }
-    Ok(())
-}
-
-/// Look up the author DID of a comment and recalculate their reputation.
-pub async fn update_for_comment_vote(pool: &PgPool, comment_id: &str) -> Result<()> {
-    let author: Option<String> =
-        sqlx::query_scalar("SELECT did FROM comments WHERE id = $1")
-            .bind(comment_id)
-            .fetch_optional(pool)
-            .await?;
-    if let Some(did) = author {
-        recalc_reputation(pool, &did).await?;
-    }
+    // Update voter's reputation (downvote cost affects voter)
+    recalc_reputation(pool, voter_did).await?;
     Ok(())
 }
