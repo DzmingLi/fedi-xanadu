@@ -545,6 +545,13 @@ export default {
   'books.editHistory': '编辑历史',
   'books.noEditHistory': '暂无编辑记录',
   'books.reportDispute': '上报争议',
+  'books.qa': '问答',
+  'books.askQuestion': '提个问题',
+  'books.noQuestions': '暂无问题，来提第一个吧！',
+  'books.askTitlePlaceholder': '关于这本书你想知道什么？',
+  'books.askContentPlaceholder': '补充细节（可选）...',
+  'books.setAsCover': '使用此封面',
+  'books.anyEdition': '任意版本',
 
   // Book edition form
   'bookEdition.title': '添加版本',

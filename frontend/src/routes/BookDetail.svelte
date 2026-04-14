@@ -769,7 +769,6 @@
           {/each}
         {/if}
       </div>
-    </div>
 
       <!-- Q&A -->
       <div class="qa-section">
@@ -827,6 +826,7 @@
           </div>
         {/if}
       </div>
+    </div>
 
     <!-- Right sidebar: Editions -->
     <aside class="book-sidebar">

@@ -549,6 +549,12 @@ export default {
   'books.editHistory': 'Edit history',
   'books.noEditHistory': 'No edit history',
   'books.reportDispute': 'Report dispute',
+  'books.qa': 'Questions & Answers',
+  'books.askQuestion': 'Ask a Question',
+  'books.noQuestions': 'No questions yet. Be the first to ask!',
+  'books.askTitlePlaceholder': 'What do you want to know about this book?',
+  'books.askContentPlaceholder': 'Add details (optional)...',
+  'books.setAsCover': 'Use this cover',
 
   // Book edition form
   'bookEdition.title': 'Add Edition',

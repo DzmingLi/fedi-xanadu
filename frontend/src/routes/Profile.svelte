@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
@@ -33,6 +33,8 @@
   let editEmail = $state('');
 
   // Academic profile state
+  let editingEdu = $state(false);
+  let editEdu = $state<EducationEntry[]>([]);
   let userListings = $state<Listing[]>([]);
   let editingPubs = $state(false);
   let editPubs = $state<PublicationEntry[]>([]);
@@ -399,7 +401,7 @@
           {/if}
         </p>
       {/if}
-      {#if profile.education.length > 0}
+      {#if profile.education.length > 0 || isOwnProfile}
         <div class="education-list">
           {#each profile.education as edu}
             <span class="education-entry">
@@ -410,6 +412,11 @@
             <span class="verified-badge" title={t('profile.verified')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)" stroke="white" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
             </span>
+          {/if}
+          {#if isOwnProfile}
+            <button class="edit-section-btn" onclick={() => { editEdu = JSON.parse(JSON.stringify(profile!.education)); editingEdu = true; }}>
+              {profile.education.length > 0 ? t('common.edit') : '+ Add'}
+            </button>
           {/if}
         </div>
       {/if}
@@ -883,6 +890,37 @@
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingTeach = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateTeaching(editTeach); profile!.teaching = editTeach; editingTeach = false; }}>{t('common.save')}</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Education Editor Modal -->
+{#if editingEdu}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={() => editingEdu = false}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal academic-modal" onclick={(e) => e.stopPropagation()}>
+      <h3>Edit Education</h3>
+      {#each editEdu as edu, i}
+        <div class="modal-entry">
+          <div class="modal-row">
+            <input type="text" bind:value={edu.degree} placeholder="Degree (e.g. B.S. Computer Science)" />
+            <input type="text" bind:value={edu.year} placeholder="Year" class="year-input" />
+          </div>
+          <input type="text" bind:value={edu.school} placeholder="Institution" />
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={edu.current} /> Currently enrolled
+          </label>
+          <button class="remove-entry" onclick={() => { editEdu = editEdu.filter((_, j) => j !== i); }}>Remove</button>
+        </div>
+      {/each}
+      <button class="add-entry" onclick={() => { editEdu = [...editEdu, { degree: '', school: '', year: '', current: false }]; }}>+ Add Education</button>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick={() => editingEdu = false}>{t('common.cancel')}</button>
+        <button class="btn-save" onclick={async () => { await updateEducation(editEdu); profile!.education = editEdu; editingEdu = false; }}>{t('common.save')}</button>
       </div>
     </div>
   </div>
@@ -1658,6 +1696,8 @@
   .modal-row input, .modal-row select { flex: 1; }
   .year-input { max-width: 80px; }
   .remove-entry { font-size: 11px; color: #dc2626; background: none; border: none; cursor: pointer; margin-top: 4px; }
+  .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px; cursor: pointer; }
+  .checkbox-label input[type="checkbox"] { margin: 0; }
   .add-entry { font-size: 13px; color: var(--accent); background: none; border: 1px dashed var(--accent); border-radius: 4px; padding: 6px 12px; cursor: pointer; width: 100%; margin: 8px 0; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   .btn-cancel { padding: 6px 14px; font-size: 13px; border: 1px solid var(--border); border-radius: 3px; background: none; color: var(--text-secondary); cursor: pointer; }

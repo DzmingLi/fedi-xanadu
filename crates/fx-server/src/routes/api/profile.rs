@@ -52,6 +52,17 @@ pub async fn update_bio(
     Ok(StatusCode::OK)
 }
 
+pub async fn update_education(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<Vec<social_service::EducationEntry>>,
+) -> ApiResult<StatusCode> {
+    let json = serde_json::to_value(&input)?;
+    sqlx::query("UPDATE profiles SET education = $1 WHERE did = $2")
+        .bind(&json).bind(&user.did).execute(&state.pool).await?;
+    Ok(StatusCode::OK)
+}
+
 pub async fn update_publications(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
