@@ -411,6 +411,8 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/rate", post(books::rate_book))
         .route("/books/{id}/reading-status", post(books::set_reading_status).delete(books::remove_reading_status))
         .route("/books/{id}/history", get(books::get_edit_history))
+        .route("/books/{id}/cover", post(books::upload_cover))
+        .route("/book-covers/{id}", get(books::get_cover))
 }
 
 // --- Health ---

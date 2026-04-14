@@ -1,7 +1,8 @@
 use axum::{
     Json,
-    extract::{Path, Query, State},
-    http::StatusCode,
+    body::Body,
+    extract::{Multipart, Path, Query, State},
+    http::{StatusCode, Response, header},
 };
 use fx_core::services::{book_service, skill_service};
 
@@ -359,4 +360,104 @@ pub async fn set_chapter_progress(
     }
 
     Ok(StatusCode::OK)
+}
+
+// --- Book cover: serve & upload ---
+
+const COVER_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const MAX_COVER_SIZE: usize = 5 * 1024 * 1024; // 5 MB
+
+/// Serve a book cover image from local storage.
+pub async fn get_cover(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Response<Body> {
+    let safe_id: String = id.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+
+    let covers_dir = state.data_dir.join("book-covers");
+    for ext in COVER_EXTENSIONS {
+        let path = covers_dir.join(format!("{safe_id}.{ext}"));
+        if path.exists() {
+            let content_type = match *ext {
+                "png" => "image/png",
+                "webp" => "image/webp",
+                _ => "image/jpeg",
+            };
+            match tokio::fs::read(&path).await {
+                Ok(data) => {
+                    return Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, content_type)
+                        .header(header::CACHE_CONTROL, "public, max-age=86400")
+                        .body(Body::from(data))
+                        .unwrap();
+                }
+                Err(_) => break,
+            }
+        }
+    }
+
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::empty())
+        .unwrap()
+}
+
+/// Upload a book cover image (multipart: field "file").
+pub async fn upload_cover(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WriteAuth(_user): WriteAuth,
+    mut multipart: Multipart,
+) -> ApiResult<Json<serde_json::Value>> {
+    let mut file_data: Option<Vec<u8>> = None;
+    let mut file_name: Option<String> = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        AppError(fx_core::Error::BadRequest(format!("Multipart error: {e}")))
+    })? {
+        if field.name() == Some("file") {
+            file_name = field.file_name().map(|s| s.to_string());
+            file_data = Some(
+                field.bytes().await
+                    .map_err(|e| AppError(fx_core::Error::BadRequest(e.to_string())))?
+                    .to_vec()
+            );
+        }
+    }
+
+    let data = file_data.ok_or(AppError(fx_core::Error::BadRequest("Missing file".into())))?;
+    let name = file_name.unwrap_or_default();
+
+    if data.len() > MAX_COVER_SIZE {
+        return Err(AppError(fx_core::Error::BadRequest("Cover too large (max 5MB)".into())));
+    }
+
+    let ext = std::path::Path::new(&name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_else(|| "jpg".into());
+
+    if !COVER_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(AppError(fx_core::Error::BadRequest("Unsupported format. Use jpg, png, or webp.".into())));
+    }
+
+    let safe_id: String = id.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+
+    let dest = state.data_dir.join("book-covers").join(format!("{safe_id}.{ext}"));
+    tokio::fs::write(&dest, &data).await?;
+
+    let cover_url = format!("/api/book-covers/{safe_id}");
+    sqlx::query("UPDATE books SET cover_url = $1 WHERE id = $2")
+        .bind(&cover_url)
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "cover_url": cover_url })))
 }

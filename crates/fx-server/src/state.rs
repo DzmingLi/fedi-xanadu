@@ -11,6 +11,7 @@ use crate::config::Config;
 pub struct AppState {
     pub pool: PgPool,
     pub pijul: Arc<PijulStore>,
+    pub data_dir: std::path::PathBuf,
     pub at_client: AtClient,
     pub admin_secret: Option<String>,
     pub instance_mode: InstanceMode,
@@ -58,9 +59,15 @@ impl AppState {
 
         tracing::info!("instance mode: {}", instance_mode.as_str());
 
+        let data_dir = std::path::PathBuf::from(&config.pijul_store_path);
+
+        // Ensure book-covers directory exists
+        std::fs::create_dir_all(data_dir.join("book-covers"))?;
+
         Ok(Self {
             pool,
             pijul,
+            data_dir,
             at_client,
             admin_secret: config.admin_secret.clone(),
             instance_mode,
