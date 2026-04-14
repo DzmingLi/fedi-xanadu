@@ -32,6 +32,9 @@ export const routes: Route[] = [
   { pattern: '/books', page: 'books' },
   { pattern: '/book-edition', page: 'book-edition' },
   { pattern: '/book', page: 'book' },
+  { pattern: '/listings', page: 'listings' },
+  { pattern: '/listing', page: 'listing-detail' },
+  { pattern: '/new-listing', page: 'new-listing' },
   { pattern: '/admin', page: 'admin' },
 ];
 

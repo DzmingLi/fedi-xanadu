@@ -121,6 +121,7 @@
     <a href="/skills">{t('nav.skills')}</a>
     <a href="/library">{t('nav.library')}</a>
     <a href="/books">{t('nav.books')}</a>
+    <a href="/listings">{t('nav.listings') || 'Listings'}</a>
     <a href="/roadmap">{t('nav.roadmap')}</a>
     <a href="/about">{t('nav.about')}</a>
   </div>

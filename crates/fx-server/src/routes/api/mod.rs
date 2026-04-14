@@ -15,6 +15,7 @@ mod graph;
 mod interests;
 mod keybindings;
 mod learned;
+mod listings;
 mod members;
 mod notifications;
 mod profile;
@@ -100,6 +101,7 @@ pub fn routes() -> Router<AppState> {
         .merge(render_routes())
         .merge(creator_routes())
         .merge(recommendation_routes())
+        .merge(listing_routes())
 }
 
 // --- Grouped sub-routers ---
@@ -305,6 +307,16 @@ fn recommendation_routes() -> Router<AppState> {
         .route("/recommendations", get(recommendations::get_recommendations))
         .route("/recommended-questions", get(recommendations::get_recommended_questions))
         .route("/frontier-skills", get(recommendations::get_frontier_skills))
+}
+
+fn listing_routes() -> Router<AppState> {
+    Router::new()
+        .route("/listings", get(listings::list_listings).post(listings::create_listing))
+        .route("/listings/mine", get(listings::my_listings))
+        .route("/listings/matched", get(listings::matched_listings))
+        .route("/listings/{id}", get(listings::get_listing).put(listings::update_listing).delete(listings::delete_listing))
+        .route("/listings/{id}/close", post(listings::close_listing))
+        .route("/listings/{id}/reopen", post(listings::reopen_listing))
 }
 
 fn question_routes() -> Router<AppState> {

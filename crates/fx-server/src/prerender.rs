@@ -55,6 +55,8 @@ impl PageMeta {
             "/guide" => ("Guide", "Learn how to use NightBoat"),
             "/about" => ("About", "About NightBoat — an engineering knowledge platform"),
             "/roadmap" => ("Roadmap", "NightBoat development roadmap"),
+            "/listings" => ("Academic Listings", "Browse academic positions — PhD, postdoc, RA, and more"),
+            "/new-listing" => ("Post Listing", "Post an academic position on NightBoat"),
             "/admin" => ("Admin", "NightBoat admin dashboard"),
             _ => ("NightBoat", "Engineering knowledge platform with skill tree matching"),
         };

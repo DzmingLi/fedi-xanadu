@@ -66,6 +66,9 @@
   const lazyDiscussion = () => import('./routes/Discussion.svelte');
   const lazyCreator = () => import('./routes/CreatorDashboard.svelte');
   const lazyAdmin = () => import('./routes/Admin.svelte');
+  const lazyListings = () => import('./routes/Listings.svelte');
+  const lazyListingDetail = () => import('./routes/ListingDetail.svelte');
+  const lazyNewListing = () => import('./routes/NewListing.svelte');
 </script>
 
 <Toast />
@@ -207,6 +210,18 @@
     {:else if route.page === 'book-edition'}
       {#await lazyBookEdition() then mod}
         <mod.default bookId={route.params.book_id || ''} />
+      {/await}
+    {:else if route.page === 'listings'}
+      {#await lazyListings() then mod}
+        <mod.default />
+      {/await}
+    {:else if route.page === 'listing-detail'}
+      {#await lazyListingDetail() then mod}
+        <mod.default id={route.params.id || ''} />
+      {/await}
+    {:else if route.page === 'new-listing'}
+      {#await lazyNewListing() then mod}
+        <mod.default editId={route.params.edit || ''} />
       {/await}
     {:else if route.page === 'admin'}
       {#await lazyAdmin() then mod}

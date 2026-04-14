@@ -507,3 +507,28 @@ export interface DiffLine {
   kind: 'context' | 'add' | 'remove';
   content: string;
 }
+
+// Listings (academic recruitment)
+export type ListingKind = 'phd' | 'masters' | 'ra' | 'postdoc' | 'intern' | 'faculty' | 'other';
+
+export interface Listing {
+  id: string;
+  did: string;
+  author_handle: string | null;
+  author_reputation: number;
+  title: string;
+  description: string;
+  kind: ListingKind;
+  institution: string;
+  department: string | null;
+  location: string | null;
+  contact_email: string | null;
+  contact_url: string | null;
+  compensation: string | null;
+  deadline: string | null;
+  is_open: boolean;
+  required_tags: string[];
+  preferred_tags: string[];
+  created_at: string;
+  updated_at: string;
+}

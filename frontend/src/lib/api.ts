@@ -555,6 +555,27 @@ export const unpublishSeries = (id: string) => post<void>(`/series/${encodeURICo
 export const recordArticleView = (uri: string, viewer_did?: string) =>
   post<void>('/articles/view', { uri, viewer_did });
 
+// Listings (academic recruitment)
+import type { Listing } from './types';
+export const listListings = (kind?: string, tag?: string, limit = 30, offset = 0) => {
+  const params = new URLSearchParams();
+  if (kind) params.set('kind', kind);
+  if (tag) params.set('tag', tag);
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  return get<Listing[]>(`/listings?${params}`);
+};
+export const getListing = (id: string) => get<Listing>(`/listings/${encodeURIComponent(id)}`);
+export const createListing = (data: Omit<Listing, 'id' | 'did' | 'author_handle' | 'author_reputation' | 'is_open' | 'created_at' | 'updated_at'>) =>
+  post<Listing>('/listings', data);
+export const updateListing = (id: string, data: Omit<Listing, 'id' | 'did' | 'author_handle' | 'author_reputation' | 'is_open' | 'created_at' | 'updated_at'>) =>
+  put<Listing>(`/listings/${encodeURIComponent(id)}`, data);
+export const closeListing = (id: string) => post<void>(`/listings/${encodeURIComponent(id)}/close`, {});
+export const reopenListing = (id: string) => post<void>(`/listings/${encodeURIComponent(id)}/reopen`, {});
+export const deleteListing = (id: string) => del<void>(`/listings/${encodeURIComponent(id)}`);
+export const myListings = () => get<Listing[]>('/listings/mine');
+export const matchedListings = (limit = 20) => get<Listing[]>(`/listings/matched?limit=${limit}`);
+
 // --- Admin API ---
 // All admin endpoints require x-admin-secret header
 
