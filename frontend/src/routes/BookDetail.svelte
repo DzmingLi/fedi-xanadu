@@ -26,6 +26,12 @@
   let chapterDone = $state(new Map<string, boolean>());
 
   let selectedEdition = $state('');
+  // Auto-select first edition when detail loads
+  $effect(() => {
+    if (detail && detail.editions.length > 0 && !selectedEdition) {
+      selectedEdition = detail.editions[0].id;
+    }
+  });
 
   // Q&A
   import { authorName } from '../lib/display';
@@ -417,9 +423,8 @@
               <button class="action-btn" class:active={readingStatus === 'dropped'} onclick={() => setStatus('dropped')}>
                 {t('books.dropped')}
               </button>
-              {#if detail.editions.length > 1}
+              {#if detail.editions.length > 0}
                 <select class="edition-select" bind:value={selectedEdition} title="Edition">
-                  <option value="">{t('books.anyEdition') || 'Any edition'}</option>
                   {#each detail.editions as ed}
                     <option value={ed.id}>{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
                   {/each}
