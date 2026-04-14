@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { getRecommendations, getAllArticleTeaches, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles } from '../lib/api';
+  import { getRecommendations, getAllArticleTeaches, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles, getFollowingFeed } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { authorName, tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
@@ -23,6 +23,10 @@
   import PostCard from '../lib/components/PostCard.svelte';
 
   let locale = $derived(getLocale());
+  let feedMode = $state<'recommend' | 'following'>('recommend');
+  let followingArticles = $state<Article[]>([]);
+  let followingLoading = $state(false);
+  let isLoggedIn = $derived(!!getAuth());
 
   let articles = $state<Article[]>(_cache?.articles ?? []);
   let allTags = $state<Tag[]>(_cache?.allTags ?? []);
@@ -244,6 +248,18 @@
     fetchData();
   });
 
+  async function loadFollowing() {
+    if (!isLoggedIn) return;
+    followingLoading = true;
+    try { followingArticles = await getFollowingFeed(100); } catch { followingArticles = []; }
+    followingLoading = false;
+  }
+
+  function switchFeed(mode: 'recommend' | 'following') {
+    feedMode = mode;
+    if (mode === 'following' && followingArticles.length === 0) loadFollowing();
+  }
+
   function toggleInterest(id: string) {
     if (interests.includes(id)) {
       interests = interests.filter(i => i !== id);
@@ -292,13 +308,35 @@
 
 <!-- Main content -->
 <div class="home-header">
-  <h1>{interests.length === 0 ? t('home.trending') : t('home.recent')}</h1>
+  <div class="feed-tabs">
+    <button class="feed-tab" class:active={feedMode === 'recommend'} onclick={() => switchFeed('recommend')}>
+      {t('home.recommend') || 'Recommend'}
+    </button>
+    {#if isLoggedIn}
+      <button class="feed-tab" class:active={feedMode === 'following'} onclick={() => switchFeed('following')}>
+        {t('home.following') || 'Following'}
+      </button>
+    {/if}
+  </div>
   <button class="edit-interests" onclick={() => { showInterestPicker = true; }} title={t('home.selectInterests')}>
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
   </button>
 </div>
 
-{#if loading}
+{#if feedMode === 'following'}
+  <!-- Following feed -->
+  {#if followingLoading}
+    <p class="meta">Loading...</p>
+  {:else if followingArticles.length === 0}
+    <p class="empty-feed">{t('home.noFollowing') || 'Follow users to see their articles here.'}</p>
+  {:else}
+    <div class="feed">
+      {#each followingArticles as article (article.at_uri)}
+        <PostCard {article} articleTeaches={articleTeaches.get(article.at_uri) ?? []} variant="home" />
+      {/each}
+    </div>
+  {/if}
+{:else if loading}
   <p class="meta">Loading...</p>
 {:else}
   <!-- Category tabs -->
@@ -341,6 +379,17 @@
 {/if}
 
 <style>
+  .feed-tabs { display: flex; gap: 0; }
+  .feed-tab {
+    padding: 8px 16px; font-size: 15px; font-weight: 500;
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
+    font-family: var(--font-serif);
+  }
+  .feed-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+  .feed-tab:hover { color: var(--text-primary); }
+  .empty-feed { color: var(--text-hint); font-size: 14px; text-align: center; padding: 2rem; }
+
   /* Interest picker modal */
   .picker-overlay {
     position: fixed;

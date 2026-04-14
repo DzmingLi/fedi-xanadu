@@ -88,6 +88,8 @@ export default {
   // Home
   'home.trending': 'Trending',
   'home.recent': 'Recent Articles',
+  'home.recommend': 'Recommend',
+  'home.noFollowing': 'Follow users to see their articles here.',
   'home.all': 'All',
   'home.noArticles': 'No content yet',
   'home.writeOne': 'Write one',

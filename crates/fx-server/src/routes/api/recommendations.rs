@@ -53,6 +53,19 @@ pub async fn get_recommended_questions(
     Ok(Json(articles))
 }
 
+pub async fn get_following_feed(
+    State(state): State<AppState>,
+    Auth(user): Auth,
+    Query(params): Query<RecommendationParams>,
+) -> ApiResult<Json<Vec<fx_core::models::Article>>> {
+    let limit = params.limit.unwrap_or(50).clamp(1, 100);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let articles = fx_core::services::article_service::list_following_feed(
+        &state.pool, state.instance_mode, &user.did, limit, offset,
+    ).await?;
+    Ok(Json(articles))
+}
+
 pub async fn get_frontier_skills(
     State(state): State<AppState>,
     Auth(user): Auth,

@@ -174,6 +174,7 @@ export const getRecommendations = (limit = 30, offset = 0, category?: string) =>
   return get<Article[]>(path);
 };
 export const getRecommendedQuestions = (limit = 8) => get<Article[]>(`/recommended-questions?limit=${limit}`);
+export const getFollowingFeed = (limit = 50, offset = 0) => get<Article[]>(`/following-feed?limit=${limit}&offset=${offset}`);
 export const getFrontierSkills = () => get<FrontierSkill[]>('/frontier-skills');
 
 // Bookmarks

@@ -88,6 +88,8 @@ export default {
   // Home
   'home.trending': '热门',
   'home.recent': '最新文章',
+  'home.recommend': '推荐',
+  'home.noFollowing': '关注用户后，他们的文章会出现在这里。',
   'home.all': '全部',
   'home.noArticles': '该栏目暂无内容',
   'home.writeOne': '写一篇',

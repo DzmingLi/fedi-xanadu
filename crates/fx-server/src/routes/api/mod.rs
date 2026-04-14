@@ -314,6 +314,7 @@ fn recommendation_routes() -> Router<AppState> {
     Router::new()
         .route("/recommendations", get(recommendations::get_recommendations))
         .route("/recommended-questions", get(recommendations::get_recommended_questions))
+        .route("/following-feed", get(recommendations::get_following_feed))
         .route("/frontier-skills", get(recommendations::get_frontier_skills))
 }
 

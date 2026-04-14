@@ -72,6 +72,19 @@ pub async fn get_questions_by_book(pool: &PgPool, mode: InstanceMode, book_id: &
     Ok(rows)
 }
 
+pub async fn list_following_feed(pool: &PgPool, mode: InstanceMode, did: &str, limit: i64, offset: i64) -> crate::Result<Vec<Article>> {
+    let rows = sqlx::query_as::<_, Article>(&format!(
+        "{} AND a.did IN (SELECT follows_did FROM user_follows WHERE did = $1) \
+         ORDER BY a.created_at DESC LIMIT $2 OFFSET $3", visible(mode)
+    ))
+    .bind(did)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn list_thoughts(pool: &PgPool, mode: InstanceMode, limit: i64, offset: i64) -> crate::Result<Vec<Article>> {
     let rows = sqlx::query_as::<_, Article>(&format!(
         "{} AND a.kind = 'thought' ORDER BY a.created_at DESC LIMIT $1 OFFSET $2", visible(mode)
