@@ -26,10 +26,15 @@
   let chapterDone = $state(new Map<string, boolean>());
 
   let selectedEdition = $state('');
-  // Auto-select first edition when detail loads
+  // Auto-select: admin default > first edition
   $effect(() => {
     if (detail && detail.editions.length > 0 && !selectedEdition) {
-      selectedEdition = detail.editions[0].id;
+      const defaultId = detail.book.default_edition_id;
+      if (defaultId && detail.editions.some(e => e.id === defaultId)) {
+        selectedEdition = defaultId;
+      } else {
+        selectedEdition = detail.editions[0].id;
+      }
     }
   });
 

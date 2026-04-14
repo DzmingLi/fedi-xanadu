@@ -718,3 +718,24 @@ pub async fn admin_revert_book_edit(
 
     Ok(Json(serde_json::json!({ "reverted": input.edit_id, "book_id": log.book_id })))
 }
+
+// --- Set default edition for a book ---
+
+#[derive(serde::Deserialize)]
+pub struct SetDefaultEditionInput {
+    pub book_id: String,
+    pub edition_id: String,
+}
+
+pub async fn admin_set_default_edition(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    Json(input): Json<SetDefaultEditionInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    sqlx::query("UPDATE books SET default_edition_id = $1 WHERE id = $2")
+        .bind(&input.edition_id)
+        .bind(&input.book_id)
+        .execute(&state.pool)
+        .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}

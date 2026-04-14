@@ -148,6 +148,7 @@ export interface Book {
   authors: string[];
   description: string;
   cover_url: string | null;
+  default_edition_id: string | null;
   created_by: string;
   created_at: string;
   avg_rating?: number;

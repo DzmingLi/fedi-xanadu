@@ -692,3 +692,5 @@ export const adminDeleteArticle = (secret: string, uri: string, reason?: string)
   adminPost<unknown>('/admin/articles/delete', secret, { uri, reason });
 export const adminSetVisibility = (secret: string, uri: string, visibility: string, reason?: string) =>
   adminPost<unknown>('/admin/articles/visibility', secret, { uri, visibility, reason });
+export const adminSetDefaultEdition = (secret: string, book_id: string, edition_id: string) =>
+  fetch(`${BASE}/admin/books/default-edition`, { method: 'PUT', headers: adminHeaders(secret), body: JSON.stringify({ book_id, edition_id }) });

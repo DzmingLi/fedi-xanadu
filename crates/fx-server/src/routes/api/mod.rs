@@ -371,6 +371,7 @@ fn admin_routes() -> Router<AppState> {
         .route("/admin/credentials/verify", post(admin::admin_verify_credentials))
         .route("/admin/credentials/revoke", post(admin::admin_revoke_credentials))
         .route("/admin/books/revert-edit", post(admin::admin_revert_book_edit))
+        .route("/admin/books/default-edition", put(admin::admin_set_default_edition))
 }
 
 fn appeal_routes() -> Router<AppState> {

@@ -1,0 +1,1 @@
+ALTER TABLE books ADD COLUMN IF NOT EXISTS default_edition_id VARCHAR(64);
