@@ -265,10 +265,10 @@
   .schedule-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
   .schedule-table tbody tr:hover { background: var(--bg-hover, rgba(0,0,0,0.02)); }
   .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
-  .session-topic { color: var(--text-primary); }
-  .session-readings { color: var(--text-hint); font-size: 13px; white-space: nowrap; }
-  .session-video { white-space: nowrap; display: flex; flex-wrap: wrap; gap: 4px; }
-  .session-hw { display: flex; flex-wrap: wrap; gap: 4px; }
+  .session-topic { color: var(--text-primary); width: 40%; }
+  .session-readings { color: var(--text-hint); font-size: 13px; white-space: nowrap; width: 18%; }
+  .session-video { white-space: nowrap; width: 15%; }
+  .session-hw { white-space: nowrap; width: 12%; }
   .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
   .res-link:hover { opacity: 0.8; text-decoration: none; }
   .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }
