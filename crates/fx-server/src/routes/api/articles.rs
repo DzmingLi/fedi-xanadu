@@ -884,24 +884,39 @@ pub async fn get_article_full(
     ).await?;
 
     let content = if has_access {
-        let node_id = uri_to_node_id(&uri);
-        let repo = state.pijul.repo_path(&node_id);
-        let src_ext = fx_renderer::format_extension(article.content_format.as_str());
-        let src_path = repo.join(format!("content.{src_ext}"));
-        let html_path = repo.join("content.html");
+        let format = article.content_format.as_str();
+        let src_ext = fx_renderer::format_extension(format);
+        let series_info = get_series_pijul_info(&state, &uri).await;
 
-        let source = match tokio::fs::read_to_string(&src_path).await {
-            Ok(s) => s,
-            Err(_) => tokio::fs::read_to_string(repo.join("content.typ"))
-                .await
-                .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?,
+        let (source, repo, src_path, html_path) = if let Some((series_node_id, chapter_id)) = &series_info {
+            let series_repo = state.pijul.series_repo_path(series_node_id);
+            let src = series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}"));
+            let html = series_repo.join("cache").join(format!("{chapter_id}.html"));
+            let source = tokio::fs::read_to_string(&src).await
+                .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?;
+            (source, series_repo, src, html)
+        } else {
+            let node_id = uri_to_node_id(&uri);
+            let repo = state.pijul.repo_path(&node_id);
+            let src = repo.join(format!("content.{src_ext}"));
+            let html = repo.join("content.html");
+            let source = match tokio::fs::read_to_string(&src).await {
+                Ok(s) => s,
+                Err(_) => tokio::fs::read_to_string(repo.join("content.typ"))
+                    .await
+                    .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?,
+            };
+            (source, repo, src, html)
         };
+
         let html = if article.content_format == ContentFormat::Html {
             source.clone()
+        } else if let Some(series_html) = try_series_render(&state, &uri, format).await {
+            series_html
         } else if is_cached_fresh(&html_path, &src_path).await {
             tokio::fs::read_to_string(&html_path).await?
         } else {
-            let rendered = render_content(article.content_format.as_str(), &source, &repo)?;
+            let rendered = render_content(format, &source, &repo)?;
             let _ = tokio::fs::write(&html_path, &rendered).await;
             rendered
         };
