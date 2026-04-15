@@ -653,10 +653,20 @@ export interface CourseSession {
   notes?: string | null;
 }
 
+export interface CourseTextbook {
+  book_id: string;
+  title: string;
+  authors: string[];
+  cover_url: string | null;
+  role: string;
+  sort_order: number;
+}
+
 export interface CourseDetail {
   course: Course;
   syllabus: string;
   schedule: CourseSession[];
+  textbooks: CourseTextbook[];
   series: CourseSeries[];
   staff: CourseStaff[];
   skill_trees: CourseSkillTree[];

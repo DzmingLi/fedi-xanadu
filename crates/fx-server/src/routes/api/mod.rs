@@ -346,6 +346,7 @@ fn course_routes() -> Router<AppState> {
         .route("/courses/{id}/series", post(courses::add_series).delete(courses::remove_series))
         .route("/courses/{id}/staff", post(courses::add_staff).delete(courses::remove_staff))
         .route("/courses/{id}/skill-trees", post(courses::add_skill_tree))
+        .route("/courses/{id}/textbooks", post(courses::add_textbook).delete(courses::remove_textbook))
 }
 
 fn question_routes() -> Router<AppState> {

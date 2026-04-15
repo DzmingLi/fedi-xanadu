@@ -143,3 +143,31 @@ pub async fn add_skill_tree(
     course_service::add_skill_tree(&state.pool, &id, &input.tree_uri, input.role.as_deref().unwrap_or("prerequisites")).await?;
     Ok(StatusCode::OK)
 }
+
+#[derive(Deserialize)]
+pub struct AddTextbookInput {
+    book_id: String,
+    role: Option<String>,
+    sort_order: Option<i32>,
+}
+
+pub async fn add_textbook(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path(id): Path<String>,
+    Json(input): Json<AddTextbookInput>,
+) -> ApiResult<StatusCode> {
+    course_service::add_textbook(&state.pool, &id, &input.book_id, input.role.as_deref().unwrap_or("required"), input.sort_order.unwrap_or(0)).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn remove_textbook(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path(id): Path<String>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<StatusCode> {
+    let book_id = q.get("book_id").ok_or(AppError(fx_core::Error::BadRequest("missing book_id".into())))?;
+    course_service::remove_textbook(&state.pool, &id, book_id).await?;
+    Ok(StatusCode::OK)
+}

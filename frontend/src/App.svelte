@@ -142,6 +142,30 @@
       <mod.default did={route.params.did || ''} />
     {/await}
   </div>
+{:else if route.page === 'course-detail'}
+  <div class="profile-nav">
+    <NavBar />
+  </div>
+  <div class="profile-container">
+    {#await lazyCourseDetail() then mod}
+      <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{:else if route.page === 'courses' || route.page === 'new-course'}
+  <div class="profile-nav">
+    <NavBar />
+  </div>
+  <div class="profile-container">
+    {#if route.page === 'courses'}
+      {#await lazyCourses() then mod}
+        <mod.default />
+      {/await}
+    {:else}
+      {#await lazyNewCourse() then mod}
+        <mod.default />
+      {/await}
+    {/if}
+  </div>
 {:else if route.page !== 'book' && route.page !== 'books'}
   <div class="top-nav">
     <NavBar />
@@ -234,18 +258,6 @@
     {:else if route.page === 'new-listing'}
       {#await lazyNewListing() then mod}
         <mod.default editId={route.params.edit || ''} />
-      {/await}
-    {:else if route.page === 'courses'}
-      {#await lazyCourses() then mod}
-        <mod.default />
-      {/await}
-    {:else if route.page === 'course-detail'}
-      {#await lazyCourseDetail() then mod}
-        <mod.default id={route.params.id || ''} />
-      {/await}
-    {:else if route.page === 'new-course'}
-      {#await lazyNewCourse() then mod}
-        <mod.default />
       {/await}
     {:else if route.page === 'feedback'}
       {#await lazyFeedback() then mod}

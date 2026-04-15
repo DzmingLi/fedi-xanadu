@@ -64,10 +64,21 @@ pub struct CourseDetailResponse {
     pub course: CourseRow,
     pub syllabus: String,
     pub schedule: Vec<CourseSession>,
+    pub textbooks: Vec<CourseTextbookRow>,
     pub series: Vec<CourseSeriesRow>,
     pub staff: Vec<CourseStaffRow>,
     pub skill_trees: Vec<CourseSkillTreeRow>,
     pub prerequisites: Vec<CoursePrereqRow>,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct CourseTextbookRow {
+    pub book_id: String,
+    pub title: String,
+    pub authors: Vec<String>,
+    pub cover_url: Option<String>,
+    pub role: String,
+    pub sort_order: i32,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -171,6 +182,12 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
         .bind(id).fetch_one(pool).await.unwrap_or(serde_json::json!([]));
     let schedule: Vec<CourseSession> = serde_json::from_value(schedule_json).unwrap_or_default();
 
+    let textbooks = sqlx::query_as::<_, CourseTextbookRow>(
+        "SELECT ct.book_id, b.title, b.authors, b.cover_url, ct.role, ct.sort_order \
+         FROM course_textbooks ct JOIN books b ON b.id = ct.book_id \
+         WHERE ct.course_id = $1 ORDER BY ct.sort_order",
+    ).bind(id).fetch_all(pool).await?;
+
     let series = sqlx::query_as::<_, CourseSeriesRow>(
         "SELECT cs.series_id, s.title, s.description, cs.role, cs.sort_order \
          FROM course_series cs JOIN series s ON s.id = cs.series_id \
@@ -195,7 +212,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
          WHERE cp.course_id = $1",
     ).bind(id).fetch_all(pool).await?;
 
-    Ok(CourseDetailResponse { course, syllabus, schedule, series, staff, skill_trees, prerequisites })
+    Ok(CourseDetailResponse { course, syllabus, schedule, textbooks, series, staff, skill_trees, prerequisites })
 }
 
 pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
@@ -323,5 +340,21 @@ pub async fn add_prerequisite(pool: &PgPool, course_id: &str, prereq_id: &str) -
 pub async fn remove_prerequisite(pool: &PgPool, course_id: &str, prereq_id: &str) -> crate::Result<()> {
     sqlx::query("DELETE FROM course_prerequisites WHERE course_id = $1 AND prereq_course_id = $2")
         .bind(course_id).bind(prereq_id).execute(pool).await?;
+    Ok(())
+}
+
+// ── Textbooks ───────────────────────────────────────────────────────────
+
+pub async fn add_textbook(pool: &PgPool, course_id: &str, book_id: &str, role: &str, sort_order: i32) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO course_textbooks (course_id, book_id, role, sort_order) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING"
+    ).bind(course_id).bind(book_id).bind(role).bind(sort_order)
+    .execute(pool).await?;
+    Ok(())
+}
+
+pub async fn remove_textbook(pool: &PgPool, course_id: &str, book_id: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM course_textbooks WHERE course_id = $1 AND book_id = $2")
+        .bind(course_id).bind(book_id).execute(pool).await?;
     Ok(())
 }

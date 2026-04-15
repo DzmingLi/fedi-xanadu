@@ -140,6 +140,24 @@
       </div>
 
       <div class="body-side">
+        {#if detail.textbooks.length > 0}
+          <section class="textbooks">
+            <h3>Textbooks</h3>
+            {#each detail.textbooks as tb}
+              <a href="/book?id={encodeURIComponent(tb.book_id)}" class="textbook-card">
+                {#if tb.cover_url}
+                  <img src={tb.cover_url} alt="" class="textbook-cover" />
+                {/if}
+                <div class="textbook-info">
+                  <span class="textbook-title">{tb.title}</span>
+                  <span class="textbook-authors">{tb.authors.join(', ')}</span>
+                  <span class="textbook-role">{tb.role}</span>
+                </div>
+              </a>
+            {/each}
+          </section>
+        {/if}
+
         {#if detail.prerequisites.length > 0}
           <section class="prereqs">
             <h3>Prerequisites</h3>
@@ -217,6 +235,15 @@
   .series-title { font-family: var(--font-serif); font-size: 1.05rem; display: block; }
   .series-desc { font-size: 13px; color: var(--text-secondary); display: block; margin-top: 4px; }
 
+  .textbooks { margin-bottom: 20px; }
+  .textbooks h3 { font-family: var(--font-serif); font-weight: 400; font-size: 0.95rem; margin: 0 0 8px; color: var(--text-secondary); }
+  .textbook-card { display: flex; gap: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; text-decoration: none; color: inherit; transition: border-color 0.15s; }
+  .textbook-card:hover { border-color: var(--accent); text-decoration: none; }
+  .textbook-cover { width: 48px; height: 64px; object-fit: cover; border-radius: 3px; flex-shrink: 0; background: var(--bg-page); }
+  .textbook-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .textbook-title { font-size: 13px; font-weight: 500; color: var(--text-primary); line-height: 1.3; }
+  .textbook-authors { font-size: 12px; color: var(--text-secondary); }
+  .textbook-role { font-size: 11px; color: var(--text-hint); text-transform: capitalize; }
   .prereqs, .skill-trees { margin-bottom: 20px; }
   .prereqs h3, .skill-trees h3 { font-family: var(--font-serif); font-weight: 400; font-size: 0.95rem; margin: 0 0 8px; color: var(--text-secondary); }
   .prereq-link, .tree-link { display: block; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 6px; text-decoration: none; color: var(--text-primary); font-size: 13px; transition: border-color 0.15s; }

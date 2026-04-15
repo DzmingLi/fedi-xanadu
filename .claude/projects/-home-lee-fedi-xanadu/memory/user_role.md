@@ -4,7 +4,7 @@ description: Lee is the CEO/tech lead, handles product design, architecture, and
 type: user
 ---
 
-Lee is the CEO and technical co-founder of Fedi-Xanadu, studying at 华中科技大学 网络空间安全学院. Responsible for product design, technical architecture, and all fullstack development (Rust/Svelte).
+Lee is the CEO and technical co-founder of NightBoat, studying at 华中科技大学 网络空间安全学院. Responsible for product design, technical architecture, and all fullstack development (Rust/Svelte).
 
 Co-founder (COO) is at 复旦大学 泛海国际金融学院 金融科技方向. Responsible for business model, financial modeling, operations, growth, and fundraising/investor relations.
 
