@@ -115,6 +115,8 @@
                   <th>#</th>
                   <th>Topic</th>
                   <th>Readings</th>
+                  <th>Video</th>
+                  <th>Resources</th>
                 </tr>
               </thead>
               <tbody>
@@ -131,10 +133,17 @@
                         </div>
                       {/if}
                     </td>
-                    <td class="session-resources">
+                    <td class="session-readings">
+                      {#if s.readings}
+                        <span class="res-reading">{s.readings}</span>
+                      {/if}
+                    </td>
+                    <td class="session-video">
                       {#if s.video_url}
                         <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video" title="Video">&#9654; Video</a>
                       {/if}
+                    </td>
+                    <td class="session-resources">
                       {#if s.notes_url}
                         <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes" title="Notes">&#128196; Notes</a>
                       {/if}
@@ -143,9 +152,6 @@
                       {/if}
                       {#if s.discussion_url}
                         <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc" title="Discussion">&#128172; Discussion</a>
-                      {/if}
-                      {#if s.readings}
-                        <span class="res-reading">{s.readings}</span>
                       {/if}
                     </td>
                   </tr>
@@ -260,7 +266,9 @@
   .schedule-table tbody tr:hover { background: var(--bg-hover, rgba(0,0,0,0.02)); }
   .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
   .session-topic { color: var(--text-primary); }
-  .session-resources { width: 200px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .session-readings { color: var(--text-hint); font-size: 13px; white-space: nowrap; }
+  .session-video { white-space: nowrap; }
+  .session-resources { display: flex; flex-wrap: wrap; gap: 4px; }
   .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
   .res-link:hover { opacity: 0.8; text-decoration: none; }
   .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }

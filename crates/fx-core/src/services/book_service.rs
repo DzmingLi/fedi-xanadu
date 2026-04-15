@@ -144,6 +144,20 @@ pub async fn get_book(pool: &PgPool, id: &str) -> crate::Result<Book> {
         .ok_or_else(|| crate::Error::NotFound { entity: "book", id: id.to_string() })
 }
 
+/// Find a book by ISBN (searches across all editions).
+pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Option<Book>> {
+    let row = sqlx::query_as::<_, Book>(
+        "SELECT b.* FROM books b \
+         JOIN book_editions e ON e.book_id = b.id \
+         WHERE e.isbn = $1 \
+         LIMIT 1",
+    )
+    .bind(isbn)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
 pub async fn list_books(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<Book>> {
     let rows = sqlx::query_as::<_, Book>(
         "SELECT * FROM books ORDER BY created_at DESC LIMIT $1 OFFSET $2",
@@ -220,6 +234,18 @@ pub async fn create_edition(
     book_id: &str,
     input: &CreateEdition,
 ) -> crate::Result<BookEdition> {
+    // Reject duplicate ISBN
+    if let Some(isbn) = &input.isbn {
+        let existing: Option<String> = sqlx::query_scalar(
+            "SELECT book_id FROM book_editions WHERE isbn = $1"
+        ).bind(isbn).fetch_optional(pool).await?;
+        if let Some(existing_book_id) = existing {
+            return Err(crate::Error::BadRequest(
+                format!("ISBN {isbn} already exists on book {existing_book_id}")
+            ));
+        }
+    }
+
     let links_json = sqlx::types::Json(&input.purchase_links);
     sqlx::query(
         "INSERT INTO book_editions (id, book_id, title, lang, isbn, publisher, year, translators, purchase_links, cover_url) \
