@@ -59,10 +59,14 @@ impl AppState {
 
         tracing::info!("instance mode: {}", instance_mode.as_str());
 
-        let data_dir = std::path::PathBuf::from(&config.pijul_store_path);
+        // User data directory: sibling of pijul store, not inside it
+        let pijul_path = std::path::PathBuf::from(&config.pijul_store_path);
+        let data_dir = pijul_path.parent().unwrap_or(&pijul_path).join("uploads");
 
-        // Ensure book-covers directory exists
+        // Ensure directories exist
         std::fs::create_dir_all(data_dir.join("book-covers"))?;
+        std::fs::create_dir_all(data_dir.join("avatars"))?;
+        std::fs::create_dir_all(data_dir.join("banners"))?;
 
         Ok(Self {
             pool,

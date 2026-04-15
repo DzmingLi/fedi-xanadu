@@ -496,6 +496,9 @@ export default {
   'footer.guidelines': 'Guidelines',
   'footer.rights': 'All rights reserved.',
   'guidelines.comingSoon': 'Community guidelines are being drafted. Check back soon.',
+  'footer.feedback': 'Feedback',
+  'feedback.comingSoon': 'Bug reports and feedback system is coming soon.',
+  'feedback.githubHint': 'In the meantime, please report issues on',
 
   // Thoughts
   'nav.thoughts': 'Thoughts',

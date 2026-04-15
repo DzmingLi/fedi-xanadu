@@ -37,6 +37,7 @@ export const routes: Route[] = [
   { pattern: '/listing', page: 'listing-detail' },
   { pattern: '/new-listing', page: 'new-listing' },
   { pattern: '/guidelines', page: 'guidelines' },
+  { pattern: '/feedback', page: 'feedback' },
   { pattern: '/admin', page: 'admin' },
 ];
 

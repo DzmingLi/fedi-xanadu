@@ -492,6 +492,9 @@ export default {
   'footer.guidelines': '社区公约',
   'footer.rights': '保留所有权利。',
   'guidelines.comingSoon': '社区公约正在起草中，敬请期待。',
+  'footer.feedback': 'Bug 反馈',
+  'feedback.comingSoon': 'Bug 反馈系统即将上线。',
+  'feedback.githubHint': '目前请通过以下渠道反馈问题：',
 
   // Thoughts
   'nav.thoughts': '想法',
