@@ -1,5 +1,5 @@
 use axum::{extract::{Path, Query, State}, http::StatusCode, Json};
-use fx_core::services::course_service::{self, CourseRow, CourseListRow, CourseDetailResponse, CreateCourse, UpdateCourse};
+use fx_core::services::course_service::{self, CourseRow, CourseListRow, CourseSessionRow, CourseDetailResponse, CreateCourse, UpdateCourse, CreateSession, UpdateSession};
 use fx_core::services::patch_service;
 use fx_core::util::tid;
 use serde::Deserialize;
@@ -205,5 +205,84 @@ pub async fn remove_textbook(
 ) -> ApiResult<StatusCode> {
     let book_id = q.get("book_id").ok_or(AppError(fx_core::Error::BadRequest("missing book_id".into())))?;
     course_service::remove_textbook(&state.pool, &id, book_id).await?;
+    Ok(StatusCode::OK)
+}
+
+// ── Session endpoints ──────────────────────────────────────────────────
+
+pub async fn create_session(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path(course_id): Path<String>,
+    Json(input): Json<CreateSession>,
+) -> ApiResult<(StatusCode, Json<CourseSessionRow>)> {
+    let session_id = format!("csn-{}", tid());
+    let session = course_service::create_session(&state.pool, &session_id, &course_id, &input).await?;
+    Ok((StatusCode::CREATED, Json(session)))
+}
+
+pub async fn update_session(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path((_course_id, session_id)): Path<(String, String)>,
+    Json(input): Json<UpdateSession>,
+) -> ApiResult<Json<CourseSessionRow>> {
+    let session = course_service::update_session(&state.pool, &session_id, &input).await?;
+    Ok(Json(session))
+}
+
+pub async fn delete_session(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path((_course_id, session_id)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    course_service::delete_session(&state.pool, &session_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct SessionTagInput {
+    tag_id: String,
+}
+
+pub async fn add_session_tag(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path((_course_id, session_id)): Path<(String, String)>,
+    Json(input): Json<SessionTagInput>,
+) -> ApiResult<StatusCode> {
+    course_service::add_session_tag(&state.pool, &session_id, &input.tag_id).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn remove_session_tag(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path((_course_id, session_id)): Path<(String, String)>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<StatusCode> {
+    let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
+    course_service::remove_session_tag(&state.pool, &session_id, tag_id).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn add_session_prereq(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path((_course_id, session_id)): Path<(String, String)>,
+    Json(input): Json<SessionTagInput>,
+) -> ApiResult<StatusCode> {
+    course_service::add_session_prereq(&state.pool, &session_id, &input.tag_id).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn remove_session_prereq(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path((_course_id, session_id)): Path<(String, String)>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<StatusCode> {
+    let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
+    course_service::remove_session_prereq(&state.pool, &session_id, tag_id).await?;
     Ok(StatusCode::OK)
 }

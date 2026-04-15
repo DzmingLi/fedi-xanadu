@@ -350,6 +350,10 @@ fn course_routes() -> Router<AppState> {
         .route("/courses/{id}/patches", get(courses::list_patches))
         .route("/courses/{id}/tags", post(courses::add_tag).delete(courses::remove_tag))
         .route("/courses/{id}/textbooks", post(courses::add_textbook).delete(courses::remove_textbook))
+        .route("/courses/{id}/sessions", post(courses::create_session))
+        .route("/courses/{id}/sessions/{session_id}", put(courses::update_session).delete(courses::delete_session))
+        .route("/courses/{id}/sessions/{session_id}/tags", post(courses::add_session_tag).delete(courses::remove_session_tag))
+        .route("/courses/{id}/sessions/{session_id}/prereqs", post(courses::add_session_prereq).delete(courses::remove_session_prereq))
 }
 
 fn question_routes() -> Router<AppState> {

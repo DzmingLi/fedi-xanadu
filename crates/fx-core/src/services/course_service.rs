@@ -63,7 +63,7 @@ pub struct CourseStaffRow {
 pub struct CourseDetailResponse {
     pub course: CourseRow,
     pub syllabus: String,
-    pub schedule: Vec<CourseSession>,
+    pub sessions: Vec<CourseSessionDetail>,
     pub textbooks: Vec<CourseTextbookRow>,
     pub tags: Vec<CourseTagRow>,
     pub series: Vec<CourseSeriesRow>,
@@ -103,20 +103,26 @@ pub struct CoursePrereqRow {
     pub institution: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CourseSession {
-    pub session: i32,
-    pub topic: String,
-    #[serde(default)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct CourseSessionRow {
+    pub id: String,
+    pub course_id: String,
+    pub sort_order: i32,
+    pub topic: Option<String>,
     pub date: Option<String>,
-    #[serde(default)]
-    pub video_url: Option<String>,
-    #[serde(default)]
-    pub notes_url: Option<String>,
-    #[serde(default)]
-    pub assignment_url: Option<String>,
-    #[serde(default)]
     pub readings: Option<String>,
+    pub video_url: Option<String>,
+    pub notes_url: Option<String>,
+    pub assignment_url: Option<String>,
+    pub discussion_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CourseSessionDetail {
+    #[serde(flatten)]
+    pub session: CourseSessionRow,
+    pub tags: Vec<CourseTagRow>,
+    pub prereqs: Vec<CourseTagRow>,
 }
 
 // ── Input types ─────────────────────────────────────────────────────────
@@ -142,7 +148,6 @@ pub struct UpdateCourse {
     pub code: Option<String>,
     pub description: Option<String>,
     pub syllabus: Option<String>,
-    pub schedule: Option<Vec<CourseSession>>,
     pub institution: Option<String>,
     pub department: Option<String>,
     pub semester: Option<String>,
@@ -193,9 +198,29 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
     let syllabus: String = sqlx::query_scalar("SELECT syllabus FROM courses WHERE id = $1")
         .bind(id).fetch_one(pool).await.unwrap_or_default();
 
-    let schedule_json: serde_json::Value = sqlx::query_scalar("SELECT schedule FROM courses WHERE id = $1")
-        .bind(id).fetch_one(pool).await.unwrap_or(serde_json::json!([]));
-    let schedule: Vec<CourseSession> = serde_json::from_value(schedule_json).unwrap_or_default();
+    // Fetch sessions with their tags and prereqs
+    let session_rows = sqlx::query_as::<_, CourseSessionRow>(
+        "SELECT id, course_id, sort_order, topic, date, readings, video_url, notes_url, \
+         assignment_url, discussion_url \
+         FROM course_sessions WHERE course_id = $1 ORDER BY sort_order",
+    ).bind(id).fetch_all(pool).await?;
+
+    let mut sessions = Vec::with_capacity(session_rows.len());
+    for row in session_rows {
+        let tags = sqlx::query_as::<_, CourseTagRow>(
+            "SELECT cst.tag_id, t.name AS tag_name \
+             FROM course_session_tags cst JOIN tags t ON t.id = cst.tag_id \
+             WHERE cst.session_id = $1 ORDER BY t.name",
+        ).bind(&row.id).fetch_all(pool).await?;
+
+        let prereqs = sqlx::query_as::<_, CourseTagRow>(
+            "SELECT csp.tag_id, t.name AS tag_name \
+             FROM course_session_prereqs csp JOIN tags t ON t.id = csp.tag_id \
+             WHERE csp.session_id = $1 ORDER BY t.name",
+        ).bind(&row.id).fetch_all(pool).await?;
+
+        sessions.push(CourseSessionDetail { session: row, tags, prereqs });
+    }
 
     let tags = sqlx::query_as::<_, CourseTagRow>(
         "SELECT ct.tag_id, t.name AS tag_name \
@@ -233,7 +258,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
          WHERE cp.course_id = $1",
     ).bind(id).fetch_all(pool).await?;
 
-    Ok(CourseDetailResponse { course, syllabus, schedule, textbooks, tags, series, staff, skill_trees, prerequisites })
+    Ok(CourseDetailResponse { course, syllabus, sessions, textbooks, tags, series, staff, skill_trees, prerequisites })
 }
 
 pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
@@ -263,13 +288,12 @@ pub async fn list_my_courses(pool: &PgPool, did: &str) -> crate::Result<Vec<Cour
 }
 
 /// Snapshot a course as a flat JSON object for diffing.
-fn course_to_json(c: &CourseRow, syllabus: &str, schedule: &serde_json::Value) -> serde_json::Value {
+fn course_to_json(c: &CourseRow, syllabus: &str) -> serde_json::Value {
     serde_json::json!({
         "title": c.title,
         "code": c.code,
         "description": c.description,
         "syllabus": syllabus,
-        "schedule": schedule,
         "institution": c.institution,
         "department": c.department,
         "semester": c.semester,
@@ -293,14 +317,9 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
     let cur = get_course(pool, id).await?;
     let old_syllabus: String = sqlx::query_scalar("SELECT syllabus FROM courses WHERE id = $1")
         .bind(id).fetch_one(pool).await.unwrap_or_default();
-    let old_schedule: serde_json::Value = sqlx::query_scalar("SELECT schedule FROM courses WHERE id = $1")
-        .bind(id).fetch_one(pool).await.unwrap_or(serde_json::json!([]));
-    let old_json = course_to_json(&cur, &old_syllabus, &old_schedule);
+    let old_json = course_to_json(&cur, &old_syllabus);
 
     // Build new state
-    let new_schedule = input.schedule.as_ref()
-        .map(|s| serde_json::to_value(s).unwrap_or(serde_json::json!([])))
-        .unwrap_or(old_schedule);
     let new_syllabus = input.syllabus.as_deref().unwrap_or(&old_syllabus);
 
     let new_json = serde_json::json!({
@@ -308,7 +327,6 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
         "code": input.code.as_ref().or(cur.code.as_ref()),
         "description": input.description.as_deref().unwrap_or(&cur.description),
         "syllabus": new_syllabus,
-        "schedule": new_schedule,
         "institution": input.institution.as_ref().or(cur.institution.as_ref()),
         "department": input.department.as_ref().or(cur.department.as_ref()),
         "semester": input.semester.as_ref().or(cur.semester.as_ref()),
@@ -327,7 +345,7 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
 
     // Record patch
     let is_owner = did == owner_did;
-    let patch = super::patch_service::create_patch(
+    let _patch = super::patch_service::create_patch(
         pool, "course", id, did, &owner_did, &ops, summary,
     ).await?;
 
@@ -338,8 +356,8 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
              title = $1, code = $2, description = $3, syllabus = $4, \
              institution = $5, department = $6, semester = $7, lang = $8, license = $9, \
              source_url = $10, source_attribution = $11, is_published = $12, \
-             schedule = $13, updated_at = NOW() \
-             WHERE id = $14",
+             updated_at = NOW() \
+             WHERE id = $13",
         )
         .bind(new_json["title"].as_str())
         .bind(new_json["code"].as_str())
@@ -353,7 +371,6 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
         .bind(new_json["source_url"].as_str())
         .bind(new_json["source_attribution"].as_str())
         .bind(new_json["is_published"].as_bool().unwrap_or(false))
-        .bind(&new_json["schedule"])
         .bind(id)
         .execute(pool).await?;
     }
@@ -367,6 +384,123 @@ pub async fn delete_course(pool: &PgPool, id: &str, did: &str) -> crate::Result<
     if result.rows_affected() == 0 {
         return Err(crate::Error::NotFound { entity: "course", id: id.to_string() });
     }
+    Ok(())
+}
+
+// ── Session management ─────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateSession {
+    pub topic: Option<String>,
+    pub date: Option<String>,
+    pub readings: Option<String>,
+    pub video_url: Option<String>,
+    pub notes_url: Option<String>,
+    pub assignment_url: Option<String>,
+    pub discussion_url: Option<String>,
+    pub sort_order: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateSession {
+    pub topic: Option<String>,
+    pub date: Option<String>,
+    pub readings: Option<String>,
+    pub video_url: Option<String>,
+    pub notes_url: Option<String>,
+    pub assignment_url: Option<String>,
+    pub discussion_url: Option<String>,
+    pub sort_order: Option<i32>,
+}
+
+pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, input: &CreateSession) -> crate::Result<CourseSessionRow> {
+    let sort_order = match input.sort_order {
+        Some(o) => o,
+        None => {
+            let max: Option<i32> = sqlx::query_scalar(
+                "SELECT MAX(sort_order) FROM course_sessions WHERE course_id = $1"
+            ).bind(course_id).fetch_one(pool).await?;
+            max.unwrap_or(0) + 1
+        }
+    };
+
+    sqlx::query(
+        "INSERT INTO course_sessions (id, course_id, sort_order, topic, date, readings, \
+         video_url, notes_url, assignment_url, discussion_url) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+    )
+    .bind(session_id).bind(course_id).bind(sort_order)
+    .bind(&input.topic).bind(&input.date).bind(&input.readings)
+    .bind(&input.video_url).bind(&input.notes_url)
+    .bind(&input.assignment_url).bind(&input.discussion_url)
+    .execute(pool).await?;
+
+    get_session(pool, session_id).await
+}
+
+pub async fn get_session(pool: &PgPool, session_id: &str) -> crate::Result<CourseSessionRow> {
+    sqlx::query_as::<_, CourseSessionRow>(
+        "SELECT id, course_id, sort_order, topic, date, readings, video_url, notes_url, \
+         assignment_url, discussion_url \
+         FROM course_sessions WHERE id = $1",
+    )
+    .bind(session_id).fetch_one(pool).await
+    .map_err(|_| crate::Error::NotFound { entity: "session", id: session_id.to_string() })
+}
+
+pub async fn update_session(pool: &PgPool, session_id: &str, input: &UpdateSession) -> crate::Result<CourseSessionRow> {
+    let cur = get_session(pool, session_id).await?;
+
+    sqlx::query(
+        "UPDATE course_sessions SET \
+         topic = $1, date = $2, readings = $3, video_url = $4, notes_url = $5, \
+         assignment_url = $6, discussion_url = $7, sort_order = $8 \
+         WHERE id = $9",
+    )
+    .bind(input.topic.as_ref().or(cur.topic.as_ref()))
+    .bind(input.date.as_ref().or(cur.date.as_ref()))
+    .bind(input.readings.as_ref().or(cur.readings.as_ref()))
+    .bind(input.video_url.as_ref().or(cur.video_url.as_ref()))
+    .bind(input.notes_url.as_ref().or(cur.notes_url.as_ref()))
+    .bind(input.assignment_url.as_ref().or(cur.assignment_url.as_ref()))
+    .bind(input.discussion_url.as_ref().or(cur.discussion_url.as_ref()))
+    .bind(input.sort_order.unwrap_or(cur.sort_order))
+    .bind(session_id)
+    .execute(pool).await?;
+
+    get_session(pool, session_id).await
+}
+
+pub async fn delete_session(pool: &PgPool, session_id: &str) -> crate::Result<()> {
+    let result = sqlx::query("DELETE FROM course_sessions WHERE id = $1")
+        .bind(session_id).execute(pool).await?;
+    if result.rows_affected() == 0 {
+        return Err(crate::Error::NotFound { entity: "session", id: session_id.to_string() });
+    }
+    Ok(())
+}
+
+pub async fn add_session_tag(pool: &PgPool, session_id: &str, tag_id: &str) -> crate::Result<()> {
+    sqlx::query("INSERT INTO course_session_tags (session_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(session_id).bind(tag_id).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn remove_session_tag(pool: &PgPool, session_id: &str, tag_id: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM course_session_tags WHERE session_id = $1 AND tag_id = $2")
+        .bind(session_id).bind(tag_id).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn add_session_prereq(pool: &PgPool, session_id: &str, tag_id: &str) -> crate::Result<()> {
+    sqlx::query("INSERT INTO course_session_prereqs (session_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(session_id).bind(tag_id).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn remove_session_prereq(pool: &PgPool, session_id: &str, tag_id: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM course_session_prereqs WHERE session_id = $1 AND tag_id = $2")
+        .bind(session_id).bind(tag_id).execute(pool).await?;
     Ok(())
 }
 
