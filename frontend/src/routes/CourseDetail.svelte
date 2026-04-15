@@ -114,7 +114,7 @@
                 <tr>
                   <th>#</th>
                   <th>Topic</th>
-                  <th>Resources</th>
+                  <th>Readings</th>
                 </tr>
               </thead>
               <tbody>
