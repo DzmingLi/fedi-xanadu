@@ -89,6 +89,7 @@ pub async fn create_series(
             lang: Some(lang.to_string()),
             category: Some(category.to_string()),
             topics: topics.clone(),
+            chapters: vec![],
         };
         let repo_path = state.pijul.series_repo_path(node);
         if let Err(e) = fx_core::meta::write_series_meta_file(&repo_path, &meta) {
@@ -257,6 +258,67 @@ pub async fn reorder_articles(
     series_service::reorder_series_articles(&state.pool, &id, &input.article_uris)
         .await?;
     Ok(StatusCode::OK)
+}
+
+// --- Serve files from series repo ---
+
+/// Serve any file from a series repo by path.
+/// URL: GET /api/series/{id}/res/{*path}
+/// e.g. /api/series/s-xxx/res/ch01-intro/images/logo.png
+pub async fn serve_file(
+    State(state): State<AppState>,
+    Path((id, file_path)): Path<(String, String)>,
+) -> axum::response::Response<axum::body::Body> {
+    use axum::http::{header, StatusCode};
+    use axum::response::Response;
+    use axum::body::Body;
+
+    // Look up pijul_node_id for this series
+    let node_id: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1 AND pijul_node_id IS NOT NULL"
+    ).bind(&id).fetch_optional(&state.pool).await.ok().flatten();
+
+    let Some(node_id) = node_id else {
+        return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
+    };
+
+    let series_repo = state.pijul.series_repo_path(&node_id);
+
+    // Sanitize path: no ".." traversal
+    let clean_path: String = file_path.split('/')
+        .filter(|s| !s.is_empty() && *s != "." && *s != "..")
+        .collect::<Vec<_>>()
+        .join("/");
+
+    let full_path = series_repo.join(&clean_path);
+
+    // Ensure it's within the repo
+    if !full_path.starts_with(&series_repo) {
+        return Response::builder().status(StatusCode::FORBIDDEN).body(Body::empty()).unwrap();
+    }
+
+    match tokio::fs::read(&full_path).await {
+        Ok(data) => {
+            let content_type = match full_path.extension().and_then(|e| e.to_str()) {
+                Some("png") => "image/png",
+                Some("jpg" | "jpeg") => "image/jpeg",
+                Some("gif") => "image/gif",
+                Some("svg") => "image/svg+xml",
+                Some("webp") => "image/webp",
+                Some("pdf") => "application/pdf",
+                Some("css") => "text/css",
+                Some("js") => "application/javascript",
+                _ => "application/octet-stream",
+            };
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, content_type)
+                .header(header::CACHE_CONTROL, "public, max-age=86400")
+                .body(Body::from(data))
+                .unwrap()
+        }
+        Err(_) => Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap(),
+    }
 }
 
 // --- Series resource upload ---

@@ -46,6 +46,48 @@ pub struct SeriesMeta {
     pub category: Option<String>,
     #[serde(default)]
     pub topics: Vec<String>,
+    /// Chapter manifest: maps article TID → file path within the repo.
+    /// If empty, falls back to legacy `chapters/{tid}.{ext}` layout.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chapters: Vec<ChapterEntry>,
+}
+
+/// A chapter entry in the series manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChapterEntry {
+    /// Article TID (last segment of at_uri)
+    pub id: String,
+    /// Path relative to repo root, e.g. "ch01-intro/index.md"
+    pub path: String,
+}
+
+/// Resolve a chapter's file path within a series repo.
+///
+/// If the manifest has an entry for this chapter_id, use its path.
+/// Otherwise, fall back to the legacy `chapters/{chapter_id}.{ext}` layout.
+pub fn resolve_chapter_path(
+    repo_dir: &std::path::Path,
+    chapter_id: &str,
+    src_ext: &str,
+) -> std::path::PathBuf {
+    // Try reading manifest
+    if let Some(meta) = read_series_meta_file(repo_dir) {
+        if let Some(entry) = meta.chapters.iter().find(|c| c.id == chapter_id) {
+            return repo_dir.join(&entry.path);
+        }
+    }
+    // Legacy fallback
+    repo_dir.join("chapters").join(format!("{chapter_id}.{src_ext}"))
+}
+
+/// Resolve the directory containing a chapter's file (for relative resource paths).
+pub fn resolve_chapter_dir(
+    repo_dir: &std::path::Path,
+    chapter_id: &str,
+    src_ext: &str,
+) -> std::path::PathBuf {
+    let chapter_path = resolve_chapter_path(repo_dir, chapter_id, src_ext);
+    chapter_path.parent().unwrap_or(repo_dir).to_path_buf()
 }
 
 pub const META_FILENAME: &str = "meta.json";

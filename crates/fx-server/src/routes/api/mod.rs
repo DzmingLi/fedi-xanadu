@@ -258,6 +258,7 @@ fn series_routes() -> Router<AppState> {
         .route("/series/context", get(series::get_series_context))
         .route("/series/all-articles", get(series::all_series_articles))
         // Series pijul repo
+        .route("/series/{id}/res/{*path}", get(series::serve_file))
         .route("/series/{id}/resource", post(series::upload_resource))
         .route("/series/{id}/resources", get(series::list_resources))
         // Pijul file/channel/history routes from shared pad_router

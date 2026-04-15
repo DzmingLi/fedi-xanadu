@@ -135,7 +135,7 @@ async fn resolve_article_content(
 
     let (source, repo, src_path, html_path) = if let Some((series_node_id, chapter_id)) = &series_info {
         let series_repo = state.pijul.series_repo_path(series_node_id);
-        let src = series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}"));
+        let src = fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, src_ext);
         let html = series_repo.join("cache").join(format!("{chapter_id}.html"));
         let source = tokio::fs::read_to_string(&src).await
             .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
@@ -168,7 +168,41 @@ async fn resolve_article_content(
         rendered
     };
 
+    // Rewrite relative resource URLs for series chapters
+    let html = if let Some((_, chapter_id)) = &series_info {
+        // Find the series ID for this article
+        let series_id: Option<String> = sqlx::query_scalar(
+            "SELECT sa.series_id FROM series_articles sa WHERE sa.article_uri = $1 LIMIT 1"
+        ).bind(uri).fetch_optional(&state.pool).await.ok().flatten();
+
+        if let Some(sid) = series_id {
+            let chapter_dir = fx_core::meta::resolve_chapter_dir(&repo, chapter_id, src_ext);
+            let rel_dir = chapter_dir.strip_prefix(&repo).unwrap_or(&chapter_dir).to_string_lossy();
+            let base_url = format!("/api/series/{sid}/res/{}", rel_dir.trim_start_matches('/'));
+            rewrite_relative_urls(&html, &base_url)
+        } else {
+            html
+        }
+    } else {
+        html
+    };
+
     Ok(ArticleContent { source, html })
+}
+
+/// Rewrite relative `src` and `href` attributes in HTML to point to a base URL.
+/// Only rewrites paths that don't start with `/`, `http://`, `https://`, or `#`.
+fn rewrite_relative_urls(html: &str, base_url: &str) -> String {
+    let re = regex_lite::Regex::new(r#"(src|href)="([^"]*?)""#).unwrap();
+    re.replace_all(html, |caps: &regex_lite::Captures| {
+        let attr = &caps[1];
+        let url = &caps[2];
+        if url.starts_with("http://") || url.starts_with("https://") || url.starts_with('/') || url.starts_with('#') || url.starts_with("data:") || url.starts_with("mailto:") {
+            caps[0].to_string()
+        } else {
+            format!("{attr}=\"{base_url}/{url}\"")
+        }
+    }).to_string()
 }
 
 /// Check if an article is in a series with a pijul repo.
@@ -194,19 +228,14 @@ async fn get_series_pijul_info(
     // Extract chapter ID (TID) from article URI: at://did/collection/TID → TID
     let chapter_id = article_uri.rsplit('/').next()?;
 
-    // Check the chapter file exists in the series repo
+    // Check the chapter file exists in the series repo (manifest or legacy)
     let series_repo = state.pijul.series_repo_path(&pijul_node_id);
-    let chapter_dir = series_repo.join("chapters");
-    if !chapter_dir.exists() {
-        return None;
-    }
-    // Try to find a file matching this chapter_id (any extension)
-    if let Ok(entries) = std::fs::read_dir(&chapter_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with(chapter_id) {
-                return Some((pijul_node_id, chapter_id.to_string()));
-            }
+
+    // Try manifest first, then legacy chapters/ dir
+    for ext in ["md", "typ", "html"] {
+        let path = fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, ext);
+        if path.exists() {
+            return Some((pijul_node_id, chapter_id.to_string()));
         }
     }
 
@@ -299,7 +328,7 @@ async fn is_series_cache_fresh(
     for ch in chapters {
         let chapter_id = ch.article_uri.rsplit('/').next().unwrap_or("");
         let ext = fx_renderer::format_extension(&ch.content_format);
-        let src = series_repo.join("chapters").join(format!("{chapter_id}.{ext}"));
+        let src = fx_core::meta::resolve_chapter_path(series_repo, chapter_id, ext);
         if let Ok(src_meta) = tokio::fs::metadata(&src).await {
             if let Ok(st) = src_meta.modified() {
                 if st > cache_time { return false; }
@@ -523,19 +552,20 @@ pub(super) async fn publish_article_content(
 
         let series_repo = state.pijul.series_repo_path(&node_id);
 
+        let chapter_path = fx_core::meta::resolve_chapter_path(&series_repo, &chapter_id, src_ext);
+        let rel_path = chapter_path.strip_prefix(&series_repo)
+            .unwrap_or(&chapter_path).to_string_lossy().to_string();
+
         if let Some(ref knot) = knot_url {
             let client = pijul_knot::KnotClient::new(knot);
-            let path = format!("chapters/{chapter_id}.{src_ext}");
-            if let Err(e) = client.write_file(&node_id, &path, content.as_bytes()).await {
+            if let Err(e) = client.write_file(&node_id, &rel_path, content.as_bytes()).await {
                 tracing::warn!("knot write_file failed: {e}");
             }
         } else {
-            let chapters_dir = series_repo.join("chapters");
-            let _ = tokio::fs::create_dir_all(&chapters_dir).await;
-            tokio::fs::write(
-                chapters_dir.join(format!("{chapter_id}.{src_ext}")),
-                content,
-            ).await?;
+            if let Some(parent) = chapter_path.parent() {
+                let _ = tokio::fs::create_dir_all(parent).await;
+            }
+            tokio::fs::write(&chapter_path, content).await?;
         }
 
         if format != ContentFormat::Html {
@@ -673,10 +703,11 @@ pub(super) async fn save_article_content(
 
     if let Some((series_node_id, chapter_id)) = series_info {
         let series_repo = state.pijul.series_repo_path(&series_node_id);
-        tokio::fs::write(
-            series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}")),
-            content,
-        ).await?;
+        let chapter_path = fx_core::meta::resolve_chapter_path(&series_repo, &chapter_id, src_ext);
+        if let Some(parent) = chapter_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        tokio::fs::write(&chapter_path, content).await?;
 
         if format != "html" {
             let rendered = render_content(format, content, &series_repo)?;
@@ -1371,7 +1402,7 @@ pub async fn record_article(
 
     let content = if let Some((series_node_id, chapter_id)) = &series_info {
         let series_repo = state.pijul.series_repo_path(series_node_id);
-        let path = series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}"));
+        let path = fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, src_ext);
         tokio::fs::read_to_string(&path).await
             .map_err(|e| AppError(fx_core::Error::Internal(format!("read working copy: {e}"))))?
     } else {
