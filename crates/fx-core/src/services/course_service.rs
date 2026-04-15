@@ -63,6 +63,7 @@ pub struct CourseStaffRow {
 pub struct CourseDetailResponse {
     pub course: CourseRow,
     pub syllabus: String,
+    pub schedule: Vec<CourseSession>,
     pub series: Vec<CourseSeriesRow>,
     pub staff: Vec<CourseStaffRow>,
     pub skill_trees: Vec<CourseSkillTreeRow>,
@@ -82,6 +83,16 @@ pub struct CoursePrereqRow {
     pub title: String,
     pub code: Option<String>,
     pub institution: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CourseSession {
+    pub session: i32,
+    pub topic: String,
+    #[serde(default)]
+    pub date: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
 }
 
 // ── Input types ─────────────────────────────────────────────────────────
@@ -107,6 +118,7 @@ pub struct UpdateCourse {
     pub code: Option<String>,
     pub description: Option<String>,
     pub syllabus: Option<String>,
+    pub schedule: Option<Vec<CourseSession>>,
     pub institution: Option<String>,
     pub department: Option<String>,
     pub semester: Option<String>,
@@ -155,6 +167,10 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
     let syllabus: String = sqlx::query_scalar("SELECT syllabus FROM courses WHERE id = $1")
         .bind(id).fetch_one(pool).await.unwrap_or_default();
 
+    let schedule_json: serde_json::Value = sqlx::query_scalar("SELECT schedule FROM courses WHERE id = $1")
+        .bind(id).fetch_one(pool).await.unwrap_or(serde_json::json!([]));
+    let schedule: Vec<CourseSession> = serde_json::from_value(schedule_json).unwrap_or_default();
+
     let series = sqlx::query_as::<_, CourseSeriesRow>(
         "SELECT cs.series_id, s.title, s.description, cs.role, cs.sort_order \
          FROM course_series cs JOIN series s ON s.id = cs.series_id \
@@ -179,7 +195,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
          WHERE cp.course_id = $1",
     ).bind(id).fetch_all(pool).await?;
 
-    Ok(CourseDetailResponse { course, syllabus, series, staff, skill_trees, prerequisites })
+    Ok(CourseDetailResponse { course, syllabus, schedule, series, staff, skill_trees, prerequisites })
 }
 
 pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
@@ -217,39 +233,34 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
         _ => {}
     }
 
-    // Build dynamic UPDATE — only set fields that are Some
-    let mut sets = vec!["updated_at = NOW()".to_string()];
-    let mut idx = 1;
-    macro_rules! maybe_set {
-        ($field:ident) => {
-            if input.$field.is_some() {
-                sets.push(format!("{} = ${idx}", stringify!($field)));
-                idx += 1;
-            }
-        };
-    }
-    maybe_set!(title); maybe_set!(code); maybe_set!(description); maybe_set!(syllabus);
-    maybe_set!(institution); maybe_set!(department); maybe_set!(semester);
-    maybe_set!(lang); maybe_set!(license); maybe_set!(source_url);
-    maybe_set!(source_attribution); maybe_set!(is_published);
+    // Fetch current values, merge with input
+    let cur = get_course(pool, id).await?;
+    let schedule_json = input.schedule.as_ref()
+        .map(|s| serde_json::to_value(s).unwrap_or(serde_json::json!([])));
 
-    let sql = format!("UPDATE courses SET {} WHERE id = ${idx}", sets.join(", "));
-    let mut q = sqlx::query(&sql);
-
-    macro_rules! maybe_bind {
-        ($field:ident) => {
-            if let Some(ref v) = input.$field {
-                q = q.bind(v);
-            }
-        };
-    }
-    maybe_bind!(title); maybe_bind!(code); maybe_bind!(description); maybe_bind!(syllabus);
-    maybe_bind!(institution); maybe_bind!(department); maybe_bind!(semester);
-    maybe_bind!(lang); maybe_bind!(license); maybe_bind!(source_url);
-    maybe_bind!(source_attribution); maybe_bind!(is_published);
-
-    q = q.bind(id);
-    q.execute(pool).await?;
+    sqlx::query(
+        "UPDATE courses SET \
+         title = $1, code = $2, description = $3, syllabus = COALESCE($4, syllabus), \
+         institution = $5, department = $6, semester = $7, lang = $8, license = $9, \
+         source_url = $10, source_attribution = $11, is_published = $12, \
+         schedule = COALESCE($13, schedule), updated_at = NOW() \
+         WHERE id = $14",
+    )
+    .bind(input.title.as_deref().unwrap_or(&cur.title))
+    .bind(input.code.as_ref().or(cur.code.as_ref()))
+    .bind(input.description.as_deref().unwrap_or(&cur.description))
+    .bind(input.syllabus.as_deref())
+    .bind(input.institution.as_ref().or(cur.institution.as_ref()))
+    .bind(input.department.as_ref().or(cur.department.as_ref()))
+    .bind(input.semester.as_ref().or(cur.semester.as_ref()))
+    .bind(input.lang.as_deref().unwrap_or(&cur.lang))
+    .bind(input.license.as_deref().unwrap_or(&cur.license))
+    .bind(input.source_url.as_ref().or(cur.source_url.as_ref()))
+    .bind(input.source_attribution.as_ref().or(cur.source_attribution.as_ref()))
+    .bind(input.is_published.unwrap_or(cur.is_published))
+    .bind(schedule_json)
+    .bind(id)
+    .execute(pool).await?;
 
     get_course(pool, id).await
 }

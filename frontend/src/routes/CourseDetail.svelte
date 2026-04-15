@@ -99,6 +99,32 @@
           </section>
         {/if}
 
+        {#if detail.schedule.length > 0}
+          <section class="schedule">
+            <h2>Calendar</h2>
+            <table class="schedule-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Topic</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each detail.schedule as s}
+                  <tr>
+                    <td class="session-num">{s.session}</td>
+                    <td class="session-topic">{s.topic}</td>
+                    <td class="session-notes">
+                      {#if s.notes}<span class="note-badge">{s.notes}</span>{/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </section>
+        {/if}
+
         {#if detail.series.length > 0}
           <section class="course-series">
             <h2>Course Materials</h2>
@@ -173,9 +199,18 @@
   .course-body { display: flex; gap: 32px; }
   .body-main { flex: 1; min-width: 0; }
   .body-side { width: 260px; flex-shrink: 0; }
-  .syllabus h2, .course-series h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.3rem; margin: 0 0 16px; }
+  .syllabus h2, .course-series h2, .schedule h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.3rem; margin: 0 0 16px; }
   .syllabus { margin-bottom: 32px; }
 
+  .schedule { margin-bottom: 32px; }
+  .schedule-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .schedule-table th { text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-hint); padding: 8px 12px; border-bottom: 2px solid var(--border); }
+  .schedule-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .schedule-table tbody tr:hover { background: var(--bg-hover, rgba(0,0,0,0.02)); }
+  .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
+  .session-topic { color: var(--text-primary); }
+  .session-notes { width: 160px; }
+  .note-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 3px; background: rgba(217,119,6,0.1); color: #d97706; }
   .series-link { display: block; padding: 12px 16px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 0 4px 4px 0; margin-bottom: 8px; text-decoration: none; color: inherit; transition: border-color 0.15s; }
   .series-link:hover { border-color: var(--accent); text-decoration: none; }
   .series-role { font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; display: block; margin-bottom: 2px; }

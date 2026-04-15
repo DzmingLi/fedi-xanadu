@@ -646,9 +646,17 @@ export interface CoursePrereq {
   institution: string | null;
 }
 
+export interface CourseSession {
+  session: number;
+  topic: string;
+  date?: string | null;
+  notes?: string | null;
+}
+
 export interface CourseDetail {
   course: Course;
   syllabus: string;
+  schedule: CourseSession[];
   series: CourseSeries[];
   staff: CourseStaff[];
   skill_trees: CourseSkillTree[];
