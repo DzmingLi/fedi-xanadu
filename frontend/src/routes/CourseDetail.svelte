@@ -61,7 +61,7 @@
         {/if}
         {#if c.source_url}
           <a href={c.source_url} target="_blank" rel="noopener" class="source-link">
-            Source: {c.source_url}
+            {t('course.source')}: {c.source_url}
           </a>
         {/if}
         {#if c.source_attribution}
@@ -71,7 +71,7 @@
       <div class="header-side">
         {#if detail.staff.length > 0}
           <div class="staff-list">
-            <h3>Staff</h3>
+            <h3>{t('course.staff')}</h3>
             {#each detail.staff as s}
               <a href="/profile?did={encodeURIComponent(s.user_did)}" class="staff-item">
                 {#if s.avatar_url}
@@ -91,8 +91,8 @@
           <a href="/new-course?edit={encodeURIComponent(c.id)}" class="edit-btn">{t('common.edit')}</a>
         {/if}
         <div class="course-meta-box">
-          <span class="meta-item">License: {c.license}</span>
-          <span class="meta-item">Language: {c.lang.toUpperCase()}</span>
+          <span class="meta-item">{t('course.license')}: {c.license}</span>
+          <span class="meta-item">{t('course.language')}: {c.lang.toUpperCase()}</span>
         </div>
       </div>
     </div>
@@ -101,22 +101,22 @@
       <div class="body-main">
         {#if syllabusHtml}
           <section class="syllabus">
-            <h2>Syllabus</h2>
+            <h2>{t('course.syllabus')}</h2>
             <div class="content">{@html syllabusHtml}</div>
           </section>
         {/if}
 
         {#if detail.sessions.length > 0}
           <section class="schedule">
-            <h2>Calendar</h2>
+            <h2>{t('course.calendar')}</h2>
             <table class="schedule-table">
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Topic</th>
-                  <th>Readings</th>
-                  <th>Video</th>
-                  <th>Resources</th>
+                  <th>{t('course.topic')}</th>
+                  <th>{t('course.readings')}</th>
+                  <th>{t('course.video')}</th>
+                  <th>{t('course.hw')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -140,18 +140,18 @@
                     </td>
                     <td class="session-video">
                       {#if s.video_url}
-                        <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video" title="Video">&#9654; Video</a>
+                        <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {t('course.video')}</a>
+                      {/if}
+                      {#if s.notes_url}
+                        <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {t('course.notes')}</a>
                       {/if}
                     </td>
-                    <td class="session-resources">
-                      {#if s.notes_url}
-                        <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes" title="Notes">&#128196; Notes</a>
-                      {/if}
+                    <td class="session-hw">
                       {#if s.assignment_url}
-                        <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw" title="Assignment">&#9998; HW</a>
+                        <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {t('course.hw')}</a>
                       {/if}
                       {#if s.discussion_url}
-                        <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc" title="Discussion">&#128172; Discussion</a>
+                        <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {t('course.discussion')}</a>
                       {/if}
                     </td>
                   </tr>
@@ -163,7 +163,7 @@
 
         {#if detail.series.length > 0}
           <section class="course-series">
-            <h2>Course Materials</h2>
+            <h2>{t('course.materials')}</h2>
             {#each detail.series as s}
               <a href="/series?id={encodeURIComponent(s.series_id)}" class="series-link">
                 <span class="series-role">{s.role}</span>
@@ -178,7 +178,7 @@
       <div class="body-side">
         {#if detail.textbooks.length > 0}
           <section class="textbooks">
-            <h3>Textbooks</h3>
+            <h3>{t('course.textbooks')}</h3>
             {#each detail.textbooks as tb}
               <a href="/book?id={encodeURIComponent(tb.book_id)}" class="textbook-card">
                 {#if tb.cover_url}
@@ -196,7 +196,7 @@
 
         {#if detail.prerequisites.length > 0}
           <section class="prereqs">
-            <h3>Prerequisites</h3>
+            <h3>{t('course.prerequisites')}</h3>
             {#each detail.prerequisites as p}
               <a href="/course?id={encodeURIComponent(p.prereq_course_id)}" class="prereq-link">
                 {#if p.code}<span class="prereq-code">{p.code}</span>{/if}
@@ -209,7 +209,7 @@
 
         {#if detail.skill_trees.length > 0}
           <section class="skill-trees">
-            <h3>Skill Trees</h3>
+            <h3>{t('course.skillTrees')}</h3>
             {#each detail.skill_trees as st}
               <a href="/skill-tree?uri={encodeURIComponent(st.tree_uri)}" class="tree-link">
                 <span class="tree-role">{st.role}</span>
@@ -267,8 +267,8 @@
   .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
   .session-topic { color: var(--text-primary); }
   .session-readings { color: var(--text-hint); font-size: 13px; white-space: nowrap; }
-  .session-video { white-space: nowrap; }
-  .session-resources { display: flex; flex-wrap: wrap; gap: 4px; }
+  .session-video { white-space: nowrap; display: flex; flex-wrap: wrap; gap: 4px; }
+  .session-hw { display: flex; flex-wrap: wrap; gap: 4px; }
   .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
   .res-link:hover { opacity: 0.8; text-decoration: none; }
   .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }

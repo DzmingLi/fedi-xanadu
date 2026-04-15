@@ -613,6 +613,24 @@ export default {
   'series.tableOfContents': '目录',
   'series.collapseSidebar': '收起目录',
 
+  // Course
+  'course.calendar': '课程日历',
+  'course.topic': '主题',
+  'course.readings': '阅读材料',
+  'course.video': '视频',
+  'course.hw': '作业',
+  'course.notes': '讲义',
+  'course.discussion': '讨论',
+  'course.syllabus': '教学大纲',
+  'course.textbooks': '教材',
+  'course.staff': '教学团队',
+  'course.prerequisites': '先修课程',
+  'course.skillTrees': '技能树',
+  'course.materials': '课程材料',
+  'course.source': '来源',
+  'course.license': '许可证',
+  'course.language': '语言',
+
   // Roadmap
   'roadmap.title': '路线图',
   'roadmap.subtitle': '计划实现的功能',

@@ -616,6 +616,24 @@ export default {
   'series.tableOfContents': 'Table of Contents',
   'series.collapseSidebar': 'Collapse sidebar',
 
+  // Course
+  'course.calendar': 'Calendar',
+  'course.topic': 'Topic',
+  'course.readings': 'Readings',
+  'course.video': 'Video',
+  'course.hw': 'HW',
+  'course.notes': 'Notes',
+  'course.discussion': 'Discussion',
+  'course.syllabus': 'Syllabus',
+  'course.textbooks': 'Textbooks',
+  'course.staff': 'Staff',
+  'course.prerequisites': 'Prerequisites',
+  'course.skillTrees': 'Skill Trees',
+  'course.materials': 'Course Materials',
+  'course.source': 'Source',
+  'course.license': 'License',
+  'course.language': 'Language',
+
   // Roadmap
   'roadmap.title': 'Roadmap',
   'roadmap.subtitle': 'Planned features',
