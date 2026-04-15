@@ -351,7 +351,10 @@ export interface ProfileLink {
 export interface EducationEntry {
   degree: string;
   school: string;
-  year: string;
+  department?: string | null;
+  major?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
   current?: boolean;
 }
 

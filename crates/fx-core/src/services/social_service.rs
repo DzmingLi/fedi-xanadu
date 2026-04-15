@@ -33,7 +33,13 @@ pub struct EducationEntry {
     pub degree: String,
     pub school: String,
     #[serde(default)]
-    pub year: String,
+    pub department: Option<String>,
+    #[serde(default)]
+    pub major: Option<String>,
+    #[serde(default)]
+    pub start_date: Option<String>,
+    #[serde(default)]
+    pub end_date: Option<String>,
     /// true = currently enrolled / in progress
     #[serde(default)]
     pub current: bool,

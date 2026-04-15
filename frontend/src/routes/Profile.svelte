@@ -424,9 +424,14 @@
       {#if profile.education.length > 0 || isOwnProfile}
         <div class="education-list">
           {#each profile.education as edu}
-            <span class="education-entry">
-              {#if edu.current}{t('profile.enrolledIn')}{/if}{edu.degree}{#if edu.degree && edu.school}, {/if}{edu.school}{#if edu.year} ({edu.year}){/if}
-            </span>
+            <div class="education-entry">
+              <span class="edu-degree">{edu.degree}</span>
+              <span class="edu-school">{edu.school}{#if edu.department}, {edu.department}{/if}</span>
+              {#if edu.major}<span class="edu-major">{edu.major}</span>{/if}
+              <span class="edu-dates">
+                {edu.start_date || ''}{#if edu.start_date} – {/if}{#if edu.current}{t('profile.present') || 'Present'}{:else}{edu.end_date || ''}{/if}
+              </span>
+            </div>
           {/each}
           {#if profile.credentials_verified && !profile.affiliation}
             <span class="verified-badge" title={t('profile.verified')}>
@@ -927,7 +932,7 @@
       {#each editEdu as edu, i}
         <div class="modal-entry">
           <div class="modal-row">
-            <select bind:value={edu.degree} class="degree-select">
+            <select bind:value={edu.degree}>
               <option value="">-- Degree --</option>
               <option value="Bachelor">Bachelor / 本科</option>
               <option value="Master">Master / 硕士</option>
@@ -936,16 +941,29 @@
               <option value="Associate">Associate / 专科</option>
               <option value="Other">Other</option>
             </select>
-            <input type="text" bind:value={edu.school} placeholder="Institution" />
-            <input type="text" bind:value={edu.year} placeholder="Year" class="year-input" />
+            <select bind:value={edu.current} onchange={() => { if (edu.current) edu.end_date = null; }}>
+              <option value={true}>在读 / Enrolled</option>
+              <option value={false}>毕业 / Graduated</option>
+            </select>
           </div>
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={edu.current} /> Currently enrolled
-          </label>
+          <input type="text" bind:value={edu.school} placeholder="School / 学校" />
+          <div class="modal-row">
+            <input type="text" bind:value={edu.department} placeholder="Department / 院系" />
+            <input type="text" bind:value={edu.major} placeholder="Major / 专业" />
+          </div>
+          <div class="modal-row">
+            <input type="month" bind:value={edu.start_date} placeholder="Start" />
+            <span class="date-sep">–</span>
+            {#if edu.current}
+              <span class="date-present">{t('profile.present') || 'Present'}</span>
+            {:else}
+              <input type="month" bind:value={edu.end_date} placeholder="End" />
+            {/if}
+          </div>
           <button class="remove-entry" onclick={() => { editEdu = editEdu.filter((_, j) => j !== i); }}>Remove</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editEdu = [...editEdu, { degree: '', school: '', year: '', current: false }]; }}>+ Add Education</button>
+      <button class="add-entry" onclick={() => { editEdu = [...editEdu, { degree: '', school: '', department: '', major: '', start_date: '', end_date: '', current: true }]; }}>+ Add Education</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingEdu = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateEducation(editEdu); profile!.education = editEdu; editingEdu = false; }}>{t('common.save')}</button>
@@ -1113,8 +1131,17 @@
     color: var(--text-secondary);
   }
   .education-entry {
-    display: inline;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 4px 0;
   }
+  .edu-degree { font-weight: 600; font-size: 13px; color: var(--text-primary); }
+  .edu-school { font-size: 13px; color: var(--text-secondary); }
+  .edu-major { font-size: 12px; color: var(--text-hint); }
+  .edu-dates { font-size: 12px; color: var(--text-hint); }
+  .date-sep { color: var(--text-hint); line-height: 32px; }
+  .date-present { font-size: 13px; color: var(--accent); line-height: 32px; }
   .profile-email {
     display: flex;
     align-items: center;
