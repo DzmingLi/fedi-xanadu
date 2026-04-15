@@ -148,10 +148,10 @@
                     </td>
                     <td class="session-hw">
                       {#if s.assignment_url}
-                        <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {t('course.hw')}</a>
+                        <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {s.assignment_label || t('course.hw')}</a>
                       {/if}
                       {#if s.discussion_url}
-                        <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {t('course.discussion')}</a>
+                        <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {s.discussion_label || t('course.discussion')}</a>
                       {/if}
                     </td>
                   </tr>

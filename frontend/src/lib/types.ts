@@ -656,7 +656,9 @@ export interface CourseSession {
   video_url?: string | null;
   notes_url?: string | null;
   assignment_url?: string | null;
+  assignment_label?: string | null;
   discussion_url?: string | null;
+  discussion_label?: string | null;
   tags: CourseTag[];
   prereqs: CourseTag[];
 }

@@ -644,9 +644,15 @@ enum CourseCommand {
         /// Assignment/HW URL
         #[arg(long)]
         assignment_url: Option<String>,
+        /// Assignment label (e.g. "HW1", "PS2")
+        #[arg(long)]
+        assignment_label: Option<String>,
         /// Discussion URL
         #[arg(long)]
         discussion_url: Option<String>,
+        /// Discussion label
+        #[arg(long)]
+        discussion_label: Option<String>,
         /// Sort order (auto-increments if omitted)
         #[arg(long)]
         order: Option<i32>,
@@ -681,9 +687,15 @@ enum CourseCommand {
         /// Assignment URL
         #[arg(long)]
         assignment_url: Option<String>,
+        /// Assignment label (e.g. "HW1")
+        #[arg(long)]
+        assignment_label: Option<String>,
         /// Discussion URL
         #[arg(long)]
         discussion_url: Option<String>,
+        /// Discussion label
+        #[arg(long)]
+        discussion_label: Option<String>,
     },
     /// Delete a session
     #[command(name = "rm-session")]
@@ -2006,7 +2018,7 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             println!("Updated course {id}");
         }
 
-        CourseCommand::AddSession { course_id, topic, date, readings, video_url, notes_url, assignment_url, discussion_url, order, tags, prereqs } => {
+        CourseCommand::AddSession { course_id, topic, date, readings, video_url, notes_url, assignment_url, assignment_label, discussion_url, discussion_label, order, tags, prereqs } => {
             let body = serde_json::json!({
                 "topic": topic,
                 "date": date,
@@ -2014,7 +2026,9 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
                 "video_url": video_url,
                 "notes_url": notes_url,
                 "assignment_url": assignment_url,
+                "assignment_label": assignment_label,
                 "discussion_url": discussion_url,
+                "discussion_label": discussion_label,
                 "sort_order": order,
             });
 
@@ -2059,14 +2073,16 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             }
         }
 
-        CourseCommand::UpdateSession { course_id, session_id, topic, readings, video_url, notes_url, assignment_url, discussion_url } => {
+        CourseCommand::UpdateSession { course_id, session_id, topic, readings, video_url, notes_url, assignment_url, assignment_label, discussion_url, discussion_label } => {
             let body = serde_json::json!({
                 "topic": topic,
                 "readings": readings,
                 "video_url": video_url,
                 "notes_url": notes_url,
                 "assignment_url": assignment_url,
+                "assignment_label": assignment_label,
                 "discussion_url": discussion_url,
+                "discussion_label": discussion_label,
             });
 
             client()
@@ -2140,7 +2156,9 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
                     "video_url": s.get("video_url").and_then(|v| v.as_str()),
                     "notes_url": s.get("notes_url").and_then(|v| v.as_str()),
                     "assignment_url": s.get("assignment_url").and_then(|v| v.as_str()),
+                    "assignment_label": s.get("assignment_label").and_then(|v| v.as_str()),
                     "discussion_url": s.get("discussion_url").and_then(|v| v.as_str()),
+                    "discussion_label": s.get("discussion_label").and_then(|v| v.as_str()),
                     "sort_order": s.get("order").and_then(|v| v.as_integer()).unwrap_or((i + 1) as i64),
                 });
 
