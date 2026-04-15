@@ -169,23 +169,6 @@ pub async fn publish_series(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
-/// POST /api/series/{id}/unpublish
-pub async fn unpublish_series(
-    State(state): State<AppState>,
-    Auth(user): Auth,
-    axum::extract::Path(id): axum::extract::Path<String>,
-) -> ApiResult<axum::http::StatusCode> {
-    let series = sqlx::query_as::<_, (String,)>(
-        "SELECT created_by FROM series WHERE id = $1"
-    ).bind(&id).fetch_optional(&state.pool).await?
-        .ok_or(AppError(fx_core::Error::NotFound { entity: "series", id: id.clone() }))?;
-    if series.0 != user.did {
-        return Err(AppError(fx_core::Error::Forbidden { action: "publish" }));
-    }
-    series_service::unpublish_series(&state.pool, &id).await?;
-    Ok(axum::http::StatusCode::NO_CONTENT)
-}
-
 /// POST /api/articles/view - record a view
 pub async fn record_view(
     State(state): State<AppState>,

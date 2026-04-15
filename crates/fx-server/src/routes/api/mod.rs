@@ -409,7 +409,6 @@ fn creator_routes() -> Router<AppState> {
         .route("/creator/timeline", get(creator::get_timeline))
         .route("/articles/view", post(creator::record_view))
         .route("/series/{id}/publish", post(creator::publish_series))
-        .route("/series/{id}/unpublish", post(creator::unpublish_series))
 }
 
 fn render_routes() -> Router<AppState> {

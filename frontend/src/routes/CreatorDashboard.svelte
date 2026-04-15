@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     getCreatorStats, getCreatorArticles, getCreatorSeries, getCreatorTimeline,
-    publishSeries, unpublishSeries, listDrafts, deleteDraft,
+    publishSeries, listDrafts, deleteDraft,
   } from '../lib/api';
   import type { CreatorStats, ArticleStats, TimelinePoint } from '../lib/api';
   import { t } from '../lib/i18n/index.svelte';
@@ -35,11 +35,6 @@
 
   async function doPublish(id: string) {
     await publishSeries(id);
-    await load();
-  }
-
-  async function doUnpublish(id: string) {
-    await unpublishSeries(id);
     await load();
   }
 
@@ -114,7 +109,6 @@
             <div class="content-item">
               <a href="/series?id={encodeURIComponent(s.id)}" class="item-title">{s.title}</a>
               <span class="item-meta">{s.lang} &middot; {s.category}</span>
-              <button class="btn-sm" onclick={() => doUnpublish(s.id)}>{t('creator.unpublish')}</button>
             </div>
           {/each}
         {/if}
