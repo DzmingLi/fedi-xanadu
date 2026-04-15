@@ -36,6 +36,8 @@ pub struct Profile {
     pub display_name: Option<String>,
     #[serde(default)]
     pub avatar: Option<String>,
+    #[serde(default)]
+    pub banner: Option<String>,
 }
 
 // --- Record types ---

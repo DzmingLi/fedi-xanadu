@@ -22,35 +22,34 @@ pub async fn get_profile(
 ) -> ApiResult<Json<social_service::ProfileResponse>> {
     let mut profile = social_service::get_profile(&state.pool, &did).await?;
 
-    // Auto-fetch avatar from Bluesky for AT Protocol users without a local avatar
-    if profile.avatar_url.is_none()
+    // Auto-fetch avatar/banner from Bluesky for AT Protocol users missing them
+    if (profile.avatar_url.is_none() || profile.banner_url.is_none())
         && (did.starts_with("did:plc:") || did.starts_with("did:web:"))
     {
-        let pool = state.pool.clone();
-        let at_client = state.at_client.clone();
-        let did_clone = did.clone();
-        // Non-blocking: fetch and cache in background
-        tokio::spawn(async move {
-            if let Ok(bsky_profile) = at_client.get_public_profile(&did_clone).await {
-                if let Some(avatar) = &bsky_profile.avatar {
-                    let _ = sqlx::query("UPDATE profiles SET avatar_url = $1 WHERE did = $2")
+        if let Ok(bsky) = state.at_client.get_public_profile(&did).await {
+            // Cache in DB (background)
+            let pool = state.pool.clone();
+            let did_clone = did.clone();
+            let bsky_clone = bsky.clone();
+            tokio::spawn(async move {
+                if let Some(ref avatar) = bsky_clone.avatar {
+                    let _ = sqlx::query("UPDATE profiles SET avatar_url = COALESCE(avatar_url, $1) WHERE did = $2")
                         .bind(avatar).bind(&did_clone).execute(&pool).await;
                 }
-                if bsky_profile.display_name.is_some() {
-                    let _ = sqlx::query("UPDATE profiles SET display_name = COALESCE(NULLIF(display_name, ''), $1) WHERE did = $2")
-                        .bind(&bsky_profile.display_name).bind(&did_clone).execute(&pool).await;
+                if let Some(ref banner) = bsky_clone.banner {
+                    let _ = sqlx::query("UPDATE profiles SET banner_url = COALESCE(banner_url, $1) WHERE did = $2")
+                        .bind(banner).bind(&did_clone).execute(&pool).await;
                 }
-            }
-        });
+                if bsky_clone.display_name.is_some() {
+                    let _ = sqlx::query("UPDATE profiles SET display_name = COALESCE(NULLIF(display_name, ''), $1) WHERE did = $2")
+                        .bind(&bsky_clone.display_name).bind(&did_clone).execute(&pool).await;
+                }
+            });
 
-        // Also try to return it immediately for this request
-        if let Ok(bsky_profile) = state.at_client.get_public_profile(&did).await {
-            if bsky_profile.avatar.is_some() {
-                profile.avatar_url = bsky_profile.avatar;
-            }
-            if profile.display_name.is_none() {
-                profile.display_name = bsky_profile.display_name;
-            }
+            // Return immediately for this request
+            if profile.avatar_url.is_none() { profile.avatar_url = bsky.avatar; }
+            if profile.banner_url.is_none() { profile.banner_url = bsky.banner; }
+            if profile.display_name.is_none() { profile.display_name = bsky.display_name; }
         }
     }
 
