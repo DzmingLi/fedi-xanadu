@@ -650,7 +650,10 @@ export interface CourseSession {
   session: number;
   topic: string;
   date?: string | null;
-  notes?: string | null;
+  video_url?: string | null;
+  notes_url?: string | null;
+  assignment_url?: string | null;
+  readings?: string | null;
 }
 
 export interface CourseTextbook {

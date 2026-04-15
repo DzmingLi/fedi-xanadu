@@ -103,7 +103,13 @@ pub struct CourseSession {
     #[serde(default)]
     pub date: Option<String>,
     #[serde(default)]
-    pub notes: Option<String>,
+    pub video_url: Option<String>,
+    #[serde(default)]
+    pub notes_url: Option<String>,
+    #[serde(default)]
+    pub assignment_url: Option<String>,
+    #[serde(default)]
+    pub readings: Option<String>,
 }
 
 // ── Input types ─────────────────────────────────────────────────────────

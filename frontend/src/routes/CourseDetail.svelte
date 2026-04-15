@@ -107,7 +107,7 @@
                 <tr>
                   <th>#</th>
                   <th>Topic</th>
-                  <th>Notes</th>
+                  <th>Resources</th>
                 </tr>
               </thead>
               <tbody>
@@ -115,8 +115,19 @@
                   <tr>
                     <td class="session-num">{s.session}</td>
                     <td class="session-topic">{s.topic}</td>
-                    <td class="session-notes">
-                      {#if s.notes}<span class="note-badge">{s.notes}</span>{/if}
+                    <td class="session-resources">
+                      {#if s.video_url}
+                        <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video" title="Video">&#9654; Video</a>
+                      {/if}
+                      {#if s.notes_url}
+                        <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes" title="Notes">&#128196; Notes</a>
+                      {/if}
+                      {#if s.assignment_url}
+                        <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw" title="Assignment">&#9998; HW</a>
+                      {/if}
+                      {#if s.readings}
+                        <span class="res-reading">{s.readings}</span>
+                      {/if}
                     </td>
                   </tr>
                 {/each}
@@ -227,8 +238,13 @@
   .schedule-table tbody tr:hover { background: var(--bg-hover, rgba(0,0,0,0.02)); }
   .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
   .session-topic { color: var(--text-primary); }
-  .session-notes { width: 160px; }
-  .note-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 3px; background: rgba(217,119,6,0.1); color: #d97706; }
+  .session-resources { width: 200px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
+  .res-link:hover { opacity: 0.8; text-decoration: none; }
+  .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }
+  .res-notes { background: rgba(59,130,246,0.1); color: #3b82f6; }
+  .res-hw { background: rgba(16,185,129,0.1); color: #059669; }
+  .res-reading { font-size: 11px; color: var(--text-hint); }
   .series-link { display: block; padding: 12px 16px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 0 4px 4px 0; margin-bottom: 8px; text-decoration: none; color: inherit; transition: border-color 0.15s; }
   .series-link:hover { border-color: var(--accent); text-decoration: none; }
   .series-role { font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; display: block; margin-bottom: 2px; }

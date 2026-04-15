@@ -434,16 +434,22 @@
   .expanded-actions .bookmark-btn:hover { border-color: #d4a017; color: #d4a017; }
   .expanded-actions .bookmark-btn.active { background: #d4a017; color: white; border-color: #d4a017; }
   .expanded-actions .comment-toggle {
-    background: none; border: none; font-size: 12px; color: var(--text-hint); cursor: pointer;
+    background: none; border: 1px solid var(--border); border-radius: 3px;
+    padding: 4px 12px; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
   }
-  .expanded-actions .comment-toggle:hover { color: var(--accent); }
+  .expanded-actions .comment-toggle:hover { border-color: var(--accent); color: var(--accent); }
   .read-full {
     margin-left: auto;
-    font-size: 12px;
-    color: var(--text-hint);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
     text-decoration: none;
+    padding: 4px 14px;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    transition: all 0.15s;
   }
-  .read-full:hover { color: var(--accent); }
+  .read-full:hover { background: var(--accent); color: white; text-decoration: none; }
   .expanded-comments {
     margin-top: 12px;
     padding-top: 12px;
