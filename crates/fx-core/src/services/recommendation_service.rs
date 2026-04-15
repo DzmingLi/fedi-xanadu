@@ -296,6 +296,8 @@ SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS 
        a.book_id, a.edition_id,
        COALESCE(vs.score, 0) AS vote_score,
        COALESCE(bk.cnt, 0)  AS bookmark_count,
+       COALESCE(cm.cnt, 0)  AS comment_count,
+       COALESCE(fk.cnt, 0)  AS fork_count,
        a.created_at, a.updated_at
 FROM scored sc
 JOIN articles a ON a.at_uri = sc.at_uri
@@ -304,6 +306,10 @@ LEFT JOIN (SELECT target_uri, SUM(value) AS score FROM votes GROUP BY target_uri
     ON vs.target_uri = a.at_uri
 LEFT JOIN (SELECT article_uri, COUNT(*) AS cnt FROM user_bookmarks GROUP BY article_uri) bk
     ON bk.article_uri = a.at_uri
+LEFT JOIN (SELECT content_uri, COUNT(*) AS cnt FROM comments GROUP BY content_uri) cm
+    ON cm.content_uri = a.at_uri
+LEFT JOIN (SELECT source_uri, COUNT(*) AS cnt FROM forks GROUP BY source_uri) fk
+    ON fk.source_uri = a.at_uri
 ORDER BY
     (sc.quality_score   * 2.0)
   + (sc.trending_score  * 1.5)
@@ -360,6 +366,8 @@ questions AS (
            a.book_id, a.edition_id,
            COALESCE(v.score, 0) AS vote_score,
            COALESCE(bk.cnt, 0) AS bookmark_count,
+           COALESCE(cm.cnt, 0) AS comment_count,
+           COALESCE(fk.cnt, 0) AS fork_count,
            a.created_at, a.updated_at
     FROM articles a
     LEFT JOIN profiles p ON a.did = p.did
@@ -367,6 +375,10 @@ questions AS (
         ON v.target_uri = a.at_uri
     LEFT JOIN (SELECT article_uri, COUNT(*) AS cnt FROM user_bookmarks GROUP BY article_uri) bk
         ON bk.article_uri = a.at_uri
+    LEFT JOIN (SELECT content_uri, COUNT(*) AS cnt FROM comments GROUP BY content_uri) cm
+        ON cm.content_uri = a.at_uri
+    LEFT JOIN (SELECT source_uri, COUNT(*) AS cnt FROM forks GROUP BY source_uri) fk
+        ON fk.source_uri = a.at_uri
     WHERE {vis} AND a.kind = 'question'
 ),
 scored AS (
@@ -396,7 +408,7 @@ scored AS (
 SELECT at_uri, did, author_handle, author_reputation, kind, title, description,
        content_hash, content_format, lang, translation_group, license,
        prereq_threshold, question_uri, answer_count, restricted, category,
-       book_id, edition_id, vote_score, bookmark_count, created_at, updated_at
+       book_id, edition_id, vote_score, bookmark_count, comment_count, fork_count, created_at, updated_at
 FROM scored
 ORDER BY
     (answerability * 6.0)

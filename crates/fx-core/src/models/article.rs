@@ -32,6 +32,8 @@ pub struct Article {
     pub restricted: bool,
     pub vote_score: i64,
     pub bookmark_count: i64,
+    pub comment_count: i64,
+    pub fork_count: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -34,6 +34,8 @@ export interface Article {
   answer_count: number;
   vote_score: number;
   bookmark_count: number;
+  comment_count: number;
+  fork_count: number;
   created_at: string;
   updated_at: string;
 }

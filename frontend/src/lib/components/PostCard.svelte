@@ -171,6 +171,8 @@
       <span class="card-stats">
         <span class="stat" title={t('home.votes')}>&#9650; {article.vote_score}</span>
         <span class="stat" title={t('home.bookmarks')}>&#9733; {article.bookmark_count}</span>
+        <span class="stat" title="Comments">&#128172; {article.comment_count}</span>
+        {#if article.fork_count > 0}<span class="stat" title="Forks">&#9095; {article.fork_count}</span>{/if}
       </span>
     </div>
     <button class="expand-btn" onclick={toggleExpand}>
