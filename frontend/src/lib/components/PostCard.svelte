@@ -201,7 +201,7 @@
         <button class="vote-btn" class:active={expandedVote < 0} onclick={() => doVote(-1)}>&#9660;</button>
         <button class="bookmark-btn" class:active={expandedBookmarked} onclick={doBookmark}>&#9733;</button>
         <button class="comment-toggle" onclick={() => { showComments = !showComments; }}>
-          {showComments ? t('qa.hideComments') : t('qa.showComments')}
+          &#128172; {showComments ? t('qa.hideComments') : t('qa.showComments')}{#if article && article.comment_count > 0} ({article.comment_count}){/if}
         </button>
         <a href="/article?uri={encodeURIComponent(expandedUri)}" class="read-full">{t('home.readFull') || 'Read full →'}</a>
         <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
@@ -259,7 +259,7 @@
         <button class="vote-btn" class:active={expandedVote < 0} onclick={() => doVote(-1)}>&#9660;</button>
         <button class="bookmark-btn" class:active={expandedBookmarked} onclick={doBookmark}>&#9733;</button>
         <button class="comment-toggle" onclick={() => { showComments = !showComments; }}>
-          {showComments ? t('qa.hideComments') : t('qa.showComments')}
+          &#128172; {showComments ? t('qa.hideComments') : t('qa.showComments')}
         </button>
         <a href="/article?uri={encodeURIComponent(expandedUri)}" class="read-full">{t('home.readFull') || 'Read full →'}</a>
         <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
