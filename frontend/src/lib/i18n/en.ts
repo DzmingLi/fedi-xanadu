@@ -507,6 +507,8 @@ export default {
 
   // Listings
   'nav.listings': 'Listings',
+  'listings.academic': 'Academic',
+  'listings.intern': 'Internship',
 
   // Related Questions
   'qa.relatedQuestions': 'Related Questions',

@@ -129,7 +129,7 @@
       <mod.default id={route.params.id || ''} />
     {/await}
   </div>
-{:else if route.page !== 'book'}
+{:else if route.page !== 'book' && route.page !== 'books'}
   <div class="top-nav">
     <NavBar />
   </div>
@@ -206,10 +206,6 @@
       {#await lazySettings() then mod}
         <mod.default />
       {/await}
-    {:else if route.page === 'books'}
-      {#await lazyBookList() then mod}
-        <mod.default />
-      {/await}
     {:else if route.page === 'book-edition'}
       {#await lazyBookEdition() then mod}
         <mod.default bookId={route.params.book_id || ''} />
@@ -249,6 +245,17 @@
   <div class="container-wide">
     {#await lazyBookDetail() then mod}
       <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{/if}
+
+{#if route.page === 'books'}
+  <div class="top-nav-wide">
+    <NavBar />
+  </div>
+  <div class="container-wide">
+    {#await lazyBookList() then mod}
+      <mod.default />
     {/await}
   </div>
 {/if}

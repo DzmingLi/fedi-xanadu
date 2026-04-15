@@ -15,12 +15,31 @@
     other: 'Other',
   };
 
+  const ACADEMIC_KINDS: ListingKind[] = ['phd', 'masters', 'ra', 'postdoc', 'faculty'];
+  const INTERN_KINDS: ListingKind[] = ['intern'];
+
   let listings = $state<Listing[]>([]);
   let matched = $state<Listing[]>([]);
   let loading = $state(true);
+  let categoryFilter = $state<'all' | 'academic' | 'intern'>('all');
   let kindFilter = $state<string>('');
-  let showMatched = $state(false);
   let isLoggedIn = $derived(!!getAuth());
+
+  let filteredByCategory = $derived.by(() => {
+    if (categoryFilter === 'academic') return listings.filter(l => ACADEMIC_KINDS.includes(l.kind));
+    if (categoryFilter === 'intern') return listings.filter(l => INTERN_KINDS.includes(l.kind));
+    return listings;
+  });
+
+  let subKinds = $derived.by(() => {
+    if (categoryFilter === 'academic') return ACADEMIC_KINDS;
+    if (categoryFilter === 'intern') return INTERN_KINDS;
+    return Object.keys(KIND_LABELS) as ListingKind[];
+  });
+
+  let displayedListings = $derived(
+    kindFilter ? filteredByCategory.filter(l => l.kind === kindFilter) : filteredByCategory
+  );
 
   async function load() {
     loading = true;
@@ -52,12 +71,20 @@
     {/if}
   </div>
 
-  <div class="filters">
-    <button class:active={kindFilter === ''} onclick={() => { kindFilter = ''; load(); }}>All</button>
-    {#each Object.entries(KIND_LABELS) as [k, label]}
-      <button class:active={kindFilter === k} onclick={() => { kindFilter = k; load(); }}>{label}</button>
-    {/each}
+  <div class="category-tabs">
+    <button class="cat-tab" class:active={categoryFilter === 'all'} onclick={() => { categoryFilter = 'all'; kindFilter = ''; }}>{t('home.all')}</button>
+    <button class="cat-tab" class:active={categoryFilter === 'academic'} onclick={() => { categoryFilter = 'academic'; kindFilter = ''; }}>{t('listings.academic') || 'Academic'}</button>
+    <button class="cat-tab" class:active={categoryFilter === 'intern'} onclick={() => { categoryFilter = 'intern'; kindFilter = ''; }}>{t('listings.intern') || 'Internship'}</button>
   </div>
+
+  {#if subKinds.length > 1}
+    <div class="filters">
+      <button class:active={kindFilter === ''} onclick={() => kindFilter = ''}>{t('home.all')}</button>
+      {#each subKinds as k}
+        <button class:active={kindFilter === k} onclick={() => kindFilter = k}>{KIND_LABELS[k]}</button>
+      {/each}
+    </div>
+  {/if}
 
   {#if isLoggedIn && matched.length > 0}
     <section class="matched-section">
@@ -95,14 +122,14 @@
   {/if}
 
   <section>
-    <h2>{kindFilter ? KIND_LABELS[kindFilter] || kindFilter : 'All Listings'}</h2>
+    <h2>{kindFilter ? KIND_LABELS[kindFilter] || kindFilter : categoryFilter === 'academic' ? (t('listings.academic') || 'Academic') : categoryFilter === 'intern' ? (t('listings.intern') || 'Internship') : (t('home.all'))}</h2>
     {#if loading}
       <div class="empty">Loading...</div>
-    {:else if listings.length === 0}
+    {:else if displayedListings.length === 0}
       <div class="empty">No open listings</div>
     {:else}
       <div class="listing-list">
-        {#each listings as l}
+        {#each displayedListings as l}
           <a href="/listing?id={encodeURIComponent(l.id)}" class="listing-card">
             <div class="card-top">
               <span class="kind-badge">{KIND_LABELS[l.kind] || l.kind}</span>
@@ -143,6 +170,10 @@
   .page-header h1 { font-family: var(--font-serif); font-weight: 400; margin: 0; }
   .btn-new { font-size: 13px; padding: 6px 14px; border: 1px solid var(--accent); border-radius: 3px; color: var(--accent); text-decoration: none; transition: all 0.15s; }
   .btn-new:hover { background: var(--accent); color: white; text-decoration: none; }
+
+  .category-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .cat-tab { padding: 8px 16px; font-size: 14px; font-weight: 500; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-serif); }
+  .cat-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
 
   .filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 1.5rem; }
   .filters button { padding: 4px 12px; font-size: 12px; border: 1px solid var(--border); border-radius: 3px; background: none; color: var(--text-secondary); cursor: pointer; }

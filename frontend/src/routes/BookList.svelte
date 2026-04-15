@@ -126,7 +126,7 @@
 </div>
 
 <style>
-  .books-page { max-width: 800px; margin: 0 auto; }
+  .books-page { max-width: 1080px; margin: 0 auto; }
   .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
   .page-header h1 { margin: 0; }
   .subtitle { color: var(--text-secondary); font-size: 14px; margin: 4px 0 0; }

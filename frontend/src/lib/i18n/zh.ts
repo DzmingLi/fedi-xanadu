@@ -503,6 +503,8 @@ export default {
 
   // Listings
   'nav.listings': '招聘',
+  'listings.academic': '学术',
+  'listings.intern': '实习',
 
   // Related Questions
   'qa.relatedQuestions': '相关问题',
