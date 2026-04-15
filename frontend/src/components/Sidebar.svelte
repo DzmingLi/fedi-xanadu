@@ -86,6 +86,24 @@
   <div class="sidebar-divider"></div>
 
   <div class="sidebar-section">
+    <div class="sidebar-heading">{t('sidebar.happening') || 'Happening'}</div>
+    <a href="/listings" class="happening-item">
+      <span class="happening-icon">📢</span>
+      <span class="happening-text">{t('sidebar.hiring') || 'Academic hiring — browse open positions'}</span>
+    </a>
+    <a href="/about" class="happening-item">
+      <span class="happening-icon">✍️</span>
+      <span class="happening-text">{t('sidebar.creators') || 'Creator onboarding — start writing today'}</span>
+    </a>
+    <a href="/about" class="happening-item">
+      <span class="happening-icon">🎁</span>
+      <span class="happening-text">{t('sidebar.incentives') || 'Creator incentives coming soon'}</span>
+    </a>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
     <div class="sidebar-heading">NightBoat</div>
     <p class="sidebar-text">{t('sidebar.desc')}</p>
     <p class="sidebar-text"><a href="/about">{t('sidebar.learnMore')} &rarr;</a></p>
@@ -195,6 +213,20 @@
     background: #ef4444;
     flex-shrink: 0;
   }
+
+  /* Happening */
+  .happening-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 4px 0;
+    text-decoration: none;
+    transition: opacity 0.1s;
+  }
+  .happening-item:hover { opacity: 0.8; text-decoration: none; }
+  .happening-icon { font-size: 13px; flex-shrink: 0; line-height: 1.4; }
+  .happening-text { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+  .happening-item:hover .happening-text { color: var(--accent); }
 
   @media (max-width: 960px) {
     .sidebar {

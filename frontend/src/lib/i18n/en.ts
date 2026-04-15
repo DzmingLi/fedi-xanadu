@@ -492,6 +492,12 @@ export default {
   'category.review': 'Review',
   'newArticle.categoryLabel': 'Category',
 
+  // Sidebar - Happening
+  'sidebar.happening': 'Happening Now',
+  'sidebar.hiring': 'Academic hiring — browse open positions',
+  'sidebar.creators': 'Creator onboarding — start writing today',
+  'sidebar.incentives': 'Creator incentives coming soon',
+
   // Footer
   'footer.guidelines': 'Guidelines',
   'footer.rights': 'All rights reserved.',

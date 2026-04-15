@@ -488,6 +488,12 @@ export default {
   'category.review': '书评',
   'newArticle.categoryLabel': '类型',
 
+  // Sidebar - Happening
+  'sidebar.happening': '夜舟正发生',
+  'sidebar.hiring': '学术招聘 — 浏览开放岗位',
+  'sidebar.creators': '创作者入驻 — 开始你的创作',
+  'sidebar.incentives': '创作激励计划即将推出',
+
   // Footer
   'footer.guidelines': '社区公约',
   'footer.rights': '保留所有权利。',
