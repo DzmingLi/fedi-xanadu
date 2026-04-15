@@ -16,6 +16,7 @@ mod interests;
 mod keybindings;
 mod learned;
 mod listings;
+mod courses;
 mod members;
 mod notifications;
 mod profile;
@@ -103,6 +104,7 @@ pub fn routes() -> Router<AppState> {
         .merge(creator_routes())
         .merge(recommendation_routes())
         .merge(listing_routes())
+        .merge(course_routes())
         .merge(thought_routes())
 }
 
@@ -334,6 +336,16 @@ fn listing_routes() -> Router<AppState> {
         .route("/listings/{id}", get(listings::get_listing).put(listings::update_listing).delete(listings::delete_listing))
         .route("/listings/{id}/close", post(listings::close_listing))
         .route("/listings/{id}/reopen", post(listings::reopen_listing))
+}
+
+fn course_routes() -> Router<AppState> {
+    Router::new()
+        .route("/courses", get(courses::list_courses).post(courses::create_course))
+        .route("/courses/mine", get(courses::my_courses))
+        .route("/courses/{id}", get(courses::get_course).put(courses::update_course).delete(courses::delete_course))
+        .route("/courses/{id}/series", post(courses::add_series).delete(courses::remove_series))
+        .route("/courses/{id}/staff", post(courses::add_staff).delete(courses::remove_staff))
+        .route("/courses/{id}/skill-trees", post(courses::add_skill_tree))
 }
 
 fn question_routes() -> Router<AppState> {

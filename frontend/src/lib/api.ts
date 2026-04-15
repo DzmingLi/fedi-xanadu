@@ -704,3 +704,24 @@ export const adminSetVisibility = (secret: string, uri: string, visibility: stri
   adminPost<unknown>('/admin/articles/visibility', secret, { uri, visibility, reason });
 export const adminSetDefaultEdition = (secret: string, book_id: string, edition_id: string) =>
   fetch(`${BASE}/admin/books/default-edition`, { method: 'PUT', headers: adminHeaders(secret), body: JSON.stringify({ book_id, edition_id }) });
+
+// ── Courses ──
+export const listCourses = () => get<import('./types').CourseListItem[]>('/courses');
+export const getMyCourses = () => get<import('./types').CourseListItem[]>('/courses/mine');
+export const getCourseDetail = (id: string) => get<import('./types').CourseDetail>(`/courses/${encodeURIComponent(id)}`);
+export const createCourse = (input: { title: string; code?: string; description?: string; institution?: string; department?: string; semester?: string; lang?: string; source_url?: string; source_attribution?: string }) =>
+  post<import('./types').Course>('/courses', input);
+export const updateCourse = (id: string, input: Record<string, unknown>) =>
+  put<import('./types').Course>(`/courses/${encodeURIComponent(id)}`, input);
+export const deleteCourse = (id: string) =>
+  del<void>(`/courses/${encodeURIComponent(id)}`);
+export const addCourseSeries = (id: string, series_id: string, role?: string, sort_order?: number) =>
+  post<void>(`/courses/${encodeURIComponent(id)}/series`, { series_id, role, sort_order });
+export const removeCourseSeries = (id: string, series_id: string) =>
+  del<void>(`/courses/${encodeURIComponent(id)}/series?series_id=${encodeURIComponent(series_id)}`);
+export const addCourseStaff = (id: string, user_did: string, role?: string) =>
+  post<void>(`/courses/${encodeURIComponent(id)}/staff`, { user_did, role });
+export const removeCourseStaff = (id: string, user_did: string) =>
+  del<void>(`/courses/${encodeURIComponent(id)}/staff?user_did=${encodeURIComponent(user_did)}`);
+export const addCourseSkillTree = (id: string, tree_uri: string, role?: string) =>
+  post<void>(`/courses/${encodeURIComponent(id)}/skill-trees`, { tree_uri, role });

@@ -580,3 +580,77 @@ export interface Listing {
   created_at: string;
   updated_at: string;
 }
+
+// Courses
+export interface Course {
+  id: string;
+  did: string;
+  title: string;
+  code: string | null;
+  description: string;
+  institution: string | null;
+  department: string | null;
+  semester: string | null;
+  lang: string;
+  license: string;
+  source_url: string | null;
+  source_attribution: string | null;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CourseListItem {
+  id: string;
+  did: string;
+  author_handle: string | null;
+  title: string;
+  code: string | null;
+  description: string;
+  institution: string | null;
+  semester: string | null;
+  lang: string;
+  is_published: boolean;
+  series_count: number;
+  staff_count: number;
+  created_at: string;
+}
+
+export interface CourseSeries {
+  series_id: string;
+  title: string;
+  description: string | null;
+  role: string;
+  sort_order: number;
+}
+
+export interface CourseStaff {
+  user_did: string;
+  handle: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  role: string;
+  sort_order: number;
+}
+
+export interface CourseSkillTree {
+  tree_uri: string;
+  title: string;
+  role: string;
+}
+
+export interface CoursePrereq {
+  prereq_course_id: string;
+  title: string;
+  code: string | null;
+  institution: string | null;
+}
+
+export interface CourseDetail {
+  course: Course;
+  syllabus: string;
+  series: CourseSeries[];
+  staff: CourseStaff[];
+  skill_trees: CourseSkillTree[];
+  prerequisites: CoursePrereq[];
+}

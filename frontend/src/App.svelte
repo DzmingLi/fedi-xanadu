@@ -73,6 +73,9 @@
   const lazyListings = () => import('./routes/Listings.svelte');
   const lazyListingDetail = () => import('./routes/ListingDetail.svelte');
   const lazyNewListing = () => import('./routes/NewListing.svelte');
+  const lazyCourses = () => import('./routes/Courses.svelte');
+  const lazyCourseDetail = () => import('./routes/CourseDetail.svelte');
+  const lazyNewCourse = () => import('./routes/NewCourse.svelte');
 </script>
 
 <Toast />
@@ -231,6 +234,18 @@
     {:else if route.page === 'new-listing'}
       {#await lazyNewListing() then mod}
         <mod.default editId={route.params.edit || ''} />
+      {/await}
+    {:else if route.page === 'courses'}
+      {#await lazyCourses() then mod}
+        <mod.default />
+      {/await}
+    {:else if route.page === 'course-detail'}
+      {#await lazyCourseDetail() then mod}
+        <mod.default id={route.params.id || ''} />
+      {/await}
+    {:else if route.page === 'new-course'}
+      {#await lazyNewCourse() then mod}
+        <mod.default />
       {/await}
     {:else if route.page === 'feedback'}
       {#await lazyFeedback() then mod}
