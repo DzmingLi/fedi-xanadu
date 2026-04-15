@@ -145,6 +145,32 @@ pub async fn add_skill_tree(
 }
 
 #[derive(Deserialize)]
+pub struct AddTagInput {
+    tag_id: String,
+}
+
+pub async fn add_tag(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path(id): Path<String>,
+    Json(input): Json<AddTagInput>,
+) -> ApiResult<StatusCode> {
+    course_service::add_tag(&state.pool, &id, &input.tag_id).await?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn remove_tag(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path(id): Path<String>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<StatusCode> {
+    let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
+    course_service::remove_tag(&state.pool, &id, tag_id).await?;
+    Ok(StatusCode::OK)
+}
+
+#[derive(Deserialize)]
 pub struct AddTextbookInput {
     book_id: String,
     role: Option<String>,

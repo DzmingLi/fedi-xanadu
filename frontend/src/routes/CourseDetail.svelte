@@ -52,6 +52,13 @@
         {#if c.description}
           <p class="course-desc">{c.description}</p>
         {/if}
+        {#if detail.tags.length > 0}
+          <div class="course-tags">
+            {#each detail.tags as tag}
+              <a href="/tag?id={encodeURIComponent(tag.tag_id)}" class="course-tag">{tag.tag_name}</a>
+            {/each}
+          </div>
+        {/if}
         {#if c.source_url}
           <a href={c.source_url} target="_blank" rel="noopener" class="source-link">
             Source: {c.source_url}
@@ -208,6 +215,9 @@
   .course-institution { font-size: 14px; color: var(--text-secondary); margin: 4px 0; }
   .course-semester { font-size: 13px; color: var(--text-hint); margin: 2px 0; }
   .course-desc { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin: 12px 0; }
+  .course-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+  .course-tag { font-size: 12px; padding: 3px 10px; border-radius: 3px; background: rgba(95,155,101,0.1); color: var(--accent); text-decoration: none; transition: background 0.15s; }
+  .course-tag:hover { background: rgba(95,155,101,0.2); text-decoration: none; }
   .source-link { font-size: 12px; color: var(--text-hint); text-decoration: none; word-break: break-all; }
   .source-link:hover { color: var(--accent); }
   .attribution { font-size: 12px; color: var(--text-hint); font-style: italic; margin: 4px 0; }

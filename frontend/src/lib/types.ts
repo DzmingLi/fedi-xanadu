@@ -665,11 +665,17 @@ export interface CourseTextbook {
   sort_order: number;
 }
 
+export interface CourseTag {
+  tag_id: string;
+  tag_name: string;
+}
+
 export interface CourseDetail {
   course: Course;
   syllabus: string;
   schedule: CourseSession[];
   textbooks: CourseTextbook[];
+  tags: CourseTag[];
   series: CourseSeries[];
   staff: CourseStaff[];
   skill_trees: CourseSkillTree[];
