@@ -218,6 +218,20 @@ impl AtClient {
         Ok(resp.json().await?)
     }
 
+    /// Fetch a public AT Protocol profile (no auth required).
+    /// Uses the Bluesky public API.
+    pub async fn get_public_profile(&self, did: &str) -> anyhow::Result<Profile> {
+        let url = format!(
+            "https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor={}",
+            did
+        );
+        let resp = self.http.get(&url).send().await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("public getProfile failed: {}", resp.status());
+        }
+        Ok(resp.json().await?)
+    }
+
     /// Create a record in the user's PDS repository.
     pub async fn create_record(
         &self,

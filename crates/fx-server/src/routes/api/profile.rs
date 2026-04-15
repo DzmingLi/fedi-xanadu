@@ -20,7 +20,40 @@ pub async fn get_profile(
     State(state): State<AppState>,
     Query(DidQuery { did }): Query<DidQuery>,
 ) -> ApiResult<Json<social_service::ProfileResponse>> {
-    let profile = social_service::get_profile(&state.pool, &did).await?;
+    let mut profile = social_service::get_profile(&state.pool, &did).await?;
+
+    // Auto-fetch avatar from Bluesky for AT Protocol users without a local avatar
+    if profile.avatar_url.is_none()
+        && (did.starts_with("did:plc:") || did.starts_with("did:web:"))
+    {
+        let pool = state.pool.clone();
+        let at_client = state.at_client.clone();
+        let did_clone = did.clone();
+        // Non-blocking: fetch and cache in background
+        tokio::spawn(async move {
+            if let Ok(bsky_profile) = at_client.get_public_profile(&did_clone).await {
+                if let Some(avatar) = &bsky_profile.avatar {
+                    let _ = sqlx::query("UPDATE profiles SET avatar_url = $1 WHERE did = $2")
+                        .bind(avatar).bind(&did_clone).execute(&pool).await;
+                }
+                if bsky_profile.display_name.is_some() {
+                    let _ = sqlx::query("UPDATE profiles SET display_name = COALESCE(NULLIF(display_name, ''), $1) WHERE did = $2")
+                        .bind(&bsky_profile.display_name).bind(&did_clone).execute(&pool).await;
+                }
+            }
+        });
+
+        // Also try to return it immediately for this request
+        if let Ok(bsky_profile) = state.at_client.get_public_profile(&did).await {
+            if bsky_profile.avatar.is_some() {
+                profile.avatar_url = bsky_profile.avatar;
+            }
+            if profile.display_name.is_none() {
+                profile.display_name = bsky_profile.display_name;
+            }
+        }
+    }
+
     Ok(Json(profile))
 }
 
