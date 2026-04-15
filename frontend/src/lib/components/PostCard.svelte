@@ -169,12 +169,8 @@
         &middot; {fmtTime(article.created_at)}
       </span>
       <span class="card-stats">
-        {#if article.vote_score !== 0}
-          <span class="stat" title={t('home.votes')}>&#9650; {article.vote_score}</span>
-        {/if}
-        {#if article.bookmark_count > 0}
-          <span class="stat" title={t('home.bookmarks')}>&#9733; {article.bookmark_count}</span>
-        {/if}
+        <span class="stat" title={t('home.votes')}>&#9650; {article.vote_score}</span>
+        <span class="stat" title={t('home.bookmarks')}>&#9733; {article.bookmark_count}</span>
       </span>
     </div>
     <button class="expand-btn" onclick={toggleExpand}>
@@ -235,12 +231,8 @@
       </span>
       <span class="card-stats">
         <span class="stat">{articleCount} {t('home.lectures')}</span>
-        {#if series.vote_score !== 0}
-          <span class="stat" title={t('home.votes')}>&#9650; {series.vote_score}</span>
-        {/if}
-        {#if series.bookmark_count > 0}
-          <span class="stat" title={t('home.bookmarks')}>&#9733; {series.bookmark_count}</span>
-        {/if}
+        <span class="stat" title={t('home.votes')}>&#9650; {series.vote_score}</span>
+        <span class="stat" title={t('home.bookmarks')}>&#9733; {series.bookmark_count}</span>
       </span>
     </div>
     <button class="expand-btn" onclick={toggleExpand}>
