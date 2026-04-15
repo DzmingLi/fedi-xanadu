@@ -383,6 +383,7 @@ export interface ProfileData {
   handle: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  banner_url: string | null;
   bio: string;
   reputation: number;
   article_count: number;

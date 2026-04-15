@@ -87,6 +87,7 @@ pub struct ProfileResponse {
     pub handle: Option<String>,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub banner_url: Option<String>,
     pub bio: String,
     pub reputation: i32,
     pub article_count: i64,
@@ -191,6 +192,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         handle: Option<String>,
         display_name: Option<String>,
         avatar_url: Option<String>,
+        banner_url: Option<String>,
         bio: String,
         reputation: i32,
         links: Option<String>,
@@ -207,7 +209,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
 
     let row = sqlx::query_as::<_, ProfileRow>(
         "SELECT \
-            p.handle, p.display_name, p.avatar_url, p.bio, p.reputation, p.links, \
+            p.handle, p.display_name, p.avatar_url, p.banner_url, p.bio, p.reputation, p.links, \
             us.email, \
             p.education, p.publications, p.projects, p.teaching, \
             p.affiliation, \
@@ -243,6 +245,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
                 handle: r.handle,
                 display_name: r.display_name,
                 avatar_url: r.avatar_url,
+                banner_url: r.banner_url,
                 bio: r.bio,
                 reputation: r.reputation,
                 article_count: r.article_count,
@@ -262,6 +265,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
             handle: None,
             display_name: None,
             avatar_url: None,
+            banner_url: None,
             bio: String::new(),
             reputation: 0,
             article_count: 0,

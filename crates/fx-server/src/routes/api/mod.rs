@@ -238,7 +238,9 @@ fn profile_routes() -> Router<AppState> {
         .route("/profile/teaching", put(profile::update_teaching))
         .route("/profile/listings", get(profile::get_user_listings))
         .route("/profile/avatar", post(profile::upload_avatar))
+        .route("/profile/banner", post(profile::upload_banner))
         .route("/avatars/{id}", get(profile::get_avatar))
+        .route("/banners/{id}", get(profile::get_banner))
 }
 
 fn series_routes() -> Router<AppState> {

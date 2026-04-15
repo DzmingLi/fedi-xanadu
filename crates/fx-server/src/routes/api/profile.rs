@@ -148,6 +148,81 @@ pub async fn upload_avatar(
     Ok(Json(serde_json::json!({ "avatar_url": avatar_url })))
 }
 
+const BANNER_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const MAX_BANNER_SIZE: usize = 5 * 1024 * 1024; // 5 MB
+
+pub async fn upload_banner(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    mut multipart: Multipart,
+) -> ApiResult<Json<serde_json::Value>> {
+    let mut file_data: Option<Vec<u8>> = None;
+    let mut file_name: Option<String> = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        AppError(fx_core::Error::BadRequest(format!("Multipart error: {e}")))
+    })? {
+        if field.name() == Some("file") {
+            file_name = field.file_name().map(|s| s.to_string());
+            file_data = Some(field.bytes().await
+                .map_err(|e| AppError(fx_core::Error::BadRequest(e.to_string())))?.to_vec());
+        }
+    }
+
+    let data = file_data.ok_or(AppError(fx_core::Error::BadRequest("Missing file".into())))?;
+    if data.len() > MAX_BANNER_SIZE {
+        return Err(AppError(fx_core::Error::BadRequest("Banner too large (max 5MB)".into())));
+    }
+
+    let ext = file_name.as_deref()
+        .and_then(|n| std::path::Path::new(n).extension())
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_else(|| "jpg".into());
+    if !BANNER_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(AppError(fx_core::Error::BadRequest("Use jpg, png, or webp".into())));
+    }
+
+    let safe_did: String = user.did.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.' || *c == ':')
+        .collect();
+
+    let banners_dir = state.data_dir.join("banners");
+    let _ = tokio::fs::create_dir_all(&banners_dir).await;
+    tokio::fs::write(banners_dir.join(format!("{safe_did}.{ext}")), &data).await?;
+
+    let banner_url = format!("/api/banners/{safe_did}");
+    sqlx::query("UPDATE profiles SET banner_url = $1 WHERE did = $2")
+        .bind(&banner_url).bind(&user.did).execute(&state.pool).await?;
+
+    Ok(Json(serde_json::json!({ "banner_url": banner_url })))
+}
+
+pub async fn get_banner(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response<Body> {
+    let safe_id: String = id.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.' || *c == ':')
+        .collect();
+
+    let banners_dir = state.data_dir.join("banners");
+    for ext in BANNER_EXTENSIONS {
+        let path = banners_dir.join(format!("{safe_id}.{ext}"));
+        if path.exists() {
+            let ct = match *ext { "png" => "image/png", "webp" => "image/webp", _ => "image/jpeg" };
+            if let Ok(data) = tokio::fs::read(&path).await {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, ct)
+                    .header(header::CACHE_CONTROL, "public, max-age=3600")
+                    .body(Body::from(data)).unwrap();
+            }
+        }
+    }
+    Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
+}
+
 pub async fn get_avatar(
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<String>,

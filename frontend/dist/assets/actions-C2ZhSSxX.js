@@ -1,1 +1,0 @@
-import{bw as b,bx as c,by as o,bz as i,bA as d}from"./index-B89aJS83.js";function u(e,n,f){b(()=>{var r=c(()=>n(e,f==null?void 0:f())||{});if(f&&(r!=null&&r.update)){var a=!1,t={};o(()=>{var s=f();i(s),a&&d(t,s)&&(t=s,r.update(s))}),a=!0}if(r!=null&&r.destroy)return()=>r.destroy()})}export{u as a};

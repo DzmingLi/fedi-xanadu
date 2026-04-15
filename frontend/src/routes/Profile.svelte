@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar, uploadBanner } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
@@ -361,6 +361,26 @@
 {#if loading}
   <p class="meta">Loading...</p>
 {:else if profile}
+  <div class="banner-wrap">
+    {#if profile.banner_url}
+      <img src={profile.banner_url} alt="" class="banner-img" />
+    {:else}
+      <div class="banner-placeholder"></div>
+    {/if}
+    {#if isOwnProfile}
+      <label class="banner-upload" title="Upload banner">
+        <input type="file" accept="image/*" class="sr-only" onchange={async (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (!file) return;
+          try {
+            const url = await uploadBanner(file);
+            profile!.banner_url = url;
+          } catch { /* */ }
+        }} />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </label>
+    {/if}
+  </div>
   <div class="profile-header">
     <div class="avatar-wrap">
       {#if profile.avatar_url}
@@ -943,6 +963,43 @@
     padding-bottom: 20px;
     border-bottom: 1px solid var(--border);
   }
+  /* Banner */
+  .banner-wrap {
+    position: relative;
+    width: 100%;
+    height: 180px;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: -36px;
+  }
+  .banner-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .banner-placeholder {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(95,155,101,0.15) 0%, rgba(95,155,101,0.05) 100%);
+  }
+  .banner-upload {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.85);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-hint);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    transition: all 0.15s;
+  }
+  .banner-upload:hover { color: var(--accent); border-color: var(--accent); }
+
   .avatar-wrap { position: relative; }
   .avatar {
     width: 72px;
