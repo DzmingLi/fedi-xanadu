@@ -396,6 +396,42 @@ enum AdminCommand {
         #[arg(long, value_delimiter = ',')]
         resource: Vec<PathBuf>,
     },
+    /// Import a directory tree as series chapters with resources
+    ///
+    /// Each subdirectory containing a markdown/typst file becomes a chapter.
+    /// All other files (images, etc.) are uploaded as series resources.
+    ///
+    /// Example: fx admin import-dir --as ustclug --series s-xxx --dir ./linux101/
+    ///
+    /// Expected layout:
+    ///   ch01-intro/index.md
+    ///   ch01-intro/images/logo.png
+    ///   ch02-config/index.md
+    ///   ch02-config/images/screenshot.jpg
+    #[command(name = "import-dir")]
+    ImportDir {
+        /// Platform user handle to publish as
+        #[arg(long)]
+        r#as: String,
+        /// Series ID to import into (must already exist)
+        #[arg(long)]
+        series: String,
+        /// Root directory to import
+        #[arg(short, long)]
+        dir: PathBuf,
+        /// Language code
+        #[arg(short, long, default_value = "zh")]
+        lang: String,
+        /// License
+        #[arg(long, default_value = "CC-BY-SA-4.0")]
+        license: String,
+        /// Tags for all chapters (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// Dry run: show what would be imported without making changes
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2194,6 +2230,168 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
 
             let book_id = resp["book_id"].as_str().unwrap_or("?");
             println!("Reverted edit {edit_id} on book {book_id}");
+        }
+
+        AdminCommand::ImportDir { r#as: as_handle, series, dir, lang, license, tags, dry_run } => {
+            // Scan directory for chapter subdirectories
+            let mut chapters: Vec<(String, PathBuf, String)> = Vec::new(); // (dir_name, content_file, format)
+            let mut resources: Vec<(String, PathBuf)> = Vec::new(); // (relative_path, absolute_path)
+
+            let root = dir.canonicalize().context("Cannot resolve directory")?;
+            let mut entries: Vec<_> = std::fs::read_dir(&root)?
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().is_dir())
+                .collect();
+            entries.sort_by_key(|e| e.file_name());
+
+            for entry in &entries {
+                let sub_dir = entry.path();
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+
+                // Look for index.md, index.typ, or single content file
+                let content_file = ["index.md", "index.typ", "index.html"]
+                    .iter()
+                    .map(|f| sub_dir.join(f))
+                    .find(|p| p.exists());
+
+                let content_file = if let Some(f) = content_file {
+                    f
+                } else {
+                    // Try any single .md/.typ file in the directory
+                    let mut files: Vec<_> = std::fs::read_dir(&sub_dir)?
+                        .filter_map(|e| e.ok())
+                        .filter(|e| {
+                            let ext = e.path().extension().and_then(|e| e.to_str()).unwrap_or("").to_string();
+                            matches!(ext.as_str(), "md" | "typ" | "html")
+                        })
+                        .collect();
+                    if files.len() == 1 {
+                        files.remove(0).path()
+                    } else {
+                        println!("  Skipping {dir_name}: no content file found");
+                        continue;
+                    }
+                };
+
+                let ext = content_file.extension().and_then(|e| e.to_str()).unwrap_or("md");
+                let format = match ext {
+                    "typ" => "typst",
+                    "html" => "html",
+                    _ => "markdown",
+                };
+
+                chapters.push((dir_name.clone(), content_file, format.to_string()));
+
+                // Collect all non-content files as resources
+                for res in walkdir::WalkDir::new(&sub_dir).into_iter().filter_map(|e| e.ok()) {
+                    if !res.file_type().is_file() { continue; }
+                    let res_path = res.path();
+                    let res_ext = res_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    if matches!(res_ext, "md" | "typ" | "html") { continue; }
+                    let rel = res_path.strip_prefix(&root).unwrap_or(res_path);
+                    resources.push((rel.to_string_lossy().to_string(), res_path.to_path_buf()));
+                }
+            }
+
+            println!("Found {} chapters, {} resource files in {}", chapters.len(), resources.len(), root.display());
+            for (i, (name, _file, fmt)) in chapters.iter().enumerate() {
+                println!("  Chapter {}: {} ({})", i + 1, name, fmt);
+            }
+            if !resources.is_empty() {
+                println!("  Resources: {} files", resources.len());
+            }
+
+            if dry_run {
+                println!("\n[dry run] No changes made.");
+                return Ok(());
+            }
+
+            // Publish each chapter via admin API
+            let mut published: Vec<(String, String)> = Vec::new();
+            for (i, (dir_name, content_file, format)) in chapters.iter().enumerate() {
+                let content = std::fs::read_to_string(content_file)
+                    .with_context(|| format!("Cannot read {}", content_file.display()))?;
+
+                // Derive title from directory name
+                let title = dir_name
+                    .trim_start_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '_')
+                    .replace('-', " ")
+                    .replace('_', " ");
+                let title = if title.is_empty() { dir_name.clone() } else {
+                    let mut chars = title.chars();
+                    match chars.next() {
+                        Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+                        None => title,
+                    }
+                };
+
+                let body = serde_json::json!({
+                    "as_handle": as_handle,
+                    "title": title,
+                    "description": "",
+                    "content": content,
+                    "content_format": format,
+                    "lang": lang,
+                    "license": license,
+                    "category": "lecture",
+                    "series_id": series,
+                    "tags": tags,
+                    "prereqs": [],
+                });
+
+                let resp: serde_json::Value = client()
+                    .post(format!("{base}/admin/articles"))
+                    .header("x-admin-secret", &secret)
+                    .json(&body)
+                    .send().await?
+                    .error_for_status()
+                    .with_context(|| format!("Failed to publish: {dir_name}"))?
+                    .json().await?;
+
+                let uri = resp["at_uri"].as_str().unwrap_or("?").to_string();
+                println!("  [{}/{}] {} -> {}", i + 1, chapters.len(), dir_name, uri);
+
+                // Add to series
+                client()
+                    .post(format!("{base}/series/{series}/articles"))
+                    .header("x-admin-secret", &secret)
+                    .json(&serde_json::json!({ "article_uri": uri }))
+                    .send().await?
+                    .error_for_status()
+                    .context("Failed to add to series")?;
+
+                published.push((dir_name.clone(), uri));
+            }
+
+            // Upload resources
+            let mut uploaded = 0;
+            for (rel_path, abs_path) in &resources {
+                let file_bytes = std::fs::read(abs_path)
+                    .with_context(|| format!("Cannot read {}", abs_path.display()))?;
+                let file_name = abs_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("file");
+
+                let part = reqwest::multipart::Part::bytes(file_bytes)
+                    .file_name(file_name.to_string());
+                let form = reqwest::multipart::Form::new()
+                    .text("path", rel_path.clone())
+                    .part("file", part);
+
+                client()
+                    .post(format!("{base}/series/{series}/resource"))
+                    .header("x-admin-secret", &secret)
+                    .multipart(form)
+                    .send().await?
+                    .error_for_status()
+                    .with_context(|| format!("Failed to upload: {rel_path}"))?;
+                uploaded += 1;
+            }
+            if uploaded > 0 {
+                println!("Uploaded {} resource files", uploaded);
+            }
+
+            println!("\nImported {} chapters into series {}", published.len(), series);
         }
     }
 

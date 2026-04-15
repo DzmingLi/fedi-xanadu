@@ -20,3 +20,4 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 dirs-next = { workspace = true }
 toml = { workspace = true }
+walkdir = "2"
