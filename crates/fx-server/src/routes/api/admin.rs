@@ -152,6 +152,9 @@ pub async fn admin_create_series(
     )
     .await?;
 
+    // Admin-created series are published by default
+    series_service::publish_series(&state.pool, &id).await?;
+
     Ok((StatusCode::CREATED, Json(row)))
 }
 

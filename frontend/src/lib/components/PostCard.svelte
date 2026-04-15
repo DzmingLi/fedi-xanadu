@@ -331,6 +331,7 @@
     margin-top: 10px;
     display: flex;
     align-items: center;
+    padding-right: 80px;
   }
   .post-meta {
     font-size: 13px;
