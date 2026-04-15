@@ -43,6 +43,22 @@ pub struct EducationEntry {
     /// true = currently enrolled / in progress
     #[serde(default)]
     pub current: bool,
+    /// Locale → translated text fields (school, department, major).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[ts(type = "Record<string, EducationTranslation>")]
+    pub translations: std::collections::HashMap<String, EducationTranslation>,
+}
+
+/// Translated text fields for an education entry.
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct EducationTranslation {
+    #[serde(default)]
+    pub school: Option<String>,
+    #[serde(default)]
+    pub department: Option<String>,
+    #[serde(default)]
+    pub major: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]

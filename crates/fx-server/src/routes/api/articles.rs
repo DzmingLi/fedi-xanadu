@@ -72,7 +72,17 @@ pub async fn get_article_content(
     }
 
     let format = article_service::get_content_format(&state.pool, &uri).await?;
-    let src_ext = fx_renderer::format_extension(&format);
+    Ok(Json(resolve_article_content(&state, &uri, &format).await?))
+}
+
+/// Shared content resolution: reads source + renders HTML for any article type
+/// (independent, series chapter, heading slice, thought).
+async fn resolve_article_content(
+    state: &AppState,
+    uri: &str,
+    format: &str,
+) -> Result<ArticleContent, AppError> {
+    let src_ext = fx_renderer::format_extension(format);
 
     // Check if this is a compile-generated heading slice
     let heading_info: Option<(String, String)> = sqlx::query_as(
@@ -80,30 +90,29 @@ pub async fn get_article_content(
          FROM series_articles sa JOIN series s ON s.id = sa.series_id \
          WHERE sa.article_uri = $1 AND sa.heading_anchor IS NOT NULL AND s.pijul_node_id IS NOT NULL",
     )
-    .bind(&uri)
+    .bind(uri)
     .fetch_optional(&state.pool)
     .await?;
 
     if let Some((node_id, anchor)) = heading_info {
-        // Heading slice: serve from series cache
         let cache_path = state.pijul.series_repo_path(&node_id)
             .join("cache")
             .join(format!("{anchor}.html"));
         let html = tokio::fs::read_to_string(&cache_path).await
-            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?;
-        return Ok(Json(ArticleContent { source: String::new(), html }));
+            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
+        return Ok(ArticleContent { source: String::new(), html });
     }
 
     // Thoughts: content stored in DB (article_versions), not pijul
     let kind: Option<String> = sqlx::query_scalar("SELECT kind::TEXT FROM articles WHERE at_uri = $1")
-        .bind(&uri).fetch_optional(&state.pool).await?;
+        .bind(uri).fetch_optional(&state.pool).await?;
     if kind.as_deref() == Some("thought") {
         let row: Option<(String, Option<String>)> = sqlx::query_as(
             "SELECT source_text, rendered_html FROM article_versions WHERE article_uri = $1 ORDER BY created_at DESC LIMIT 1"
-        ).bind(&uri).fetch_optional(&state.pool).await?;
+        ).bind(uri).fetch_optional(&state.pool).await?;
 
         let (source, cached_html) = row
-            .ok_or(AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?;
+            .ok_or(AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
 
         let html = if let Some(h) = cached_html {
             h
@@ -112,30 +121,27 @@ pub async fn get_article_content(
         } else {
             let tmp = std::env::temp_dir().join(format!("nb-thought-{}", tid()));
             let _ = tokio::fs::create_dir_all(&tmp).await;
-            let rendered = render_content(&format, &source, &tmp)?;
+            let rendered = render_content(format, &source, &tmp)?;
             let _ = tokio::fs::remove_dir_all(&tmp).await;
-            // Backfill cache for future requests
             let _ = sqlx::query("UPDATE article_versions SET rendered_html = $1 WHERE article_uri = $2 AND rendered_html IS NULL")
-                .bind(&rendered).bind(&uri).execute(&state.pool).await;
+                .bind(&rendered).bind(uri).execute(&state.pool).await;
             rendered
         };
-        return Ok(Json(ArticleContent { source, html }));
+        return Ok(ArticleContent { source, html });
     }
 
     // Check if article is in a series with a pijul repo
-    let series_info = get_series_pijul_info(&state, &uri).await;
+    let series_info = get_series_pijul_info(state, uri).await;
 
     let (source, repo, src_path, html_path) = if let Some((series_node_id, chapter_id)) = &series_info {
-        // Read from series repo
         let series_repo = state.pijul.series_repo_path(series_node_id);
         let src = series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}"));
         let html = series_repo.join("cache").join(format!("{chapter_id}.html"));
         let source = tokio::fs::read_to_string(&src).await
-            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?;
+            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
         (source, series_repo, src, html)
     } else {
-        // Read from independent article repo
-        let node_id = uri_to_node_id(&uri);
+        let node_id = uri_to_node_id(uri);
         let repo = state.pijul.repo_path(&node_id);
         let src = repo.join(format!("content.{src_ext}"));
         let html = repo.join("content.html");
@@ -144,7 +150,7 @@ pub async fn get_article_content(
             Err(_) => {
                 tokio::fs::read_to_string(repo.join("content.typ"))
                     .await
-                    .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?
+                    .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?
             }
         };
         (source, repo, src, html)
@@ -152,17 +158,17 @@ pub async fn get_article_content(
 
     let html = if format == "html" {
         source.clone()
-    } else if let Some(series_html) = try_series_render(&state, &uri, &format).await {
+    } else if let Some(series_html) = try_series_render(state, uri, format).await {
         series_html
     } else if is_cached_fresh(&html_path, &src_path).await {
         tokio::fs::read_to_string(&html_path).await?
     } else {
-        let rendered = render_content(&format, &source, &repo)?;
+        let rendered = render_content(format, &source, &repo)?;
         let _ = tokio::fs::write(&html_path, &rendered).await;
         rendered
     };
 
-    Ok(Json(ArticleContent { source, html }))
+    Ok(ArticleContent { source, html })
 }
 
 /// Check if an article is in a series with a pijul repo.
@@ -884,43 +890,7 @@ pub async fn get_article_full(
     ).await?;
 
     let content = if has_access {
-        let format = article.content_format.as_str();
-        let src_ext = fx_renderer::format_extension(format);
-        let series_info = get_series_pijul_info(&state, &uri).await;
-
-        let (source, repo, src_path, html_path) = if let Some((series_node_id, chapter_id)) = &series_info {
-            let series_repo = state.pijul.series_repo_path(series_node_id);
-            let src = series_repo.join("chapters").join(format!("{chapter_id}.{src_ext}"));
-            let html = series_repo.join("cache").join(format!("{chapter_id}.html"));
-            let source = tokio::fs::read_to_string(&src).await
-                .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?;
-            (source, series_repo, src, html)
-        } else {
-            let node_id = uri_to_node_id(&uri);
-            let repo = state.pijul.repo_path(&node_id);
-            let src = repo.join(format!("content.{src_ext}"));
-            let html = repo.join("content.html");
-            let source = match tokio::fs::read_to_string(&src).await {
-                Ok(s) => s,
-                Err(_) => tokio::fs::read_to_string(repo.join("content.typ"))
-                    .await
-                    .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.clone() }))?,
-            };
-            (source, repo, src, html)
-        };
-
-        let html = if article.content_format == ContentFormat::Html {
-            source.clone()
-        } else if let Some(series_html) = try_series_render(&state, &uri, format).await {
-            series_html
-        } else if is_cached_fresh(&html_path, &src_path).await {
-            tokio::fs::read_to_string(&html_path).await?
-        } else {
-            let rendered = render_content(format, &source, &repo)?;
-            let _ = tokio::fs::write(&html_path, &rendered).await;
-            rendered
-        };
-        ArticleContent { source, html }
+        resolve_article_content(&state, &uri, article.content_format.as_str()).await?
     } else {
         ArticleContent { source: String::new(), html: String::new() }
     };

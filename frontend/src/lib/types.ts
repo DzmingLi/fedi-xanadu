@@ -350,6 +350,12 @@ export interface ProfileLink {
   url: string;
 }
 
+export interface EducationTranslation {
+  school?: string | null;
+  department?: string | null;
+  major?: string | null;
+}
+
 export interface EducationEntry {
   degree: string;
   school: string;
@@ -358,6 +364,7 @@ export interface EducationEntry {
   start_date?: string | null;
   end_date?: string | null;
   current?: boolean;
+  translations?: Record<string, EducationTranslation>;
 }
 
 export interface PublicationEntry {

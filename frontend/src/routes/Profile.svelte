@@ -7,7 +7,17 @@
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink, BookmarkWithTitle, EducationEntry, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
+  import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink, BookmarkWithTitle, EducationEntry, EducationTranslation, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
+
+  /** Resolve an education field by locale, falling back to the default value. */
+  function eduField(edu: EducationEntry, field: keyof EducationTranslation, loc: string): string | null | undefined {
+    const tr = edu.translations?.[loc];
+    if (tr) {
+      const val = tr[field];
+      if (val) return val;
+    }
+    return edu[field];
+  }
 
   // All series (including sub-series) for building tree
   let allUserSeries = $state<Series[]>([]);
@@ -424,10 +434,13 @@
       {#if profile.education.length > 0 || isOwnProfile}
         <div class="education-list">
           {#each profile.education as edu}
+            {@const school = eduField(edu, 'school', locale) || edu.school}
+            {@const dept = eduField(edu, 'department', locale)}
+            {@const major = eduField(edu, 'major', locale)}
             <div class="education-entry">
               <span class="edu-degree">{edu.degree}</span>
-              <span class="edu-school">{edu.school}{#if edu.department}, {edu.department}{/if}</span>
-              {#if edu.major}<span class="edu-major">{edu.major}</span>{/if}
+              <span class="edu-school">{school}{#if dept}, {dept}{/if}</span>
+              {#if major}<span class="edu-major">{major}</span>{/if}
               <span class="edu-dates">
                 {edu.start_date || ''}{#if edu.start_date} – {/if}{#if edu.current}{t('profile.present') || 'Present'}{:else}{edu.end_date || ''}{/if}
               </span>
@@ -965,10 +978,36 @@
               <input type="month" bind:value={edu.end_date} placeholder="End" />
             {/if}
           </div>
+          <!-- Translations -->
+          <details class="edu-translations">
+            <summary class="edu-trans-summary">
+              Translations ({Object.keys(edu.translations || {}).length})
+            </summary>
+            {#each Object.keys(edu.translations || {}) as lang}
+              {@const tr = (edu.translations || {})[lang]}
+              <div class="edu-trans-block">
+                <div class="edu-trans-header">
+                  <span class="edu-trans-lang">{lang.toUpperCase()}</span>
+                  <button class="remove-entry" onclick={() => { const t = { ...(edu.translations || {}) }; delete t[lang]; edu.translations = t; editEdu = [...editEdu]; }}>×</button>
+                </div>
+                <input type="text" value={tr?.school || ''} placeholder="School" oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].school = (e.target as HTMLInputElement).value || null; }} />
+                <div class="modal-row">
+                  <input type="text" value={tr?.department || ''} placeholder="Department" oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].department = (e.target as HTMLInputElement).value || null; }} />
+                  <input type="text" value={tr?.major || ''} placeholder="Major" oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].major = (e.target as HTMLInputElement).value || null; }} />
+                </div>
+              </div>
+            {/each}
+            <select class="edu-add-lang" onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (!v) return; if (!edu.translations) edu.translations = {}; edu.translations[v] = { school: null, department: null, major: null }; editEdu = [...editEdu]; (e.target as HTMLSelectElement).value = ''; }}>
+              <option value="">+ Add language...</option>
+              {#each ['en', 'zh', 'ja', 'ko', 'fr', 'de'].filter(l => !Object.keys(edu.translations || {}).includes(l)) as l}
+                <option value={l}>{l.toUpperCase()}</option>
+              {/each}
+            </select>
+          </details>
           <button class="remove-entry" onclick={() => { editEdu = editEdu.filter((_, j) => j !== i); }}>Remove</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editEdu = [...editEdu, { degree: '', school: '', department: '', major: '', start_date: '', end_date: '', current: true }]; }}>+ Add Education</button>
+      <button class="add-entry" onclick={() => { editEdu = [...editEdu, { degree: '', school: '', department: '', major: '', start_date: '', end_date: '', current: true, translations: {} }]; }}>+ Add Education</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingEdu = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateEducation(editEdu); profile!.education = editEdu; editingEdu = false; }}>{t('common.save')}</button>
@@ -1147,6 +1186,14 @@
   .edu-dates { font-size: 12px; color: var(--text-hint); }
   .date-sep { color: var(--text-hint); line-height: 32px; }
   .date-present { font-size: 13px; color: var(--accent); line-height: 32px; }
+  /* Education translation editor */
+  .edu-translations { margin-top: 6px; }
+  .edu-trans-summary { font-size: 12px; color: var(--text-hint); cursor: pointer; user-select: none; }
+  .edu-trans-summary:hover { color: var(--accent); }
+  .edu-trans-block { margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-page, rgba(0,0,0,0.01)); }
+  .edu-trans-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .edu-trans-lang { font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; }
+  .edu-add-lang { font-size: 12px; margin-top: 6px; padding: 3px 6px; border: 1px dashed var(--border); border-radius: 3px; background: none; color: var(--text-hint); cursor: pointer; font-family: var(--font-sans); }
   .profile-email {
     display: flex;
     align-items: center;
