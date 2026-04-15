@@ -13,7 +13,7 @@
     "cytoscape-dagre": "^2.5.0",
     "katex": "^0.16.42",
     "marked": "^17.0.5",
-    "pijul-editor": "github:DzmingLi/pijul-editor",
+    "pijul-editor": "file:../../pijul-editor",
     "prosemirror-commands": "^1.7.1",
     "prosemirror-example-setup": "^1.2.3",
     "prosemirror-history": "^1.5.0",

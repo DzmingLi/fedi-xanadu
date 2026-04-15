@@ -130,6 +130,15 @@
       <mod.default id={route.params.id || ''} />
     {/await}
   </div>
+{:else if route.page === 'profile'}
+  <div class="profile-nav">
+    <NavBar />
+  </div>
+  <div class="profile-container">
+    {#await lazyProfile() then mod}
+      <mod.default did={route.params.did || ''} />
+    {/await}
+  </div>
 {:else if route.page !== 'book' && route.page !== 'books'}
   <div class="top-nav">
     <NavBar />
@@ -158,10 +167,6 @@
     {:else if route.page === 'new-series'}
       {#await lazyNewSeries() then mod}
         <mod.default />
-      {/await}
-    {:else if route.page === 'profile'}
-      {#await lazyProfile() then mod}
-        <mod.default did={route.params.did || ''} />
       {/await}
     {:else if route.page === 'skill-tree'}
       {#await lazySkillTreeView() then mod}
@@ -280,6 +285,16 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+  .profile-nav {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+  .profile-container {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 1rem;
   }
   .top-nav {
     max-width: 760px;

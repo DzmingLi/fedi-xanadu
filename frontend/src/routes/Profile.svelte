@@ -445,94 +445,6 @@
           {/if}
         </div>
       {/if}
-      <!-- Publications -->
-      {#if profile.publications.length > 0 || isOwnProfile}
-        <div class="academic-section">
-          <div class="section-header">
-            <h3>Publications</h3>
-            {#if isOwnProfile}
-              <button class="edit-section-btn" onclick={() => { editPubs = JSON.parse(JSON.stringify(profile!.publications)); editingPubs = true; }}>
-                {profile.publications.length > 0 ? t('common.edit') : '+ Add'}
-              </button>
-            {/if}
-          </div>
-          {#each profile.publications.sort((a, b) => b.year - a.year) as pub_entry}
-            <div class="pub-entry">
-              <span class="pub-authors">{pub_entry.authors.join(', ')}</span>
-              {#if pub_entry.url || pub_entry.doi}
-                <a href={pub_entry.url || `https://doi.org/${pub_entry.doi}`} target="_blank" rel="noopener" class="pub-title">"{pub_entry.title}"</a>
-              {:else}
-                <span class="pub-title">"{pub_entry.title}"</span>
-              {/if}
-              {#if pub_entry.venue}<span class="pub-venue">{pub_entry.venue}</span>{/if}
-              {#if pub_entry.year}<span class="pub-year">({pub_entry.year})</span>{/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Projects -->
-      {#if profile.projects.length > 0 || isOwnProfile}
-        <div class="academic-section">
-          <div class="section-header">
-            <h3>Projects</h3>
-            {#if isOwnProfile}
-              <button class="edit-section-btn" onclick={() => { editProj = JSON.parse(JSON.stringify(profile!.projects)); editingProjects = true; }}>
-                {profile.projects.length > 0 ? t('common.edit') : '+ Add'}
-              </button>
-            {/if}
-          </div>
-          {#each profile.projects as proj}
-            <div class="proj-entry">
-              <div class="proj-top">
-                {#if proj.url}
-                  <a href={proj.url} target="_blank" rel="noopener" class="proj-title">{proj.title}</a>
-                {:else}
-                  <span class="proj-title">{proj.title}</span>
-                {/if}
-                <span class="status-badge status-{proj.status}">{proj.status}</span>
-              </div>
-              {#if proj.description}<p class="proj-desc">{proj.description}</p>{/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Teaching -->
-      {#if profile.teaching.length > 0 || isOwnProfile}
-        <div class="academic-section">
-          <div class="section-header">
-            <h3>Teaching</h3>
-            {#if isOwnProfile}
-              <button class="edit-section-btn" onclick={() => { editTeach = JSON.parse(JSON.stringify(profile!.teaching)); editingTeach = true; }}>
-                {profile.teaching.length > 0 ? t('common.edit') : '+ Add'}
-              </button>
-            {/if}
-          </div>
-          {#each profile.teaching.sort((a, b) => b.year - a.year) as te}
-            <div class="teach-entry">
-              <strong>{te.course_name}</strong>
-              <span class="teach-meta">{te.role}{#if te.institution}, {te.institution}{/if}{#if te.year} ({te.year}){/if}</span>
-              {#if te.description}<p class="teach-desc">{te.description}</p>{/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Open Listings -->
-      {#if userListings.length > 0}
-        <div class="academic-section">
-          <div class="section-header"><h3>Open Positions</h3></div>
-          {#each userListings as l}
-            <a href="/listing?id={encodeURIComponent(l.id)}" class="listing-mini">
-              <span class="listing-kind">{l.kind.toUpperCase()}</span>
-              <span class="listing-title">{l.title}</span>
-              <span class="listing-inst">{l.institution}</span>
-            </a>
-          {/each}
-        </div>
-      {/if}
-
       {#if profile.email || isOwnProfile}
         <div class="profile-email">
           {#if editingEmail}
@@ -697,132 +609,225 @@
     </div>
   {/if}
 
-  <div class="profile-tabs">
-    {#each userCategories as cat (cat.key)}
-      {#if cat.count > 0 || cat.key === 'general' || isOwnProfile}
-        <button class="tab-btn" class:active={profileTab === cat.key} onclick={() => { profileTab = cat.key; }}>
-          {cat.label}
-          {#if cat.count > 0}<span class="tab-count">{cat.count}</span>{/if}
-        </button>
-      {/if}
-    {/each}
-    <button class="tab-btn" class:active={profileTab === 'qa'} onclick={() => { profileTab = 'qa'; }}>
-      {t('profile.questions')}
-      {#if questions.length + answers.length > 0}
-        <span class="tab-count">{questions.length + answers.length}</span>
-      {/if}
-    </button>
-    {#if !isOwnProfile && publicBookmarks.length > 0}
-      <button class="tab-btn" class:active={profileTab === 'bookmarks'} onclick={() => { profileTab = 'bookmarks'; }}>
-        {t('profile.publicBookmarks')}
-        <span class="tab-count">{publicBookmarks.length}</span>
-      </button>
-    {/if}
-    {#if articles.length > 0}
-      <button class="tab-btn" class:active={profileTab === 'all'} onclick={() => { profileTab = 'all'; }}>
-        {t('profile.tabAllArticles')}
-        <span class="tab-count">{articles.length}</span>
-      </button>
-    {/if}
-  </div>
-
-  {#if profileTab !== 'qa' && profileTab !== 'bookmarks' && profileTab !== 'all'}
-    {#each currentFeed as item}
-      {#if item.type === 'article' && item.article}
-        <PostCard
-          article={item.article}
-          articleTeaches={articleTeaches.get(item.article.at_uri) || []}
-         
-        />
-      {:else if item.type === 'series' && item.series}
-        {@render seriesTree(item.series, item.articleCount)}
-      {/if}
-    {/each}
-
-    {#if currentFeed.length === 0}
-      <p class="empty-text">{t('profile.noWorks')}</p>
-    {/if}
-
-    {#if isOwnProfile}
-      <div class="create-actions">
-        <a href="/new" class="create-link">{t('profile.writeArticle')}</a>
-        <a href="/new-series" class="create-link">{t('profile.createSeries')}</a>
-      </div>
-    {/if}
-  {:else if profileTab === 'qa'}
-    {#if questions.length > 0}
-      <h3 class="section-title">{t('qa.myQuestions')}</h3>
-      {#each questions as q}
-        <a href="/question?uri={encodeURIComponent(q.at_uri)}" class="qa-card question">
-          <span class="qa-badge question-badge">{t('qa.questionBadge')}</span>
-          <span class="qa-title">{q.title}</span>
-          <span class="qa-stat">{t('qa.answerCount', q.answer_count)}</span>
-        </a>
-      {/each}
-    {/if}
-
-    {#if answers.length > 0}
-      <h3 class="section-title">{t('qa.myAnswers')}</h3>
-      {#each answers as a}
-        <a href="/question?uri={encodeURIComponent(a.question_uri || '')}" class="qa-card answer">
-          <span class="qa-badge answer-badge">{t('qa.answerBadge')}</span>
-          <span class="qa-title">{a.title}</span>
-          <span class="qa-stat">&#9650; {a.vote_score}</span>
-        </a>
-      {/each}
-    {/if}
-
-    {#if questions.length === 0 && answers.length === 0}
-      <p class="empty-text">{t('qa.noQuestions')}</p>
-    {/if}
-
-    {#if isOwnProfile}
-      <div class="create-actions">
-        <a href="/new-question" class="create-link">{t('qa.askQuestion')}</a>
-      </div>
-    {/if}
-  {:else if profileTab === 'bookmarks'}
-    {#each publicBookmarks as bm}
-      <a href="/article?uri={encodeURIComponent(bm.article_uri)}" class="bookmark-card">
-        <div class="bookmark-info">
-          <span class="bookmark-title">{bm.title}</span>
-          {#if bm.folder_path && bm.folder_path !== '/'}
-            <span class="bookmark-folder">{bm.folder_path}</span>
+  <div class="profile-body">
+    <main class="profile-main">
+      <div class="profile-tabs">
+        {#each userCategories as cat (cat.key)}
+          {#if cat.count > 0 || cat.key === 'general' || isOwnProfile}
+            <button class="tab-btn" class:active={profileTab === cat.key} onclick={() => { profileTab = cat.key; }}>
+              {cat.label}
+              {#if cat.count > 0}<span class="tab-count">{cat.count}</span>{/if}
+            </button>
           {/if}
-        </div>
-        <span class="bookmark-date">{bm.created_at.split(' ')[0]}</span>
-      </a>
-    {/each}
-    {#if publicBookmarks.length === 0}
-      <p class="empty-text">{t('profile.noWorks')}</p>
-    {/if}
-  {:else if profileTab === 'all'}
-    {#each allArticleGroups() as group}
-      {#if group.series}
-        <div class="all-series-group">
-          <a href="/series?id={group.series.id}" class="all-series-title">
-            {group.series.title}
-            <span class="all-series-count">{group.articles.length} 篇</span>
-          </a>
-          <div class="all-series-articles">
-            {#each group.articles as art}
-              <a href="/article?uri={encodeURIComponent(art.at_uri)}" class="all-article-row">
-                <span class="all-article-title">{art.title || '（无标题）'}</span>
-                {#if art.lang}<span class="all-article-lang">{art.lang}</span>{/if}
-              </a>
-            {/each}
-          </div>
-        </div>
-      {:else}
-        {#each group.articles as art}
-          <PostCard article={art} articleTeaches={articleTeaches.get(art.at_uri) || []} />
         {/each}
+        <button class="tab-btn" class:active={profileTab === 'qa'} onclick={() => { profileTab = 'qa'; }}>
+          {t('profile.questions')}
+          {#if questions.length + answers.length > 0}
+            <span class="tab-count">{questions.length + answers.length}</span>
+          {/if}
+        </button>
+        {#if !isOwnProfile && publicBookmarks.length > 0}
+          <button class="tab-btn" class:active={profileTab === 'bookmarks'} onclick={() => { profileTab = 'bookmarks'; }}>
+            {t('profile.publicBookmarks')}
+            <span class="tab-count">{publicBookmarks.length}</span>
+          </button>
+        {/if}
+        {#if articles.length > 0}
+          <button class="tab-btn" class:active={profileTab === 'all'} onclick={() => { profileTab = 'all'; }}>
+            {t('profile.tabAllArticles')}
+            <span class="tab-count">{articles.length}</span>
+          </button>
+        {/if}
+      </div>
+
+      {#if profileTab !== 'qa' && profileTab !== 'bookmarks' && profileTab !== 'all'}
+        {#each currentFeed as item}
+          {#if item.type === 'article' && item.article}
+            <PostCard
+              article={item.article}
+              articleTeaches={articleTeaches.get(item.article.at_uri) || []}
+            />
+          {:else if item.type === 'series' && item.series}
+            {@render seriesTree(item.series, item.articleCount)}
+          {/if}
+        {/each}
+
+        {#if currentFeed.length === 0}
+          <p class="empty-text">{t('profile.noWorks')}</p>
+        {/if}
+
+        {#if isOwnProfile}
+          <div class="create-actions">
+            <a href="/new" class="create-link">{t('profile.writeArticle')}</a>
+            <a href="/new-series" class="create-link">{t('profile.createSeries')}</a>
+          </div>
+        {/if}
+      {:else if profileTab === 'qa'}
+        {#if questions.length > 0}
+          <h3 class="section-title">{t('qa.myQuestions')}</h3>
+          {#each questions as q}
+            <a href="/question?uri={encodeURIComponent(q.at_uri)}" class="qa-card question">
+              <span class="qa-badge question-badge">{t('qa.questionBadge')}</span>
+              <span class="qa-title">{q.title}</span>
+              <span class="qa-stat">{t('qa.answerCount', q.answer_count)}</span>
+            </a>
+          {/each}
+        {/if}
+
+        {#if answers.length > 0}
+          <h3 class="section-title">{t('qa.myAnswers')}</h3>
+          {#each answers as a}
+            <a href="/question?uri={encodeURIComponent(a.question_uri || '')}" class="qa-card answer">
+              <span class="qa-badge answer-badge">{t('qa.answerBadge')}</span>
+              <span class="qa-title">{a.title}</span>
+              <span class="qa-stat">&#9650; {a.vote_score}</span>
+            </a>
+          {/each}
+        {/if}
+
+        {#if questions.length === 0 && answers.length === 0}
+          <p class="empty-text">{t('qa.noQuestions')}</p>
+        {/if}
+
+        {#if isOwnProfile}
+          <div class="create-actions">
+            <a href="/new-question" class="create-link">{t('qa.askQuestion')}</a>
+          </div>
+        {/if}
+      {:else if profileTab === 'bookmarks'}
+        {#each publicBookmarks as bm}
+          <a href="/article?uri={encodeURIComponent(bm.article_uri)}" class="bookmark-card">
+            <div class="bookmark-info">
+              <span class="bookmark-title">{bm.title}</span>
+              {#if bm.folder_path && bm.folder_path !== '/'}
+                <span class="bookmark-folder">{bm.folder_path}</span>
+              {/if}
+            </div>
+            <span class="bookmark-date">{bm.created_at.split(' ')[0]}</span>
+          </a>
+        {/each}
+        {#if publicBookmarks.length === 0}
+          <p class="empty-text">{t('profile.noWorks')}</p>
+        {/if}
+      {:else if profileTab === 'all'}
+        {#each allArticleGroups() as group}
+          {#if group.series}
+            <div class="all-series-group">
+              <a href="/series?id={group.series.id}" class="all-series-title">
+                {group.series.title}
+                <span class="all-series-count">{group.articles.length} 篇</span>
+              </a>
+              <div class="all-series-articles">
+                {#each group.articles as art}
+                  <a href="/article?uri={encodeURIComponent(art.at_uri)}" class="all-article-row">
+                    <span class="all-article-title">{art.title || '（无标题）'}</span>
+                    {#if art.lang}<span class="all-article-lang">{art.lang}</span>{/if}
+                  </a>
+                {/each}
+              </div>
+            </div>
+          {:else}
+            {#each group.articles as art}
+              <PostCard article={art} articleTeaches={articleTeaches.get(art.at_uri) || []} />
+            {/each}
+          {/if}
+        {/each}
+        {#if allArticleGroups().length === 0}
+          <p class="empty-text">{t('profile.noWorks')}</p>
+        {/if}
       {/if}
-    {/each}
-    {#if allArticleGroups().length === 0}
-      <p class="empty-text">{t('profile.noWorks')}</p>
-    {/if}
-  {/if}
+    </main>
+
+    <aside class="profile-sidebar">
+      <!-- Publications -->
+      {#if profile.publications.length > 0 || isOwnProfile}
+        <div class="sidebar-card">
+          <div class="section-header">
+            <h3>Publications</h3>
+            {#if isOwnProfile}
+              <button class="edit-section-btn" onclick={() => { editPubs = JSON.parse(JSON.stringify(profile!.publications)); editingPubs = true; }}>
+                {profile.publications.length > 0 ? t('common.edit') : '+ Add'}
+              </button>
+            {/if}
+          </div>
+          {#each profile.publications.sort((a, b) => b.year - a.year) as pub_entry}
+            <div class="pub-entry">
+              <span class="pub-authors">{pub_entry.authors.join(', ')}</span>
+              {#if pub_entry.url || pub_entry.doi}
+                <a href={pub_entry.url || `https://doi.org/${pub_entry.doi}`} target="_blank" rel="noopener" class="pub-title">"{pub_entry.title}"</a>
+              {:else}
+                <span class="pub-title">"{pub_entry.title}"</span>
+              {/if}
+              {#if pub_entry.venue}<span class="pub-venue">{pub_entry.venue}</span>{/if}
+              {#if pub_entry.year}<span class="pub-year">({pub_entry.year})</span>{/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Projects -->
+      {#if profile.projects.length > 0 || isOwnProfile}
+        <div class="sidebar-card">
+          <div class="section-header">
+            <h3>Projects</h3>
+            {#if isOwnProfile}
+              <button class="edit-section-btn" onclick={() => { editProj = JSON.parse(JSON.stringify(profile!.projects)); editingProjects = true; }}>
+                {profile.projects.length > 0 ? t('common.edit') : '+ Add'}
+              </button>
+            {/if}
+          </div>
+          {#each profile.projects as proj}
+            <div class="proj-entry">
+              <div class="proj-top">
+                {#if proj.url}
+                  <a href={proj.url} target="_blank" rel="noopener" class="proj-title">{proj.title}</a>
+                {:else}
+                  <span class="proj-title">{proj.title}</span>
+                {/if}
+                <span class="status-badge status-{proj.status}">{proj.status}</span>
+              </div>
+              {#if proj.description}<p class="proj-desc">{proj.description}</p>{/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Teaching -->
+      {#if profile.teaching.length > 0 || isOwnProfile}
+        <div class="sidebar-card">
+          <div class="section-header">
+            <h3>Teaching</h3>
+            {#if isOwnProfile}
+              <button class="edit-section-btn" onclick={() => { editTeach = JSON.parse(JSON.stringify(profile!.teaching)); editingTeach = true; }}>
+                {profile.teaching.length > 0 ? t('common.edit') : '+ Add'}
+              </button>
+            {/if}
+          </div>
+          {#each profile.teaching.sort((a, b) => b.year - a.year) as te}
+            <div class="teach-entry">
+              <strong>{te.course_name}</strong>
+              <span class="teach-meta">{te.role}{#if te.institution}, {te.institution}{/if}{#if te.year} ({te.year}){/if}</span>
+              {#if te.description}<p class="teach-desc">{te.description}</p>{/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Open Listings -->
+      {#if userListings.length > 0}
+        <div class="sidebar-card">
+          <div class="section-header"><h3>Open Positions</h3></div>
+          {#each userListings as l}
+            <a href="/listing?id={encodeURIComponent(l.id)}" class="listing-mini">
+              <span class="listing-kind">{l.kind.toUpperCase()}</span>
+              <span class="listing-title">{l.title}</span>
+              <span class="listing-inst">{l.institution}</span>
+            </a>
+          {/each}
+        </div>
+      {/if}
+    </aside>
+  </div>
 {/if}
 
 <!-- Publications Editor Modal -->
@@ -976,7 +981,7 @@
   .profile-header {
     display: flex;
     gap: 20px;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 24px;
     padding-bottom: 20px;
     border-bottom: 1px solid var(--border);
@@ -1551,6 +1556,48 @@
     align-items: center;
   }
 
+  /* Two-column body layout */
+  .profile-body {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 24px;
+    align-items: start;
+  }
+  .profile-main {
+    min-width: 0;
+  }
+  .profile-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: 16px;
+  }
+  .sidebar-card {
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+  }
+  .sidebar-card .section-header {
+    margin-bottom: 10px;
+  }
+  .sidebar-card .section-header h3 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 0.95rem;
+    margin: 0;
+  }
+
+  @media (max-width: 768px) {
+    .profile-body {
+      grid-template-columns: 1fr;
+    }
+    .profile-sidebar {
+      position: static;
+    }
+  }
+
   /* Profile tabs */
   .profile-tabs {
     display: flex;
@@ -1742,8 +1789,6 @@
     flex-shrink: 0;
   }
 
-  /* Academic sections */
-  .academic-section { margin: 16px 0; padding-top: 12px; border-top: 1px solid var(--border); }
   .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .section-header h3 { font-family: var(--font-serif); font-weight: 400; font-size: 1rem; margin: 0; }
   .edit-section-btn { font-size: 12px; color: var(--accent); background: none; border: none; cursor: pointer; }

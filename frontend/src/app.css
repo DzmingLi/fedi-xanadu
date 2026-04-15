@@ -335,6 +335,82 @@ label {
   box-shadow: none;
 }
 
+/* ── Admonition blocks (MkDocs-style !!! / ???) ── */
+.content .admonition {
+  border-left: 3px solid var(--border-strong);
+  padding: 0.75em 1em;
+  margin: 1.25em 0;
+  background: rgba(0, 0, 0, 0.015);
+  border-radius: 0 4px 4px 0;
+}
+.content .admonition > p:first-child,
+.content .admonition > p:first-of-type { margin-top: 0; }
+.content .admonition > p:last-child { margin-bottom: 0; }
+.content .admonition-title {
+  font-weight: 600;
+  font-size: 0.9em;
+  margin: 0 0 0.5em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Collapsible admonitions (details/summary) */
+.content details.admonition {
+  padding: 0;
+}
+.content details.admonition > summary {
+  font-weight: 600;
+  font-size: 0.9em;
+  padding: 0.6em 1em;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.content details.admonition > summary::before {
+  content: '▶';
+  font-size: 0.65em;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.content details.admonition[open] > summary::before {
+  transform: rotate(90deg);
+}
+.content details.admonition > summary::-webkit-details-marker { display: none; }
+.content details.admonition > :not(summary) {
+  padding: 0 1em;
+}
+.content details.admonition > :last-child {
+  padding-bottom: 0.75em;
+}
+/* Type-specific colors */
+.content .admonition.note     { border-left-color: #448aff; background: rgba(68,138,255,0.04); }
+.content .admonition.abstract { border-left-color: #00b0ff; background: rgba(0,176,255,0.04); }
+.content .admonition.info     { border-left-color: #00b8d4; background: rgba(0,184,212,0.04); }
+.content .admonition.tip      { border-left-color: #00bfa5; background: rgba(0,191,165,0.04); }
+.content .admonition.success  { border-left-color: #00c853; background: rgba(0,200,83,0.04); }
+.content .admonition.question { border-left-color: #64dd17; background: rgba(100,221,23,0.04); }
+.content .admonition.warning  { border-left-color: #ff9100; background: rgba(255,145,0,0.04); }
+.content .admonition.failure  { border-left-color: #ff5252; background: rgba(255,82,82,0.04); }
+.content .admonition.danger   { border-left-color: #ff1744; background: rgba(255,23,68,0.04); }
+.content .admonition.bug      { border-left-color: #f50057; background: rgba(245,0,87,0.04); }
+.content .admonition.example  { border-left-color: #7c4dff; background: rgba(124,77,255,0.04); }
+.content .admonition.quote    { border-left-color: #9e9e9e; background: rgba(158,158,158,0.04); }
+/* Title/summary inherits border color */
+.content .admonition.note     .admonition-title, .content .admonition.note     > summary { color: #448aff; }
+.content .admonition.abstract .admonition-title, .content .admonition.abstract > summary { color: #00b0ff; }
+.content .admonition.info     .admonition-title, .content .admonition.info     > summary { color: #00b8d4; }
+.content .admonition.tip      .admonition-title, .content .admonition.tip      > summary { color: #00bfa5; }
+.content .admonition.success  .admonition-title, .content .admonition.success  > summary { color: #00c853; }
+.content .admonition.question .admonition-title, .content .admonition.question > summary { color: #64dd17; }
+.content .admonition.warning  .admonition-title, .content .admonition.warning  > summary { color: #ff9100; }
+.content .admonition.failure  .admonition-title, .content .admonition.failure  > summary { color: #ff5252; }
+.content .admonition.danger   .admonition-title, .content .admonition.danger   > summary { color: #ff1744; }
+.content .admonition.bug      .admonition-title, .content .admonition.bug      > summary { color: #f50057; }
+.content .admonition.example  .admonition-title, .content .admonition.example  > summary { color: #7c4dff; }
+.content .admonition.quote    .admonition-title, .content .admonition.quote    > summary { color: #9e9e9e; }
+
 /* Dark mode adjustments for hardcoded colors */
 [data-theme="dark"] .tag { background: rgba(122, 184, 127, 0.15); }
 [data-theme="dark"] .tag.required { background: rgba(220, 38, 38, 0.15); color: #f87171; }
@@ -347,6 +423,19 @@ label {
 [data-theme="dark"] .content .thm-remark { background: rgba(184, 134, 11, 0.06); }
 [data-theme="dark"] .content .thm-example { background: rgba(139, 92, 246, 0.06); }
 [data-theme="dark"] .content .thm-proof { background: rgba(255, 255, 255, 0.01); }
+[data-theme="dark"] .content .admonition { background: rgba(255, 255, 255, 0.02); }
+[data-theme="dark"] .content .admonition.note     { background: rgba(68,138,255,0.06); }
+[data-theme="dark"] .content .admonition.abstract { background: rgba(0,176,255,0.06); }
+[data-theme="dark"] .content .admonition.info     { background: rgba(0,184,212,0.06); }
+[data-theme="dark"] .content .admonition.tip      { background: rgba(0,191,165,0.06); }
+[data-theme="dark"] .content .admonition.success  { background: rgba(0,200,83,0.06); }
+[data-theme="dark"] .content .admonition.question { background: rgba(100,221,23,0.06); }
+[data-theme="dark"] .content .admonition.warning  { background: rgba(255,145,0,0.06); }
+[data-theme="dark"] .content .admonition.failure  { background: rgba(255,82,82,0.06); }
+[data-theme="dark"] .content .admonition.danger   { background: rgba(255,23,68,0.06); }
+[data-theme="dark"] .content .admonition.bug      { background: rgba(245,0,87,0.06); }
+[data-theme="dark"] .content .admonition.example  { background: rgba(124,77,255,0.06); }
+[data-theme="dark"] .content .admonition.quote    { background: rgba(158,158,158,0.06); }
 [data-theme="dark"] img { opacity: 0.9; }
 [data-theme="dark"] .content pre, [data-theme="dark"] .content code {
   background: rgba(255, 255, 255, 0.06);
