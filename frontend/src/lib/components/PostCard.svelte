@@ -204,6 +204,7 @@
           {showComments ? t('qa.hideComments') : t('qa.showComments')}
         </button>
         <a href="/article?uri={encodeURIComponent(expandedUri)}" class="read-full">{t('home.readFull') || 'Read full →'}</a>
+        <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
       </div>
       {#if showComments && expandedUri}
         <div class="expanded-comments">
@@ -261,6 +262,7 @@
           {showComments ? t('qa.hideComments') : t('qa.showComments')}
         </button>
         <a href="/article?uri={encodeURIComponent(expandedUri)}" class="read-full">{t('home.readFull') || 'Read full →'}</a>
+        <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
       </div>
       {#if showComments && expandedUri}
         <div class="expanded-comments">

@@ -51,7 +51,7 @@ export default {
 
   'home.expand': '展开全文',
   'home.collapse': '收起',
-  'home.readFull': '阅读全文 →',
+  'home.readFull': '阅读原文 →',
 
   'auth.noAccount': '没有帐号？',
   'auth.registerHint': '— 先去注册，然后用你的 handle 登录。',
