@@ -151,6 +151,8 @@ pub struct UpdateCourse {
     pub source_url: Option<String>,
     pub source_attribution: Option<String>,
     pub is_published: Option<bool>,
+    #[serde(default)]
+    pub summary: Option<String>,
 }
 
 // ── Service functions ───────────────────────────────────────────────────
@@ -260,43 +262,101 @@ pub async fn list_my_courses(pool: &PgPool, did: &str) -> crate::Result<Vec<Cour
     ).bind(did).fetch_all(pool).await?)
 }
 
-pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCourse) -> crate::Result<CourseRow> {
+/// Snapshot a course as a flat JSON object for diffing.
+fn course_to_json(c: &CourseRow, syllabus: &str, schedule: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "title": c.title,
+        "code": c.code,
+        "description": c.description,
+        "syllabus": syllabus,
+        "schedule": schedule,
+        "institution": c.institution,
+        "department": c.department,
+        "semester": c.semester,
+        "lang": c.lang,
+        "license": c.license,
+        "source_url": c.source_url,
+        "source_attribution": c.source_attribution,
+        "is_published": c.is_published,
+    })
+}
+
+pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCourse, summary: &str) -> crate::Result<CourseRow> {
     let owner: Option<String> = sqlx::query_scalar("SELECT did FROM courses WHERE id = $1")
         .bind(id).fetch_optional(pool).await?;
-    match owner {
-        Some(ref d) if d != did => return Err(crate::Error::Forbidden { action: "edit course" }),
+    let owner_did = match owner {
+        Some(d) => d,
         None => return Err(crate::Error::NotFound { entity: "course", id: id.to_string() }),
-        _ => {}
+    };
+
+    // Snapshot old state
+    let cur = get_course(pool, id).await?;
+    let old_syllabus: String = sqlx::query_scalar("SELECT syllabus FROM courses WHERE id = $1")
+        .bind(id).fetch_one(pool).await.unwrap_or_default();
+    let old_schedule: serde_json::Value = sqlx::query_scalar("SELECT schedule FROM courses WHERE id = $1")
+        .bind(id).fetch_one(pool).await.unwrap_or(serde_json::json!([]));
+    let old_json = course_to_json(&cur, &old_syllabus, &old_schedule);
+
+    // Build new state
+    let new_schedule = input.schedule.as_ref()
+        .map(|s| serde_json::to_value(s).unwrap_or(serde_json::json!([])))
+        .unwrap_or(old_schedule);
+    let new_syllabus = input.syllabus.as_deref().unwrap_or(&old_syllabus);
+
+    let new_json = serde_json::json!({
+        "title": input.title.as_deref().unwrap_or(&cur.title),
+        "code": input.code.as_ref().or(cur.code.as_ref()),
+        "description": input.description.as_deref().unwrap_or(&cur.description),
+        "syllabus": new_syllabus,
+        "schedule": new_schedule,
+        "institution": input.institution.as_ref().or(cur.institution.as_ref()),
+        "department": input.department.as_ref().or(cur.department.as_ref()),
+        "semester": input.semester.as_ref().or(cur.semester.as_ref()),
+        "lang": input.lang.as_deref().unwrap_or(&cur.lang),
+        "license": input.license.as_deref().unwrap_or(&cur.license),
+        "source_url": input.source_url.as_ref().or(cur.source_url.as_ref()),
+        "source_attribution": input.source_attribution.as_ref().or(cur.source_attribution.as_ref()),
+        "is_published": input.is_published.unwrap_or(cur.is_published),
+    });
+
+    // Compute diff
+    let ops = super::patch_service::diff(&old_json, &new_json);
+    if ops.is_empty() {
+        return Ok(cur); // no changes
     }
 
-    // Fetch current values, merge with input
-    let cur = get_course(pool, id).await?;
-    let schedule_json = input.schedule.as_ref()
-        .map(|s| serde_json::to_value(s).unwrap_or(serde_json::json!([])));
+    // Record patch
+    let is_owner = did == owner_did;
+    let patch = super::patch_service::create_patch(
+        pool, "course", id, did, &owner_did, &ops, summary,
+    ).await?;
 
-    sqlx::query(
-        "UPDATE courses SET \
-         title = $1, code = $2, description = $3, syllabus = COALESCE($4, syllabus), \
-         institution = $5, department = $6, semester = $7, lang = $8, license = $9, \
-         source_url = $10, source_attribution = $11, is_published = $12, \
-         schedule = COALESCE($13, schedule), updated_at = NOW() \
-         WHERE id = $14",
-    )
-    .bind(input.title.as_deref().unwrap_or(&cur.title))
-    .bind(input.code.as_ref().or(cur.code.as_ref()))
-    .bind(input.description.as_deref().unwrap_or(&cur.description))
-    .bind(input.syllabus.as_deref())
-    .bind(input.institution.as_ref().or(cur.institution.as_ref()))
-    .bind(input.department.as_ref().or(cur.department.as_ref()))
-    .bind(input.semester.as_ref().or(cur.semester.as_ref()))
-    .bind(input.lang.as_deref().unwrap_or(&cur.lang))
-    .bind(input.license.as_deref().unwrap_or(&cur.license))
-    .bind(input.source_url.as_ref().or(cur.source_url.as_ref()))
-    .bind(input.source_attribution.as_ref().or(cur.source_attribution.as_ref()))
-    .bind(input.is_published.unwrap_or(cur.is_published))
-    .bind(schedule_json)
-    .bind(id)
-    .execute(pool).await?;
+    // If auto-applied (owner edit), materialize the update
+    if is_owner {
+        sqlx::query(
+            "UPDATE courses SET \
+             title = $1, code = $2, description = $3, syllabus = $4, \
+             institution = $5, department = $6, semester = $7, lang = $8, license = $9, \
+             source_url = $10, source_attribution = $11, is_published = $12, \
+             schedule = $13, updated_at = NOW() \
+             WHERE id = $14",
+        )
+        .bind(new_json["title"].as_str())
+        .bind(new_json["code"].as_str())
+        .bind(new_json["description"].as_str())
+        .bind(new_json["syllabus"].as_str())
+        .bind(new_json["institution"].as_str())
+        .bind(new_json["department"].as_str())
+        .bind(new_json["semester"].as_str())
+        .bind(new_json["lang"].as_str())
+        .bind(new_json["license"].as_str())
+        .bind(new_json["source_url"].as_str())
+        .bind(new_json["source_attribution"].as_str())
+        .bind(new_json["is_published"].as_bool().unwrap_or(false))
+        .bind(&new_json["schedule"])
+        .bind(id)
+        .execute(pool).await?;
+    }
 
     get_course(pool, id).await
 }

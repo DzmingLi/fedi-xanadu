@@ -1,5 +1,6 @@
 use axum::{extract::{Path, Query, State}, http::StatusCode, Json};
 use fx_core::services::course_service::{self, CourseRow, CourseListRow, CourseDetailResponse, CreateCourse, UpdateCourse};
+use fx_core::services::patch_service;
 use fx_core::util::tid;
 use serde::Deserialize;
 
@@ -54,7 +55,8 @@ pub async fn update_course(
     Path(id): Path<String>,
     Json(input): Json<UpdateCourse>,
 ) -> ApiResult<Json<CourseRow>> {
-    let course = course_service::update_course(&state.pool, &id, &user.did, &input).await?;
+    let summary = input.summary.as_deref().unwrap_or("");
+    let course = course_service::update_course(&state.pool, &id, &user.did, &input, summary).await?;
     Ok(Json(course))
 }
 
@@ -142,6 +144,14 @@ pub async fn add_skill_tree(
 ) -> ApiResult<StatusCode> {
     course_service::add_skill_tree(&state.pool, &id, &input.tree_uri, input.role.as_deref().unwrap_or("prerequisites")).await?;
     Ok(StatusCode::OK)
+}
+
+pub async fn list_patches(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<patch_service::PatchRow>>> {
+    let patches = patch_service::list_patches(&state.pool, "course", &id).await?;
+    Ok(Json(patches))
 }
 
 #[derive(Deserialize)]
