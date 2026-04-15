@@ -39,7 +39,7 @@ pub async fn save_draft(
     let tags_json = serde_json::to_string(&input.tags).unwrap_or_else(|_| "[]".into());
     let prereqs_json = serde_json::to_string(&input.prereqs).unwrap_or_else(|_| "[]".into());
     let lang = input.lang.as_deref().unwrap_or("zh");
-    let license = input.license.as_deref().unwrap_or("CC-BY-NC-SA-4.0");
+    let license = input.license.as_deref().unwrap_or("CC-BY-SA-4.0");
 
     sqlx::query(
         "INSERT INTO drafts (id, did, title, description, content, content_format, lang, license, tags, prereqs)

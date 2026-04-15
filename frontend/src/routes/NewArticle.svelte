@@ -796,8 +796,8 @@
             <div class="sb-field">
               <label>{t('newArticle.licenseLabel')}</label>
               <select bind:value={license}>
-                <option value="CC-BY-NC-SA-4.0">CC BY-NC-SA 4.0</option>
                 <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
+                <option value="CC-BY-NC-SA-4.0">CC BY-NC-SA 4.0</option>
                 <option value="CC-BY-4.0">CC BY 4.0</option>
                 <option value="CC-BY-NC-4.0">CC BY-NC 4.0</option>
                 <option value="CC-BY-NC-ND-4.0">CC BY-NC-ND 4.0</option>
