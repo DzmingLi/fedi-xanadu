@@ -647,13 +647,18 @@ export interface CoursePrereq {
 }
 
 export interface CourseSession {
-  session: number;
-  topic: string;
+  id: string;
+  course_id: string;
+  sort_order: number;
+  topic?: string | null;
   date?: string | null;
+  readings?: string | null;
   video_url?: string | null;
   notes_url?: string | null;
   assignment_url?: string | null;
-  readings?: string | null;
+  discussion_url?: string | null;
+  tags: CourseTag[];
+  prereqs: CourseTag[];
 }
 
 export interface CourseTextbook {
@@ -673,7 +678,7 @@ export interface CourseTag {
 export interface CourseDetail {
   course: Course;
   syllabus: string;
-  schedule: CourseSession[];
+  sessions: CourseSession[];
   textbooks: CourseTextbook[];
   tags: CourseTag[];
   series: CourseSeries[];

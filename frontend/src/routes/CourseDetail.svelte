@@ -106,7 +106,7 @@
           </section>
         {/if}
 
-        {#if detail.schedule.length > 0}
+        {#if detail.sessions.length > 0}
           <section class="schedule">
             <h2>Calendar</h2>
             <table class="schedule-table">
@@ -118,10 +118,19 @@
                 </tr>
               </thead>
               <tbody>
-                {#each detail.schedule as s}
+                {#each detail.sessions as s}
                   <tr>
-                    <td class="session-num">{s.session}</td>
-                    <td class="session-topic">{s.topic}</td>
+                    <td class="session-num">{s.sort_order}</td>
+                    <td class="session-topic">
+                      {s.topic || ''}
+                      {#if s.tags && s.tags.length > 0}
+                        <div class="session-tags">
+                          {#each s.tags as tag}
+                            <a href="/tag?id={encodeURIComponent(tag.tag_id)}" class="session-tag">{tag.tag_name}</a>
+                          {/each}
+                        </div>
+                      {/if}
+                    </td>
                     <td class="session-resources">
                       {#if s.video_url}
                         <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video" title="Video">&#9654; Video</a>
@@ -131,6 +140,9 @@
                       {/if}
                       {#if s.assignment_url}
                         <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw" title="Assignment">&#9998; HW</a>
+                      {/if}
+                      {#if s.discussion_url}
+                        <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc" title="Discussion">&#128172; Discussion</a>
                       {/if}
                       {#if s.readings}
                         <span class="res-reading">{s.readings}</span>
@@ -254,6 +266,10 @@
   .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }
   .res-notes { background: rgba(59,130,246,0.1); color: #3b82f6; }
   .res-hw { background: rgba(16,185,129,0.1); color: #059669; }
+  .res-disc { background: rgba(168,85,247,0.1); color: #7c3aed; }
+  .session-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .session-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(95,155,101,0.08); color: var(--accent); text-decoration: none; }
+  .session-tag:hover { background: rgba(95,155,101,0.18); text-decoration: none; }
   .res-reading { font-size: 11px; color: var(--text-hint); }
   .series-link { display: block; padding: 12px 16px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 0 4px 4px 0; margin-bottom: 8px; text-decoration: none; color: inherit; transition: border-color 0.15s; }
   .series-link:hover { border-color: var(--accent); text-decoration: none; }
