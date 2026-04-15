@@ -227,10 +227,20 @@
 
     <div class="card-bottom">
       <span class="post-meta">
-        {seriesAuthor(series)} &middot; {fmtTime(series.created_at)}
+        <span class="author-link" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(series.created_by)}`; }}>
+          <img src="/api/avatars/{encodeURIComponent(series.created_by)}" alt="" class="post-avatar" onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          {seriesAuthor(series)}
+        </span>
+        &middot; {fmtTime(series.created_at)}
       </span>
       <span class="card-stats">
         <span class="stat">{articleCount} {t('home.lectures')}</span>
+        {#if series.vote_score !== 0}
+          <span class="stat" title={t('home.votes')}>&#9650; {series.vote_score}</span>
+        {/if}
+        {#if series.bookmark_count > 0}
+          <span class="stat" title={t('home.bookmarks')}>&#9733; {series.bookmark_count}</span>
+        {/if}
       </span>
     </div>
     <button class="expand-btn" onclick={toggleExpand}>
@@ -386,19 +396,18 @@
   .expand-btn {
     position: absolute;
     right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: var(--bg-hover, #f5f5f5);
-    border: 1px solid var(--border);
-    font-size: 13px;
-    color: var(--text-hint);
+    bottom: 12px;
+    background: none;
+    border: 1px solid var(--accent);
+    font-size: 12px;
+    color: var(--accent);
     cursor: pointer;
-    padding: 6px 10px;
+    padding: 4px 12px;
     border-radius: 4px;
     transition: all 0.15s;
     line-height: 1;
   }
-  .expand-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+  .expand-btn:hover { background: var(--accent); color: white; }
 
   /* Expanded actions */
   .expanded-actions {

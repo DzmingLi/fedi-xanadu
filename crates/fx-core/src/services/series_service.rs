@@ -37,6 +37,8 @@ pub struct SeriesListRow {
     pub category: String,
     pub split_level: i32,
     pub is_published: bool,
+    pub vote_score: i64,
+    pub bookmark_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -115,10 +117,14 @@ pub struct SeriesHeadingRow {
 pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, s.long_description, \
-                s.order_index, s.created_by, pu.handle AS author_handle, s.created_at, \
-                s.lang, s.translation_group, s.category, s.split_level, s.is_published \
+                s.order_index, s.created_by, p.handle AS author_handle, s.created_at, \
+                s.lang, s.translation_group, s.category, s.split_level, s.is_published, \
+                COALESCE(v.score, 0) AS vote_score, \
+                COALESCE(bk.cnt, 0) AS bookmark_count \
          FROM series s \
-         LEFT JOIN platform_users pu ON s.created_by = pu.did \
+         LEFT JOIN profiles p ON s.created_by = p.did \
+         LEFT JOIN (SELECT target_uri, SUM(value) AS score FROM votes GROUP BY target_uri) v ON v.target_uri = s.id \
+         LEFT JOIN (SELECT article_uri, COUNT(*) AS cnt FROM user_bookmarks GROUP BY article_uri) bk ON bk.article_uri = s.id \
          WHERE s.is_published = TRUE \
          ORDER BY s.created_at DESC LIMIT $1",
     )
@@ -202,10 +208,14 @@ pub async fn unpublish_series(pool: &PgPool, id: &str) -> crate::Result<()> {
 pub async fn list_series_by_creator(pool: &PgPool, did: &str) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, s.long_description, \
-                s.order_index, s.created_by, pu.handle AS author_handle, s.created_at, \
-                s.lang, s.translation_group, s.category, s.split_level, s.is_published \
+                s.order_index, s.created_by, p.handle AS author_handle, s.created_at, \
+                s.lang, s.translation_group, s.category, s.split_level, s.is_published, \
+                COALESCE(v.score, 0) AS vote_score, \
+                COALESCE(bk.cnt, 0) AS bookmark_count \
          FROM series s \
-         LEFT JOIN platform_users pu ON s.created_by = pu.did \
+         LEFT JOIN profiles p ON s.created_by = p.did \
+         LEFT JOIN (SELECT target_uri, SUM(value) AS score FROM votes GROUP BY target_uri) v ON v.target_uri = s.id \
+         LEFT JOIN (SELECT article_uri, COUNT(*) AS cnt FROM user_bookmarks GROUP BY article_uri) bk ON bk.article_uri = s.id \
          WHERE s.created_by = $1 \
          ORDER BY s.created_at DESC",
     )

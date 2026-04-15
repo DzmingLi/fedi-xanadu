@@ -140,6 +140,8 @@ export interface Series {
   lang: string;
   translation_group: string | null;
   category: Category;
+  vote_score: number;
+  bookmark_count: number;
 }
 
 export interface Book {
