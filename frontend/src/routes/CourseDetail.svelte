@@ -86,9 +86,10 @@
 
   // Detect which columns have any data
   let hasReadings = $derived(detail?.sessions.some(s => s.readings) ?? false);
-  let hasVideo = $derived(detail?.sessions.some(s => s.video_url || s.notes_url) ?? false);
+  let hasVideo = $derived(detail?.sessions.some(s => s.video_url) ?? false);
+  let hasNotes = $derived(detail?.sessions.some(s => s.notes_url) ?? false);
   let hasHw = $derived(detail?.sessions.some(s => s.assignment_url || s.discussion_url) ?? false);
-  let colCount = $derived(2 + (hasReadings ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0));
+  let colCount = $derived(2 + (hasReadings ? 1 : 0) + (hasVideo ? 1 : 0) + (hasNotes ? 1 : 0) + (hasHw ? 1 : 0));
 </script>
 
 {#if loading}
@@ -230,6 +231,7 @@
                   <th>{t('course.topic')}</th>
                   {#if hasReadings}<th>{t('course.readings')}</th>{/if}
                   {#if hasVideo}<th>{t('course.video')}</th>{/if}
+                  {#if hasNotes}<th>{t('course.notes')}</th>{/if}
                   {#if hasHw}<th>{t('course.hw')}</th>{/if}
                 </tr>
               </thead>
@@ -269,6 +271,10 @@
                           {#if s.video_url}
                             <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {t('course.video')}</a>
                           {/if}
+                        </td>
+                      {/if}
+                      {#if hasNotes}
+                        <td class="session-notes">
                           {#if s.notes_url}
                             <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {t('course.notes')}</a>
                           {/if}
@@ -483,8 +489,9 @@
   .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
   .session-topic { color: var(--text-primary); width: 40%; }
   .session-readings { color: var(--text-hint); font-size: 13px; white-space: nowrap; width: 18%; }
-  .session-video { white-space: nowrap; width: 15%; }
-  .session-hw { white-space: nowrap; width: 12%; }
+  .session-video { white-space: nowrap; }
+  .session-notes { white-space: nowrap; }
+  .session-hw { white-space: nowrap; }
   .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
   .res-link:hover { opacity: 0.8; text-decoration: none; }
   .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }
