@@ -10,20 +10,24 @@
   $effect(() => {
     listCourses().then(c => { courses = c; }).catch(() => {}).finally(() => { loading = false; });
   });
+
+  function formatRating(r: number) {
+    return (r / 2).toFixed(1);
+  }
 </script>
 
 <div class="courses-page">
   <div class="page-header">
-    <h1>Courses</h1>
+    <h1>{t('courses.title')}</h1>
     {#if getAuth()}
-      <a href="/new-course" class="create-btn">+ New Course</a>
+      <a href="/new-course" class="create-btn">+ {t('courses.create')}</a>
     {/if}
   </div>
 
   {#if loading}
     <p class="meta">Loading...</p>
   {:else if courses.length === 0}
-    <p class="empty">No courses yet.</p>
+    <p class="empty">{t('courses.empty')}</p>
   {:else}
     <div class="course-grid">
       {#each courses as course}
@@ -45,8 +49,13 @@
             <p class="course-desc">{course.description}</p>
           {/if}
           <div class="card-bottom">
-            <span class="stat">{course.series_count} series</span>
-            <span class="stat">{course.staff_count} staff</span>
+            {#if course.rating_count > 0}
+              <span class="stat rating">
+                <svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#f59e0b" stroke="#f59e0b" stroke-width="1"/></svg>
+                {formatRating(course.avg_rating)} ({course.rating_count})
+              </span>
+            {/if}
+            <span class="stat">{course.session_count} {t('courses.sessions')}</span>
             {#if course.author_handle}
               <span class="author">@{course.author_handle}</span>
             {/if}
@@ -78,6 +87,8 @@
   .course-meta { font-size: 13px; color: var(--text-secondary); margin: 4px 0; }
   .course-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 8px 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .card-bottom { display: flex; gap: 12px; align-items: center; margin-top: 12px; font-size: 12px; color: var(--text-hint); }
+  .rating { display: flex; align-items: center; gap: 3px; color: #f59e0b; font-weight: 500; }
+  .rating svg { display: block; }
   .author { margin-left: auto; }
   .empty { color: var(--text-hint); }
 </style>

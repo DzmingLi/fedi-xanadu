@@ -520,6 +520,7 @@ export default {
 
   // Books
   'nav.books': '图书',
+  'nav.courses': '课程',
   'books.title': '图书',
   'books.subtitle': '浏览和评论书籍，添加不同版本和购买链接',
   'books.addBook': '添加书籍',
@@ -639,6 +640,10 @@ export default {
   'course.post': '发布',
   'course.reply': '回复',
   'course.noDiscussions': '暂无讨论。',
+  'courses.title': '课程',
+  'courses.create': '创建课程',
+  'courses.empty': '暂无课程。',
+  'courses.sessions': '节课',
 
   // Roadmap
   'roadmap.title': '路线图',

@@ -524,6 +524,7 @@ export default {
 
   // Books
   'nav.books': 'Books',
+  'nav.courses': 'Courses',
   'books.title': 'Books',
   'books.subtitle': 'Browse and review books, add editions and purchase links',
   'books.addBook': 'Add Book',
@@ -642,6 +643,10 @@ export default {
   'course.post': 'Post',
   'course.reply': 'Reply',
   'course.noDiscussions': 'No discussions yet.',
+  'courses.title': 'Courses',
+  'courses.create': 'New Course',
+  'courses.empty': 'No courses yet.',
+  'courses.sessions': 'lectures',
 
   // Roadmap
   'roadmap.title': 'Roadmap',

@@ -37,6 +37,9 @@ pub struct CourseListRow {
     pub is_published: bool,
     pub series_count: i64,
     pub staff_count: i64,
+    pub session_count: i64,
+    pub avg_rating: f64,
+    pub rating_count: i64,
     pub created_at: DateTime<Utc>,
 }
 
@@ -274,10 +277,15 @@ pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
          c.institution, c.semester, c.lang, c.is_published, \
          (SELECT COUNT(*) FROM course_series WHERE course_id = c.id) AS series_count, \
          (SELECT COUNT(*) FROM course_staff WHERE course_id = c.id) AS staff_count, \
+         (SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
+         COALESCE(r.avg, 0) AS avg_rating, \
+         COALESCE(r.cnt, 0) AS rating_count, \
          c.created_at \
-         FROM courses c LEFT JOIN profiles p ON c.did = p.did \
+         FROM courses c \
+         LEFT JOIN profiles p ON c.did = p.did \
+         LEFT JOIN (SELECT course_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM course_ratings GROUP BY course_id) r ON r.course_id = c.id \
          WHERE c.is_published = true \
-         ORDER BY c.created_at DESC",
+         ORDER BY COALESCE(r.avg, 0) * LN(COALESCE(r.cnt, 0) + 1) DESC, c.created_at DESC",
     ).fetch_all(pool).await?)
 }
 
@@ -287,8 +295,13 @@ pub async fn list_my_courses(pool: &PgPool, did: &str) -> crate::Result<Vec<Cour
          c.institution, c.semester, c.lang, c.is_published, \
          (SELECT COUNT(*) FROM course_series WHERE course_id = c.id) AS series_count, \
          (SELECT COUNT(*) FROM course_staff WHERE course_id = c.id) AS staff_count, \
+         (SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
+         COALESCE(r.avg, 0) AS avg_rating, \
+         COALESCE(r.cnt, 0) AS rating_count, \
          c.created_at \
-         FROM courses c LEFT JOIN profiles p ON c.did = p.did \
+         FROM courses c \
+         LEFT JOIN profiles p ON c.did = p.did \
+         LEFT JOIN (SELECT course_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM course_ratings GROUP BY course_id) r ON r.course_id = c.id \
          WHERE c.did = $1 \
          ORDER BY c.created_at DESC",
     ).bind(did).fetch_all(pool).await?)

@@ -613,6 +613,9 @@ export interface CourseListItem {
   is_published: boolean;
   series_count: number;
   staff_count: number;
+  session_count: number;
+  avg_rating: number;
+  rating_count: number;
   created_at: string;
 }
 
