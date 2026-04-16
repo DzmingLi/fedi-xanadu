@@ -292,15 +292,6 @@ pub(super) async fn resolve_location(
     }
 }
 
-/// Legacy wrapper — returns the old (node_id, chapter_id) tuple for code not yet migrated.
-async fn get_series_pijul_info(
-    state: &crate::state::AppState,
-    article_uri: &str,
-) -> Option<(String, String)> {
-    let loc = resolve_location(state, article_uri, "typst").await?;
-    loc.series_id.as_ref()?; // Only return Some for series
-    Some((loc.node_id, loc.chapter_id.unwrap_or_default()))
-}
 
 /// Try rendering this article with series-aware cross-chapter references.
 ///
@@ -762,32 +753,26 @@ pub(super) async fn save_article_content(
     content: &str,
     format: &str,
 ) -> Result<(), AppError> {
-    let src_ext = fx_renderer::format_extension(format);
-    let series_info = get_series_pijul_info(state, uri).await;
+    let loc = resolve_location(state, uri, format).await
+        .ok_or(AppError(fx_core::Error::NotFound { entity: "article", id: uri.to_string() }))?;
 
-    if let Some((series_node_id, chapter_id)) = series_info {
-        let series_repo = state.pijul.series_repo_path(&series_node_id);
-        let chapter_path = fx_core::meta::resolve_chapter_path(&series_repo, &chapter_id, src_ext);
-        if let Some(parent) = chapter_path.parent() {
-            let _ = tokio::fs::create_dir_all(parent).await;
+    if let Some(parent) = loc.content_path.parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+    tokio::fs::write(&loc.content_path, content).await?;
+
+    if format != "html" {
+        match render_content(format, content, &loc.repo_path) {
+            Ok(rendered) => {
+                if let Some(parent) = loc.cache_path.parent() {
+                    let _ = tokio::fs::create_dir_all(parent).await;
+                }
+                let _ = tokio::fs::write(&loc.cache_path, &rendered).await;
+            }
+            Err(e) => tracing::warn!("render failed: {e:?}"),
         }
-        tokio::fs::write(&chapter_path, content).await?;
-
-        if format != "html" {
-            let rendered = render_content(format, content, &series_repo)?;
-            let cache_dir = series_repo.join("cache");
-            let _ = tokio::fs::create_dir_all(&cache_dir).await;
-            let _ = tokio::fs::write(cache_dir.join(format!("{chapter_id}.html")), &rendered).await;
-            let _ = tokio::fs::remove_file(cache_dir.join("series.cache")).await;
-        }
-    } else {
-        let node_id = uri_to_node_id(uri);
-        let repo_path = state.pijul.repo_path(&node_id);
-        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await?;
-
-        if format != "html" {
-            let rendered = render_content(format, content, &repo_path)?;
-            let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+        if loc.is_series() {
+            let _ = tokio::fs::remove_file(loc.repo_path.join("cache").join("series.cache")).await;
         }
     }
 
@@ -797,7 +782,6 @@ pub(super) async fn save_article_content(
 }
 
 /// Record the current working copy state as a pijul change and store version metadata.
-/// Also syncs rendered HTML to the user's PDS.
 pub(super) async fn record_pijul_change(
     state: &AppState,
     uri: &str,
@@ -806,55 +790,30 @@ pub(super) async fn record_pijul_change(
     content: &str,
     message: &str,
 ) -> Result<(), AppError> {
-    let series_info = get_series_pijul_info(state, uri).await;
+    let loc = resolve_location(state, uri, "typst").await
+        .ok_or(AppError(fx_core::Error::NotFound { entity: "article", id: uri.to_string() }))?;
     let knot_url = get_user_knot_url(&state.pool, did).await;
 
-    if let Some((series_node_id, _chapter_id)) = series_info {
-        let record_result = if let Some(ref knot) = knot_url {
-            let client = pijul_knot::KnotClient::new(knot);
-            client.record(&series_node_id, message, Some(did)).await.ok()
-                .flatten().map(|r| Ok(Some(r)))
-                .unwrap_or(Ok(None))
-        } else {
-            state.pijul_record_series(series_node_id.clone(), message.into(), Some(did.to_string())).await
-        };
-
-        match record_result {
-            Ok(Some((hash, new_state))) => {
-                let _ = version_service::record_version(
-                    &state.pool, uri, &hash, did, message, content,
-                ).await;
-                if let Some(tok) = token {
-                    publish_pijul_ref_update(state, tok, uri, did, &hash, &new_state).await;
-                }
-            }
-            Ok(None) => {}
-            Err(e) => tracing::warn!("pijul record failed for series {series_node_id}: {e}"),
-        }
+    let record_result = if let Some(ref knot) = knot_url {
+        let client = pijul_knot::KnotClient::new(knot);
+        client.record(&loc.node_id, message, Some(did)).await.ok()
+            .flatten().map(|r| Ok(Some(r)))
+            .unwrap_or(Ok(None))
     } else {
-        let node_id = uri_to_node_id(uri);
+        state.pijul_record(loc.node_id.clone(), message.into(), Some(did.to_string())).await
+    };
 
-        let record_result = if let Some(ref knot) = knot_url {
-            let client = pijul_knot::KnotClient::new(knot);
-            client.record(&node_id, message, Some(did)).await.ok()
-                .flatten().map(|r| Ok(Some(r)))
-                .unwrap_or(Ok(None))
-        } else {
-            state.pijul_record(node_id.clone(), message.into(), Some(did.to_string())).await
-        };
-
-        match record_result {
-            Ok(Some((hash, new_state))) => {
-                let _ = version_service::record_version(
-                    &state.pool, uri, &hash, did, message, content,
-                ).await;
-                if let Some(tok) = token {
-                    publish_pijul_ref_update(state, tok, uri, did, &hash, &new_state).await;
-                }
+    match record_result {
+        Ok(Some((hash, new_state))) => {
+            let _ = version_service::record_version(
+                &state.pool, uri, &hash, did, message, content,
+            ).await;
+            if let Some(tok) = token {
+                publish_pijul_ref_update(state, tok, uri, did, &hash, &new_state).await;
             }
-            Ok(None) => {}
-            Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
         }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul record failed for {}: {e}", loc.node_id),
     }
     Ok(())
 }
@@ -1634,21 +1593,11 @@ pub async fn record_article(
 
     // Read current content from working copy
     let format = article_service::get_content_format(&state.pool, &input.uri).await?;
-    let src_ext = fx_renderer::format_extension(&format);
-    let series_info = get_series_pijul_info(&state, &input.uri).await;
+    let loc = resolve_location(&state, &input.uri, &format).await
+        .ok_or(AppError(fx_core::Error::NotFound { entity: "article", id: input.uri.clone() }))?;
 
-    let content = if let Some((series_node_id, chapter_id)) = &series_info {
-        let series_repo = state.pijul.series_repo_path(series_node_id);
-        let path = fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, src_ext);
-        tokio::fs::read_to_string(&path).await
-            .map_err(|e| AppError(fx_core::Error::Internal(format!("read working copy: {e}"))))?
-    } else {
-        let node_id = uri_to_node_id(&input.uri);
-        let repo_path = state.pijul.repo_path(&node_id);
-        let path = repo_path.join(format!("content.{src_ext}"));
-        tokio::fs::read_to_string(&path).await
-            .map_err(|e| AppError(fx_core::Error::Internal(format!("read working copy: {e}"))))?
-    };
+    let content = tokio::fs::read_to_string(&loc.content_path).await
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("read working copy: {e}"))))?;
 
     let msg = if input.message.trim().is_empty() { "Update" } else { input.message.trim() };
     record_pijul_change(&state, &input.uri, &user.did, Some(&user.token), &content, msg).await?;
@@ -1681,27 +1630,16 @@ pub async fn delete_article(
     let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
     require_owner(Some(&owner), &user.did)?;
 
-    // Clean up source files before deleting DB record (need series info while FK exists)
-    let series_info = get_series_pijul_info(&state, &input.uri).await;
-    if let Some((series_node_id, chapter_id)) = series_info {
-        // Remove chapter file and cache from series repo
-        let series_repo = state.pijul.series_repo_path(&series_node_id);
-        // Remove any file matching this chapter_id (any extension) from repo root
-        if let Ok(entries) = tokio::fs::read_dir(&series_repo).await {
-            let mut entries = entries;
-            while let Ok(Some(entry)) = entries.next_entry().await {
-                if entry.file_name().to_string_lossy().starts_with(&chapter_id) {
-                    let _ = tokio::fs::remove_file(entry.path()).await;
-                }
-            }
+    // Clean up source files before deleting DB record
+    if let Some(loc) = resolve_location(&state, &input.uri, "typst").await {
+        if loc.is_series() {
+            // Remove chapter files and cache from series repo (don't delete the whole repo)
+            let _ = tokio::fs::remove_file(&loc.content_path).await;
+            loc.invalidate_cache().await;
+        } else {
+            // Remove entire standalone repo
+            let _ = tokio::fs::remove_dir_all(&loc.repo_path).await;
         }
-        let _ = tokio::fs::remove_file(series_repo.join("cache").join(format!("{chapter_id}.html"))).await;
-        let _ = tokio::fs::remove_file(series_repo.join("cache").join("series.cache")).await;
-    } else {
-        // Remove independent repo
-        let node_id = uri_to_node_id(&input.uri);
-        let repo_path = state.pijul.repo_path(&node_id);
-        let _ = tokio::fs::remove_dir_all(&repo_path).await;
     }
 
     article_service::delete_article(&state.pool, &input.uri).await?;
