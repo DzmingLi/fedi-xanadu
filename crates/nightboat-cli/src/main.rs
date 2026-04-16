@@ -74,6 +74,25 @@ enum Command {
         /// Resource files to upload to the series repo (e.g. references.bib)
         #[arg(long, value_delimiter = ',')]
         resource: Vec<PathBuf>,
+        // -- Paper metadata (only for --category paper) --
+        /// Venue (e.g. CVPR, NeurIPS, Nature)
+        #[arg(long)]
+        venue: Option<String>,
+        /// Venue type (conference, journal, preprint, workshop, thesis)
+        #[arg(long)]
+        venue_type: Option<String>,
+        /// Publication year
+        #[arg(long)]
+        year: Option<i16>,
+        /// DOI
+        #[arg(long)]
+        doi: Option<String>,
+        /// arXiv ID (e.g. 2406.12345)
+        #[arg(long)]
+        arxiv_id: Option<String>,
+        /// Paper has been accepted
+        #[arg(long)]
+        accepted: bool,
     },
     /// Update an existing article's content from a local file
     Update {
@@ -1233,7 +1252,8 @@ async fn main() -> Result<()> {
             }
         }
 
-        Command::Upload { file, title, desc, lang, tags, prereqs, license, category, book_id, series, resource } => {
+        Command::Upload { file, title, desc, lang, tags, prereqs, license, category, book_id, series, resource,
+                          venue, venue_type, year, doi, arxiv_id, accepted } => {
             let token = config.token()?;
 
             let content = std::fs::read_to_string(&file)
@@ -1260,6 +1280,14 @@ async fn main() -> Result<()> {
 
             let parsed_prereqs = parse_prereqs(&prereqs)?;
 
+            let paper_meta = if venue.is_some() || doi.is_some() || arxiv_id.is_some() || year.is_some() || accepted {
+                Some(fx_core::models::CreatePaperMetadata {
+                    venue, venue_type, year, doi, arxiv_id, accepted,
+                })
+            } else {
+                None
+            };
+
             let body = CreateArticle {
                 title: title.clone(),
                 description: Some(desc.unwrap_or_default()),
@@ -1275,7 +1303,7 @@ async fn main() -> Result<()> {
                 tags,
                 prereqs: parsed_prereqs,
                 series_id: series.clone(),
-                paper: None,
+                paper: paper_meta,
                 authors: vec![],
                 invites: vec![],
             };
