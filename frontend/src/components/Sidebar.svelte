@@ -87,10 +87,6 @@
 
   <div class="sidebar-section">
     <div class="sidebar-heading">{t('sidebar.happening') || 'Happening'}</div>
-    <a href="/courses" class="happening-item">
-      <span class="happening-icon">📖</span>
-      <span class="happening-text">Courses</span>
-    </a>
     <a href="/listings" class="happening-item">
       <span class="happening-icon">📢</span>
       <span class="happening-text">{t('sidebar.hiring') || 'Academic hiring — browse open positions'}</span>
