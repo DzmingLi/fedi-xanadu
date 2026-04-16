@@ -1,5 +1,5 @@
 -- Programmatic ad delivery system
-CREATE TABLE ads (
+CREATE TABLE IF NOT EXISTS ads (
     id          VARCHAR(64) PRIMARY KEY,
     title       VARCHAR(200) NOT NULL,
     body        VARCHAR(500),
@@ -23,10 +23,10 @@ CREATE TABLE ads (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_ads_active_placement ON ads (placement, is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_ads_active_placement ON ads (placement, is_active) WHERE is_active = true;
 
 -- Daily impression log for cap enforcement
-CREATE TABLE ad_daily_impressions (
+CREATE TABLE IF NOT EXISTS ad_daily_impressions (
     ad_id   VARCHAR(64) NOT NULL REFERENCES ads(id) ON DELETE CASCADE,
     day     DATE NOT NULL DEFAULT CURRENT_DATE,
     count   BIGINT NOT NULL DEFAULT 0,
