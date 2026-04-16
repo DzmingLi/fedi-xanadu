@@ -131,7 +131,7 @@ pub async fn add_series_article(
     require_owner(Some(&owner), &user.did)?;
 
     series_service::add_series_article(&state.pool, &id, &input.article_uri).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -150,7 +150,7 @@ pub async fn remove_series_article(
 
     series_service::remove_series_article(&state.pool, &id, &input.article_uri)
         .await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -175,7 +175,7 @@ pub async fn add_series_prereq(
         &input.prereq_article_uri,
     )
     .await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -200,7 +200,7 @@ pub async fn remove_series_prereq(
         &input.prereq_article_uri,
     )
     .await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- All series articles (for homepage dedup) ---
@@ -257,7 +257,7 @@ pub async fn reorder_articles(
 
     series_service::reorder_series_articles(&state.pool, &id, &input.article_uris)
         .await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Serve files from series repo ---

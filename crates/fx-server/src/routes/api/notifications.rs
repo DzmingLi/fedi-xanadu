@@ -45,7 +45,7 @@ pub async fn mark_read(
     Json(input): Json<MarkReadInput>,
 ) -> ApiResult<StatusCode> {
     notification_service::mark_read(&state.pool, &user.did, &input.id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn mark_all_read(
@@ -53,5 +53,5 @@ pub async fn mark_all_read(
     Auth(user): Auth,
 ) -> ApiResult<StatusCode> {
     notification_service::mark_all_read(&state.pool, &user.did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }

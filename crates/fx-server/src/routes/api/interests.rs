@@ -55,5 +55,5 @@ pub async fn set_interests(
     }
 
     tx.commit().await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }

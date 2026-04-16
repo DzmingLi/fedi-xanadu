@@ -110,7 +110,7 @@ pub async fn add_skill_tree_edge(
     Json(input): Json<SkillTreeEdgeInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::add_edge(&state.pool, &input.tree_uri, &user.did, &input.parent_tag, &input.child_tag).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_skill_tree_edge(
@@ -119,7 +119,7 @@ pub async fn remove_skill_tree_edge(
     Json(input): Json<SkillTreeEdgeInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::remove_edge(&state.pool, &input.tree_uri, &user.did, &input.parent_tag, &input.child_tag).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -133,7 +133,7 @@ pub async fn adopt_skill_tree(
     Json(input): Json<AdoptTreeInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::adopt_skill_tree(&state.pool, &user.did, &input.tree_uri).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -151,7 +151,7 @@ pub async fn add_skill_tree_prereq(
     Json(input): Json<SkillTreePrereqInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::add_prereq(&state.pool, &input.tree_uri, &user.did, &input.from_tag, &input.to_tag, &input.prereq_type).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_skill_tree_prereq(
@@ -160,7 +160,7 @@ pub async fn remove_skill_tree_prereq(
     Json(input): Json<SkillTreePrereqInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::remove_prereq(&state.pool, &input.tree_uri, &user.did, &input.from_tag, &input.to_tag).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn get_active_tree(

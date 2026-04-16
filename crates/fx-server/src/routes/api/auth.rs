@@ -148,7 +148,7 @@ pub async fn logout(
     if let Some(token) = extract_bearer_token(&headers) {
         let _ = auth_service::delete_session(&state.pool, token).await;
     }
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Serialize)]

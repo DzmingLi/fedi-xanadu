@@ -68,7 +68,7 @@ pub async fn close_listing(
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
     listing_service::close_listing(&state.pool, &id, &user.did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn reopen_listing(
@@ -77,7 +77,7 @@ pub async fn reopen_listing(
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
     listing_service::reopen_listing(&state.pool, &id, &user.did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn delete_listing(
@@ -86,7 +86,7 @@ pub async fn delete_listing(
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
     listing_service::delete_listing(&state.pool, &id, &user.did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn my_listings(

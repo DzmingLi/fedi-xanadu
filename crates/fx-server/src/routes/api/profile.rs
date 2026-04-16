@@ -63,7 +63,7 @@ pub async fn update_profile_links(
 ) -> ApiResult<StatusCode> {
     let links_json = serde_json::to_string(&input.links)?;
     social_service::update_profile_links(&state.pool, &user.did, &links_json).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -81,7 +81,7 @@ pub async fn update_bio(
         .bind(&user.did)
         .execute(&state.pool)
         .await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn update_education(
@@ -92,7 +92,7 @@ pub async fn update_education(
     let json = serde_json::to_value(&input)?;
     sqlx::query("UPDATE profiles SET education = $1 WHERE did = $2")
         .bind(&json).bind(&user.did).execute(&state.pool).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn update_publications(
@@ -103,7 +103,7 @@ pub async fn update_publications(
     let json = serde_json::to_value(&input)?;
     sqlx::query("UPDATE profiles SET publications = $1 WHERE did = $2")
         .bind(&json).bind(&user.did).execute(&state.pool).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn update_projects(
@@ -114,7 +114,7 @@ pub async fn update_projects(
     let json = serde_json::to_value(&input)?;
     sqlx::query("UPDATE profiles SET projects = $1 WHERE did = $2")
         .bind(&json).bind(&user.did).execute(&state.pool).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn update_teaching(
@@ -125,7 +125,7 @@ pub async fn update_teaching(
     let json = serde_json::to_value(&input)?;
     sqlx::query("UPDATE profiles SET teaching = $1 WHERE did = $2")
         .bind(&json).bind(&user.did).execute(&state.pool).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Avatar upload & serve ---

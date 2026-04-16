@@ -54,7 +54,7 @@ pub async fn remove_bookmark(
     Json(input): Json<RemoveBookmarkInput>,
 ) -> ApiResult<StatusCode> {
     bookmark_service::remove_bookmark(&state.pool, &user.did, &input.uri).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -74,7 +74,7 @@ pub async fn move_bookmark(
 
     bookmark_service::move_bookmark(&state.pool, &user.did, &input.article_uri, &input.folder_path)
         .await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn list_bookmark_folders(

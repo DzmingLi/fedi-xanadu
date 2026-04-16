@@ -21,7 +21,7 @@ pub async fn mark_learned(
     Json(input): Json<MarkLearnedInput>,
 ) -> ApiResult<StatusCode> {
     learned_service::mark_learned(&state.pool, &user.did, &input.article_uri).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn unmark_learned(
@@ -30,7 +30,7 @@ pub async fn unmark_learned(
     Json(input): Json<MarkLearnedInput>,
 ) -> ApiResult<StatusCode> {
     learned_service::unmark_learned(&state.pool, &user.did, &input.article_uri).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn is_learned(

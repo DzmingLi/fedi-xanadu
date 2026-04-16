@@ -89,7 +89,7 @@ pub async fn add_series(
         input.role.as_deref().unwrap_or("lectures"),
         input.sort_order.unwrap_or(0),
     ).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_series(
@@ -100,7 +100,7 @@ pub async fn remove_series(
 ) -> ApiResult<StatusCode> {
     let series_id = q.get("series_id").ok_or(AppError(fx_core::Error::BadRequest("missing series_id".into())))?;
     course_service::remove_series(&state.pool, &id, series_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -116,7 +116,7 @@ pub async fn add_staff(
     Json(input): Json<AddStaffInput>,
 ) -> ApiResult<StatusCode> {
     course_service::add_staff(&state.pool, &id, &input.user_did, input.role.as_deref().unwrap_or("ta")).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_staff(
@@ -127,7 +127,7 @@ pub async fn remove_staff(
 ) -> ApiResult<StatusCode> {
     let user_did = q.get("user_did").ok_or(AppError(fx_core::Error::BadRequest("missing user_did".into())))?;
     course_service::remove_staff(&state.pool, &id, user_did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -143,7 +143,7 @@ pub async fn add_skill_tree(
     Json(input): Json<AddSkillTreeInput>,
 ) -> ApiResult<StatusCode> {
     course_service::add_skill_tree(&state.pool, &id, &input.tree_uri, input.role.as_deref().unwrap_or("prerequisites")).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn list_patches(
@@ -166,7 +166,7 @@ pub async fn add_tag(
     Json(input): Json<AddTagInput>,
 ) -> ApiResult<StatusCode> {
     course_service::add_tag(&state.pool, &id, &input.tag_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_tag(
@@ -177,7 +177,7 @@ pub async fn remove_tag(
 ) -> ApiResult<StatusCode> {
     let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
     course_service::remove_tag(&state.pool, &id, tag_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -194,7 +194,7 @@ pub async fn add_textbook(
     Json(input): Json<AddTextbookInput>,
 ) -> ApiResult<StatusCode> {
     course_service::add_textbook(&state.pool, &id, &input.book_id, input.role.as_deref().unwrap_or("required"), input.sort_order.unwrap_or(0)).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_textbook(
@@ -205,7 +205,7 @@ pub async fn remove_textbook(
 ) -> ApiResult<StatusCode> {
     let book_id = q.get("book_id").ok_or(AppError(fx_core::Error::BadRequest("missing book_id".into())))?;
     course_service::remove_textbook(&state.pool, &id, book_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ── Session endpoints ──────────────────────────────────────────────────
@@ -252,7 +252,7 @@ pub async fn add_session_tag(
     Json(input): Json<SessionTagInput>,
 ) -> ApiResult<StatusCode> {
     course_service::add_session_tag(&state.pool, &session_id, &input.tag_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_session_tag(
@@ -263,7 +263,7 @@ pub async fn remove_session_tag(
 ) -> ApiResult<StatusCode> {
     let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
     course_service::remove_session_tag(&state.pool, &session_id, tag_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn add_session_prereq(
@@ -273,7 +273,7 @@ pub async fn add_session_prereq(
     Json(input): Json<SessionTagInput>,
 ) -> ApiResult<StatusCode> {
     course_service::add_session_prereq(&state.pool, &session_id, &input.tag_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_session_prereq(
@@ -284,7 +284,7 @@ pub async fn remove_session_prereq(
 ) -> ApiResult<StatusCode> {
     let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
     course_service::remove_session_prereq(&state.pool, &session_id, tag_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ── Rating & Reviews ───────────────────────────────────────────────────

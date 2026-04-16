@@ -38,7 +38,7 @@ pub async fn follow(
         tracing::warn!("notification failed: {e}");
     }
 
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn unfollow(
@@ -47,7 +47,7 @@ pub async fn unfollow(
     Json(input): Json<FollowInput>,
 ) -> ApiResult<StatusCode> {
     social_service::unfollow(&state.pool, &user.did, &input.did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn mark_seen(
@@ -56,7 +56,7 @@ pub async fn mark_seen(
     Json(input): Json<FollowInput>,
 ) -> ApiResult<StatusCode> {
     social_service::mark_seen(&state.pool, &user.did, &input.did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn following_by_did(

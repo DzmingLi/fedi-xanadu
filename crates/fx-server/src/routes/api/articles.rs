@@ -1491,7 +1491,7 @@ pub async fn set_restricted(
     let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
     require_owner(Some(&owner), &user.did)?;
     article_service::set_restricted(&state.pool, &input.uri, input.restricted).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -1508,7 +1508,7 @@ pub async fn grant_access(
     let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
     require_owner(Some(&owner), &user.did)?;
     article_service::grant_access(&state.pool, &input.uri, &input.grantee_did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn revoke_access(
@@ -1519,7 +1519,7 @@ pub async fn revoke_access(
     let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
     require_owner(Some(&owner), &user.did)?;
     article_service::revoke_access(&state.pool, &input.uri, &input.grantee_did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn list_access_grants(

@@ -121,5 +121,5 @@ pub async fn set_teach(
     .execute(&state.pool)
     .await
     .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }

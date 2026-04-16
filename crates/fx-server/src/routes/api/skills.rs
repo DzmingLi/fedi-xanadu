@@ -38,7 +38,7 @@ pub async fn light_skill(
 
     let status = input.status.as_deref().unwrap_or("mastered");
     skill_service::light_skill(&state.pool, &user.did, &input.tag_id, status).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn delete_skill(

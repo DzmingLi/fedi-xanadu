@@ -172,7 +172,7 @@ pub async fn admin_add_series_article(
 
 
     series_service::add_series_article(&state.pool, &input.series_id, &input.article_uri).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Admin article update (bypass ownership check) ---
@@ -224,7 +224,7 @@ pub async fn admin_merge_tag(
 
 
     tag_service::merge_tag(&state.pool, &input.from, &input.into).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Moderation ---
@@ -257,7 +257,7 @@ pub async fn admin_ban_user(
         tracing::warn!("failed to send ban notification: {e}");
     }
 
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -272,7 +272,7 @@ pub async fn admin_unban_user(
 ) -> ApiResult<StatusCode> {
 
     moderation_service::unban_user(&state.pool, &input.did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn admin_list_banned_users(
@@ -321,7 +321,7 @@ pub async fn admin_delete_article(
         tracing::warn!("failed to send article deletion notification: {e}");
     }
 
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Visibility management ---
@@ -372,7 +372,7 @@ pub async fn admin_set_visibility(
         ).await;
     }
 
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Question merge ---

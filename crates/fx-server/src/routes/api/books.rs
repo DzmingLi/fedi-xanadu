@@ -271,7 +271,7 @@ pub async fn set_reading_status(
         }
     }
 
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Remove reading status ---
@@ -282,7 +282,7 @@ pub async fn remove_reading_status(
     Auth(user): Auth,
 ) -> ApiResult<StatusCode> {
     book_service::remove_reading_status(&state.pool, &book_id, &user.did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Preferred edition cover ---
@@ -309,7 +309,7 @@ pub async fn set_preferred_edition(
     .bind(&input.edition_id)
     .execute(&state.pool)
     .await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ---- Chapters ----
@@ -347,7 +347,7 @@ pub async fn update_chapter_tags(
     Json(input): Json<UpdateChapterTagsInput>,
 ) -> ApiResult<StatusCode> {
     book_service::set_chapter_tags(&state.pool, &input.chapter_id, &user.did, &input.teaches, &input.prereqs).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -362,7 +362,7 @@ pub async fn delete_chapter(
     Json(input): Json<DeleteChapterInput>,
 ) -> ApiResult<StatusCode> {
     book_service::delete_chapter(&state.pool, &input.chapter_id).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(serde::Deserialize)]
@@ -395,7 +395,7 @@ pub async fn set_chapter_progress(
         }
     }
 
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Book cover: serve & upload ---

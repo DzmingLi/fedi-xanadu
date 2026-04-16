@@ -16,7 +16,7 @@ pub async fn add_member(
     Json(input): Json<MemberInput>,
 ) -> ApiResult<StatusCode> {
     member_service::add_member(&state.pool, &user.did, &input.member_did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_member(
@@ -25,7 +25,7 @@ pub async fn remove_member(
     Json(input): Json<MemberInput>,
 ) -> ApiResult<StatusCode> {
     member_service::remove_member(&state.pool, &user.did, &input.member_did).await?;
-    Ok(StatusCode::OK)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn list_members(
