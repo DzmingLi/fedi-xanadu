@@ -1,81 +1,85 @@
 <script lang="ts">
   import { serveAd, recordAdClick, type AdSlot } from '../lib/api';
 
-  const DEMO_AD: AdSlot = {
-    id: 'demo',
-    title: 'NightBoat — Knowledge Sharing Platform',
-    body: 'Federated, prereq-aware academic content. Join the community.',
-    image_url: null,
-    link_url: '/about',
-  };
-
-  let ad = $state<AdSlot>(DEMO_AD);
+  let ad = $state<AdSlot | null>(null);
 
   $effect(() => {
     serveAd('sidebar').then(served => {
-      if (served) ad = served;
+      ad = served;
     }).catch(() => {});
   });
 
   function handleClick() {
-    if (ad.id !== 'demo') recordAdClick(ad.id).catch(() => {});
+    if (ad) recordAdClick(ad.id).catch(() => {});
   }
 </script>
 
-<div class="ad-slot">
-  <a href={ad.link_url} target={ad.id === 'demo' ? '_self' : '_blank'} rel="noopener sponsored" class="ad-link" onclick={handleClick}>
+{#if ad}
+  <a
+    href={ad.link_url}
+    target="_blank"
+    rel="noopener sponsored"
+    class="sponsored-item"
+    onclick={handleClick}
+  >
     {#if ad.image_url}
-      <img src={ad.image_url} alt={ad.title} class="ad-img" />
+      <img src={ad.image_url} alt="" class="sponsored-icon" />
     {/if}
-    <span class="ad-title">{ad.title}</span>
-    {#if ad.body}
-      <span class="ad-body">{ad.body}</span>
-    {/if}
+    <span class="sponsored-text">
+      <strong>{ad.title}</strong> — {ad.body || ''}
+      <span class="sponsored-label">Sponsored</span>
+    </span>
   </a>
-  <span class="ad-label">AD</span>
-</div>
+{/if}
 
 <style>
-  .ad-slot {
-    position: relative;
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--bg-white);
-  }
-  .ad-link {
+  .sponsored-item {
     display: flex;
-    flex-direction: column;
+    align-items: flex-start;
     gap: 6px;
+    padding: 4px 0;
     text-decoration: none;
-    color: inherit;
+    transition: opacity 0.1s;
   }
-  .ad-link:hover { text-decoration: none; }
-  .ad-img {
-    width: 100%;
-    border-radius: 4px;
+  .sponsored-item:hover { opacity: 0.8; text-decoration: none; }
+  .sponsored-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
     object-fit: cover;
+    flex-shrink: 0;
+    margin-top: 1px;
   }
-  .ad-title {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-    line-height: 1.4;
+  .sponsored-icon-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    background: var(--bg-hover);
+    font-size: 7px;
+    font-weight: 700;
+    color: var(--text-hint);
+    flex-shrink: 0;
+    margin-top: 1px;
+    letter-spacing: 0.02em;
   }
-  .ad-link:hover .ad-title { color: var(--accent); }
-  .ad-body {
+  .sponsored-text {
     font-size: 12px;
     color: var(--text-secondary);
     line-height: 1.4;
   }
-  .ad-label {
-    position: absolute;
-    top: 4px;
-    right: 6px;
-    font-size: 9px;
-    font-weight: 700;
+  .sponsored-item:hover .sponsored-text { color: var(--accent); }
+  .sponsored-text strong {
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .sponsored-item:hover .sponsored-text strong { color: var(--accent); }
+  .sponsored-label {
+    display: block;
+    font-size: 10px;
     color: var(--text-hint);
-    letter-spacing: 0.05em;
-    opacity: 0.6;
+    margin-top: 1px;
   }
 </style>
