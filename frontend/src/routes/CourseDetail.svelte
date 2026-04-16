@@ -73,6 +73,11 @@
   // Separate top-level and replies
   let topComments = $derived(comments.filter(c => !c.parent_id));
   let replies = $derived((parentId: string) => comments.filter(c => c.parent_id === parentId));
+
+  // Detect which columns have any data
+  let hasReadings = $derived(detail?.sessions.some(s => s.readings) ?? false);
+  let hasVideo = $derived(detail?.sessions.some(s => s.video_url || s.notes_url) ?? false);
+  let hasHw = $derived(detail?.sessions.some(s => s.assignment_url || s.discussion_url) ?? false);
 </script>
 
 {#if loading}
@@ -208,22 +213,23 @@
           <section class="schedule">
             <h2>{t('course.calendar')}</h2>
             <table class="schedule-table">
+              {@const colCount = 2 + (hasReadings ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0)}
               <thead>
                 <tr>
                   <th>#</th>
                   <th>{t('course.topic')}</th>
-                  <th>{t('course.readings')}</th>
-                  <th>{t('course.video')}</th>
-                  <th>{t('course.hw')}</th>
+                  {#if hasReadings}<th>{t('course.readings')}</th>{/if}
+                  {#if hasVideo}<th>{t('course.video')}</th>{/if}
+                  {#if hasHw}<th>{t('course.hw')}</th>{/if}
                 </tr>
               </thead>
               <tbody>
                 {#each detail.sessions as s}
-                  {@const isExam = !s.readings && !s.video_url && !s.notes_url}
+                  {@const isExam = !s.readings && !s.video_url && !s.notes_url && !s.assignment_url && !s.discussion_url}
                   <tr class:session-exam={isExam}>
                     <td class="session-num">{s.sort_order}</td>
                     {#if isExam}
-                      <td class="session-topic" colspan="3">
+                      <td class="session-topic" colspan={colCount - 1}>
                         <strong>{s.topic || ''}</strong>
                       </td>
                     {:else}
@@ -237,32 +243,38 @@
                           </div>
                         {/if}
                       </td>
-                      <td class="session-readings">
-                        {#if s.readings}
-                          {#if s.readings.startsWith('/')}
-                            <a href={s.readings} class="res-link res-notes">&#128196; {t('course.notes')}</a>
-                          {:else}
-                            <span class="res-reading">{s.readings}</span>
+                      {#if hasReadings}
+                        <td class="session-readings">
+                          {#if s.readings}
+                            {#if s.readings.startsWith('/')}
+                              <a href={s.readings} class="res-link res-notes">&#128196; {t('course.notes')}</a>
+                            {:else}
+                              <span class="res-reading">{s.readings}</span>
+                            {/if}
                           {/if}
-                        {/if}
-                      </td>
-                      <td class="session-video">
-                        {#if s.video_url}
-                          <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {t('course.video')}</a>
-                        {/if}
-                        {#if s.notes_url}
-                          <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {t('course.notes')}</a>
-                        {/if}
-                      </td>
+                        </td>
+                      {/if}
+                      {#if hasVideo}
+                        <td class="session-video">
+                          {#if s.video_url}
+                            <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {t('course.video')}</a>
+                          {/if}
+                          {#if s.notes_url}
+                            <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {t('course.notes')}</a>
+                          {/if}
+                        </td>
+                      {/if}
+                      {#if hasHw}
+                        <td class="session-hw">
+                          {#if s.assignment_url}
+                            <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {s.assignment_label || t('course.hw')}</a>
+                          {/if}
+                          {#if s.discussion_url}
+                            <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {s.discussion_label || t('course.discussion')}</a>
+                          {/if}
+                        </td>
+                      {/if}
                     {/if}
-                    <td class="session-hw">
-                      {#if s.assignment_url}
-                        <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {s.assignment_label || t('course.hw')}</a>
-                      {/if}
-                      {#if s.discussion_url}
-                        <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {s.discussion_label || t('course.discussion')}</a>
-                      {/if}
-                    </td>
                   </tr>
                 {/each}
               </tbody>
