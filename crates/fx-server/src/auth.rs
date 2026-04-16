@@ -106,14 +106,9 @@ pub async fn extract_auth_user_by_token(pool: &sqlx::PgPool, token: &str) -> Opt
             ).bind(token).fetch_optional(pool).await.ok()?;
             let (did, handle) = row?;
 
-            // Ensure profile exists for OAuth users (lazy creation on first request)
+            // Ensure profile exists and handle is up-to-date for OAuth users
             if let Some(ref h) = handle {
-                let has_profile: bool = sqlx::query_scalar(
-                    "SELECT EXISTS(SELECT 1 FROM profiles WHERE did = $1)"
-                ).bind(&did).fetch_one(pool).await.unwrap_or(false);
-                if !has_profile {
-                    let _ = auth_service::upsert_profile(pool, &did, h, None, None).await;
-                }
+                let _ = auth_service::upsert_profile(pool, &did, h, None, None).await;
             }
 
             did
