@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { serveAd, recordAdClick, type AdSlot } from '../lib/api';
 
   let ad = $state<AdSlot | null>(null);
 
-  $effect(() => {
+  onMount(() => {
     serveAd('sidebar').then(served => {
       ad = served;
     }).catch(() => {});
@@ -49,21 +50,6 @@
     object-fit: cover;
     flex-shrink: 0;
     margin-top: 1px;
-  }
-  .sponsored-icon-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    border-radius: 3px;
-    background: var(--bg-hover);
-    font-size: 7px;
-    font-weight: 700;
-    color: var(--text-hint);
-    flex-shrink: 0;
-    margin-top: 1px;
-    letter-spacing: 0.02em;
   }
   .sponsored-text {
     font-size: 12px;
