@@ -633,6 +633,15 @@ export default {
   'course.source': 'Source',
   'course.license': 'License',
   'course.language': 'Language',
+  'course.myRating': 'My rating',
+  'course.reviews': 'Reviews',
+  'course.writeReview': 'Write a review',
+  'course.noReviews': 'No reviews yet.',
+  'course.qa': 'Q&A',
+  'course.askQuestion': 'Ask a question or start a discussion...',
+  'course.post': 'Post',
+  'course.reply': 'Reply',
+  'course.noDiscussions': 'No discussions yet.',
 
   // Roadmap
   'roadmap.title': 'Roadmap',

@@ -677,6 +677,23 @@ export interface CourseTag {
   tag_name: string;
 }
 
+export interface CourseRatingStats {
+  avg_rating: number;
+  rating_count: number;
+}
+
+export interface CourseReview {
+  at_uri: string;
+  title: string;
+  description: string;
+  did: string;
+  author_handle: string | null;
+  author_display_name: string | null;
+  created_at: string;
+  vote_score: number;
+  comment_count: number;
+}
+
 export interface CourseDetail {
   course: Course;
   syllabus: string;
@@ -687,4 +704,6 @@ export interface CourseDetail {
   staff: CourseStaff[];
   skill_trees: CourseSkillTree[];
   prerequisites: CoursePrereq[];
+  rating: CourseRatingStats;
+  reviews: CourseReview[];
 }

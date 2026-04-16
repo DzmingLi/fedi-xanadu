@@ -715,6 +715,8 @@ export const updateCourse = (id: string, input: Record<string, unknown>) =>
   put<import('./types').Course>(`/courses/${encodeURIComponent(id)}`, input);
 export const deleteCourse = (id: string) =>
   del<void>(`/courses/${encodeURIComponent(id)}`);
+export const rateCourse = (id: string, rating: number) =>
+  post<import('./types').CourseRatingStats>(`/courses/${encodeURIComponent(id)}/rate`, { rating });
 export const addCourseSeries = (id: string, series_id: string, role?: string, sort_order?: number) =>
   post<void>(`/courses/${encodeURIComponent(id)}/series`, { series_id, role, sort_order });
 export const removeCourseSeries = (id: string, series_id: string) =>

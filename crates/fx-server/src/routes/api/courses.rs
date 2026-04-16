@@ -1,5 +1,5 @@
 use axum::{extract::{Path, Query, State}, http::StatusCode, Json};
-use fx_core::services::course_service::{self, CourseRow, CourseListRow, CourseSessionRow, CourseDetailResponse, CreateCourse, UpdateCourse, CreateSession, UpdateSession};
+use fx_core::services::course_service::{self, CourseRow, CourseListRow, CourseSessionRow, CourseDetailResponse, CourseRatingStats, CourseReviewRow, CreateCourse, UpdateCourse, CreateSession, UpdateSession};
 use fx_core::services::patch_service;
 use fx_core::util::tid;
 use serde::Deserialize;
@@ -285,4 +285,32 @@ pub async fn remove_session_prereq(
     let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
     course_service::remove_session_prereq(&state.pool, &session_id, tag_id).await?;
     Ok(StatusCode::OK)
+}
+
+// ── Rating & Reviews ───────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct RateCourseInput {
+    rating: i16,
+}
+
+pub async fn rate_course(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Path(id): Path<String>,
+    Json(input): Json<RateCourseInput>,
+) -> ApiResult<Json<CourseRatingStats>> {
+    if input.rating < 1 || input.rating > 10 {
+        return Err(AppError(fx_core::Error::BadRequest("rating must be 1-10".into())));
+    }
+    let stats = course_service::rate_course(&state.pool, &id, &user.did, input.rating).await?;
+    Ok(Json(stats))
+}
+
+pub async fn get_reviews(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<CourseReviewRow>>> {
+    let reviews = course_service::get_course_reviews(&state.pool, &id).await?;
+    Ok(Json(reviews))
 }

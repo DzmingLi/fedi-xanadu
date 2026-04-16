@@ -70,6 +70,8 @@ pub struct CourseDetailResponse {
     pub staff: Vec<CourseStaffRow>,
     pub skill_trees: Vec<CourseSkillTreeRow>,
     pub prerequisites: Vec<CoursePrereqRow>,
+    pub rating: CourseRatingStats,
+    pub reviews: Vec<CourseReviewRow>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -260,7 +262,10 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
          WHERE cp.course_id = $1",
     ).bind(id).fetch_all(pool).await?;
 
-    Ok(CourseDetailResponse { course, syllabus, sessions, textbooks, tags, series, staff, skill_trees, prerequisites })
+    let rating = get_rating_stats(pool, id).await?;
+    let reviews = get_course_reviews(pool, id).await?;
+
+    Ok(CourseDetailResponse { course, syllabus, sessions, textbooks, tags, series, staff, skill_trees, prerequisites, rating, reviews })
 }
 
 pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
@@ -594,4 +599,65 @@ pub async fn remove_textbook(pool: &PgPool, course_id: &str, book_id: &str) -> c
     sqlx::query("DELETE FROM course_textbooks WHERE course_id = $1 AND book_id = $2")
         .bind(course_id).bind(book_id).execute(pool).await?;
     Ok(())
+}
+
+// ── Ratings ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CourseRatingStats {
+    pub avg_rating: f64,
+    pub rating_count: i64,
+}
+
+pub async fn rate_course(pool: &PgPool, course_id: &str, user_did: &str, rating: i16) -> crate::Result<CourseRatingStats> {
+    sqlx::query(
+        "INSERT INTO course_ratings (course_id, user_did, rating) VALUES ($1, $2, $3) \
+         ON CONFLICT (course_id, user_did) DO UPDATE SET rating = $3, updated_at = NOW()"
+    ).bind(course_id).bind(user_did).bind(rating)
+    .execute(pool).await?;
+
+    get_rating_stats(pool, course_id).await
+}
+
+pub async fn get_rating_stats(pool: &PgPool, course_id: &str) -> crate::Result<CourseRatingStats> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT AVG(rating::float), COUNT(*) FROM course_ratings WHERE course_id = $1"
+    ).bind(course_id).fetch_one(pool).await?;
+    Ok(CourseRatingStats { avg_rating: row.0.unwrap_or(0.0), rating_count: row.1 })
+}
+
+pub async fn get_user_rating(pool: &PgPool, course_id: &str, user_did: &str) -> crate::Result<Option<i16>> {
+    let row: Option<(i16,)> = sqlx::query_as(
+        "SELECT rating FROM course_ratings WHERE course_id = $1 AND user_did = $2"
+    ).bind(course_id).bind(user_did).fetch_optional(pool).await?;
+    Ok(row.map(|r| r.0))
+}
+
+// ── Reviews ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct CourseReviewRow {
+    pub at_uri: String,
+    pub title: String,
+    pub description: String,
+    pub did: String,
+    pub author_handle: Option<String>,
+    pub author_display_name: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub vote_score: i64,
+    pub comment_count: i64,
+}
+
+pub async fn get_course_reviews(pool: &PgPool, course_id: &str) -> crate::Result<Vec<CourseReviewRow>> {
+    Ok(sqlx::query_as::<_, CourseReviewRow>(
+        "SELECT a.at_uri, a.title, a.description, a.did, \
+         p.handle AS author_handle, p.display_name AS author_display_name, \
+         a.created_at, \
+         COALESCE((SELECT SUM(value) FROM article_votes WHERE article_uri = a.at_uri), 0) AS vote_score, \
+         (SELECT COUNT(*) FROM comments WHERE content_uri = a.at_uri) AS comment_count \
+         FROM articles a \
+         LEFT JOIN profiles p ON p.did = a.did \
+         WHERE a.course_id = $1 AND a.category = 'review' \
+         ORDER BY vote_score DESC, a.created_at DESC"
+    ).bind(course_id).fetch_all(pool).await?)
 }

@@ -630,6 +630,15 @@ export default {
   'course.source': '来源',
   'course.license': '许可证',
   'course.language': '语言',
+  'course.myRating': '我的评分',
+  'course.reviews': '课程评价',
+  'course.writeReview': '写评价',
+  'course.noReviews': '暂无评价。',
+  'course.qa': '问答讨论',
+  'course.askQuestion': '提问或发起讨论...',
+  'course.post': '发布',
+  'course.reply': '回复',
+  'course.noDiscussions': '暂无讨论。',
 
   // Roadmap
   'roadmap.title': '路线图',
