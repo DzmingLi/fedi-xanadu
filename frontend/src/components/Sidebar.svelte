@@ -102,13 +102,7 @@
     </a>
   </div>
 
-  <div class="sidebar-divider"></div>
-
-  <div class="sidebar-section">
-    <SidebarAd />
-  </div>
-
-  <div class="sidebar-divider"></div>
+  <SidebarAd />
 
   <div class="sidebar-section">
     <div class="sidebar-heading">NightBoat</div>
