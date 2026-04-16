@@ -1414,7 +1414,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             });
 
             let resp: serde_json::Value = client()
-                .post(format!("{base}/books/editions"))
+                .post(format!("{base}/books/{book_id}/editions"))
                 .bearer_auth(token)
                 .json(&body)
                 .send().await?
