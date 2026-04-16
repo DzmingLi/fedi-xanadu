@@ -1042,6 +1042,9 @@ pub async fn fork_article(
     if source.license == "All-Rights-Reserved" {
         return Err(AppError(fx_core::Error::Forbidden { action: "fork proprietary article" }));
     }
+    if source.license.contains("ND") {
+        return Err(AppError(fx_core::Error::Forbidden { action: "fork NoDerivatives-licensed article" }));
+    }
     if source.restricted {
         return Err(AppError(fx_core::Error::Forbidden { action: "fork restricted article" }));
     }

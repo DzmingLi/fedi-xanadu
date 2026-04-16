@@ -742,3 +742,121 @@ pub async fn admin_set_default_edition(
         .await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
+
+// --- Batch publish articles to a series (single pijul change) ---
+
+#[derive(serde::Deserialize)]
+pub struct BatchArticle {
+    pub title: String,
+    pub description: Option<String>,
+    pub content: String,
+    pub content_format: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub license: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct AdminBatchPublishInput {
+    pub as_handle: String,
+    pub series_id: String,
+    pub articles: Vec<BatchArticle>,
+    pub lang: Option<String>,
+}
+
+pub async fn admin_batch_publish(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    Json(input): Json<AdminBatchPublishInput>,
+) -> ApiResult<Json<Vec<serde_json::Value>>> {
+    use fx_core::content::ContentFormat;
+
+    let did = platform_user_service::local_did(&input.as_handle);
+    let lang = input.lang.as_deref().unwrap_or("en");
+
+    // Get series pijul node
+    let pijul_node_id: Option<String> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&input.series_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+
+    let node_id = pijul_node_id.ok_or_else(|| {
+        AppError(fx_core::Error::BadRequest("Series has no pijul repo".into()))
+    })?;
+
+    let series_repo = state.pijul.series_repo_path(&node_id);
+
+    let mut results = Vec::new();
+
+    // Phase 1: Write all files and create DB records (no pijul record yet)
+    for item in &input.articles {
+        let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
+        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
+
+        let format = item.content_format.as_deref().unwrap_or("markdown");
+        let content_format: ContentFormat = format.parse().unwrap_or(ContentFormat::Markdown);
+        let src_ext = fx_renderer::format_extension(format);
+
+        // Write file to series repo
+        let chapter_path = fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, src_ext);
+        if let Some(parent) = chapter_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        tokio::fs::write(&chapter_path, &item.content).await?;
+
+        // Render cache
+        if content_format != ContentFormat::Html {
+            if let Ok(rendered) = super::articles::render_content(format, &item.content, &series_repo) {
+                let cache_dir = series_repo.join("cache");
+                let _ = tokio::fs::create_dir_all(&cache_dir).await;
+                let _ = tokio::fs::write(cache_dir.join(format!("{chapter_id}.html")), &rendered).await;
+            }
+        }
+
+        let hash = content_hash(&item.content);
+        let license = item.license.as_deref().unwrap_or("CC-BY-SA-4.0");
+
+        let create = CreateArticle {
+            title: item.title.clone(),
+            description: item.description.clone(),
+            content: item.content.clone(),
+            content_format,
+            lang: Some(lang.to_string()),
+            license: Some(license.to_string()),
+            tags: item.tags.clone().unwrap_or_default(),
+            prereqs: vec![],
+            series_id: Some(input.series_id.clone()),
+            translation_of: None,
+            category: Some("lecture".to_string()),
+            book_id: None,
+            edition_id: None,
+            restricted: None,
+            invites: vec![],
+        };
+
+        let article = article_service::create_article(
+            &state.pool, &did, &at_uri, &create, &hash, None,
+            default_visibility(true), ContentKind::Article, None,
+        ).await?;
+
+        series_service::add_series_article(&state.pool, &input.series_id, &at_uri).await?;
+
+        results.push(serde_json::json!({
+            "at_uri": at_uri,
+            "title": article.title,
+        }));
+    }
+
+    // Phase 2: Single pijul record for all files
+    match state.pijul.record_series(&node_id, "Batch publish", Some(&did)) {
+        Ok(Some((hash, _new_state))) => {
+            tracing::info!("batch recorded change {hash} for series {}", input.series_id);
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul batch record failed: {e}"),
+    }
+
+    Ok(Json(results))
+}
