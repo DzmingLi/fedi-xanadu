@@ -41,8 +41,8 @@ pub fn router(state: AppState, config: &Config) -> Router {
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(cors)
         .layer(governor_limiter)
-        // Global body limit: 16 MB (image uploads are max 10 MB + overhead)
-        .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024))
+        // Body limit: 256 MB (batch imports with images can be large)
+        .layer(RequestBodyLimitLayer::new(256 * 1024 * 1024))
         .with_state(state)
 }
 
