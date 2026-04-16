@@ -9,6 +9,13 @@
   import PostCard from '../lib/components/PostCard.svelte';
   import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink, BookmarkWithTitle, EducationEntry, EducationTranslation, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
 
+  /** Resolve a localized field (Record<string, string>) to the current locale with fallback. */
+  function loc(field: Record<string, string> | null | undefined): string {
+    if (!field) return '';
+    const locale = getLocale();
+    return field[locale] || field['en'] || field['zh'] || Object.values(field)[0] || '';
+  }
+
   /** Resolve an education field by locale, falling back to the default value. */
   function eduField(edu: EducationEntry, field: keyof EducationTranslation, loc: string): string | null | undefined {
     const tr = edu.translations?.[loc];
@@ -756,10 +763,10 @@
       {#if profile.publications.length > 0 || isOwnProfile}
         <div class="sidebar-card">
           <div class="section-header">
-            <h3>Publications</h3>
+            <h3>{t('profile.publications')}</h3>
             {#if isOwnProfile}
               <button class="edit-section-btn" onclick={() => { editPubs = JSON.parse(JSON.stringify(profile!.publications)); editingPubs = true; }}>
-                {profile.publications.length > 0 ? t('common.edit') : '+ Add'}
+                {profile.publications.length > 0 ? t('common.edit') : t('profile.add')}
               </button>
             {/if}
           </div>
@@ -767,11 +774,11 @@
             <div class="pub-entry">
               <span class="pub-authors">{pub_entry.authors.join(', ')}</span>
               {#if pub_entry.url || pub_entry.doi}
-                <a href={pub_entry.url || `https://doi.org/${pub_entry.doi}`} target="_blank" rel="noopener" class="pub-title">"{pub_entry.title}"</a>
+                <a href={pub_entry.url || `https://doi.org/${pub_entry.doi}`} target="_blank" rel="noopener" class="pub-title">"{loc(pub_entry.title)}"</a>
               {:else}
-                <span class="pub-title">"{pub_entry.title}"</span>
+                <span class="pub-title">"{loc(pub_entry.title)}"</span>
               {/if}
-              {#if pub_entry.venue}<span class="pub-venue">{pub_entry.venue}</span>{/if}
+              {#if pub_entry.venue}<span class="pub-venue">{loc(pub_entry.venue)}</span>{/if}
               {#if pub_entry.year}<span class="pub-year">({pub_entry.year})</span>{/if}
             </div>
           {/each}
@@ -782,10 +789,10 @@
       {#if profile.projects.length > 0 || isOwnProfile}
         <div class="sidebar-card">
           <div class="section-header">
-            <h3>Projects</h3>
+            <h3>{t('profile.projects')}</h3>
             {#if isOwnProfile}
               <button class="edit-section-btn" onclick={() => { editProj = JSON.parse(JSON.stringify(profile!.projects)); editingProjects = true; }}>
-                {profile.projects.length > 0 ? t('common.edit') : '+ Add'}
+                {profile.projects.length > 0 ? t('common.edit') : t('profile.add')}
               </button>
             {/if}
           </div>
@@ -793,13 +800,13 @@
             <div class="proj-entry">
               <div class="proj-top">
                 {#if proj.url}
-                  <a href={proj.url} target="_blank" rel="noopener" class="proj-title">{proj.title}</a>
+                  <a href={proj.url} target="_blank" rel="noopener" class="proj-title">{loc(proj.title)}</a>
                 {:else}
-                  <span class="proj-title">{proj.title}</span>
+                  <span class="proj-title">{loc(proj.title)}</span>
                 {/if}
                 <span class="status-badge status-{proj.status}">{proj.status}</span>
               </div>
-              {#if proj.description}<p class="proj-desc">{proj.description}</p>{/if}
+              {#if proj.description}<p class="proj-desc">{loc(proj.description)}</p>{/if}
             </div>
           {/each}
         </div>
@@ -809,7 +816,7 @@
       {#if profile.teaching.length > 0 || isOwnProfile}
         <div class="sidebar-card">
           <div class="section-header">
-            <h3>Teaching</h3>
+            <h3>{t('profile.teaching')}</h3>
             {#if isOwnProfile}
               <button class="edit-section-btn" onclick={() => { editTeach = JSON.parse(JSON.stringify(profile!.teaching)); editingTeach = true; }}>
                 {profile.teaching.length > 0 ? t('common.edit') : '+ Add'}
@@ -818,9 +825,9 @@
           </div>
           {#each profile.teaching.sort((a, b) => b.year - a.year) as te}
             <div class="teach-entry">
-              <strong>{te.course_name}</strong>
-              <span class="teach-meta">{te.role}{#if te.institution}, {te.institution}{/if}{#if te.year} ({te.year}){/if}</span>
-              {#if te.description}<p class="teach-desc">{te.description}</p>{/if}
+              <strong>{loc(te.course_name)}</strong>
+              <span class="teach-meta">{loc(te.role)}{#if te.institution}, {loc(te.institution)}{/if}{#if te.year} ({te.year}){/if}</span>
+              {#if te.description}<p class="teach-desc">{loc(te.description)}</p>{/if}
             </div>
           {/each}
         </div>
@@ -854,8 +861,8 @@
       <h3>Edit Publications</h3>
       {#each editPubs as pub_entry, i}
         <div class="modal-entry">
-          <input type="text" bind:value={pub_entry.title} placeholder="Title" />
-          <input type="text" bind:value={pub_entry.venue} placeholder="Venue (e.g. ICML 2025)" />
+          <input type="text" bind:value={pub_entry.title[getLocale()]} placeholder="Title" />
+          <input type="text" bind:value={pub_entry.venue[getLocale()]} placeholder="Venue (e.g. ICML 2025)" />
           <div class="modal-row">
             <input type="text" value={pub_entry.authors.join(', ')} oninput={(e) => { pub_entry.authors = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()); }} placeholder="Authors (comma separated)" />
             <input type="number" bind:value={pub_entry.year} placeholder="Year" class="year-input" />
@@ -867,7 +874,7 @@
           <button class="remove-entry" onclick={() => { editPubs = editPubs.filter((_, j) => j !== i); }}>Remove</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editPubs = [...editPubs, { title: '', authors: [], venue: '', year: new Date().getFullYear(), url: null, doi: null, abstract_text: null }]; }}>+ Add Publication</button>
+      <button class="add-entry" onclick={() => { editPubs = [...editPubs, { title: {}, authors: [], venue: {}, year: new Date().getFullYear(), url: null, doi: null, abstract_text: null }]; }}>+ Add Publication</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingPubs = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updatePublications(editPubs); profile!.publications = editPubs; editingPubs = false; }}>{t('common.save')}</button>
@@ -887,8 +894,8 @@
       <h3>Edit Projects</h3>
       {#each editProj as proj, i}
         <div class="modal-entry">
-          <input type="text" bind:value={proj.title} placeholder="Project name" />
-          <textarea bind:value={proj.description} placeholder="Description" rows="2"></textarea>
+          <input type="text" bind:value={proj.title[getLocale()]} placeholder="Project name" />
+          <textarea bind:value={proj.description[getLocale()]} placeholder="Description" rows="2"></textarea>
           <div class="modal-row">
             <input type="url" bind:value={proj.url} placeholder="URL" />
             <select bind:value={proj.status}>
@@ -900,7 +907,7 @@
           <button class="remove-entry" onclick={() => { editProj = editProj.filter((_, j) => j !== i); }}>Remove</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editProj = [...editProj, { title: '', description: '', url: null, status: 'active' }]; }}>+ Add Project</button>
+      <button class="add-entry" onclick={() => { editProj = [...editProj, { title: {}, description: {}, url: null, status: 'active' }]; }}>+ Add Project</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingProjects = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateProjects(editProj); profile!.projects = editProj; editingProjects = false; }}>{t('common.save')}</button>
@@ -920,16 +927,16 @@
       <h3>Edit Teaching</h3>
       {#each editTeach as te, i}
         <div class="modal-entry">
-          <input type="text" bind:value={te.course_name} placeholder="Course name" />
+          <input type="text" bind:value={te.course_name[getLocale()]} placeholder="Course name" />
           <div class="modal-row">
-            <input type="text" bind:value={te.role} placeholder="Role (e.g. Instructor, TA)" />
-            <input type="text" bind:value={te.institution} placeholder="Institution" />
+            <input type="text" bind:value={te.role[getLocale()]} placeholder="Role (e.g. Instructor, TA)" />
+            <input type="text" bind:value={te.institution[getLocale()]} placeholder="Institution" />
             <input type="number" bind:value={te.year} placeholder="Year" class="year-input" />
           </div>
           <button class="remove-entry" onclick={() => { editTeach = editTeach.filter((_, j) => j !== i); }}>Remove</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editTeach = [...editTeach, { course_name: '', role: '', institution: '', year: new Date().getFullYear(), description: null }]; }}>+ Add Course</button>
+      <button class="add-entry" onclick={() => { editTeach = [...editTeach, { course_name: {}, role: {}, institution: {}, year: new Date().getFullYear(), description: null }]; }}>+ Add Course</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingTeach = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateTeaching(editTeach); profile!.teaching = editTeach; editingTeach = false; }}>{t('common.save')}</button>

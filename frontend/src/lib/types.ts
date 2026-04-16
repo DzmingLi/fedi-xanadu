@@ -367,29 +367,32 @@ export interface EducationEntry {
   translations?: Record<string, EducationTranslation>;
 }
 
+/** Locale -> text map, e.g. {"en": "NightBoat", "zh": "夜舟"} */
+export type L = Record<string, string>;
+
 export interface PublicationEntry {
-  title: string;
+  title: L;
   authors: string[];
-  venue: string;
+  venue: L;
   year: number;
   url: string | null;
   doi: string | null;
-  abstract_text: string | null;
+  abstract_text: L | null;
 }
 
 export interface ProjectEntry {
-  title: string;
-  description: string;
+  title: L;
+  description: L;
   url: string | null;
   status: 'active' | 'completed' | 'archived';
 }
 
 export interface TeachingEntry {
-  course_name: string;
-  role: string;
-  institution: string;
+  course_name: L;
+  role: L;
+  institution: L;
   year: number;
-  description: string | null;
+  description: L | null;
 }
 
 export interface ProfileData {

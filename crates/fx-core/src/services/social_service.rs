@@ -61,27 +61,30 @@ pub struct EducationTranslation {
     pub major: Option<String>,
 }
 
+/// Locale -> text map. E.g. `{"en": "NightBoat", "zh": "夜舟"}`.
+pub type L = std::collections::HashMap<String, String>;
+
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct PublicationEntry {
-    pub title: String,
+    pub title: L,
     pub authors: Vec<String>,
     #[serde(default)]
-    pub venue: String,
+    pub venue: L,
     #[serde(default)]
     pub year: i32,
     pub url: Option<String>,
     pub doi: Option<String>,
     #[serde(default, rename = "abstract")]
-    pub abstract_text: Option<String>,
+    pub abstract_text: Option<L>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct ProjectEntry {
-    pub title: String,
+    pub title: L,
     #[serde(default)]
-    pub description: String,
+    pub description: L,
     pub url: Option<String>,
     #[serde(default = "default_active")]
     pub status: String,
@@ -92,14 +95,14 @@ fn default_active() -> String { "active".into() }
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct TeachingEntry {
-    pub course_name: String,
+    pub course_name: L,
     #[serde(default)]
-    pub role: String,
+    pub role: L,
     #[serde(default)]
-    pub institution: String,
+    pub institution: L,
     #[serde(default)]
     pub year: i32,
-    pub description: Option<String>,
+    pub description: Option<L>,
 }
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
