@@ -21,6 +21,7 @@
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
+  import SponsoredCard from '../components/SponsoredCard.svelte';
 
   let locale = $derived(getLocale());
   let feedMode = $state<'recommend' | 'following'>('recommend');
@@ -359,20 +360,23 @@
       <p class="meta"><a href="/new">{t('home.writeOne')}</a></p>
     </div>
   {:else}
-    {#each filteredFeed as item}
+    {#each filteredFeed as item, i}
       {#if item.type === 'article' && item.article}
         <PostCard
           article={item.article}
           articleTeaches={articleTeaches.get(item.article.at_uri) || []}
           articlePrereqs={articlePrereqs.get(item.article.at_uri) || []}
-         
+
         />
       {:else if item.type === 'series' && item.series}
         <PostCard
           series={item.series}
           articleCount={item.articleCount}
-         
+
         />
+      {/if}
+      {#if i === 2}
+        <SponsoredCard />
       {/if}
     {/each}
   {/if}
