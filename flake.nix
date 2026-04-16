@@ -281,9 +281,9 @@
         cargoVendorDir = craneLib.vendorCargoDeps {
           inherit src;
           outputHashes = {
-            "atproto-auth-0.1.0" = "sha256-1fu23HYuUDQLXZBqFnsuCEcojoWeqmtTfDgPpbFa0Zg=";
-            "fx-renderer-0.1.0" = "sha256-BA5UoUtPvAQh0BBD9bf5Yudy/245bpTlvIIm/91JYJ8=";
-            "pijul-knot-0.1.0" = "sha256-kV301kyoDvBZmlmRFFSNZZolNHOy6VX+ypbbXXv5YsM=";
+            "git+https://github.com/DzmingLi/atproto-auth.git#2a7ea6e41f68a34eebd0cbdf6c90462cc62cf4a2" = "sha256-1fu23HYuUDQLXZBqFnsuCEcojoWeqmtTfDgPpbFa0Zg=";
+            "git+https://github.com/DzmingLi/typst-render.git#3017aebba6f4ac96e935a0ff203b8522699c7899" = "sha256-BA5UoUtPvAQh0BBD9bf5Yudy/245bpTlvIIm/91JYJ8=";
+            "git+https://github.com/DzmingLi/pijul-knot.git#d86a9504b001b09f38db2063bc64cc1764f79baf" = "sha256-kV301kyoDvBZmlmRFFSNZZolNHOy6VX+ypbbXXv5YsM=";
           };
         };
 

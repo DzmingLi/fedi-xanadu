@@ -237,7 +237,9 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
     ).bind(id).fetch_all(pool).await?;
 
     let textbooks = sqlx::query_as::<_, CourseTextbookRow>(
-        "SELECT ct.book_id, b.title, b.authors, b.cover_url, ct.role, ct.sort_order \
+        "SELECT ct.book_id, b.title, b.authors, \
+         (SELECT e.cover_url FROM book_editions e WHERE e.book_id = b.id AND e.cover_url IS NOT NULL LIMIT 1) AS cover_url, \
+         ct.role, ct.sort_order \
          FROM course_textbooks ct JOIN books b ON b.id = ct.book_id \
          WHERE ct.course_id = $1 ORDER BY ct.sort_order",
     ).bind(id).fetch_all(pool).await?;
