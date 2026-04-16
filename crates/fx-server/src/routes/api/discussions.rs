@@ -130,7 +130,7 @@ pub async fn apply_discussion_change(
             }
         }
         let message = format!("Applied change from discussion {id}");
-        let _ = state.pijul.record(&target_node, &message, Some(&user.did));
+        let _ = state.pijul_record(target_node.clone(), message.clone(), Some(user.did.clone())).await;
         let hash = content_hash(&content);
         let _ = article_service::update_article_content_hash(&state.pool, &disc.discussion.target_uri, &hash).await;
         sync_meta_to_db(&state, &disc.discussion.target_uri, &repo_path).await;
@@ -187,7 +187,7 @@ pub async fn apply_all_discussion_changes(
             }
         }
         let message = format!("Applied all changes from discussion {id}");
-        let _ = state.pijul.record(&target_node, &message, Some(&user.did));
+        let _ = state.pijul_record(target_node.clone(), message.clone(), Some(user.did.clone())).await;
         let hash = content_hash(&content);
         let _ = article_service::update_article_content_hash(&state.pool, &disc.discussion.target_uri, &hash).await;
         sync_meta_to_db(&state, &disc.discussion.target_uri, &repo_path).await;

@@ -581,7 +581,7 @@ pub(super) async fn publish_article_content(
                 .flatten().map(|r| Ok(Some(r)))
                 .unwrap_or(Ok(None))
         } else {
-            state.pijul.record_series(&node_id, message, Some(did))
+            state.pijul_record_series(node_id.clone(), message.into(), Some(did.to_string())).await
         };
 
         match record_result {
@@ -634,7 +634,7 @@ pub(super) async fn publish_article_content(
                 .flatten().map(|r| Ok(Some(r)))
                 .unwrap_or(Ok(None))
         } else {
-            state.pijul.record(&node_id, message, Some(did))
+            state.pijul_record(node_id.clone(), message.into(), Some(did.to_string())).await
         };
 
         match record_result {
@@ -752,7 +752,7 @@ pub(super) async fn record_pijul_change(
                 .flatten().map(|r| Ok(Some(r)))
                 .unwrap_or(Ok(None))
         } else {
-            state.pijul.record_series(&series_node_id, message, Some(did))
+            state.pijul_record_series(series_node_id.clone(), message.into(), Some(did.to_string())).await
         };
 
         match record_result {
@@ -776,7 +776,7 @@ pub(super) async fn record_pijul_change(
                 .flatten().map(|r| Ok(Some(r)))
                 .unwrap_or(Ok(None))
         } else {
-            state.pijul.record(&node_id, message, Some(did))
+            state.pijul_record(node_id.clone(), message.into(), Some(did.to_string())).await
         };
 
         match record_result {
@@ -831,7 +831,7 @@ pub async fn create_article(
             tracing::warn!("failed to write meta.json: {e}");
         }
         let node_id = uri_to_node_id(&at_uri);
-        let _ = state.pijul.record(&node_id, "Add metadata", Some(&user.did));
+        let _ = state.pijul_record(node_id.clone(), "Add metadata".into(), Some(user.did.clone())).await;
     }
 
     let hash = content_hash(&input.content);
@@ -1229,7 +1229,7 @@ pub async fn upload_image(
         // Invalidate series cache
         let _ = tokio::fs::remove_file(series_repo.join("cache").join("series.cache")).await;
 
-        match state.pijul.record_series(series_node_id, &format!("Add image: {safe_name}"), Some(&user.did)) {
+        match state.pijul_record_series(series_node_id.clone(), format!("Add image: {safe_name}"), Some(user.did.clone())).await {
             Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
@@ -1248,7 +1248,7 @@ pub async fn upload_image(
 
         let _ = tokio::fs::remove_file(repo_path.join("content.html")).await;
 
-        match state.pijul.record(&node_id, &format!("Add image: {safe_name}"), Some(&user.did)) {
+        match state.pijul_record(node_id.clone(), format!("Add image: {safe_name}"), Some(user.did.clone())).await {
             Ok(Some((hash, new_state))) => {
                 let _ = version_service::record_version(
                     &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
@@ -1718,7 +1718,7 @@ pub async fn apply_change(
     if !has_conflicts {
         let message = format!("Applied change {} from {}", &input.change_hash[..12.min(input.change_hash.len())], &input.source_uri);
         // Record the apply as a pijul change.
-        if let Some((hash, _merkle)) = state.pijul.record(&target_node_id, &message, Some(&user.did))
+        if let Some((hash, _merkle)) = state.pijul_record(target_node_id.clone(), message.clone(), Some(user.did.clone())).await
             .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))? {
             version_service::record_version(
                 &state.pool, &input.target_uri, &hash, &user.did, &message, &content,

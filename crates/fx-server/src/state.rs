@@ -81,6 +81,25 @@ impl AppState {
     }
 }
 
+// ── Async wrappers for blocking pijul operations ───────────────────────
+
+impl AppState {
+    /// Record pijul changes on a blocking thread so we don't stall the async runtime.
+    pub async fn pijul_record(&self, node_id: String, message: String, author_did: Option<String>) -> anyhow::Result<Option<(String, String)>> {
+        let store = self.pijul.clone();
+        tokio::task::spawn_blocking(move || {
+            store.record(&node_id, &message, author_did.as_deref())
+        }).await?
+    }
+
+    pub async fn pijul_record_series(&self, node_id: String, message: String, author_did: Option<String>) -> anyhow::Result<Option<(String, String)>> {
+        let store = self.pijul.clone();
+        tokio::task::spawn_blocking(move || {
+            store.record_series(&node_id, &message, author_did.as_deref())
+        }).await?
+    }
+}
+
 /// PadProjectResolver for nightboat series — resolves series ID to pijul node_id.
 struct PgSeriesResolver {
     pool: PgPool,

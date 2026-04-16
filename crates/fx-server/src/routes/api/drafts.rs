@@ -138,7 +138,7 @@ pub async fn publish_draft(
             .flatten().map(|r| Ok(Some(r)))
             .unwrap_or(Ok(None))
     } else {
-        state.pijul.record(&node_id, "Initial publish", Some(&user.did))
+        state.pijul_record(node_id.clone(), "Initial publish".into(), Some(user.did.clone())).await
     };
 
     match record_result {

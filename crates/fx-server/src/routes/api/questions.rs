@@ -71,7 +71,7 @@ pub async fn create_question(
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
 
-    match state.pijul.record(&node_id, "Initial publish", Some(&user.did)) {
+    match state.pijul_record(node_id.clone(), "Initial publish".into(), Some(user.did.clone())).await {
         Ok(Some((hash, new_state))) => {
             let _ = version_service::record_version(
                 &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
@@ -141,7 +141,7 @@ pub async fn post_answer(
         let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
     }
 
-    match state.pijul.record(&node_id, "Initial publish", Some(&user.did)) {
+    match state.pijul_record(node_id.clone(), "Initial publish".into(), Some(user.did.clone())).await {
         Ok(Some((hash, new_state))) => {
             let _ = version_service::record_version(
                 &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,

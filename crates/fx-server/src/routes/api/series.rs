@@ -95,7 +95,7 @@ pub async fn create_series(
         if let Err(e) = fx_core::meta::write_series_meta_file(&repo_path, &meta) {
             tracing::warn!("failed to write series meta.json: {e}");
         }
-        let _ = state.pijul.record_series(node, "Add metadata", Some(&user.did));
+        let _ = state.pijul_record_series(node.clone(), "Add metadata".into(), Some(user.did.clone())).await;
     }
 
     // Register creator as owner collaborator
@@ -365,7 +365,7 @@ pub async fn upload_resource(
     }
 
     // Record the change
-    if let Err(e) = state.pijul.record(&node_id, "Upload shared resource", Some(&user.did)) {
+    if let Err(e) = state.pijul_record(node_id.clone(), "Upload shared resource".into(), Some(user.did.clone())).await {
         tracing::warn!("pijul record failed for series resource: {e}");
     }
 

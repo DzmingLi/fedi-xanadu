@@ -850,7 +850,7 @@ pub async fn admin_batch_publish(
     }
 
     // Phase 2: Single pijul record for all files
-    match state.pijul.record_series(&node_id, "Batch publish", Some(&did)) {
+    match state.pijul_record_series(node_id.clone(), "Batch publish".into(), Some(did.clone())).await {
         Ok(Some((hash, _new_state))) => {
             tracing::info!("batch recorded change {hash} for series {}", input.series_id);
         }
