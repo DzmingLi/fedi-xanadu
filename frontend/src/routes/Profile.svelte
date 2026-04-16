@@ -1023,6 +1023,7 @@
     display: flex;
     gap: 20px;
     align-items: flex-start;
+    margin-top: 16px;
     margin-bottom: 24px;
     padding-bottom: 20px;
     border-bottom: 1px solid var(--border);
