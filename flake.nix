@@ -4,13 +4,14 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    crane.url = "github:ipetkov/crane";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay }:
+  outputs = { self, nixpkgs, flake-utils, crane, rust-overlay }:
     let
       nixosModule = { config, lib, pkgs, ... }:
         let
@@ -264,12 +265,11 @@
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" ];
         };
+        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
-        # Strip non-Rust directories from the source tree.
-        # Cargo workspace resolution needs all Cargo.toml files, but not src/ of
-        # crates that aren't being compiled — so we can filter those for cache isolation.
-        stripNonRust = src: pkgs.lib.cleanSourceWith {
-          inherit src;
+        # Filter out non-Rust directories for build cache efficiency
+        src = pkgs.lib.cleanSourceWith {
+          src = pkgs.lib.cleanSource ./.;
           filter = path: _type:
             let rel = pkgs.lib.removePrefix (toString ./. + "/") path;
             in !(builtins.any (prefix: pkgs.lib.hasPrefix prefix rel) [
@@ -277,85 +277,60 @@
             ]);
         };
 
-        # Full Rust source (used as base for per-package filters below).
-        rustSrc = stripNonRust (pkgs.lib.cleanSource ./.);
-
-        # Server excludes the CLI src/ so CLI-only changes don't bust the server cache.
-        serverSrc = pkgs.lib.cleanSourceWith {
-          src = rustSrc;
-          filter = path: _type:
-            let rel = pkgs.lib.removePrefix (toString ./. + "/") path;
-            in !(pkgs.lib.hasPrefix "crates/fx-cli/src" rel);
+        # Vendor cargo deps (including git sources)
+        cargoVendorDir = craneLib.vendorCargoDeps {
+          inherit src;
+          outputHashes = {
+            "atproto-auth-0.1.0" = "sha256-1fu23HYuUDQLXZBqFnsuCEcojoWeqmtTfDgPpbFa0Zg=";
+            "fx-renderer-0.1.0" = "sha256-BA5UoUtPvAQh0BBD9bf5Yudy/245bpTlvIIm/91JYJ8=";
+            "pijul-knot-0.1.0" = "sha256-kV301kyoDvBZmlmRFFSNZZolNHOy6VX+ypbbXXv5YsM=";
+          };
         };
 
-        # Pre-built frontend assets as a standalone derivation (just a file copy).
-        # Only rebuilds when frontend/dist changes; Rust derivation is unaffected.
+        commonArgs = {
+          inherit src cargoVendorDir;
+          pname = "nightboat";
+          version = "0.1.0";
+          nativeBuildInputs = with pkgs; [ pkg-config ];
+          buildInputs = with pkgs; [ openssl postgresql ];
+          SQLX_OFFLINE = "true";
+          doCheck = false;
+        };
+
+        # Deps layer — only rebuilds when Cargo.lock changes
+        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+        # Server binary (reuses cached deps)
+        nightboat-bin = craneLib.buildPackage (commonArgs // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "--package fx-server";
+          postInstall = "rm -f $out/bin/fx 2>/dev/null || true";
+        });
+
+        # CLI binary (reuses same cached deps)
+        fx-cli = craneLib.buildPackage (commonArgs // {
+          inherit cargoArtifacts;
+          pname = "fx-cli";
+          cargoExtraArgs = "--package fx-cli";
+          postInstall = "rm -f $out/bin/nightboat 2>/dev/null || true";
+        });
+
         frontendDist = pkgs.runCommand "nightboat-frontend-dist" {} ''
           cp -r ${./frontend/dist} $out
         '';
 
-        # Migrations as a standalone derivation.
         migrationsDrv = pkgs.runCommand "nightboat-migrations" {} ''
           cp -r ${./migrations_pg} $out
         '';
-
-        # Rust binary only — no frontendDist dependency so frontend changes
-        # don't invalidate this derivation and trigger a full Rust recompile.
-        rustBinary = pkgs.rustPlatform.buildRustPackage {
-          pname = "nightboat-bin";
-          version = "0.1.0";
-          src = serverSrc;
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-            outputHashes = {
-              "atproto-auth-0.1.0" = "sha256-1fu23HYuUDQLXZBqFnsuCEcojoWeqmtTfDgPpbFa0Zg=";
-              "fx-renderer-0.1.0" = "sha256-BA5UoUtPvAQh0BBD9bf5Yudy/245bpTlvIIm/91JYJ8=";
-              "pijul-knot-0.1.0" = "sha256-kV301kyoDvBZmlmRFFSNZZolNHOy6VX+ypbbXXv5YsM=";
-            };
-          };
-          nativeBuildInputs = with pkgs; [ pkg-config ];
-          buildInputs = with pkgs; [ openssl postgresql ];
-          doCheck = false;
-          env.SQLX_OFFLINE = "true";
-          cargoBuildFlags = [ "--package" "fx-server" ];
-
-          postInstall = ''
-            rm -f $out/bin/fx-cli 2>/dev/null || true
-          '';
-        };
       in
       {
-        packages.fx-cli = pkgs.rustPlatform.buildRustPackage {
-          pname = "fx-cli";
-          version = "0.1.0";
-          src = rustSrc;
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-            outputHashes = {
-              "atproto-auth-0.1.0" = "sha256-7U7pGTRXfPnnBLsINTO5ZGgfssO4B53qbfBXpSirM7U=";
-              "fx-renderer-0.1.0" = "sha256-BA5UoUtPvAQh0BBD9bf5Yudy/245bpTlvIIm/91JYJ8=";
-              "pijul-knot-0.1.0" = "sha256-an28iYOXDVpGph8h+LlZD3UG3IVBuEpKYyhRBxnTDf0=";
-            };
-          };
-          nativeBuildInputs = with pkgs; [ pkg-config ];
-          buildInputs = with pkgs; [ openssl postgresql ];
-          doCheck = false;
-          env.SQLX_OFFLINE = "true";
-          cargoBuildFlags = [ "--package" "fx-cli" ];
+        packages.fx-cli = fx-cli;
 
-          postInstall = ''
-            rm -f $out/bin/nightboat
-          '';
-        };
-
-        # Final package: assemble binary + frontend + migrations.
-        # This runCommand is fast — no Rust compilation here.
-        # Frontend changes only rebuild frontendDist + this tiny assembly step.
         packages.default = pkgs.runCommand "nightboat" {
           nativeBuildInputs = [ pkgs.makeWrapper ];
         } ''
           mkdir -p $out/bin $out/share/nightboat/frontend
-          cp ${rustBinary}/bin/nightboat $out/bin/nightboat
+          cp ${nightboat-bin}/bin/nightboat $out/bin/nightboat
           chmod +x $out/bin/nightboat
           wrapProgram $out/bin/nightboat \
             --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.pandoc ]}
@@ -363,9 +338,8 @@
           cp -r ${migrationsDrv} $out/share/nightboat/migrations_pg
         '';
 
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            rustToolchain
+        devShells.default = craneLib.devShell {
+          packages = with pkgs; [
             pkg-config
             openssl
             postgresql
