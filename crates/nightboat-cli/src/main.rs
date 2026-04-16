@@ -1260,13 +1260,10 @@ async fn main() -> Result<()> {
                 translation_of: None,
                 restricted: None,
                 category: None,
-                book_id: None,
-                edition_id: None,
                 tags,
                 prereqs: vec![],
                 series_id: None,
-                paper: None,
-                experience: None,
+                metadata: None,
                 authors: vec![],
                 invites: invite,
             };
@@ -1314,17 +1311,17 @@ async fn main() -> Result<()> {
 
             let parsed_prereqs = parse_prereqs(&prereqs)?;
 
-            let paper_meta = if venue.is_some() || doi.is_some() || arxiv_id.is_some() || year.is_some() || accepted {
-                Some(fx_core::models::CreatePaperMetadata {
+            let cat_metadata = if venue.is_some() || doi.is_some() || arxiv_id.is_some() || (year.is_some() && category == "paper") || accepted {
+                Some(fx_core::models::CategoryMetadata::Paper(fx_core::models::CreatePaperMetadata {
                     venue, venue_type, year, doi, arxiv_id, accepted,
-                })
-            } else {
-                None
-            };
-
-            let exp_meta = if exp_kind.is_some() || target.is_some() || result.is_some() {
-                Some(fx_core::models::CreateExperienceMetadata {
+                }))
+            } else if exp_kind.is_some() || target.is_some() || result.is_some() {
+                Some(fx_core::models::CategoryMetadata::Experience(fx_core::models::CreateExperienceMetadata {
                     kind: exp_kind, target, year, result,
+                }))
+            } else if book_id.is_some() {
+                Some(fx_core::models::CategoryMetadata::Review {
+                    book_id, edition_id: None, course_id: None,
                 })
             } else {
                 None
@@ -1340,13 +1337,10 @@ async fn main() -> Result<()> {
                 translation_of: None,
                 restricted: None,
                 category: Some(category),
-                book_id,
-                edition_id: None,
                 tags,
                 prereqs: parsed_prereqs,
                 series_id: series.clone(),
-                paper: paper_meta,
-                experience: exp_meta,
+                metadata: cat_metadata,
                 authors: vec![],
                 invites: vec![],
             };

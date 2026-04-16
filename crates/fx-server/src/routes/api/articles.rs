@@ -677,6 +677,22 @@ pub(super) async fn publish_article_content(
     Ok(PublishResult { repo_path: loc.repo_path })
 }
 
+/// Save category-specific metadata for an article.
+async fn save_category_metadata(state: &AppState, at_uri: &str, input: &CreateArticle) {
+    match &input.metadata {
+        Some(CategoryMetadata::Paper(paper)) => {
+            let _ = article_service::upsert_paper_metadata(&state.pool, at_uri, paper).await;
+        }
+        Some(CategoryMetadata::Experience(exp)) => {
+            let _ = article_service::upsert_experience_metadata(&state.pool, at_uri, exp).await;
+        }
+        Some(CategoryMetadata::Review { .. }) => {
+            // Review metadata (book_id, edition_id) is stored in the articles table via CreateArticle
+        }
+        None => {}
+    }
+}
+
 /// Publish a sh.tangled.pijul.refUpdate record to the user's PDS.
 /// Best-effort: failures are logged but do not block the request.
 pub(super) async fn publish_pijul_ref_update(
@@ -878,12 +894,7 @@ pub async fn create_article(
     let _ = collaboration_service::register_article_owner(&state.pool, &at_uri, &user.did).await;
 
     // Save category-specific metadata
-    if let Some(ref paper) = input.paper {
-        let _ = article_service::upsert_paper_metadata(&state.pool, &at_uri, paper).await;
-    }
-    if let Some(ref exp) = input.experience {
-        let _ = article_service::upsert_experience_metadata(&state.pool, &at_uri, exp).await;
-    }
+    save_category_metadata(&state, &at_uri, &input).await;
 
     // Add creator as verified author (position 0) with PDS authorship record
     let authorship_record = serde_json::json!({
@@ -1046,12 +1057,7 @@ pub async fn create_article_multipart(
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
     let _ = collaboration_service::register_article_owner(&state.pool, &at_uri, &user.did).await;
 
-    if let Some(ref paper) = input.paper {
-        let _ = article_service::upsert_paper_metadata(&state.pool, &at_uri, paper).await;
-    }
-    if let Some(ref exp) = input.experience {
-        let _ = article_service::upsert_experience_metadata(&state.pool, &at_uri, exp).await;
-    }
+    save_category_metadata(&state, &at_uri, &input).await;
 
     let authorship_record = serde_json::json!({
         "$type": fx_atproto::lexicon::AUTHORSHIP,

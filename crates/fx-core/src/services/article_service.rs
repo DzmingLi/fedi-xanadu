@@ -411,8 +411,8 @@ pub async fn create_article(
     .bind(question_uri)
     .bind(restricted)
     .bind(category)
-    .bind(input.book_id.as_deref())
-    .bind(input.edition_id.as_deref())
+    .bind(input.review_book_id())
+    .bind(input.review_edition_id())
     .execute(&mut *tx)
     .await?;
 

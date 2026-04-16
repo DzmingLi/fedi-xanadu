@@ -881,11 +881,8 @@ pub async fn admin_batch_publish(
             series_id: Some(input.series_id.clone()),
             translation_of: None,
             category: Some("lecture".to_string()),
-            book_id: None,
-            edition_id: None,
             restricted: None,
-            paper: None,
-            experience: None,
+            metadata: None,
             authors: vec![],
             invites: vec![],
         };

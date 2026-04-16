@@ -77,24 +77,53 @@ pub struct CreateArticle {
     pub translation_of: Option<String>,
     pub restricted: Option<bool>,
     pub category: Option<String>,
-    pub book_id: Option<String>,
-    pub edition_id: Option<String>,
     pub tags: Vec<String>,
     pub prereqs: Vec<ArticlePrereq>,
     /// If set, the article belongs to this series and its source is stored in the series repo.
     pub series_id: Option<String>,
-    /// Paper metadata (venue, DOI, arXiv, etc.) — only for category=paper.
-    #[serde(default)]
-    pub paper: Option<CreatePaperMetadata>,
-    /// Experience metadata (target, result, etc.) — only for category=experience.
-    #[serde(default)]
-    pub experience: Option<CreateExperienceMetadata>,
     /// Co-author DIDs (the creator is always included automatically).
     #[serde(default)]
     pub authors: Vec<String>,
     /// Handles to invite to answer this question (only used when kind=Question).
     #[serde(default)]
     pub invites: Vec<String>,
+    /// Category-specific metadata.
+    #[serde(default)]
+    pub metadata: Option<CategoryMetadata>,
+}
+
+impl CreateArticle {
+    /// Extract book_id from Review metadata.
+    pub fn review_book_id(&self) -> Option<&str> {
+        match &self.metadata {
+            Some(CategoryMetadata::Review { book_id, .. }) => book_id.as_deref(),
+            _ => None,
+        }
+    }
+    /// Extract edition_id from Review metadata.
+    pub fn review_edition_id(&self) -> Option<&str> {
+        match &self.metadata {
+            Some(CategoryMetadata::Review { edition_id, .. }) => edition_id.as_deref(),
+            _ => None,
+        }
+    }
+}
+
+/// Category-specific metadata — tagged union, only one variant per article.
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+#[serde(tag = "type")]
+pub enum CategoryMetadata {
+    #[serde(rename = "paper")]
+    Paper(CreatePaperMetadata),
+    #[serde(rename = "review")]
+    Review {
+        book_id: Option<String>,
+        edition_id: Option<String>,
+        course_id: Option<String>,
+    },
+    #[serde(rename = "experience")]
+    Experience(CreateExperienceMetadata),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
@@ -109,20 +138,20 @@ pub struct CreatePaperMetadata {
     pub accepted: bool,
 }
 
-/// Experience post metadata (postgrad, interview, competition, etc.)
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
-pub struct ExperienceMetadata {
-    pub article_uri: String,
+pub struct CreateExperienceMetadata {
     pub kind: Option<String>,
     pub target: Option<String>,
     pub year: Option<i16>,
     pub result: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+/// Experience post metadata (DB row).
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
-pub struct CreateExperienceMetadata {
+pub struct ExperienceMetadata {
+    pub article_uri: String,
     pub kind: Option<String>,
     pub target: Option<String>,
     pub year: Option<i16>,
