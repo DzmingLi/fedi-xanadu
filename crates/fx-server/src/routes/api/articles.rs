@@ -130,64 +130,29 @@ async fn resolve_article_content(
         return Ok(ArticleContent { source, html });
     }
 
-    // Check if article is in a series with a pijul repo
-    let series_info = get_series_pijul_info(state, uri).await;
+    // Resolve article location (unified for series and standalone)
+    let loc = resolve_location(state, uri, format).await
+        .ok_or(AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
 
-    let (source, repo, src_path, html_path) = if let Some((series_node_id, chapter_id)) = &series_info {
-        let series_repo = state.pijul.series_repo_path(series_node_id);
-        let src = fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, src_ext);
-        let html = series_repo.join("cache").join(format!("{chapter_id}.html"));
-        let source = tokio::fs::read_to_string(&src).await
-            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
-        (source, series_repo, src, html)
-    } else {
-        let node_id = uri_to_node_id(uri);
-        let repo = state.pijul.repo_path(&node_id);
-        let src = repo.join(format!("content.{src_ext}"));
-        let html = repo.join("content.html");
-        let source = match tokio::fs::read_to_string(&src).await {
-            Ok(s) => s,
-            Err(_) => {
-                tokio::fs::read_to_string(repo.join("content.typ"))
-                    .await
-                    .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?
-            }
-        };
-        (source, repo, src, html)
-    };
+    let source = tokio::fs::read_to_string(&loc.content_path).await
+        .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
 
     let html = if format == "html" {
         source.clone()
     } else if let Some(series_html) = try_series_render(state, uri, format).await {
         series_html
-    } else if is_cached_fresh(&html_path, &src_path).await {
-        tokio::fs::read_to_string(&html_path).await?
+    } else if is_cached_fresh(&loc.cache_path, &loc.content_path).await {
+        tokio::fs::read_to_string(&loc.cache_path).await?
     } else {
-        let rendered = render_content(format, &source, &repo)?;
-        let _ = tokio::fs::write(&html_path, &rendered).await;
+        let rendered = render_content(format, &source, &loc.repo_path)?;
+        if let Some(parent) = loc.cache_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        let _ = tokio::fs::write(&loc.cache_path, &rendered).await;
         rendered
     };
 
-    // Rewrite relative resource URLs
-    let html = if let Some((_, chapter_id)) = &series_info {
-        // Series: rewrite to series resource endpoint
-        let series_id: Option<String> = sqlx::query_scalar(
-            "SELECT sa.series_id FROM series_articles sa WHERE sa.article_uri = $1 LIMIT 1"
-        ).bind(uri).fetch_optional(&state.pool).await.ok().flatten();
-
-        if let Some(sid) = series_id {
-            let chapter_dir = fx_core::meta::resolve_chapter_dir(&repo, chapter_id, src_ext);
-            let rel_dir = chapter_dir.strip_prefix(&repo).unwrap_or(&chapter_dir).to_string_lossy();
-            let base_url = format!("/api/series/{sid}/res/{}", rel_dir.trim_start_matches('/'));
-            rewrite_relative_urls(&html, &base_url)
-        } else {
-            html
-        }
-    } else {
-        // Standalone: rewrite to article image endpoint
-        let encoded_uri = urlencoding::encode(uri);
-        rewrite_relative_urls_with_query(&html, "/api/articles/image", &encoded_uri)
-    };
+    let html = loc.rewrite_html_urls(&html, uri);
 
     Ok(ArticleContent { source, html })
 }
@@ -221,15 +186,64 @@ fn rewrite_relative_urls_with_query(html: &str, endpoint: &str, encoded_uri: &st
     }).to_string()
 }
 
-/// Check if an article is in a series with a pijul repo.
-/// Returns Some((series_pijul_node_id, chapter_id)) if so.
-async fn get_series_pijul_info(
-    state: &crate::state::AppState,
+/// Resolved location of an article's content in the pijul store.
+/// Eliminates series-vs-standalone branching throughout the codebase.
+pub(super) struct ArticleLocation {
+    /// Pijul repo node_id (used for pijul operations).
+    pub node_id: String,
+    /// Filesystem path to the pijul repo root.
+    pub repo_path: std::path::PathBuf,
+    /// Path to the source file within the repo.
+    pub content_path: std::path::PathBuf,
+    /// Path to the cached HTML file.
+    pub cache_path: std::path::PathBuf,
+    /// Series ID, if this article belongs to a series.
+    pub series_id: Option<String>,
+    /// Chapter ID within the series (TID from the article URI).
+    pub chapter_id: Option<String>,
+}
+
+impl ArticleLocation {
+    /// Is this a series chapter?
+    pub fn is_series(&self) -> bool { self.series_id.is_some() }
+
+    /// Build the resource URL for rewriting relative paths in HTML.
+    pub fn rewrite_html_urls(&self, html: &str, article_uri: &str) -> String {
+        if let Some(ref sid) = self.series_id {
+            let chapter_dir = self.content_path.parent().unwrap_or(&self.repo_path);
+            let rel_dir = chapter_dir.strip_prefix(&self.repo_path)
+                .unwrap_or(chapter_dir).to_string_lossy();
+            let base_url = format!("/api/series/{sid}/res/{}", rel_dir.trim_start_matches('/'));
+            rewrite_relative_urls(html, &base_url)
+        } else {
+            let encoded_uri = urlencoding::encode(article_uri);
+            rewrite_relative_urls_with_query(html, "/api/articles/image", &encoded_uri)
+        }
+    }
+
+    /// Invalidate the HTML cache for this article.
+    pub async fn invalidate_cache(&self) {
+        let _ = tokio::fs::remove_file(&self.cache_path).await;
+        if self.is_series() {
+            // Also invalidate series-wide cache
+            let _ = tokio::fs::remove_file(self.repo_path.join("cache").join("series.cache")).await;
+        }
+    }
+}
+
+/// Resolve the pijul location for an article (series chapter or standalone).
+/// This is the single decision point that replaces all `get_series_pijul_info` + branching.
+pub(super) async fn resolve_location(
+    state: &AppState,
     article_uri: &str,
-) -> Option<(String, String)> {
-    // Find the series this article belongs to, and its pijul_node_id
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT s.pijul_node_id FROM series s \
+    format: &str,
+) -> Option<ArticleLocation> {
+    let src_ext = fx_renderer::format_extension(format);
+    let chapter_id = article_uri.rsplit('/').next()?;
+
+    // Check if article belongs to a series with a pijul repo
+    let series_row: Option<(String, String)> = sqlx::query_as(
+        "SELECT s.pijul_node_id, s.id FROM series s \
          JOIN series_articles sa ON s.id = sa.series_id \
          WHERE sa.article_uri = $1 AND s.pijul_node_id IS NOT NULL \
          LIMIT 1",
@@ -239,23 +253,53 @@ async fn get_series_pijul_info(
     .await
     .ok()?;
 
-    let pijul_node_id = row?.0;
+    if let Some((pijul_node_id, series_id)) = series_row {
+        let repo_path = state.pijul.repo_path(&pijul_node_id);
+        let content_path = fx_core::meta::resolve_chapter_path(&repo_path, chapter_id, src_ext);
 
-    // Extract chapter ID (TID) from article URI: at://did/collection/TID → TID
-    let chapter_id = article_uri.rsplit('/').next()?;
-
-    // Check the chapter file exists in the series repo (manifest or legacy)
-    let series_repo = state.pijul.series_repo_path(&pijul_node_id);
-
-    // Try manifest first, then legacy chapters/ dir
-    for ext in ["md", "typ", "html"] {
-        let path = fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, ext);
-        if path.exists() {
-            return Some((pijul_node_id, chapter_id.to_string()));
+        // Verify chapter exists
+        if !content_path.exists() {
+            // Try other extensions as fallback
+            let found = ["md", "typ", "html"].iter().any(|ext| {
+                fx_core::meta::resolve_chapter_path(&repo_path, chapter_id, ext).exists()
+            });
+            if !found { return None; }
         }
-    }
 
-    None
+        let cache_path = repo_path.join("cache").join(format!("{chapter_id}.html"));
+        Some(ArticleLocation {
+            node_id: pijul_node_id,
+            repo_path,
+            content_path,
+            cache_path,
+            series_id: Some(series_id),
+            chapter_id: Some(chapter_id.to_string()),
+        })
+    } else {
+        // Standalone article
+        let node_id = uri_to_node_id(article_uri);
+        let repo_path = state.pijul.repo_path(&node_id);
+        let content_path = repo_path.join(format!("content.{src_ext}"));
+        let cache_path = repo_path.join("content.html");
+        Some(ArticleLocation {
+            node_id,
+            repo_path,
+            content_path,
+            cache_path,
+            series_id: None,
+            chapter_id: None,
+        })
+    }
+}
+
+/// Legacy wrapper — returns the old (node_id, chapter_id) tuple for code not yet migrated.
+async fn get_series_pijul_info(
+    state: &crate::state::AppState,
+    article_uri: &str,
+) -> Option<(String, String)> {
+    let loc = resolve_location(state, article_uri, "typst").await?;
+    loc.series_id.as_ref()?; // Only return Some for series
+    Some((loc.node_id, loc.chapter_id.unwrap_or_default()))
 }
 
 /// Try rendering this article with series-aware cross-chapter references.
@@ -1413,53 +1457,40 @@ pub async fn upload_image(
         return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
     }
 
-    // Determine target repo: series repo or independent article repo
-    let series_info = get_series_pijul_info(&state, &uri).await;
-
-    if let Some((series_node_id, _chapter_id)) = &series_info {
-        // Series article: write resource to series repo
-        let series_repo = state.pijul.series_repo_path(series_node_id);
-        let dest = series_repo.join(&safe_name);
-        if let Some(parent) = dest.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::write(&dest, &data).await?;
-
-        // Invalidate series cache
-        let _ = tokio::fs::remove_file(series_repo.join("cache").join("series.cache")).await;
-
-        match state.pijul_record_series(series_node_id.clone(), format!("Add image: {safe_name}"), Some(user.did.clone())).await {
-            Ok(Some((hash, new_state))) => {
-                let _ = version_service::record_version(
-                    &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
-                ).await;
-                publish_pijul_ref_update(&state, &user.token, &uri, &user.did, &hash, &new_state).await;
+    // Resolve article location (unified for series and standalone)
+    let loc = resolve_location(&state, &uri, "typst").await
+        .unwrap_or_else(|| {
+            // Fallback for standalone articles without existing repo
+            let node_id = uri_to_node_id(&uri);
+            let repo_path = state.pijul.repo_path(&node_id);
+            ArticleLocation {
+                node_id, repo_path: repo_path.clone(),
+                content_path: repo_path.join("content.typ"),
+                cache_path: repo_path.join("content.html"),
+                series_id: None, chapter_id: None,
             }
-            Ok(None) => {}
-            Err(e) => tracing::warn!("pijul record failed for series {series_node_id}: {e}"),
-        }
-    } else {
-        // Independent article: write to own repo
-        let node_id = uri_to_node_id(&uri);
-        let repo_path = state.pijul.repo_path(&node_id);
-        let dest = repo_path.join(&safe_name);
-        if let Some(parent) = dest.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::write(&dest, &data).await?;
+        });
 
-        let _ = tokio::fs::remove_file(repo_path.join("content.html")).await;
+    // Write resource to repo
+    let dest = loc.repo_path.join(&safe_name);
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(&dest, &data).await?;
 
-        match state.pijul_record(node_id.clone(), format!("Add image: {safe_name}"), Some(user.did.clone())).await {
-            Ok(Some((hash, new_state))) => {
-                let _ = version_service::record_version(
-                    &state.pool, &uri, &hash, &user.did, &format!("Add image: {safe_name}"), "",
-                ).await;
-                publish_pijul_ref_update(&state, &user.token, &uri, &user.did, &hash, &new_state).await;
-            }
-            Ok(None) => {}
-            Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
+    // Invalidate cache
+    loc.invalidate_cache().await;
+
+    // Record pijul change
+    match state.pijul_record(loc.node_id.clone(), format!("Add resource: {safe_name}"), Some(user.did.clone())).await {
+        Ok(Some((hash, new_state))) => {
+            let _ = version_service::record_version(
+                &state.pool, &uri, &hash, &user.did, &format!("Add resource: {safe_name}"), "",
+            ).await;
+            publish_pijul_ref_update(&state, &user.token, &uri, &user.did, &hash, &new_state).await;
         }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("pijul record failed for {}: {e}", loc.node_id),
     }
 
     Ok(Json(ImageUploadResponse { filename: safe_name }))
