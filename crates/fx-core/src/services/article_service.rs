@@ -67,7 +67,7 @@ pub async fn list_articles(pool: &PgPool, mode: InstanceMode, limit: i64, offset
 
 pub async fn get_questions_by_book(pool: &PgPool, mode: InstanceMode, book_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
     let rows = sqlx::query_as::<_, Article>(&format!(
-        "{} AND a.kind = 'question' AND a.book_id = $1 ORDER BY a.vote_score DESC, a.created_at DESC LIMIT $2", visible(mode)
+        "{} AND a.kind = 'question' AND a.book_id = $1 ORDER BY vote_score DESC, a.created_at DESC LIMIT $2", visible(mode)
     ))
     .bind(book_id)
     .bind(limit)
@@ -166,7 +166,7 @@ pub async fn get_related_questions(pool: &PgPool, mode: InstanceMode, uri: &str,
             SELECT ct2.content_uri FROM content_teaches ct1 \
             JOIN content_teaches ct2 ON ct1.tag_id = ct2.tag_id \
             WHERE ct1.content_uri = $1 AND ct2.content_uri != $1\
-         ) ORDER BY a.vote_score DESC, a.created_at DESC LIMIT $2",
+         ) ORDER BY vote_score DESC, a.created_at DESC LIMIT $2",
         visible(mode)
     ))
     .bind(uri)
