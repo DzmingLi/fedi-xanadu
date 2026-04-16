@@ -640,6 +640,7 @@ export default {
   'course.post': '发布',
   'course.reply': '回复',
   'course.noDiscussions': '暂无讨论。',
+  'course.allSessions': '全部',
   'courses.title': '课程',
   'courses.create': '创建课程',
   'courses.empty': '暂无课程。',

@@ -16,6 +16,7 @@ use super::UriQuery;
 #[derive(serde::Deserialize)]
 pub struct ListCommentsQuery {
     pub uri: String,
+    pub section_ref: Option<String>,
     pub limit: Option<i64>,
 }
 
@@ -24,7 +25,7 @@ pub async fn list_comments(
     Query(q): Query<ListCommentsQuery>,
 ) -> ApiResult<Json<Vec<Comment>>> {
     let limit = q.limit.unwrap_or(200).clamp(1, 1000);
-    let comments = comment_service::list_comments(&state.pool, &q.uri, limit).await?;
+    let comments = comment_service::list_comments(&state.pool, &q.uri, q.section_ref.as_deref(), limit).await?;
     Ok(Json(comments))
 }
 
@@ -34,6 +35,7 @@ pub struct CreateComment {
     pub body: String,
     pub parent_id: Option<String>,
     pub quote_text: Option<String>,
+    pub section_ref: Option<String>,
 }
 
 pub async fn create_comment(
@@ -57,6 +59,7 @@ pub async fn create_comment(
         &input.body,
         input.parent_id.as_deref(),
         input.quote_text.as_deref(),
+        input.section_ref.as_deref(),
     )
     .await?;
 

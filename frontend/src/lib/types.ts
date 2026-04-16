@@ -431,6 +431,7 @@ export interface Comment {
   parent_id: string | null;
   body: string;
   quote_text: string | null;
+  section_ref: string | null;
   vote_score: number;
   created_at: string;
   updated_at: string;

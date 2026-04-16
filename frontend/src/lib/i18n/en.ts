@@ -643,6 +643,7 @@ export default {
   'course.post': 'Post',
   'course.reply': 'Reply',
   'course.noDiscussions': 'No discussions yet.',
+  'course.allSessions': 'All',
   'courses.title': 'Courses',
   'courses.create': 'New Course',
   'courses.empty': 'No courses yet.',

@@ -23,6 +23,7 @@
   let newComment = $state('');
   let replyTo = $state<string | null>(null);
   let replyText = $state('');
+  let selectedSection = $state<string | null>(null);
 
   $effect(() => {
     if (!id) return;
@@ -39,7 +40,7 @@
       .finally(() => { loading = false; });
 
     // Load comments
-    listComments(`course:${id}`).then(c => { comments = c; }).catch(() => {});
+    loadComments();
   });
 
   let syllabusHtml = $derived(detail?.syllabus ? marked.parse(detail.syllabus) as string : '');
@@ -55,16 +56,25 @@
     ratingCount = stats.rating_count;
   }
 
+  async function loadComments() {
+    comments = await listComments(`course:${id}`, selectedSection ?? undefined).catch(() => []);
+  }
+
+  async function selectSection(ref: string | null) {
+    selectedSection = ref;
+    await loadComments();
+  }
+
   async function postComment() {
     if (!newComment.trim()) return;
-    const c = await createComment(`course:${id}`, newComment.trim());
+    const c = await createComment(`course:${id}`, newComment.trim(), undefined, undefined, selectedSection ?? undefined);
     comments = [c, ...comments];
     newComment = '';
   }
 
   async function postReply(parentId: string) {
     if (!replyText.trim()) return;
-    const c = await createComment(`course:${id}`, replyText.trim(), parentId);
+    const c = await createComment(`course:${id}`, replyText.trim(), parentId, undefined, selectedSection ?? undefined);
     comments = [c, ...comments];
     replyText = '';
     replyTo = null;
@@ -78,6 +88,7 @@
   let hasReadings = $derived(detail?.sessions.some(s => s.readings) ?? false);
   let hasVideo = $derived(detail?.sessions.some(s => s.video_url || s.notes_url) ?? false);
   let hasHw = $derived(detail?.sessions.some(s => s.assignment_url || s.discussion_url) ?? false);
+  let colCount = $derived(2 + (hasReadings ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0));
 </script>
 
 {#if loading}
@@ -213,7 +224,6 @@
           <section class="schedule">
             <h2>{t('course.calendar')}</h2>
             <table class="schedule-table">
-              {@const colCount = 2 + (hasReadings ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0)}
               <thead>
                 <tr>
                   <th>#</th>
@@ -373,6 +383,17 @@
     <!-- Q&A Discussion -->
     <section class="qa-section">
       <h2>{t('course.qa')}</h2>
+
+      <!-- Section filter -->
+      <div class="section-filter">
+        <button class="filter-btn" class:active={!selectedSection} onclick={() => selectSection(null)}>{t('course.allSessions')}</button>
+        {#each detail.sessions as s}
+          <button class="filter-btn" class:active={selectedSection === s.id} onclick={() => selectSection(s.id)}>
+            {s.sort_order}. {s.topic || ''}
+          </button>
+        {/each}
+      </div>
+
       {#if getAuth()}
         <div class="comment-form">
           <textarea bind:value={newComment} placeholder={t('course.askQuestion')} rows="3"></textarea>
@@ -523,6 +544,10 @@
   /* Q&A */
   .qa-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
   .qa-section h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.3rem; margin: 0 0 16px; }
+  .section-filter { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; max-height: 80px; overflow-y: auto; }
+  .filter-btn { font-size: 11px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 3px; background: none; color: var(--text-secondary); cursor: pointer; white-space: nowrap; }
+  .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
   .comment-form { margin-bottom: 20px; }
   .comment-form textarea { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; background: var(--bg-page); color: var(--text-primary); }
   .comment-form textarea:focus { outline: none; border-color: var(--accent); }

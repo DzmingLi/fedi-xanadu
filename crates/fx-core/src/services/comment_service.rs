@@ -6,6 +6,7 @@ use crate::Error;
 
 const COMMENT_SELECT: &str = "\
     SELECT c.id, c.content_uri, c.did, p.handle AS author_handle, c.parent_id, c.body, c.quote_text, \
+    c.section_ref, \
     COALESCE((SELECT SUM(value) FROM comment_votes WHERE comment_id = c.id), 0) AS vote_score, \
     c.created_at, c.updated_at \
     FROM comments c LEFT JOIN profiles p ON c.did = p.did";
@@ -17,14 +18,25 @@ pub struct MyCommentVote {
     pub value: i32,
 }
 
-pub async fn list_comments(pool: &PgPool, content_uri: &str, limit: i64) -> Result<Vec<Comment>> {
-    let comments = sqlx::query_as::<_, Comment>(
-        &format!("{COMMENT_SELECT} WHERE c.content_uri = $1 ORDER BY c.created_at ASC LIMIT $2"),
-    )
-    .bind(content_uri)
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
+pub async fn list_comments(pool: &PgPool, content_uri: &str, section_ref: Option<&str>, limit: i64) -> Result<Vec<Comment>> {
+    let comments = if let Some(sec) = section_ref {
+        sqlx::query_as::<_, Comment>(
+            &format!("{COMMENT_SELECT} WHERE c.content_uri = $1 AND c.section_ref = $2 ORDER BY c.created_at ASC LIMIT $3"),
+        )
+        .bind(content_uri)
+        .bind(sec)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, Comment>(
+            &format!("{COMMENT_SELECT} WHERE c.content_uri = $1 ORDER BY c.created_at ASC LIMIT $2"),
+        )
+        .bind(content_uri)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?
+    };
     Ok(comments)
 }
 
@@ -36,9 +48,10 @@ pub async fn create_comment(
     body: &str,
     parent_id: Option<&str>,
     quote_text: Option<&str>,
+    section_ref: Option<&str>,
 ) -> Result<Comment> {
     sqlx::query(
-        "INSERT INTO comments (id, content_uri, did, body, parent_id, quote_text) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO comments (id, content_uri, did, body, parent_id, quote_text, section_ref) VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(id)
     .bind(content_uri)
@@ -46,6 +59,7 @@ pub async fn create_comment(
     .bind(body)
     .bind(parent_id)
     .bind(quote_text)
+    .bind(section_ref)
     .execute(pool)
     .await?;
 

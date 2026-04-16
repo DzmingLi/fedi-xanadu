@@ -437,9 +437,13 @@ export async function uploadImage(articleUri: string, file: File): Promise<{ fil
 }
 
 // Comments
-export const listComments = (uri: string) => get<Comment[]>(`/comments?uri=${encodeURIComponent(uri)}`);
-export const createComment = (content_uri: string, body: string, parent_id?: string, quote_text?: string) =>
-  post<Comment>('/comments', { content_uri, body, parent_id, quote_text });
+export const listComments = (uri: string, section_ref?: string) => {
+  let url = `/comments?uri=${encodeURIComponent(uri)}`;
+  if (section_ref) url += `&section_ref=${encodeURIComponent(section_ref)}`;
+  return get<Comment[]>(url);
+};
+export const createComment = (content_uri: string, body: string, parent_id?: string, quote_text?: string, section_ref?: string) =>
+  post<Comment>('/comments', { content_uri, body, parent_id, quote_text, section_ref });
 export const updateComment = (id: string, body: string) =>
   put<Comment>(`/comments/${encodeURIComponent(id)}`, { body });
 export const deleteComment = (id: string) =>
