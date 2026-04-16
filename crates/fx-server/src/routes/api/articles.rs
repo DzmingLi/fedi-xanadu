@@ -624,8 +624,12 @@ pub(super) async fn publish_article_content(
             if knot_url.is_some() {
                 let _ = tokio::fs::write(repo_path.join(format!("content.{src_ext}")), content).await;
             }
-            let rendered = render_content(format.as_str(), content, &repo_path)?;
-            let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
+            // Render is best-effort: may fail if resources (images, bib) haven't been uploaded yet.
+            // Content will be re-rendered on next access or after resource upload.
+            match render_content(format.as_str(), content, &repo_path) {
+                Ok(rendered) => { let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await; }
+                Err(e) => tracing::warn!("initial render skipped (resources may be pending): {e}"),
+            }
         }
 
         let record_result = if let Some(ref knot) = knot_url {
