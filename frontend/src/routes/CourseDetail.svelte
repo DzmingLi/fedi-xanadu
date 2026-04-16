@@ -84,12 +84,17 @@
   let topComments = $derived(comments.filter(c => !c.parent_id));
   let replies = $derived((parentId: string) => comments.filter(c => c.parent_id === parentId));
 
-  // Detect which columns have any data
+  // Detect which resource types exist across all sessions
   let hasReadings = $derived(detail?.sessions.some(s => s.readings) ?? false);
-  let hasVideo = $derived(detail?.sessions.some(s => s.video_url) ?? false);
-  let hasNotes = $derived(detail?.sessions.some(s => s.notes_url) ?? false);
-  let hasHw = $derived(detail?.sessions.some(s => s.assignment_url || s.discussion_url) ?? false);
+  let hasVideo = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'video')) ?? false);
+  let hasNotes = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'notes')) ?? false);
+  let hasHw = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'hw' || r.type === 'discussion')) ?? false);
   let colCount = $derived(2 + (hasReadings ? 1 : 0) + (hasVideo ? 1 : 0) + (hasNotes ? 1 : 0) + (hasHw ? 1 : 0));
+
+  // Helper to get resources by type
+  function getResources(session: import('./lib/types').CourseSession, type: string) {
+    return session.resources.filter(r => r.type === type);
+  }
 </script>
 
 {#if loading}
@@ -237,7 +242,7 @@
               </thead>
               <tbody>
                 {#each detail.sessions as s}
-                  {@const isExam = !s.readings && !s.video_url && !s.notes_url && !s.assignment_url && !s.discussion_url}
+                  {@const isExam = !s.readings && s.resources.length === 0}
                   <tr class:session-exam={isExam}>
                     <td class="session-num">{s.sort_order}</td>
                     {#if isExam}
@@ -268,26 +273,26 @@
                       {/if}
                       {#if hasVideo}
                         <td class="session-video">
-                          {#if s.video_url}
-                            <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {t('course.video')}</a>
-                          {/if}
+                          {#each getResources(s, 'video') as r}
+                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {r.label}</a>
+                          {/each}
                         </td>
                       {/if}
                       {#if hasNotes}
                         <td class="session-notes">
-                          {#if s.notes_url}
-                            <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {t('course.notes')}</a>
-                          {/if}
+                          {#each getResources(s, 'notes') as r}
+                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {r.label}</a>
+                          {/each}
                         </td>
                       {/if}
                       {#if hasHw}
                         <td class="session-hw">
-                          {#if s.assignment_url}
-                            <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {s.assignment_label || t('course.hw')}</a>
-                          {/if}
-                          {#if s.discussion_url}
-                            <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {s.discussion_label || t('course.discussion')}</a>
-                          {/if}
+                          {#each getResources(s, 'hw') as r}
+                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {r.label}</a>
+                          {/each}
+                          {#each getResources(s, 'discussion') as r}
+                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {r.label}</a>
+                          {/each}
                         </td>
                       {/if}
                     {/if}

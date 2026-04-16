@@ -108,6 +108,13 @@ pub struct CoursePrereqRow {
     pub institution: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionResource {
+    pub r#type: String,
+    pub url: String,
+    pub label: String,
+}
+
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct CourseSessionRow {
     pub id: String,
@@ -116,12 +123,7 @@ pub struct CourseSessionRow {
     pub topic: Option<String>,
     pub date: Option<String>,
     pub readings: Option<String>,
-    pub video_url: Option<String>,
-    pub notes_url: Option<String>,
-    pub assignment_url: Option<String>,
-    pub assignment_label: Option<String>,
-    pub discussion_url: Option<String>,
-    pub discussion_label: Option<String>,
+    pub resources: sqlx::types::Json<Vec<SessionResource>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -207,8 +209,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
 
     // Fetch sessions with their tags and prereqs
     let session_rows = sqlx::query_as::<_, CourseSessionRow>(
-        "SELECT id, course_id, sort_order, topic, date, readings, video_url, notes_url, \
-         assignment_url, assignment_label, discussion_url, discussion_label \
+        "SELECT id, course_id, sort_order, topic, date, readings, resources \
          FROM course_sessions WHERE course_id = $1 ORDER BY sort_order",
     ).bind(id).fetch_all(pool).await?;
 
@@ -414,12 +415,8 @@ pub struct CreateSession {
     pub topic: Option<String>,
     pub date: Option<String>,
     pub readings: Option<String>,
-    pub video_url: Option<String>,
-    pub notes_url: Option<String>,
-    pub assignment_url: Option<String>,
-    pub assignment_label: Option<String>,
-    pub discussion_url: Option<String>,
-    pub discussion_label: Option<String>,
+    #[serde(default)]
+    pub resources: Vec<SessionResource>,
     pub sort_order: Option<i32>,
 }
 
@@ -428,12 +425,7 @@ pub struct UpdateSession {
     pub topic: Option<String>,
     pub date: Option<String>,
     pub readings: Option<String>,
-    pub video_url: Option<String>,
-    pub notes_url: Option<String>,
-    pub assignment_url: Option<String>,
-    pub assignment_label: Option<String>,
-    pub discussion_url: Option<String>,
-    pub discussion_label: Option<String>,
+    pub resources: Option<Vec<SessionResource>>,
     pub sort_order: Option<i32>,
 }
 
@@ -449,15 +441,12 @@ pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, in
     };
 
     sqlx::query(
-        "INSERT INTO course_sessions (id, course_id, sort_order, topic, date, readings, \
-         video_url, notes_url, assignment_url, assignment_label, discussion_url, discussion_label) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+        "INSERT INTO course_sessions (id, course_id, sort_order, topic, date, readings, resources) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(session_id).bind(course_id).bind(sort_order)
     .bind(&input.topic).bind(&input.date).bind(&input.readings)
-    .bind(&input.video_url).bind(&input.notes_url)
-    .bind(&input.assignment_url).bind(&input.assignment_label)
-    .bind(&input.discussion_url).bind(&input.discussion_label)
+    .bind(sqlx::types::Json(&input.resources))
     .execute(pool).await?;
 
     get_session(pool, session_id).await
@@ -465,8 +454,7 @@ pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, in
 
 pub async fn get_session(pool: &PgPool, session_id: &str) -> crate::Result<CourseSessionRow> {
     sqlx::query_as::<_, CourseSessionRow>(
-        "SELECT id, course_id, sort_order, topic, date, readings, video_url, notes_url, \
-         assignment_url, assignment_label, discussion_url, discussion_label \
+        "SELECT id, course_id, sort_order, topic, date, readings, resources \
          FROM course_sessions WHERE id = $1",
     )
     .bind(session_id).fetch_one(pool).await
@@ -478,20 +466,13 @@ pub async fn update_session(pool: &PgPool, session_id: &str, input: &UpdateSessi
 
     sqlx::query(
         "UPDATE course_sessions SET \
-         topic = $1, date = $2, readings = $3, video_url = $4, notes_url = $5, \
-         assignment_url = $6, assignment_label = $7, discussion_url = $8, discussion_label = $9, \
-         sort_order = $10 \
-         WHERE id = $11",
+         topic = $1, date = $2, readings = $3, resources = $4, sort_order = $5 \
+         WHERE id = $6",
     )
     .bind(input.topic.as_ref().or(cur.topic.as_ref()))
     .bind(input.date.as_ref().or(cur.date.as_ref()))
     .bind(input.readings.as_ref().or(cur.readings.as_ref()))
-    .bind(input.video_url.as_ref().or(cur.video_url.as_ref()))
-    .bind(input.notes_url.as_ref().or(cur.notes_url.as_ref()))
-    .bind(input.assignment_url.as_ref().or(cur.assignment_url.as_ref()))
-    .bind(input.assignment_label.as_ref().or(cur.assignment_label.as_ref()))
-    .bind(input.discussion_url.as_ref().or(cur.discussion_url.as_ref()))
-    .bind(input.discussion_label.as_ref().or(cur.discussion_label.as_ref()))
+    .bind(sqlx::types::Json(input.resources.as_ref().unwrap_or(&cur.resources.0)))
     .bind(input.sort_order.unwrap_or(cur.sort_order))
     .bind(session_id)
     .execute(pool).await?;

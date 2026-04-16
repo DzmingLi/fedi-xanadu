@@ -683,24 +683,9 @@ enum CourseCommand {
         /// Readings (e.g. "Sipser Ch. 1.1-1.3")
         #[arg(short, long)]
         readings: Option<String>,
-        /// Video URL
-        #[arg(long)]
-        video_url: Option<String>,
-        /// Notes URL
-        #[arg(long)]
-        notes_url: Option<String>,
-        /// Assignment/HW URL
-        #[arg(long)]
-        assignment_url: Option<String>,
-        /// Assignment label (e.g. "HW1", "PS2")
-        #[arg(long)]
-        assignment_label: Option<String>,
-        /// Discussion URL
-        #[arg(long)]
-        discussion_url: Option<String>,
-        /// Discussion label
-        #[arg(long)]
-        discussion_label: Option<String>,
+        /// Resources as "type:label:url" (e.g. "video:Lecture:https://...", "notes:Handout:https://...")
+        #[arg(long, value_delimiter = ',')]
+        resource: Vec<String>,
         /// Sort order (auto-increments if omitted)
         #[arg(long)]
         order: Option<i32>,
@@ -726,24 +711,9 @@ enum CourseCommand {
         /// Readings
         #[arg(short, long)]
         readings: Option<String>,
-        /// Video URL
-        #[arg(long)]
-        video_url: Option<String>,
-        /// Notes URL
-        #[arg(long)]
-        notes_url: Option<String>,
-        /// Assignment URL
-        #[arg(long)]
-        assignment_url: Option<String>,
-        /// Assignment label (e.g. "HW1")
-        #[arg(long)]
-        assignment_label: Option<String>,
-        /// Discussion URL
-        #[arg(long)]
-        discussion_url: Option<String>,
-        /// Discussion label
-        #[arg(long)]
-        discussion_label: Option<String>,
+        /// Resources as "type:label:url" (replaces all resources)
+        #[arg(long, value_delimiter = ',')]
+        resource: Vec<String>,
     },
     /// Delete a session
     #[command(name = "rm-session")]
@@ -1989,9 +1959,10 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
                         let order = s["sort_order"].as_i64().unwrap_or(0);
                         let topic = s["topic"].as_str().unwrap_or("-");
                         let readings = s["readings"].as_str().unwrap_or("");
-                        let video = if s["video_url"].is_string() { "📹" } else { "" };
-                        let notes = if s["notes_url"].is_string() { "📝" } else { "" };
-                        let hw = if s["assignment_url"].is_string() { "📋" } else { "" };
+                        let res = s["resources"].as_array();
+                        let video = if res.map_or(false, |r| r.iter().any(|x| x["type"] == "video")) { "📹" } else { "" };
+                        let notes = if res.map_or(false, |r| r.iter().any(|x| x["type"] == "notes")) { "📝" } else { "" };
+                        let hw = if res.map_or(false, |r| r.iter().any(|x| x["type"] == "hw")) { "📋" } else { "" };
                         print!("  {order}. {topic}");
                         if !readings.is_empty() { print!("  [{readings}]"); }
                         if !video.is_empty() { print!(" {video}"); }
@@ -2066,17 +2037,19 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             println!("Updated course {id}");
         }
 
-        CourseCommand::AddSession { course_id, topic, date, readings, video_url, notes_url, assignment_url, assignment_label, discussion_url, discussion_label, order, tags, prereqs } => {
+        CourseCommand::AddSession { course_id, topic, date, readings, resource, order, tags, prereqs } => {
+            let resources: Vec<serde_json::Value> = resource.iter().filter_map(|s| {
+                let parts: Vec<&str> = s.splitn(3, ':').collect();
+                if parts.len() == 3 {
+                    Some(serde_json::json!({"type": parts[0], "label": parts[1], "url": parts[2]}))
+                } else { None }
+            }).collect();
+
             let body = serde_json::json!({
                 "topic": topic,
                 "date": date,
                 "readings": readings,
-                "video_url": video_url,
-                "notes_url": notes_url,
-                "assignment_url": assignment_url,
-                "assignment_label": assignment_label,
-                "discussion_url": discussion_url,
-                "discussion_label": discussion_label,
+                "resources": resources,
                 "sort_order": order,
             });
 
@@ -2121,17 +2094,20 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             }
         }
 
-        CourseCommand::UpdateSession { course_id, session_id, topic, readings, video_url, notes_url, assignment_url, assignment_label, discussion_url, discussion_label } => {
-            let body = serde_json::json!({
+        CourseCommand::UpdateSession { course_id, session_id, topic, readings, resource } => {
+            let mut body = serde_json::json!({
                 "topic": topic,
                 "readings": readings,
-                "video_url": video_url,
-                "notes_url": notes_url,
-                "assignment_url": assignment_url,
-                "assignment_label": assignment_label,
-                "discussion_url": discussion_url,
-                "discussion_label": discussion_label,
             });
+            if !resource.is_empty() {
+                let resources: Vec<serde_json::Value> = resource.iter().filter_map(|s| {
+                    let parts: Vec<&str> = s.splitn(3, ':').collect();
+                    if parts.len() == 3 {
+                        Some(serde_json::json!({"type": parts[0], "label": parts[1], "url": parts[2]}))
+                    } else { None }
+                }).collect();
+                body["resources"] = serde_json::json!(resources);
+            }
 
             client()
                 .put(format!("{base}/courses/{course_id}/sessions/{session_id}"))
@@ -2220,16 +2196,24 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             for (i, s) in sessions.iter().enumerate() {
                 let sort_order = s.get("order").and_then(|v| v.as_integer()).unwrap_or((i + 1) as i64);
 
+                // Build resources array from TOML
+                let mut resources = Vec::new();
+                if let Some(res_arr) = s.get("resources").and_then(|v| v.as_array()) {
+                    // New format: [[session.resources]]
+                    for r in res_arr {
+                        resources.push(serde_json::json!({
+                            "type": r.get("type").and_then(|v| v.as_str()).unwrap_or("notes"),
+                            "url": r.get("url").and_then(|v| v.as_str()).unwrap_or(""),
+                            "label": r.get("label").and_then(|v| v.as_str()).unwrap_or(""),
+                        }));
+                    }
+                }
+
                 let body = serde_json::json!({
                     "topic": s.get("topic").and_then(|v| v.as_str()),
                     "date": s.get("date").and_then(|v| v.as_str()),
                     "readings": s.get("readings").and_then(|v| v.as_str()),
-                    "video_url": s.get("video_url").and_then(|v| v.as_str()),
-                    "notes_url": s.get("notes_url").and_then(|v| v.as_str()),
-                    "assignment_url": s.get("assignment_url").and_then(|v| v.as_str()),
-                    "assignment_label": s.get("assignment_label").and_then(|v| v.as_str()),
-                    "discussion_url": s.get("discussion_url").and_then(|v| v.as_str()),
-                    "discussion_label": s.get("discussion_label").and_then(|v| v.as_str()),
+                    "resources": resources,
                     "sort_order": sort_order,
                 });
 
@@ -2237,14 +2221,10 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
 
                 if let Some(ex) = existing.get(&sort_order) {
                     // Check if anything changed
-                    let changed = ["topic", "date", "readings", "video_url", "notes_url",
-                                   "assignment_url", "assignment_label", "discussion_url", "discussion_label"]
-                        .iter()
-                        .any(|&field| {
-                            let new_val = body[field].as_str();
-                            let old_val = ex[field].as_str();
-                            new_val != old_val
-                        });
+                    let changed = body["topic"] != ex["topic"]
+                        || body["date"] != ex["date"]
+                        || body["readings"] != ex["readings"]
+                        || body["resources"] != ex["resources"];
 
                     if !changed {
                         skipped += 1;

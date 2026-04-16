@@ -650,6 +650,12 @@ export interface CoursePrereq {
   institution: string | null;
 }
 
+export interface SessionResource {
+  type: string;  // "video" | "notes" | "hw" | "discussion"
+  url: string;
+  label: string;
+}
+
 export interface CourseSession {
   id: string;
   course_id: string;
@@ -657,12 +663,7 @@ export interface CourseSession {
   topic?: string | null;
   date?: string | null;
   readings?: string | null;
-  video_url?: string | null;
-  notes_url?: string | null;
-  assignment_url?: string | null;
-  assignment_label?: string | null;
-  discussion_url?: string | null;
-  discussion_label?: string | null;
+  resources: SessionResource[];
   tags: CourseTag[];
   prereqs: CourseTag[];
 }
