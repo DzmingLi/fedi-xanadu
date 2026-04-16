@@ -1023,7 +1023,7 @@
     display: flex;
     gap: 20px;
     align-items: flex-start;
-    margin-top: 16px;
+    margin-top: 12px;
     margin-bottom: 24px;
     padding-bottom: 20px;
     border-bottom: 1px solid var(--border);
@@ -1035,7 +1035,6 @@
     height: 180px;
     border-radius: 8px;
     overflow: hidden;
-    margin-bottom: -36px;
   }
   .banner-img {
     width: 100%;
@@ -1065,7 +1064,7 @@
   }
   .banner-upload:hover { color: var(--accent); border-color: var(--accent); }
 
-  .avatar-wrap { position: relative; }
+  .avatar-wrap { position: relative; margin-top: -36px; }
   .avatar {
     width: 72px;
     height: 72px;
