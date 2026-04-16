@@ -612,6 +612,17 @@ export const deleteListing = (id: string) => del<void>(`/listings/${encodeURICom
 export const myListings = () => get<Listing[]>('/listings/mine');
 export const matchedListings = (limit = 20) => get<Listing[]>(`/listings/matched?limit=${limit}`);
 
+// --- Ads ---
+export interface AdSlot {
+  id: string;
+  title: string;
+  body: string | null;
+  image_url: string | null;
+  link_url: string;
+}
+export const serveAd = (placement = 'sidebar') => get<AdSlot | null>(`/ads/serve?placement=${encodeURIComponent(placement)}`);
+export const recordAdClick = (id: string) => post<void>(`/ads/${encodeURIComponent(id)}/click`, {});
+
 // --- Admin API ---
 // All admin endpoints require x-admin-secret header
 

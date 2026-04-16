@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar, uploadBanner } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar, uploadBanner, updateBio } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
@@ -46,6 +46,8 @@
   let editLinks = $state<ProfileLink[]>([]);
   let newLinkLabel = $state('');
   let newLinkUrl = $state('');
+  let editingBio = $state(false);
+  let editBio = $state('');
   let editingEmail = $state(false);
   let editEmail = $state('');
 
@@ -425,8 +427,21 @@
         <p class="handle">@{profile.handle}</p>
       {/if}
       <a href="/feed/{encodeURIComponent(did)}.xml" class="rss-link" title="RSS Feed">RSS</a>
-      {#if profile.bio}
-        <div class="bio">{profile.bio}</div>
+      {#if editingBio}
+        <div class="bio-edit">
+          <textarea class="bio-input" bind:value={editBio} placeholder={t('settings.bioPlaceholder')} rows="3"></textarea>
+          <div class="bio-edit-actions">
+            <button class="email-save" onclick={async () => { await updateBio(editBio.trim()); if (profile) profile.bio = editBio.trim() || null; editingBio = false; }}>{t('common.save')}</button>
+            <button class="email-cancel" onclick={() => { editingBio = false; }}>{t('common.cancel')}</button>
+          </div>
+        </div>
+      {:else if profile.bio || isOwnProfile}
+        <div class="bio">
+          {#if profile.bio}{profile.bio}{:else}<span class="bio-placeholder">{t('settings.bioPlaceholder')}</span>{/if}
+          {#if isOwnProfile}
+            <button class="edit-email-btn" onclick={() => { editBio = profile?.bio || ''; editingBio = true; }}>{t('common.edit')}</button>
+          {/if}
+        </div>
       {/if}
       {#if profile.affiliation}
         <p class="credential-line">
@@ -1161,6 +1176,33 @@
     color: var(--text-secondary);
     line-height: 1.5;
     margin: 6px 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .bio-placeholder {
+    color: var(--text-hint);
+    font-style: italic;
+  }
+  .bio-edit {
+    margin: 6px 0;
+  }
+  .bio-input {
+    width: 100%;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--font-sans);
+    color: var(--text-primary);
+    background: var(--bg-white);
+    resize: vertical;
+  }
+  .bio-edit-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
   }
   .credential-line {
     display: inline-flex;

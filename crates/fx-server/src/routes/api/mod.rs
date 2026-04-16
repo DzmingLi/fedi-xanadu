@@ -30,6 +30,7 @@ mod skills;
 mod tags;
 mod thoughts;
 mod votes;
+mod ads;
 
 use axum::{Json, Router, extract::State, routing::{delete, get, patch, post, put}};
 
@@ -106,6 +107,7 @@ pub fn routes() -> Router<AppState> {
         .merge(listing_routes())
         .merge(course_routes())
         .merge(thought_routes())
+        .merge(ad_routes())
 }
 
 // --- Grouped sub-routers ---
@@ -399,6 +401,14 @@ fn admin_routes() -> Router<AppState> {
         .route("/admin/credentials/revoke", post(admin::admin_revoke_credentials))
         .route("/admin/books/revert-edit", post(admin::admin_revert_book_edit))
         .route("/admin/books/default-edition", put(admin::admin_set_default_edition))
+}
+
+fn ad_routes() -> Router<AppState> {
+    Router::new()
+        .route("/ads/serve", get(ads::serve))
+        .route("/ads/{id}/click", post(ads::click))
+        .route("/admin/ads", get(ads::list_all).post(ads::create))
+        .route("/admin/ads/{id}", put(ads::update).delete(ads::delete))
 }
 
 fn appeal_routes() -> Router<AppState> {

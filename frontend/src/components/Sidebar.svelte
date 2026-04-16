@@ -2,6 +2,7 @@
   import { listFollows, markFollowSeen, type FollowedUser } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
+  import SidebarAd from './SidebarAd.svelte';
 
   let locale = $derived(getLocale());
   let follows = $state<FollowedUser[]>([]);
@@ -99,6 +100,12 @@
       <span class="happening-icon">🎁</span>
       <span class="happening-text">{t('sidebar.incentives') || 'Creator incentives coming soon'}</span>
     </a>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <SidebarAd />
   </div>
 
   <div class="sidebar-divider"></div>
