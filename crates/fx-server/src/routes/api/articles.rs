@@ -628,7 +628,7 @@ pub(super) async fn publish_article_content(
             // Content will be re-rendered on next access or after resource upload.
             match render_content(format.as_str(), content, &repo_path) {
                 Ok(rendered) => { let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await; }
-                Err(e) => tracing::warn!("initial render skipped (resources may be pending): {e}"),
+                Err(e) => tracing::warn!("initial render skipped (resources may be pending): {e:?}"),
             }
         }
 
@@ -889,6 +889,157 @@ pub async fn create_article(
     }
 
     // Add co-authors as pending (they must verify)
+    for (i, author_did) in input.authors.iter().enumerate() {
+        if author_did != &user.did {
+            let _ = authorship_service::add_author(
+                &state.pool, &at_uri, author_did, &user.did, Some((i + 1) as i16),
+            ).await;
+        }
+    }
+
+    Ok((StatusCode::CREATED, Json(article)))
+}
+
+/// Create an article with all resources in a single multipart request.
+/// Fields:
+///   - `metadata` (text/json): CreateArticle JSON (same as POST /articles body)
+///   - `resources` (file, repeatable): resource files with relative paths as filenames
+pub async fn create_article_multipart(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    mut multipart: Multipart,
+) -> ApiResult<(StatusCode, Json<Article>)> {
+    let mut metadata_json: Option<String> = None;
+    let mut resources: Vec<(String, Vec<u8>)> = Vec::new(); // (relative_path, data)
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        AppError(fx_core::Error::BadRequest(format!("Multipart error: {e}")))
+    })? {
+        let name = field.name().unwrap_or("").to_string();
+        match name.as_str() {
+            "metadata" => {
+                metadata_json = Some(field.text().await.map_err(|e| AppError(fx_core::Error::BadRequest(e.to_string())))?);
+            }
+            "resources" => {
+                let filename = field.file_name().unwrap_or("unknown").to_string();
+                let data = field.bytes().await.map_err(|e| AppError(fx_core::Error::BadRequest(e.to_string())))?.to_vec();
+                if data.len() > MAX_IMAGE_SIZE {
+                    return Err(AppError(fx_core::Error::BadRequest(format!("Resource too large: {filename}"))));
+                }
+                resources.push((filename, data));
+            }
+            _ => {}
+        }
+    }
+
+    let input: CreateArticle = serde_json::from_str(
+        &metadata_json.ok_or(AppError(fx_core::Error::BadRequest("Missing metadata field".into())))?
+    ).map_err(|e| AppError(fx_core::Error::BadRequest(format!("Invalid metadata: {e}"))))?;
+
+    validate_create_article(&input)?;
+
+    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
+
+    if let Some(ref sid) = input.series_id {
+        let owner = series_service::get_series_owner(&state.pool, sid).await?;
+        require_owner(Some(&owner), &user.did)?;
+    }
+
+    // For standalone articles: init repo and write resources BEFORE publishing content
+    if input.series_id.is_none() && !resources.is_empty() {
+        let node_id = uri_to_node_id(&at_uri);
+        state.pijul.init_repo(&node_id)
+            .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+        let repo_path = state.pijul.repo_path(&node_id);
+
+        for (rel_path, data) in &resources {
+            let safe_path: String = rel_path.chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' { c } else { '_' })
+                .collect();
+            let safe_path = safe_path.trim_start_matches('.').trim_start_matches('/');
+            if safe_path.is_empty() || safe_path.contains("..") {
+                continue;
+            }
+            let dest = repo_path.join(safe_path);
+            if let Some(parent) = dest.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+            tokio::fs::write(&dest, data).await?;
+        }
+
+        // Record resource upload as a pijul change
+        let _ = state.pijul_record(node_id, format!("Upload {} resources", resources.len()), Some(user.did.clone())).await;
+    }
+
+    // Now publish content — resources are already in the repo, so rendering will work
+    let publish = publish_article_content(
+        &state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
+        input.series_id.as_deref(), "Initial publish",
+    ).await?;
+
+    if input.series_id.is_none() {
+        let meta = fx_core::meta::article_meta_from_create(
+            &input.title,
+            input.description.as_deref(),
+            &input.tags,
+            &input.prereqs,
+            input.license.as_deref(),
+            input.lang.as_deref(),
+            input.category.as_deref(),
+            input.content_format.as_str(),
+        );
+        if let Err(e) = fx_core::meta::write_meta_file(&publish.repo_path, &meta) {
+            tracing::warn!("failed to write meta.json: {e}");
+        }
+        let node_id = uri_to_node_id(&at_uri);
+        let _ = state.pijul_record(node_id.clone(), "Add metadata".into(), Some(user.did.clone())).await;
+    }
+
+    let hash = content_hash(&input.content);
+
+    let translation_group = if let Some(ref source_uri) = input.translation_of {
+        Some(article_service::resolve_translation_group(&state.pool, source_uri).await?)
+    } else {
+        None
+    };
+
+    let article = article_service::create_article(
+        &state.pool, &user.did, &at_uri, &input, &hash, translation_group,
+        default_visibility(user.phone_verified), ContentKind::Article, None,
+    ).await?;
+
+    if let Some(ref sid) = input.series_id {
+        series_service::add_series_article(&state.pool, sid, &at_uri).await?;
+    }
+
+    if !input.restricted.unwrap_or(false) {
+        let record = serde_json::json!({
+            "$type": fx_atproto::lexicon::ARTICLE,
+            "title": input.title,
+            "description": input.description.as_deref().unwrap_or(""),
+            "contentFormat": input.content_format,
+            "tags": input.tags,
+            "createdAt": now_rfc3339(),
+        });
+        pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, None, "create article").await;
+    }
+
+    let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
+    let _ = collaboration_service::register_article_owner(&state.pool, &at_uri, &user.did).await;
+
+    let authorship_record = serde_json::json!({
+        "$type": fx_atproto::lexicon::AUTHORSHIP,
+        "article": at_uri,
+        "createdAt": now_rfc3339(),
+    });
+    let authorship_uri = pds_create_record(
+        &state, &user.token, fx_atproto::lexicon::AUTHORSHIP, authorship_record, None, "creator authorship",
+    ).await;
+    let _ = authorship_service::add_author(&state.pool, &at_uri, &user.did, &user.did, Some(0)).await;
+    if let Some(ref uri) = authorship_uri {
+        let _ = authorship_service::verify_authorship(&state.pool, &at_uri, &user.did, Some(uri)).await;
+    }
+
     for (i, author_did) in input.authors.iter().enumerate() {
         if author_did != &user.did {
             let _ = authorship_service::add_author(

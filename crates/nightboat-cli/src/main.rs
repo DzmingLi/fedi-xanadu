@@ -1274,35 +1274,10 @@ async fn main() -> Result<()> {
                 invites: vec![],
             };
 
-            let resp: serde_json::Value = client()
-                .post(format!("{base}/articles"))
-                .bearer_auth(token)
-                .json(&body)
-                .send().await?
-                .error_for_status().context("Upload failed")?
-                .json().await?;
-
-            let uri = resp["at_uri"].as_str().unwrap_or("?");
-            println!("Published: {title}");
-            println!("URI: {uri}");
-
-            // Add to series if specified
-            if let Some(ref series_id) = series {
-                client()
-                    .post(format!("{base}/series/{series_id}/articles"))
-                    .bearer_auth(token)
-                    .json(&serde_json::json!({ "article_uri": uri }))
-                    .send().await?
-                    .error_for_status().context("Failed to add article to series")?;
-                println!("Added to series: {series_id}");
-            }
-
-            // Upload resource files/directories (images, bib, etc.)
-            // Collect all files to upload, expanding directories recursively
-            let mut resource_files: Vec<(PathBuf, String)> = Vec::new(); // (absolute_path, relative_name)
+            // Collect resource files (expanding directories recursively)
+            let mut resource_files: Vec<(PathBuf, String)> = Vec::new();
             for res_path in &resource {
                 if res_path.is_dir() {
-                    // Walk directory, preserving relative paths
                     for entry in walkdir::WalkDir::new(res_path).into_iter().filter_map(|e| e.ok()) {
                         if entry.file_type().is_file() {
                             let path = entry.path().to_path_buf();
@@ -1321,37 +1296,52 @@ async fn main() -> Result<()> {
                 }
             }
 
-            for (abs_path, rel_name) in &resource_files {
-                let file_bytes = std::fs::read(abs_path)
-                    .with_context(|| format!("Cannot read {}", abs_path.display()))?;
+            let resp: serde_json::Value = if resource_files.is_empty() {
+                // Simple JSON upload (no resources)
+                client()
+                    .post(format!("{base}/articles"))
+                    .bearer_auth(token)
+                    .json(&body)
+                    .send().await?
+                    .error_for_status().context("Upload failed")?
+                    .json().await?
+            } else {
+                // Multipart upload: metadata + resources in one request
+                let metadata = serde_json::to_string(&body)?;
+                let mut form = reqwest::multipart::Form::new()
+                    .text("metadata", metadata);
 
-                if let Some(ref series_id) = series {
+                for (abs_path, rel_name) in &resource_files {
+                    let file_bytes = std::fs::read(abs_path)
+                        .with_context(|| format!("Cannot read {}", abs_path.display()))?;
                     let part = reqwest::multipart::Part::bytes(file_bytes)
                         .file_name(rel_name.clone());
-                    let form = reqwest::multipart::Form::new().part("file", part);
-                    client()
-                        .post(format!("{base}/series/{series_id}/resource"))
-                        .bearer_auth(token)
-                        .multipart(form)
-                        .send().await?
-                        .error_for_status()
-                        .with_context(|| format!("Failed to upload resource: {rel_name}"))?;
-                    println!("  + {rel_name}");
-                } else {
-                    let part = reqwest::multipart::Part::bytes(file_bytes)
-                        .file_name(rel_name.clone());
-                    let form = reqwest::multipart::Form::new()
-                        .text("article_uri", uri.to_string())
-                        .part("file", part);
-                    client()
-                        .post(format!("{base}/articles/upload-image"))
-                        .bearer_auth(token)
-                        .multipart(form)
-                        .send().await?
-                        .error_for_status()
-                        .with_context(|| format!("Failed to upload resource: {rel_name}"))?;
+                    form = form.part("resources", part);
                     println!("  + {rel_name}");
                 }
+
+                client()
+                    .post(format!("{base}/articles/upload"))
+                    .bearer_auth(token)
+                    .multipart(form)
+                    .send().await?
+                    .error_for_status().context("Upload failed")?
+                    .json().await?
+            };
+
+            let uri = resp["at_uri"].as_str().unwrap_or("?");
+            println!("Published: {title}");
+            println!("URI: {uri}");
+
+            // Add to series if specified
+            if let Some(ref series_id) = series {
+                client()
+                    .post(format!("{base}/series/{series_id}/articles"))
+                    .bearer_auth(token)
+                    .json(&serde_json::json!({ "article_uri": uri }))
+                    .send().await?
+                    .error_for_status().context("Failed to add article to series")?;
+                println!("Added to series: {series_id}");
             }
         }
 

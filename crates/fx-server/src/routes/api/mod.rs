@@ -137,6 +137,7 @@ fn article_routes() -> Router<AppState> {
     Router::new()
         // Collection
         .route("/articles", get(articles::list_articles).post(articles::create_article))
+        .route("/articles/upload", post(articles::create_article_multipart))
         // Single resource (AT URI via query param — URIs contain slashes)
         .route("/articles/by-uri", get(articles::get_article))
         .route("/articles/by-uri/content", get(articles::get_article_content))
