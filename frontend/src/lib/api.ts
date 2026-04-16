@@ -513,9 +513,9 @@ export const listBooks = (limit = 50, offset = 0) =>
   get<Book[]>(`/books?limit=${limit}&offset=${offset}`);
 export const getBook = (id: string) =>
   get<BookDetail>(`/books/${encodeURIComponent(id)}`);
-export const createBook = (data: { title: string; authors: string[]; description?: string; tags: string[]; prereqs?: string[] }) =>
+export const createBook = (data: { title: Record<string, string>; authors: string[]; description?: Record<string, string>; tags: string[]; prereqs?: string[] }) =>
   post<Book>('/books', data);
-export const updateBook = (id: string, data: { title?: string; description?: string; edit_summary?: string }) =>
+export const updateBook = (id: string, data: { title?: Record<string, string>; description?: Record<string, string>; edit_summary?: string }) =>
   put<Book>(`/books/${encodeURIComponent(id)}`, data);
 export const addBookEdition = (book_id: string, edition: { title: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
   post<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions`, edition);
@@ -622,6 +622,28 @@ export interface AdSlot {
 }
 export const serveAd = (placement = 'sidebar') => get<AdSlot | null>(`/ads/serve?placement=${encodeURIComponent(placement)}`);
 export const recordAdClick = (id: string) => post<void>(`/ads/${encodeURIComponent(id)}/click`, {});
+
+// --- Events ---
+export const listEvents = (kind?: string, tag?: string, upcoming?: boolean, limit = 30, offset = 0) => {
+  const params = new URLSearchParams();
+  if (kind) params.set('kind', kind);
+  if (tag) params.set('tag', tag);
+  if (upcoming !== undefined) params.set('upcoming', String(upcoming));
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  return get<import('./types').NbEvent[]>(`/events?${params}`);
+};
+export const getEventById = (id: string) => get<import('./types').NbEvent>(`/events/${encodeURIComponent(id)}`);
+export const createEvent = (data: object) => post<import('./types').NbEvent>('/events', data);
+export const updateEvent = (id: string, data: object) => put<import('./types').NbEvent>(`/events/${encodeURIComponent(id)}`, data);
+export const cancelEvent = (id: string) => post<void>(`/events/${encodeURIComponent(id)}/cancel`, {});
+export const uncancelEvent = (id: string) => post<void>(`/events/${encodeURIComponent(id)}/uncancel`, {});
+export const deleteEvent = (id: string) => del<void>(`/events/${encodeURIComponent(id)}`);
+export const rsvpEvent = (id: string, status = 'going') => post<void>(`/events/${encodeURIComponent(id)}/rsvp`, { status });
+export const cancelRsvp = (id: string) => del<void>(`/events/${encodeURIComponent(id)}/rsvp`);
+export const listEventRsvps = (id: string) => get<import('./types').EventRsvp[]>(`/events/${encodeURIComponent(id)}/rsvps`);
+export const myEvents = () => get<import('./types').NbEvent[]>('/events/mine');
+export const myEventRsvps = () => get<import('./types').NbEvent[]>('/events/my-rsvps');
 
 // --- Admin API ---
 // All admin endpoints require x-admin-secret header

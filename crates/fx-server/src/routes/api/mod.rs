@@ -31,6 +31,7 @@ mod tags;
 mod thoughts;
 mod votes;
 mod ads;
+mod events;
 
 use axum::{Json, Router, extract::State, routing::{delete, get, patch, post, put}};
 
@@ -108,6 +109,7 @@ pub fn routes() -> Router<AppState> {
         .merge(course_routes())
         .merge(thought_routes())
         .merge(ad_routes())
+        .merge(event_routes())
 }
 
 // --- Grouped sub-routers ---
@@ -409,6 +411,18 @@ fn ad_routes() -> Router<AppState> {
         .route("/ads/{id}/click", post(ads::click))
         .route("/admin/ads", get(ads::list_all).post(ads::create))
         .route("/admin/ads/{id}", put(ads::update).delete(ads::delete))
+}
+
+fn event_routes() -> Router<AppState> {
+    Router::new()
+        .route("/events", get(events::list_events).post(events::create_event))
+        .route("/events/mine", get(events::my_events))
+        .route("/events/my-rsvps", get(events::my_rsvps))
+        .route("/events/{id}", get(events::get_event).put(events::update_event).delete(events::delete_event))
+        .route("/events/{id}/cancel", post(events::cancel_event))
+        .route("/events/{id}/uncancel", post(events::uncancel_event))
+        .route("/events/{id}/rsvp", post(events::rsvp_event).delete(events::cancel_rsvp))
+        .route("/events/{id}/rsvps", get(events::list_rsvps))
 }
 
 fn appeal_routes() -> Router<AppState> {

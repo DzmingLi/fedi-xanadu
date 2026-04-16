@@ -92,6 +92,10 @@
       <span class="happening-icon">📢</span>
       <span class="happening-text">{t('sidebar.hiring') || 'Academic hiring — browse open positions'}</span>
     </a>
+    <a href="/events" class="happening-item">
+      <span class="happening-icon">📅</span>
+      <span class="happening-text">{t('nav.events') || 'Events'}</span>
+    </a>
     <a href="/about" class="happening-item">
       <span class="happening-icon">✍️</span>
       <span class="happening-text">{t('sidebar.creators') || 'Creator onboarding — start writing today'}</span>

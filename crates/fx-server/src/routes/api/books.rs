@@ -94,7 +94,7 @@ pub async fn create_book(
     WriteAuth(user): WriteAuth,
     Json(input): Json<book_service::CreateBook>,
 ) -> ApiResult<(StatusCode, Json<book_service::Book>)> {
-    if input.title.trim().is_empty() {
+    if input.title.values().all(|v| v.trim().is_empty()) {
         return Err(AppError(fx_core::Error::BadRequest("title required".into())));
     }
     let id = format!("bk-{}", tid());

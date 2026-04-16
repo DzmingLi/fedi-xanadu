@@ -28,3 +28,4 @@ pub mod listing_service;
 pub mod course_service;
 pub mod patch_service;
 pub mod ad_service;
+pub mod event_service;

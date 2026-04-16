@@ -148,9 +148,9 @@ export interface Series {
 
 export interface Book {
   id: string;
-  title: string;
+  title: L;
   authors: string[];
-  description: string;
+  description: L;
   cover_url: string | null;
   default_edition_id: string | null;
   created_by: string;
@@ -585,6 +585,42 @@ export interface Listing {
   updated_at: string;
 }
 
+// Events
+export type EventKind = 'conference' | 'workshop' | 'seminar' | 'meetup' | 'hackathon';
+
+export interface NbEvent {
+  id: string;
+  did: string;
+  author_handle: string | null;
+  author_reputation: number;
+  title: string;
+  description: string;
+  kind: EventKind;
+  location: string | null;
+  online_url: string | null;
+  start_time: string;
+  end_time: string | null;
+  organizer: string;
+  contact_email: string | null;
+  contact_url: string | null;
+  max_attendees: number | null;
+  is_cancelled: boolean;
+  teaches: string[];
+  prereqs: string[];
+  rsvp_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EventRsvp {
+  event_id: string;
+  did: string;
+  status: 'going' | 'interested';
+  handle: string | null;
+  display_name: string | null;
+  created_at: string;
+}
+
 // Courses
 export interface Course {
   id: string;
@@ -673,7 +709,7 @@ export interface CourseSession {
 
 export interface CourseTextbook {
   book_id: string;
-  title: string;
+  title: L;
   authors: string[];
   cover_url: string | null;
   role: string;

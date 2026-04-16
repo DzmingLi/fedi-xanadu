@@ -123,6 +123,7 @@
     <a href="/books">{t('nav.books')}</a>
     <a href="/courses">{t('nav.courses')}</a>
     <a href="/listings">{t('nav.listings')}</a>
+    <a href="/events">{t('nav.events')}</a>
   </div>
 
   <div class="nav-right">
