@@ -12,10 +12,10 @@
 ## No Parallel Agents for Cross-Codebase Migrations
 Process files serially or batch all changes, then verify once at the end.
 
-## Admin CLI (`fx admin`)
+## Admin CLI (`nbt admin`)
 ```bash
-fx admin create-user <handle> <password> --display-name "Name"
-fx admin publish --as <handle> -f file.md -t "Title" --tags cs --lang zh
+nbt admin create-user <handle> <password> --display-name "Name"
+nbt admin publish --as <handle> -f file.md -t "Title" --tags cs --lang zh
 ```
 
 ## Commit Workflow (frontend changes)
@@ -27,4 +27,4 @@ fx admin publish --as <handle> -f file.md -t "Title" --tags cs --lang zh
 ## Deploy
 - Server: `ssh root@dzming.li`
 - NixOS config: `/home/lee/nixos-config/hosts/hetzner-server/xanadu.nix`
-- Admin secret: agenix, `EnvironmentFile` format (`FX_ADMIN_SECRET=xxx`)
+- Admin secret: agenix, `EnvironmentFile` format (`FX_ADMIN_SECRET=xxx`, CLI also reads `NBT_ADMIN_SECRET`)

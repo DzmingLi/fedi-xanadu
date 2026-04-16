@@ -43,6 +43,7 @@ async fn main() -> Result<()> {
         request_store: oauth_request_store,
         session_store: state.session_store.clone(),
         http_client: reqwest::Client::new(),
+        cli_redirects: Default::default(),
     };
 
     let seo_template = std::fs::read_to_string("frontend/dist/index.html")

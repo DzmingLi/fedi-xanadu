@@ -1,12 +1,12 @@
 [package]
-name = "fx-cli"
+name = "nightboat-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "fx"
+name = "nbt"
 path = "src/main.rs"
 
 [dependencies]
@@ -23,3 +23,5 @@ toml = { workspace = true }
 walkdir = "2"
 base64 = "0.22"
 regex-lite = "0.1"
+open = "5"
+urlencoding = "2"

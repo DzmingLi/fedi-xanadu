@@ -4,7 +4,7 @@ members = [
     "crates/fx-core",
     "crates/fx-atproto",
     "crates/fx-search",
-    "crates/fx-cli",
+    "crates/nightboat-cli",
     "crates/fx-client",
 ]
 resolver = "3"
@@ -62,7 +62,7 @@ rand = "0.10"
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
 
-# Misc deps (used by fx-render, fx-cli)
+# Misc deps (used by fx-render, nightboat-cli)
 flate2 = "1.1"
 tar = "0.4"
 ureq = "3"

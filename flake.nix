@@ -200,11 +200,11 @@
     let
       homeManagerModule = { config, lib, pkgs, ... }:
         let
-          cfg = config.programs.fx;
-          pkg = self.packages.${pkgs.stdenv.hostPlatform.system}.fx-cli;
+          cfg = config.programs.nbt;
+          pkg = self.packages.${pkgs.stdenv.hostPlatform.system}.nightboat-cli;
         in {
-          options.programs.fx = {
-            enable = lib.mkEnableOption "fx CLI for NightBoat";
+          options.programs.nbt = {
+            enable = lib.mkEnableOption "NightBoat CLI (nbt)";
             server = lib.mkOption {
               type = lib.types.str;
               default = "https://nightboat.dzming.li";
@@ -235,19 +235,19 @@
           config = lib.mkIf cfg.enable {
             home.packages = [
               (if cfg.adminSecretFile != null then
-                pkgs.writeShellScriptBin "fx" ''
+                pkgs.writeShellScriptBin "nbt" ''
                   _secret="$(cat ${cfg.adminSecretFile})"
-                  export FX_ADMIN_SECRET="''${_secret#FX_ADMIN_SECRET=}"
-                  exec ${pkg}/bin/fx "$@"
+                  export NBT_ADMIN_SECRET="''${_secret#FX_ADMIN_SECRET=}"
+                  exec ${pkg}/bin/nbt "$@"
                 ''
               else pkg)
             ];
 
             # Auto-login on activation if handle + passwordFile are set
-            home.activation.fx-login = lib.mkIf (cfg.handle != null && cfg.passwordFile != null) (
+            home.activation.nbt-login = lib.mkIf (cfg.handle != null && cfg.passwordFile != null) (
               lib.hm.dag.entryAfter [ "writeBoundary" ] ''
                 if [ -f "${cfg.passwordFile}" ]; then
-                  ${pkg}/bin/fx --server "${cfg.server}" login "${cfg.handle}" "$(cat "${cfg.passwordFile}")" 2>/dev/null || true
+                  ${pkg}/bin/nbt --server "${cfg.server}" login "${cfg.handle}" "$(cat "${cfg.passwordFile}")" 2>/dev/null || true
                 fi
               ''
             );
@@ -304,14 +304,14 @@
         nightboat-bin = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
           cargoExtraArgs = "--package fx-server";
-          postInstall = "rm -f $out/bin/fx 2>/dev/null || true";
+          postInstall = "rm -f $out/bin/nbt 2>/dev/null || true";
         });
 
         # CLI binary (reuses same cached deps)
-        fx-cli = craneLib.buildPackage (commonArgs // {
+        nbt_cli = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
-          pname = "fx-cli";
-          cargoExtraArgs = "--package fx-cli";
+          pname = "nightboat-cli";
+          cargoExtraArgs = "--package nightboat-cli";
           postInstall = "rm -f $out/bin/nightboat 2>/dev/null || true";
         });
 
@@ -324,7 +324,7 @@
         '';
       in
       {
-        packages.fx-cli = fx-cli;
+        packages."nightboat-cli" = nbt_cli;
 
         packages.default = pkgs.runCommand "nightboat" {
           nativeBuildInputs = [ pkgs.makeWrapper ];
