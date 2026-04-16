@@ -9,41 +9,31 @@
     link_url: '/about',
   };
 
-  let ad = $state<AdSlot | null>(null);
-  let fallback = $state(false);
+  let ad = $state<AdSlot>(DEMO_AD);
 
   $effect(() => {
-    loadAd();
+    serveAd('sidebar').then(served => {
+      if (served) ad = served;
+    }).catch(() => {});
   });
 
-  async function loadAd() {
-    try {
-      const served = await serveAd('sidebar');
-      if (served) { ad = served; return; }
-    } catch { /* API not ready yet */ }
-    // No direct-sales ad available — show demo for now
-    ad = DEMO_AD;
-  }
-
   function handleClick() {
-    if (ad && ad.id !== 'demo') recordAdClick(ad.id).catch(() => {});
+    if (ad.id !== 'demo') recordAdClick(ad.id).catch(() => {});
   }
 </script>
 
-{#if ad}
-  <div class="ad-slot">
-    <a href={ad.link_url} target={ad.id === 'demo' ? '_self' : '_blank'} rel="noopener sponsored" class="ad-link" onclick={handleClick}>
-      {#if ad.image_url}
-        <img src={ad.image_url} alt={ad.title} class="ad-img" />
-      {/if}
-      <span class="ad-title">{ad.title}</span>
-      {#if ad.body}
-        <span class="ad-body">{ad.body}</span>
-      {/if}
-    </a>
-    <span class="ad-label">AD</span>
-  </div>
-{/if}
+<div class="ad-slot">
+  <a href={ad.link_url} target={ad.id === 'demo' ? '_self' : '_blank'} rel="noopener sponsored" class="ad-link" onclick={handleClick}>
+    {#if ad.image_url}
+      <img src={ad.image_url} alt={ad.title} class="ad-img" />
+    {/if}
+    <span class="ad-title">{ad.title}</span>
+    {#if ad.body}
+      <span class="ad-body">{ad.body}</span>
+    {/if}
+  </a>
+  <span class="ad-label">AD</span>
+</div>
 
 <style>
   .ad-slot {
