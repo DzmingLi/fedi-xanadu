@@ -6,9 +6,11 @@ use sqlx::PgPool;
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct Book {
     pub id: String,
-    pub title: String,
+    #[ts(type = "Record<string, string>")]
+    pub title: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub authors: Vec<String>,
-    pub description: String,
+    #[ts(type = "Record<string, string>")]
+    pub description: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub default_edition_id: Option<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
@@ -20,9 +22,11 @@ pub struct Book {
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct CreateBook {
-    pub title: String,
+    #[ts(type = "Record<string, string>")]
+    pub title: std::collections::HashMap<String, String>,
     pub authors: Vec<String>,
-    pub description: Option<String>,
+    #[ts(type = "Record<string, string> | undefined")]
+    pub description: Option<std::collections::HashMap<String, String>>,
     pub tags: Vec<String>,
     #[serde(default)]
     pub prereqs: Vec<String>,
@@ -90,9 +94,9 @@ pub async fn create_book(
          VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(id)
-    .bind(&input.title)
+    .bind(sqlx::types::Json(&input.title))
     .bind(&input.authors)
-    .bind(input.description.as_deref().unwrap_or(""))
+    .bind(sqlx::types::Json(input.description.as_ref().unwrap_or(&std::collections::HashMap::new())))
     .bind(created_by)
     .execute(&mut *tx)
     .await?;
@@ -206,9 +210,9 @@ pub async fn list_books(pool: &PgPool, limit: i64, offset: i64) -> crate::Result
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct BookListItem {
     pub id: String,
-    pub title: String,
+    pub title: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub authors: Vec<String>,
-    pub description: String,
+    pub description: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub cover_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub avg_rating: f64,

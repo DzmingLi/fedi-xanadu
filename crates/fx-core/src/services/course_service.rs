@@ -86,7 +86,7 @@ pub struct CourseTagRow {
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct CourseTextbookRow {
     pub book_id: String,
-    pub title: String,
+    pub title: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub authors: Vec<String>,
     pub cover_url: Option<String>,
     pub role: String,

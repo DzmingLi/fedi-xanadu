@@ -9,6 +9,13 @@
 
   let locale = $derived(getLocale());
 
+  /** Resolve a localized field (Record<string, string>) to the current locale with fallback. */
+  function loc(field: Record<string, string> | null | undefined): string {
+    if (!field) return '';
+    const l = getLocale();
+    return field[l] || field['en'] || field['zh'] || Object.values(field)[0] || '';
+  }
+
   let detail = $state<BookDetail | null>(null);
   let loading = $state(true);
 
@@ -67,7 +74,7 @@
     loading = true;
     try {
       detail = await getBook(id);
-      document.title = `${detail.book.title} — NightBoat`;
+      document.title = `${loc(detail.book.title)} — NightBoat`;
       avgRating = detail.rating.avg_rating;
       ratingCount = detail.rating.rating_count;
       myRating = detail.my_rating || 0;
@@ -132,8 +139,8 @@
 
   function openEdit() {
     if (!detail) return;
-    editTitle = detail.book.title;
-    editDescription = detail.book.description || '';
+    editTitle = loc(detail.book.title);
+    editDescription = loc(detail.book.description);
     editSummary = '';
     editError = '';
     showEdit = true;
@@ -144,9 +151,10 @@
     editSaving = true;
     editError = '';
     try {
+      const l = getLocale();
       await updateBook(id, {
-        title: editTitle.trim(),
-        description: editDescription.trim() || undefined,
+        title: { ...detail!.book.title, [l]: editTitle.trim() },
+        description: { ...(detail!.book.description || {}), [l]: editDescription.trim() },
         edit_summary: editSummary.trim() || undefined,
       });
       showEdit = false;
@@ -316,17 +324,17 @@
       <!-- Header -->
       <div class="book-header">
         {#if detail.book.cover_url}
-          <img src={detail.book.cover_url} alt={detail.book.title} class="cover" />
+          <img src={detail.book.cover_url} alt={loc(detail.book.title)} class="cover" />
         {:else}
           <div class="cover placeholder">
-            <span>{detail.book.title.charAt(0)}</span>
+            <span>{loc(detail.book.title).charAt(0)}</span>
           </div>
         {/if}
         <div class="book-meta">
-          <h1>{detail.book.title}</h1>
+          <h1>{loc(detail.book.title)}</h1>
           <p class="authors">{detail.book.authors.join(', ')}</p>
-          {#if detail.book.description}
-            <p class="description">{detail.book.description}</p>
+          {#if loc(detail.book.description)}
+            <p class="description">{loc(detail.book.description)}</p>
           {/if}
 
           <!-- Tags -->

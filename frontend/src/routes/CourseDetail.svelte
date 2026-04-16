@@ -1,7 +1,14 @@
 <script lang="ts">
   import { getCourseDetail, rateCourse, listComments, createComment, voteComment } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
-  import { t } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
+
+  /** Resolve a localized field (Record<string, string>) to the current locale with fallback. */
+  function loc(field: Record<string, string> | null | undefined): string {
+    if (!field) return '';
+    const locale = getLocale();
+    return field[locale] || field['en'] || field['zh'] || Object.values(field)[0] || '';
+  }
   import { marked } from 'marked';
   import type { CourseDetail, Comment } from '../lib/types';
 
@@ -327,7 +334,7 @@
                   <img src={tb.cover_url} alt="" class="textbook-cover" />
                 {/if}
                 <div class="textbook-info">
-                  <span class="textbook-title">{tb.title}</span>
+                  <span class="textbook-title">{loc(tb.title)}</span>
                   <span class="textbook-authors">{tb.authors.join(', ')}</span>
                   <span class="textbook-role">{tb.role}</span>
                 </div>

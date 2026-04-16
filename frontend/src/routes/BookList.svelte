@@ -1,8 +1,15 @@
 <script lang="ts">
   import { listBooks } from '../lib/api';
-  import { t } from '../lib/i18n/index.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import type { Book } from '../lib/types';
+
+  /** Resolve a localized field (Record<string, string>) to the current locale with fallback. */
+  function loc(field: Record<string, string> | null | undefined): string {
+    if (!field) return '';
+    const locale = getLocale();
+    return field[locale] || field['en'] || field['zh'] || Object.values(field)[0] || '';
+  }
 
   let books = $state<Book[]>([]);
   let loading = $state(true);
@@ -84,14 +91,14 @@
       {#each filteredBooks as book}
         <a href="/book?id={encodeURIComponent(book.id)}" class="book-card">
           {#if book.cover_url}
-            <img src={book.cover_url} alt={book.title} class="book-cover" />
+            <img src={book.cover_url} alt={loc(book.title)} class="book-cover" />
           {:else}
             <div class="book-cover placeholder">
-              <span>{book.title.charAt(0)}</span>
+              <span>{loc(book.title).charAt(0)}</span>
             </div>
           {/if}
           <div class="book-info">
-            <h3 class="book-title">{book.title}</h3>
+            <h3 class="book-title">{loc(book.title)}</h3>
             <p class="book-authors">{book.authors.join(', ')}</p>
 
             <div class="book-stats">
@@ -107,8 +114,8 @@
               {/if}
             </div>
 
-            {#if book.description}
-              <p class="book-desc">{book.description.slice(0, 100)}{book.description.length > 100 ? '...' : ''}</p>
+            {#if loc(book.description)}
+              <p class="book-desc">{loc(book.description).slice(0, 100)}{loc(book.description).length > 100 ? '...' : ''}</p>
             {/if}
 
             {#if book.tags && book.tags.length > 0}
