@@ -101,10 +101,22 @@ pub async fn extract_auth_user_by_token(pool: &sqlx::PgPool, token: &str) -> Opt
         Some(d) => d,
         None => {
             // Try oauth_sessions
-            let row: Option<(String,)> = sqlx::query_as(
-                "SELECT did FROM oauth_sessions WHERE token = $1 AND expires_at > NOW()"
+            let row: Option<(String, Option<String>)> = sqlx::query_as(
+                "SELECT did, handle FROM oauth_sessions WHERE token = $1 AND expires_at > NOW()"
             ).bind(token).fetch_optional(pool).await.ok()?;
-            row?.0
+            let (did, handle) = row?;
+
+            // Ensure profile exists for OAuth users (lazy creation on first request)
+            if let Some(ref h) = handle {
+                let has_profile: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM profiles WHERE did = $1)"
+                ).bind(&did).fetch_one(pool).await.unwrap_or(false);
+                if !has_profile {
+                    let _ = auth_service::upsert_profile(pool, &did, h, None, None).await;
+                }
+            }
+
+            did
         }
     };
 
