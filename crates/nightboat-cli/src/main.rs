@@ -1297,18 +1297,37 @@ async fn main() -> Result<()> {
                 println!("Added to series: {series_id}");
             }
 
-            // Upload resource files (images, bib, etc.)
+            // Upload resource files/directories (images, bib, etc.)
+            // Collect all files to upload, expanding directories recursively
+            let mut resource_files: Vec<(PathBuf, String)> = Vec::new(); // (absolute_path, relative_name)
             for res_path in &resource {
-                let file_name = res_path.file_name()
-                    .and_then(|n| n.to_str())
-                    .context("Invalid resource filename")?;
-                let file_bytes = std::fs::read(res_path)
-                    .with_context(|| format!("Cannot read {}", res_path.display()))?;
+                if res_path.is_dir() {
+                    // Walk directory, preserving relative paths
+                    for entry in walkdir::WalkDir::new(res_path).into_iter().filter_map(|e| e.ok()) {
+                        if entry.file_type().is_file() {
+                            let path = entry.path().to_path_buf();
+                            let rel = path.strip_prefix(res_path.parent().unwrap_or(res_path))
+                                .unwrap_or(&path)
+                                .to_string_lossy().into_owned();
+                            resource_files.push((path, rel));
+                        }
+                    }
+                } else {
+                    let name = res_path.file_name()
+                        .and_then(|n| n.to_str())
+                        .context("Invalid resource filename")?
+                        .to_string();
+                    resource_files.push((res_path.clone(), name));
+                }
+            }
+
+            for (abs_path, rel_name) in &resource_files {
+                let file_bytes = std::fs::read(abs_path)
+                    .with_context(|| format!("Cannot read {}", abs_path.display()))?;
 
                 if let Some(ref series_id) = series {
-                    // Upload to series repo
                     let part = reqwest::multipart::Part::bytes(file_bytes)
-                        .file_name(file_name.to_string());
+                        .file_name(rel_name.clone());
                     let form = reqwest::multipart::Form::new().part("file", part);
                     client()
                         .post(format!("{base}/series/{series_id}/resource"))
@@ -1316,12 +1335,11 @@ async fn main() -> Result<()> {
                         .multipart(form)
                         .send().await?
                         .error_for_status()
-                        .with_context(|| format!("Failed to upload resource: {file_name}"))?;
-                    println!("Uploaded to series: {file_name}");
+                        .with_context(|| format!("Failed to upload resource: {rel_name}"))?;
+                    println!("  + {rel_name}");
                 } else {
-                    // Upload to article repo (as image/resource)
                     let part = reqwest::multipart::Part::bytes(file_bytes)
-                        .file_name(file_name.to_string());
+                        .file_name(rel_name.clone());
                     let form = reqwest::multipart::Form::new()
                         .text("article_uri", uri.to_string())
                         .part("file", part);
@@ -1331,8 +1349,8 @@ async fn main() -> Result<()> {
                         .multipart(form)
                         .send().await?
                         .error_for_status()
-                        .with_context(|| format!("Failed to upload resource: {file_name}"))?;
-                    println!("Uploaded to article: {file_name}");
+                        .with_context(|| format!("Failed to upload resource: {rel_name}"))?;
+                    println!("  + {rel_name}");
                 }
             }
         }

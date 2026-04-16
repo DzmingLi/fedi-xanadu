@@ -1184,7 +1184,8 @@ pub async fn convert_content(
 // --- Image upload ---
 
 const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
-const ALLOWED_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp"];
+const ALLOWED_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp", "pdf", "bib", "csv", "json", "toml", "yaml", "txt"];
+const RESERVED_CONTENT_NAMES: &[&str] = &["content.typ", "content.md", "content.html", "content.tex", "meta.json"];
 
 pub async fn upload_image(
     State(state): State<AppState>,
@@ -1231,12 +1232,13 @@ pub async fn upload_image(
         return Err(AppError(fx_core::Error::BadRequest(format!("Unsupported file type: {ext}"))));
     }
 
+    // Sanitize filename, preserving '/' for subdirectory structure
     let safe_name: String = original_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' { c } else { '_' })
         .collect();
-    let safe_name = safe_name.trim_start_matches('.').to_string();
-    if safe_name.is_empty() || safe_name == "content.typ" || safe_name == "content.md" || safe_name == "content.html" || safe_name == "content.tex" {
+    let safe_name = safe_name.trim_start_matches('.').trim_start_matches('/').to_string();
+    if safe_name.is_empty() || safe_name.contains("..") || RESERVED_CONTENT_NAMES.contains(&safe_name.as_str()) {
         return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
     }
 
@@ -1244,9 +1246,12 @@ pub async fn upload_image(
     let series_info = get_series_pijul_info(&state, &uri).await;
 
     if let Some((series_node_id, _chapter_id)) = &series_info {
-        // Series article: write image to series repo root
+        // Series article: write resource to series repo
         let series_repo = state.pijul.series_repo_path(series_node_id);
         let dest = series_repo.join(&safe_name);
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
         tokio::fs::write(&dest, &data).await?;
 
         // Invalidate series cache
@@ -1267,6 +1272,9 @@ pub async fn upload_image(
         let node_id = uri_to_node_id(&uri);
         let repo_path = state.pijul.repo_path(&node_id);
         let dest = repo_path.join(&safe_name);
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
         tokio::fs::write(&dest, &data).await?;
 
         let _ = tokio::fs::remove_file(repo_path.join("content.html")).await;
