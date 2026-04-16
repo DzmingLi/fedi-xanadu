@@ -146,8 +146,15 @@
 
   function openEdit() {
     if (!detail) return;
-    editTitles = { ...detail.book.title };
-    editDescs = { ...(detail.book.description || {}) };
+    // Ensure every language has an entry (even if empty) so bind:value works
+    const titles: Record<string, string> = {};
+    const descs: Record<string, string> = {};
+    for (const lang of EDIT_LANGS) {
+      titles[lang.code] = (detail.book.title as Record<string, string>)[lang.code] || '';
+      descs[lang.code] = (detail.book.description as Record<string, string> || {})[lang.code] || '';
+    }
+    editTitles = titles;
+    editDescs = descs;
     editLang = getLocale();
     editSummary = '';
     editError = '';
