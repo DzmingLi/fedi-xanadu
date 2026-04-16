@@ -10,11 +10,6 @@
 
   let locale = $derived(getLocale());
 
-  function cycleLocale() {
-    const codes = LOCALES.map(l => l.code);
-    const idx = codes.indexOf(locale);
-    setLocale(codes[(idx + 1) % codes.length]);
-  }
 
   let isDark = $state(
     localStorage.getItem('theme') === 'dark' ||
@@ -127,9 +122,11 @@
   </div>
 
   <div class="nav-right">
-    <button type="button" class="locale-toggle" onclick={cycleLocale} title="Switch language">
-      {(() => { const codes = LOCALES.map(l => l.code); return LOCALES[(codes.indexOf(locale) + 1) % codes.length].label; })()}
-    </button>
+    <select class="locale-toggle" value={locale} onchange={(e) => setLocale((e.target as HTMLSelectElement).value as any)}>
+      {#each LOCALES as loc}
+        <option value={loc.code}>{loc.label}</option>
+      {/each}
+    </select>
 
     <button type="button" class="theme-toggle" onclick={toggleTheme} title={isDark ? 'Light mode' : 'Dark mode'}>
       {#if isDark}
@@ -272,7 +269,7 @@
   .locale-toggle {
     font-size: 12px;
     font-weight: 600;
-    padding: 2px 8px;
+    padding: 2px 6px;
     border: 1px solid var(--border);
     border-radius: 3px;
     background: none;
@@ -280,6 +277,12 @@
     color: var(--text-secondary);
     transition: all 0.15s;
     font-family: var(--font-sans);
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 4px center;
+    padding-right: 16px;
   }
   .locale-toggle:hover {
     border-color: var(--accent);

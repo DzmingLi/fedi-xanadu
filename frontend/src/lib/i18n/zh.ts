@@ -246,6 +246,14 @@ export default {
   'profile.seriesBadge': '系列',
   'profile.lectureCount': '篇',
   'profile.none': '暂无',
+  'profile.publications': '发表',
+  'profile.projects': '项目',
+  'profile.teaching': '教学',
+  'profile.add': '添加',
+  'profile.present': '至今',
+  'profile.degree.Bachelor': '本科',
+  'profile.degree.Master': '硕士',
+  'profile.degree.PhD': '博士',
 
   // Library
   'library.newFolder': '新建文件夹',

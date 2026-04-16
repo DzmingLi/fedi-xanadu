@@ -216,6 +216,14 @@ export default {
   'profile.seriesBadge': 'Série',
   'profile.lectureCount': 'articles',
   'profile.none': 'Aucun',
+  'profile.publications': 'Publications',
+  'profile.projects': 'Projets',
+  'profile.teaching': 'Enseignement',
+  'profile.add': 'Ajouter',
+  'profile.present': 'Présent',
+  'profile.degree.Bachelor': 'Licence',
+  'profile.degree.Master': 'Master',
+  'profile.degree.PhD': 'Doctorat',
 
   // Library
   'library.newFolder': 'Nouveau dossier',

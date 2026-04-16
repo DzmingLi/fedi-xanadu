@@ -445,7 +445,7 @@
             {@const dept = eduField(edu, 'department', locale)}
             {@const major = eduField(edu, 'major', locale)}
             <div class="education-entry">
-              <span class="edu-degree">{edu.degree}</span>
+              <span class="edu-degree">{t('profile.degree.' + edu.degree) || edu.degree}</span>
               <span class="edu-school">{school}{#if dept}, {dept}{/if}</span>
               {#if major}<span class="edu-major">{major}</span>{/if}
               <span class="edu-dates">
@@ -460,7 +460,7 @@
           {/if}
           {#if isOwnProfile}
             <button class="edit-section-btn" onclick={() => { editEdu = JSON.parse(JSON.stringify(profile!.education)); editingEdu = true; }}>
-              {profile.education.length > 0 ? t('common.edit') : '+ Add'}
+              {profile.education.length > 0 ? t('common.edit') : t('profile.add')}
             </button>
           {/if}
         </div>
@@ -819,7 +819,7 @@
             <h3>{t('profile.teaching')}</h3>
             {#if isOwnProfile}
               <button class="edit-section-btn" onclick={() => { editTeach = JSON.parse(JSON.stringify(profile!.teaching)); editingTeach = true; }}>
-                {profile.teaching.length > 0 ? t('common.edit') : '+ Add'}
+                {profile.teaching.length > 0 ? t('common.edit') : t('profile.add')}
               </button>
             {/if}
           </div>
@@ -1071,7 +1071,7 @@
   }
   .banner-upload:hover { color: var(--accent); border-color: var(--accent); }
 
-  .avatar-wrap { position: relative; margin-top: -36px; }
+  .avatar-wrap { position: relative; }
   .avatar {
     width: 72px;
     height: 72px;
