@@ -20,52 +20,12 @@
     href={ad.link_url}
     target="_blank"
     rel="noopener sponsored"
-    class="sponsored-item"
+    class="happening-item"
     onclick={handleClick}
   >
-    {#if ad.image_url}
-      <img src={ad.image_url} alt="" class="sponsored-icon" />
-    {/if}
-    <span class="sponsored-text">
-      <strong>{ad.title}</strong> — {ad.body || ''}
-      <span class="sponsored-label">Sponsored</span>
+    <span class="happening-icon">📌</span>
+    <span class="happening-text">
+      {ad.title}{#if ad.body} — {ad.body}{/if}
     </span>
   </a>
 {/if}
-
-<style>
-  .sponsored-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    padding: 4px 0;
-    text-decoration: none;
-    transition: opacity 0.1s;
-  }
-  .sponsored-item:hover { opacity: 0.8; text-decoration: none; }
-  .sponsored-icon {
-    width: 16px;
-    height: 16px;
-    border-radius: 3px;
-    object-fit: cover;
-    flex-shrink: 0;
-    margin-top: 1px;
-  }
-  .sponsored-text {
-    font-size: 12px;
-    color: var(--text-secondary);
-    line-height: 1.4;
-  }
-  .sponsored-item:hover .sponsored-text { color: var(--accent); }
-  .sponsored-text strong {
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-  .sponsored-item:hover .sponsored-text strong { color: var(--accent); }
-  .sponsored-label {
-    display: block;
-    font-size: 10px;
-    color: var(--text-hint);
-    margin-top: 1px;
-  }
-</style>
