@@ -168,9 +168,9 @@ async fn resolve_article_content(
         rendered
     };
 
-    // Rewrite relative resource URLs for series chapters
+    // Rewrite relative resource URLs
     let html = if let Some((_, chapter_id)) = &series_info {
-        // Find the series ID for this article
+        // Series: rewrite to series resource endpoint
         let series_id: Option<String> = sqlx::query_scalar(
             "SELECT sa.series_id FROM series_articles sa WHERE sa.article_uri = $1 LIMIT 1"
         ).bind(uri).fetch_optional(&state.pool).await.ok().flatten();
@@ -184,7 +184,9 @@ async fn resolve_article_content(
             html
         }
     } else {
-        html
+        // Standalone: rewrite to article image endpoint
+        let encoded_uri = urlencoding::encode(uri);
+        rewrite_relative_urls_with_query(&html, "/api/articles/image", &encoded_uri)
     };
 
     Ok(ArticleContent { source, html })
@@ -201,6 +203,20 @@ fn rewrite_relative_urls(html: &str, base_url: &str) -> String {
             caps[0].to_string()
         } else {
             format!("{attr}=\"{base_url}/{url}\"")
+        }
+    }).to_string()
+}
+
+/// Rewrite relative URLs for standalone articles: `src="foo.png"` → `src="/api/articles/image?uri=...&name=foo.png"`
+fn rewrite_relative_urls_with_query(html: &str, endpoint: &str, encoded_uri: &str) -> String {
+    let re = regex_lite::Regex::new(r#"(src|href)="([^"]*?)""#).unwrap();
+    re.replace_all(html, |caps: &regex_lite::Captures| {
+        let attr = &caps[1];
+        let url = &caps[2];
+        if url.starts_with("http://") || url.starts_with("https://") || url.starts_with('/') || url.starts_with('#') || url.starts_with("data:") || url.starts_with("mailto:") {
+            caps[0].to_string()
+        } else {
+            format!("{attr}=\"{endpoint}?uri={encoded_uri}&name={}\"", urlencoding::encode(url))
         }
     }).to_string()
 }
@@ -1469,10 +1485,11 @@ pub async fn get_image(
     let node_id = uri_to_node_id(&q.uri);
     let repo_path = state.pijul.repo_path(&node_id);
 
-    let name = std::path::Path::new(&q.name)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or(AppError(fx_core::Error::BadRequest("invalid file name".into())))?;
+    // Sanitize: allow subdirectories (e.g. _rendered/hash.png, Figure/img.pdf) but reject ..
+    let name = &q.name;
+    if name.is_empty() || name.contains("..") || name.starts_with('/') {
+        return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
+    }
 
     let path = repo_path.join(name);
     let data = tokio::fs::read(&path).await.map_err(|_| {
