@@ -637,6 +637,7 @@ pub async fn compile_series(
                 tags: vec![],
                 prereqs: vec![],
                 series_id: Some(series_id.clone()),
+                paper: None,
                 authors: vec![],
                 invites: vec![],
             };

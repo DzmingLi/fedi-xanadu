@@ -877,6 +877,11 @@ pub async fn create_article(
     // Register creator as owner collaborator
     let _ = collaboration_service::register_article_owner(&state.pool, &at_uri, &user.did).await;
 
+    // Save paper metadata if provided
+    if let Some(ref paper) = input.paper {
+        let _ = article_service::upsert_paper_metadata(&state.pool, &at_uri, paper).await;
+    }
+
     // Add creator as verified author (position 0) with PDS authorship record
     let authorship_record = serde_json::json!({
         "$type": fx_atproto::lexicon::AUTHORSHIP,
@@ -1038,6 +1043,10 @@ pub async fn create_article_multipart(
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
     let _ = collaboration_service::register_article_owner(&state.pool, &at_uri, &user.did).await;
 
+    if let Some(ref paper) = input.paper {
+        let _ = article_service::upsert_paper_metadata(&state.pool, &at_uri, paper).await;
+    }
+
     let authorship_record = serde_json::json!({
         "$type": fx_atproto::lexicon::AUTHORSHIP,
         "article": at_uri,
@@ -1074,6 +1083,8 @@ pub struct ArticleFullResponse {
     votes: ArticleVoteSummary,
     series_context: Vec<fx_core::services::series_service::SeriesContextItem>,
     translations: Vec<Article>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    paper: Option<PaperMetadata>,
     my_vote: i32,
     is_bookmarked: bool,
     learned: bool,
@@ -1132,6 +1143,12 @@ pub async fn get_article_full(
 
     let fork_source = article_service::get_fork_source(&state.pool, &uri).await.unwrap_or(None);
 
+    let paper = if article.category == "paper" {
+        article_service::get_paper_metadata(&state.pool, &uri).await.unwrap_or(None)
+    } else {
+        None
+    };
+
     Ok(Json(ArticleFullResponse {
         article,
         content,
@@ -1145,6 +1162,7 @@ pub async fn get_article_full(
         },
         series_context: series_ctx,
         translations,
+        paper,
         my_vote,
         is_bookmarked,
         learned,

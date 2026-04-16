@@ -785,3 +785,44 @@ pub async fn list_access_grants(pool: &PgPool, uri: &str) -> crate::Result<Vec<A
     .await?;
     Ok(rows)
 }
+
+// ---- Paper metadata ----
+
+pub async fn upsert_paper_metadata(
+    pool: &PgPool,
+    article_uri: &str,
+    input: &crate::models::CreatePaperMetadata,
+) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO paper_metadata (article_uri, venue, venue_type, year, doi, arxiv_id, accepted) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         ON CONFLICT (article_uri) DO UPDATE SET \
+           venue = EXCLUDED.venue, venue_type = EXCLUDED.venue_type, \
+           year = EXCLUDED.year, doi = EXCLUDED.doi, \
+           arxiv_id = EXCLUDED.arxiv_id, accepted = EXCLUDED.accepted",
+    )
+    .bind(article_uri)
+    .bind(&input.venue)
+    .bind(&input.venue_type)
+    .bind(input.year)
+    .bind(&input.doi)
+    .bind(&input.arxiv_id)
+    .bind(input.accepted)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_paper_metadata(
+    pool: &PgPool,
+    article_uri: &str,
+) -> crate::Result<Option<crate::models::PaperMetadata>> {
+    let row = sqlx::query_as::<_, crate::models::PaperMetadata>(
+        "SELECT article_uri, venue, venue_type, year, doi, arxiv_id, accepted \
+         FROM paper_metadata WHERE article_uri = $1",
+    )
+    .bind(article_uri)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}

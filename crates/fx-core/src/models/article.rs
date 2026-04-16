@@ -50,6 +50,19 @@ pub struct ArticleAuthor {
     pub authorship_uri: Option<String>,
 }
 
+/// Paper-specific metadata (venue, DOI, arXiv, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct PaperMetadata {
+    pub article_uri: String,
+    pub venue: Option<String>,
+    pub venue_type: Option<String>,
+    pub year: Option<i16>,
+    pub doi: Option<String>,
+    pub arxiv_id: Option<String>,
+    pub accepted: bool,
+}
+
 // ---- Request ----
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
@@ -70,12 +83,27 @@ pub struct CreateArticle {
     pub prereqs: Vec<ArticlePrereq>,
     /// If set, the article belongs to this series and its source is stored in the series repo.
     pub series_id: Option<String>,
+    /// Paper metadata (venue, DOI, arXiv, etc.) — only for category=paper.
+    #[serde(default)]
+    pub paper: Option<CreatePaperMetadata>,
     /// Co-author DIDs (the creator is always included automatically).
     #[serde(default)]
     pub authors: Vec<String>,
     /// Handles to invite to answer this question (only used when kind=Question).
     #[serde(default)]
     pub invites: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct CreatePaperMetadata {
+    pub venue: Option<String>,
+    pub venue_type: Option<String>,
+    pub year: Option<i16>,
+    pub doi: Option<String>,
+    pub arxiv_id: Option<String>,
+    #[serde(default)]
+    pub accepted: bool,
 }
 
 // ---- Response ----

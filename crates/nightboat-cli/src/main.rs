@@ -1214,6 +1214,7 @@ async fn main() -> Result<()> {
                 tags,
                 prereqs: vec![],
                 series_id: None,
+                paper: None,
                 authors: vec![],
                 invites: invite,
             };
@@ -1274,6 +1275,7 @@ async fn main() -> Result<()> {
                 tags,
                 prereqs: parsed_prereqs,
                 series_id: series.clone(),
+                paper: None,
                 authors: vec![],
                 invites: vec![],
             };

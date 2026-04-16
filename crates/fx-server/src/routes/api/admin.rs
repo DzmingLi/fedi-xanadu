@@ -884,6 +884,7 @@ pub async fn admin_batch_publish(
             book_id: None,
             edition_id: None,
             restricted: None,
+            paper: None,
             authors: vec![],
             invites: vec![],
         };
