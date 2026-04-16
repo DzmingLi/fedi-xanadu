@@ -2148,7 +2148,30 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
                 .and_then(|v| v.as_array())
                 .context("Expected [[session]] array in TOML")?;
 
+            // Fetch existing sessions to enable incremental updates
+            let detail: serde_json::Value = client()
+                .get(format!("{base}/courses/{course_id}"))
+                .send().await?
+                .error_for_status().context("Failed to fetch course")?
+                .json().await?;
+
+            let existing: std::collections::HashMap<i64, serde_json::Value> = detail["sessions"]
+                .as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .filter_map(|s| {
+                    let order = s["sort_order"].as_i64()?;
+                    Some((order, s.clone()))
+                })
+                .collect();
+
+            let mut created = 0;
+            let mut updated = 0;
+            let mut skipped = 0;
+
             for (i, s) in sessions.iter().enumerate() {
+                let sort_order = s.get("order").and_then(|v| v.as_integer()).unwrap_or((i + 1) as i64);
+
                 let body = serde_json::json!({
                     "topic": s.get("topic").and_then(|v| v.as_str()),
                     "date": s.get("date").and_then(|v| v.as_str()),
@@ -2159,52 +2182,84 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
                     "assignment_label": s.get("assignment_label").and_then(|v| v.as_str()),
                     "discussion_url": s.get("discussion_url").and_then(|v| v.as_str()),
                     "discussion_label": s.get("discussion_label").and_then(|v| v.as_str()),
-                    "sort_order": s.get("order").and_then(|v| v.as_integer()).unwrap_or((i + 1) as i64),
+                    "sort_order": sort_order,
                 });
 
-                let resp: serde_json::Value = client()
-                    .post(format!("{base}/courses/{course_id}/sessions"))
-                    .bearer_auth(&token)
-                    .json(&body)
-                    .send().await?
-                    .error_for_status()
-                    .with_context(|| format!("Failed to create session {}", i + 1))?
-                    .json().await?;
-
-                let session_id = resp["id"].as_str().unwrap_or("?");
                 let topic = s.get("topic").and_then(|v| v.as_str()).unwrap_or("-");
-                println!("  [{}/{}] {topic} ({session_id})", i + 1, sessions.len());
 
-                // Add tags
-                if let Some(tags) = s.get("tags").and_then(|v| v.as_array()) {
-                    for tag in tags {
-                        if let Some(tag_id) = tag.as_str() {
-                            client()
-                                .post(format!("{base}/courses/{course_id}/sessions/{session_id}/tags"))
-                                .bearer_auth(&token)
-                                .json(&serde_json::json!({ "tag_id": tag_id }))
-                                .send().await?
-                                .error_for_status()?;
+                if let Some(ex) = existing.get(&sort_order) {
+                    // Check if anything changed
+                    let changed = ["topic", "date", "readings", "video_url", "notes_url",
+                                   "assignment_url", "assignment_label", "discussion_url", "discussion_label"]
+                        .iter()
+                        .any(|&field| {
+                            let new_val = body[field].as_str();
+                            let old_val = ex[field].as_str();
+                            new_val != old_val
+                        });
+
+                    if !changed {
+                        skipped += 1;
+                        continue;
+                    }
+
+                    // Update existing session
+                    let session_id = ex["id"].as_str().unwrap_or("?");
+                    client()
+                        .put(format!("{base}/courses/{course_id}/sessions/{session_id}"))
+                        .bearer_auth(&token)
+                        .json(&body)
+                        .send().await?
+                        .error_for_status()
+                        .with_context(|| format!("Failed to update session {sort_order}"))?;
+                    println!("  [{}/{}] ~ {topic} (updated)", i + 1, sessions.len());
+                    updated += 1;
+                } else {
+                    // Create new session
+                    let resp: serde_json::Value = client()
+                        .post(format!("{base}/courses/{course_id}/sessions"))
+                        .bearer_auth(&token)
+                        .json(&body)
+                        .send().await?
+                        .error_for_status()
+                        .with_context(|| format!("Failed to create session {}", i + 1))?
+                        .json().await?;
+
+                    let session_id = resp["id"].as_str().unwrap_or("?");
+                    println!("  [{}/{}] + {topic} ({session_id})", i + 1, sessions.len());
+                    created += 1;
+
+                    // Add tags
+                    if let Some(tags) = s.get("tags").and_then(|v| v.as_array()) {
+                        for tag in tags {
+                            if let Some(tag_id) = tag.as_str() {
+                                client()
+                                    .post(format!("{base}/courses/{course_id}/sessions/{session_id}/tags"))
+                                    .bearer_auth(&token)
+                                    .json(&serde_json::json!({ "tag_id": tag_id }))
+                                    .send().await?
+                                    .error_for_status()?;
+                            }
                         }
                     }
-                }
 
-                // Add prereqs
-                if let Some(prereqs) = s.get("prereqs").and_then(|v| v.as_array()) {
-                    for tag in prereqs {
-                        if let Some(tag_id) = tag.as_str() {
-                            client()
-                                .post(format!("{base}/courses/{course_id}/sessions/{session_id}/prereqs"))
-                                .bearer_auth(&token)
-                                .json(&serde_json::json!({ "tag_id": tag_id }))
-                                .send().await?
-                                .error_for_status()?;
+                    // Add prereqs
+                    if let Some(prereqs) = s.get("prereqs").and_then(|v| v.as_array()) {
+                        for tag in prereqs {
+                            if let Some(tag_id) = tag.as_str() {
+                                client()
+                                    .post(format!("{base}/courses/{course_id}/sessions/{session_id}/prereqs"))
+                                    .bearer_auth(&token)
+                                    .json(&serde_json::json!({ "tag_id": tag_id }))
+                                    .send().await?
+                                    .error_for_status()?;
+                            }
                         }
                     }
                 }
             }
 
-            println!("\nImported {} sessions into course {course_id}", sessions.len());
+            println!("\n{created} created, {updated} updated, {skipped} unchanged");
         }
     }
 

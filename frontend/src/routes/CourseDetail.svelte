@@ -121,39 +121,46 @@
               </thead>
               <tbody>
                 {#each detail.sessions as s}
-                  <tr>
+                  {@const isEmpty = !s.readings && !s.video_url && !s.notes_url && !s.assignment_url && !s.discussion_url}
+                  <tr class:session-empty={isEmpty}>
                     <td class="session-num">{s.sort_order}</td>
-                    <td class="session-topic">
-                      {s.topic || ''}
-                      {#if s.tags && s.tags.length > 0}
-                        <div class="session-tags">
-                          {#each s.tags as tag}
-                            <a href="/tag?id={encodeURIComponent(tag.tag_id)}" class="session-tag">{tag.tag_name}</a>
-                          {/each}
-                        </div>
-                      {/if}
-                    </td>
-                    <td class="session-readings">
-                      {#if s.readings}
-                        <span class="res-reading">{s.readings}</span>
-                      {/if}
-                    </td>
-                    <td class="session-video">
-                      {#if s.video_url}
-                        <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {t('course.video')}</a>
-                      {/if}
-                      {#if s.notes_url}
-                        <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {t('course.notes')}</a>
-                      {/if}
-                    </td>
-                    <td class="session-hw">
-                      {#if s.assignment_url}
-                        <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {s.assignment_label || t('course.hw')}</a>
-                      {/if}
-                      {#if s.discussion_url}
-                        <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {s.discussion_label || t('course.discussion')}</a>
-                      {/if}
-                    </td>
+                    {#if isEmpty}
+                      <td class="session-topic session-span" colspan="4">
+                        <strong>{s.topic || ''}</strong>
+                      </td>
+                    {:else}
+                      <td class="session-topic">
+                        {s.topic || ''}
+                        {#if s.tags && s.tags.length > 0}
+                          <div class="session-tags">
+                            {#each s.tags as tag}
+                              <a href="/tag?id={encodeURIComponent(tag.tag_id)}" class="session-tag">{tag.tag_name}</a>
+                            {/each}
+                          </div>
+                        {/if}
+                      </td>
+                      <td class="session-readings">
+                        {#if s.readings}
+                          <span class="res-reading">{s.readings}</span>
+                        {/if}
+                      </td>
+                      <td class="session-video">
+                        {#if s.video_url}
+                          <a href={s.video_url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {t('course.video')}</a>
+                        {/if}
+                        {#if s.notes_url}
+                          <a href={s.notes_url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {t('course.notes')}</a>
+                        {/if}
+                      </td>
+                      <td class="session-hw">
+                        {#if s.assignment_url}
+                          <a href={s.assignment_url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {s.assignment_label || t('course.hw')}</a>
+                        {/if}
+                        {#if s.discussion_url}
+                          <a href={s.discussion_url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {s.discussion_label || t('course.discussion')}</a>
+                        {/if}
+                      </td>
+                    {/if}
                   </tr>
                 {/each}
               </tbody>
@@ -264,6 +271,8 @@
   .schedule-table th { text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-hint); padding: 8px 12px; border-bottom: 2px solid var(--border); }
   .schedule-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
   .schedule-table tbody tr:hover { background: var(--bg-hover, rgba(0,0,0,0.02)); }
+  .session-empty { background: var(--bg-hover, rgba(0,0,0,0.02)); }
+  .session-span { font-size: 14px; color: var(--text-primary); }
   .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
   .session-topic { color: var(--text-primary); width: 40%; }
   .session-readings { color: var(--text-hint); font-size: 13px; white-space: nowrap; width: 18%; }
