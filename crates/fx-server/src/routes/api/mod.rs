@@ -389,6 +389,7 @@ fn admin_routes() -> Router<AppState> {
         .route("/admin/series/articles", post(admin::admin_add_series_article))
         .route("/admin/series/batch-publish", post(admin::admin_batch_publish))
         .route("/admin/tags/merge", post(admin::admin_merge_tag))
+        .route("/admin/tags/alias", post(admin::admin_add_tag_alias).delete(admin::admin_remove_tag_alias))
         .route("/admin/questions", post(admin::admin_create_question))
         .route("/admin/questions/answer", post(admin::admin_post_answer))
         .route("/admin/questions/merge", post(admin::admin_merge_questions))

@@ -225,9 +225,10 @@ pub async fn merge_tag(pool: &PgPool, from_id: &str, into_id: &str) -> Result<()
 pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<Tag>> {
     let pattern = format!("%{query}%");
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at FROM tags \
-         WHERE id ILIKE $1 OR name ILIKE $1 \
-         ORDER BY CASE WHEN id = $2 THEN 0 WHEN id ILIKE $3 THEN 1 ELSE 2 END, name \
+        "SELECT DISTINCT t.id, t.name, t.names, t.description, t.created_by, t.created_at FROM tags t \
+         LEFT JOIN tag_aliases a ON a.tag_id = t.id \
+         WHERE t.id ILIKE $1 OR t.name ILIKE $1 OR a.alias ILIKE $1 \
+         ORDER BY CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END, t.name \
          LIMIT $4",
     )
     .bind(&pattern)
@@ -262,4 +263,39 @@ pub async fn get_tag_names_i18n(
     .await?;
 
     Ok(rows.into_iter().map(|r| (r.id, r.names.0)).collect())
+}
+
+// ── Aliases ────────────────────────────────────────────────────────────
+
+pub async fn add_alias(pool: &PgPool, alias: &str, tag_id: &str) -> crate::Result<()> {
+    sqlx::query("INSERT INTO tag_aliases (alias, tag_id) VALUES ($1, $2) ON CONFLICT (alias) DO UPDATE SET tag_id = $2")
+        .bind(alias).bind(tag_id)
+        .execute(pool).await?;
+    Ok(())
+}
+
+pub async fn remove_alias(pool: &PgPool, alias: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM tag_aliases WHERE alias = $1")
+        .bind(alias).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn list_aliases(pool: &PgPool, tag_id: &str) -> crate::Result<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT alias FROM tag_aliases WHERE tag_id = $1 ORDER BY alias")
+        .bind(tag_id).fetch_all(pool).await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
+}
+
+/// Resolve a tag ID or alias to the canonical tag ID.
+pub async fn resolve_tag(pool: &PgPool, id_or_alias: &str) -> crate::Result<String> {
+    // First check if it's a direct tag ID
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1)")
+        .bind(id_or_alias).fetch_one(pool).await?;
+    if exists {
+        return Ok(id_or_alias.to_string());
+    }
+    // Then check aliases
+    let canonical: Option<String> = sqlx::query_scalar("SELECT tag_id FROM tag_aliases WHERE alias = $1")
+        .bind(id_or_alias).fetch_optional(pool).await?;
+    canonical.ok_or_else(|| crate::Error::NotFound { entity: "tag", id: id_or_alias.to_string() })
 }
