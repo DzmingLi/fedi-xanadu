@@ -968,17 +968,17 @@
     display: flex; align-items: center; justify-content: center;
   }
   .modal {
-    background: var(--bg); border-radius: 8px; padding: 24px;
+    background: var(--bg-white, var(--bg-page, #fff)); border-radius: 8px; padding: 24px;
     width: 90%; max-width: 480px; max-height: 90vh; overflow-y: auto;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
   }
   .modal h3 { margin: 0 0 16px; font-family: var(--font-serif); }
   .modal .form-group { margin-bottom: 12px; }
   .modal .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; }
   .modal input, .modal textarea {
     width: 100%; padding: 8px; border: 1px solid var(--border);
-    border-radius: 4px; font-size: 14px; background: var(--bg);
-    color: var(--text); box-sizing: border-box;
+    border-radius: 4px; font-size: 14px; background: var(--bg-page, #fff);
+    color: var(--text-primary, #333); box-sizing: border-box;
   }
   .modal textarea { resize: vertical; }
   .lang-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
