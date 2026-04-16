@@ -666,7 +666,7 @@ pub async fn get_course_reviews(pool: &PgPool, course_id: &str) -> crate::Result
         "SELECT a.at_uri, a.title, a.description, a.did, \
          p.handle AS author_handle, p.display_name AS author_display_name, \
          a.created_at, \
-         COALESCE((SELECT SUM(value) FROM article_votes WHERE article_uri = a.at_uri), 0) AS vote_score, \
+         COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
          (SELECT COUNT(*) FROM comments WHERE content_uri = a.at_uri) AS comment_count \
          FROM articles a \
          LEFT JOIN profiles p ON p.did = a.did \
