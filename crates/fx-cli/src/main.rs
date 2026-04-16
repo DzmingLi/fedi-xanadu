@@ -1335,10 +1335,25 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
         }
 
         BookCommand::Create { title, authors, desc, cover_url, tags, prereqs } => {
+            // Title can be JSON like {"en":"...","zh":"..."} or plain string (wrapped as {"en":"..."})
+            let title_val: serde_json::Value = if title.starts_with('{') {
+                serde_json::from_str(&title).unwrap_or(serde_json::json!({"en": title}))
+            } else {
+                serde_json::json!({"en": title})
+            };
+            let desc_val: serde_json::Value = if let Some(ref d) = desc {
+                if d.starts_with('{') {
+                    serde_json::from_str(d).unwrap_or(serde_json::json!({"en": d}))
+                } else {
+                    serde_json::json!({"en": d})
+                }
+            } else {
+                serde_json::json!({})
+            };
             let body = serde_json::json!({
-                "title": title,
+                "title": title_val,
                 "authors": authors,
-                "description": desc.unwrap_or_default(),
+                "description": desc_val,
                 "cover_url": cover_url,
                 "tags": tags,
                 "prereqs": prereqs,
