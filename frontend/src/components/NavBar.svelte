@@ -10,6 +10,11 @@
 
   let locale = $derived(getLocale());
 
+  function cycleLocale() {
+    const codes = LOCALES.map(l => l.code);
+    const next = codes[(codes.indexOf(locale) + 1) % codes.length];
+    setLocale(next as any);
+  }
 
   let isDark = $state(
     localStorage.getItem('theme') === 'dark' ||
@@ -118,15 +123,12 @@
     <a href="/books">{t('nav.books')}</a>
     <a href="/courses">{t('nav.courses')}</a>
     <a href="/listings">{t('nav.listings')}</a>
-    <a href="/about">{t('nav.about')}</a>
   </div>
 
   <div class="nav-right">
-    <select class="locale-toggle" value={locale} onchange={(e) => setLocale((e.target as HTMLSelectElement).value as any)}>
-      {#each LOCALES as loc}
-        <option value={loc.code}>{loc.label}</option>
-      {/each}
-    </select>
+    <button type="button" class="locale-toggle" onclick={cycleLocale} title="Switch language">
+      {(() => { const codes = LOCALES.map(l => l.code); return LOCALES[(codes.indexOf(locale) + 1) % codes.length].label; })()}
+    </button>
 
     <button type="button" class="theme-toggle" onclick={toggleTheme} title={isDark ? 'Light mode' : 'Dark mode'}>
       {#if isDark}
