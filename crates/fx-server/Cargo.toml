@@ -36,6 +36,7 @@ urlencoding = "2"
 atproto-auth.workspace = true
 atproto-oauth.workspace = true
 async-trait = "0.1"
+base64 = "0.22"
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }

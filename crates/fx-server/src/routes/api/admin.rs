@@ -753,6 +753,17 @@ pub struct BatchArticle {
     pub content_format: Option<String>,
     pub tags: Option<Vec<String>>,
     pub license: Option<String>,
+    /// Path in the repo (e.g. "ch1/34DataFlowAnalysis.md"). If omitted, uses chapters/{tid}.{ext}.
+    pub path: Option<String>,
+}
+
+/// A binary file to write into the repo (e.g. images).
+#[derive(serde::Deserialize)]
+pub struct BatchFile {
+    /// Path in the repo (e.g. "ch1/img/foo.png")
+    pub path: String,
+    /// Base64-encoded content
+    pub data: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -760,6 +771,9 @@ pub struct AdminBatchPublishInput {
     pub as_handle: String,
     pub series_id: String,
     pub articles: Vec<BatchArticle>,
+    /// Extra binary files (images etc) to write into the repo
+    #[serde(default)]
+    pub files: Vec<BatchFile>,
     pub lang: Option<String>,
 }
 
@@ -795,7 +809,22 @@ pub async fn admin_batch_publish(
 
     let mut results = Vec::new();
 
-    // Phase 1: Write all files and create DB records (no pijul record yet)
+    // Phase 0: Write extra binary files (images etc) into the repo
+    for file in &input.files {
+        let file_path = series_repo.join(&file.path);
+        if let Some(parent) = file_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        use base64::Engine;
+        let data = base64::engine::general_purpose::STANDARD.decode(&file.data)
+            .map_err(|e| AppError(fx_core::Error::BadRequest(format!("invalid base64 for {}: {e}", file.path))))?;
+        tokio::fs::write(&file_path, &data).await?;
+    }
+    if !input.files.is_empty() {
+        tracing::info!("wrote {} extra files to series repo", input.files.len());
+    }
+
+    // Phase 1: Write all article files and create DB records (no pijul record yet)
     for item in &input.articles {
         let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
         let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
@@ -804,8 +833,12 @@ pub async fn admin_batch_publish(
         let content_format: ContentFormat = format.parse().unwrap_or(ContentFormat::Markdown);
         let src_ext = fx_renderer::format_extension(format);
 
-        // Write file to series repo
-        let chapter_path = fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, src_ext);
+        // Write file to series repo — use custom path or default
+        let chapter_path = if let Some(ref p) = item.path {
+            series_repo.join(p)
+        } else {
+            fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, src_ext)
+        };
         if let Some(parent) = chapter_path.parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
         }
