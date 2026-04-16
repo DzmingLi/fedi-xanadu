@@ -86,6 +86,9 @@ pub struct CreateArticle {
     /// Paper metadata (venue, DOI, arXiv, etc.) — only for category=paper.
     #[serde(default)]
     pub paper: Option<CreatePaperMetadata>,
+    /// Experience metadata (target, result, etc.) — only for category=experience.
+    #[serde(default)]
+    pub experience: Option<CreateExperienceMetadata>,
     /// Co-author DIDs (the creator is always included automatically).
     #[serde(default)]
     pub authors: Vec<String>,
@@ -104,6 +107,26 @@ pub struct CreatePaperMetadata {
     pub arxiv_id: Option<String>,
     #[serde(default)]
     pub accepted: bool,
+}
+
+/// Experience post metadata (postgrad, interview, competition, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct ExperienceMetadata {
+    pub article_uri: String,
+    pub kind: Option<String>,
+    pub target: Option<String>,
+    pub year: Option<i16>,
+    pub result: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct CreateExperienceMetadata {
+    pub kind: Option<String>,
+    pub target: Option<String>,
+    pub year: Option<i16>,
+    pub result: Option<String>,
 }
 
 // ---- Response ----

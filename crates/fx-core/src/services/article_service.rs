@@ -813,6 +813,42 @@ pub async fn upsert_paper_metadata(
     Ok(())
 }
 
+pub async fn upsert_experience_metadata(
+    pool: &PgPool,
+    article_uri: &str,
+    input: &crate::models::CreateExperienceMetadata,
+) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO experience_metadata (article_uri, kind, target, year, result) \
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (article_uri) DO UPDATE SET \
+           kind = EXCLUDED.kind, target = EXCLUDED.target, \
+           year = EXCLUDED.year, result = EXCLUDED.result",
+    )
+    .bind(article_uri)
+    .bind(&input.kind)
+    .bind(&input.target)
+    .bind(input.year)
+    .bind(&input.result)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_experience_metadata(
+    pool: &PgPool,
+    article_uri: &str,
+) -> crate::Result<Option<crate::models::ExperienceMetadata>> {
+    let row = sqlx::query_as::<_, crate::models::ExperienceMetadata>(
+        "SELECT article_uri, kind, target, year, result \
+         FROM experience_metadata WHERE article_uri = $1",
+    )
+    .bind(article_uri)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
 pub async fn get_paper_metadata(
     pool: &PgPool,
     article_uri: &str,

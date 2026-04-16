@@ -93,6 +93,16 @@ enum Command {
         /// Paper has been accepted
         #[arg(long)]
         accepted: bool,
+        // -- Experience metadata (only for --category experience) --
+        /// Experience kind (postgrad, interview, competition, application, other)
+        #[arg(long)]
+        exp_kind: Option<String>,
+        /// Target school/company/competition
+        #[arg(long)]
+        target: Option<String>,
+        /// Result (accepted, rejected, pending, passed, failed)
+        #[arg(long)]
+        result: Option<String>,
     },
     /// Update an existing article's content from a local file
     Update {
@@ -1256,6 +1266,7 @@ async fn main() -> Result<()> {
                 prereqs: vec![],
                 series_id: None,
                 paper: None,
+                experience: None,
                 authors: vec![],
                 invites: invite,
             };
@@ -1275,7 +1286,8 @@ async fn main() -> Result<()> {
         }
 
         Command::Upload { file, title, desc, lang, tags, prereqs, license, category, book_id, series, resource,
-                          venue, venue_type, year, doi, arxiv_id, accepted } => {
+                          venue, venue_type, year, doi, arxiv_id, accepted,
+                          exp_kind, target, result } => {
             let token = config.token()?;
 
             let content = std::fs::read_to_string(&file)
@@ -1310,6 +1322,14 @@ async fn main() -> Result<()> {
                 None
             };
 
+            let exp_meta = if exp_kind.is_some() || target.is_some() || result.is_some() {
+                Some(fx_core::models::CreateExperienceMetadata {
+                    kind: exp_kind, target, year, result,
+                })
+            } else {
+                None
+            };
+
             let body = CreateArticle {
                 title: title.clone(),
                 description: Some(desc.unwrap_or_default()),
@@ -1326,6 +1346,7 @@ async fn main() -> Result<()> {
                 prereqs: parsed_prereqs,
                 series_id: series.clone(),
                 paper: paper_meta,
+                experience: exp_meta,
                 authors: vec![],
                 invites: vec![],
             };
