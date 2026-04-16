@@ -1210,6 +1210,7 @@ async fn main() -> Result<()> {
                 tags,
                 prereqs: vec![],
                 series_id: None,
+                authors: vec![],
                 invites: invite,
             };
             let article: serde_json::Value = client()
@@ -1269,6 +1270,7 @@ async fn main() -> Result<()> {
                 tags,
                 prereqs: parsed_prereqs,
                 series_id: series.clone(),
+                authors: vec![],
                 invites: vec![],
             };
 

@@ -38,6 +38,18 @@ pub struct Article {
     pub updated_at: DateTime<Utc>,
 }
 
+/// An author entry for an article, with verification status.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct ArticleAuthor {
+    pub author_did: String,
+    pub author_handle: Option<String>,
+    pub author_reputation: i32,
+    pub position: Option<i16>,
+    pub status: String,
+    pub authorship_uri: Option<String>,
+}
+
 // ---- Request ----
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
@@ -58,6 +70,9 @@ pub struct CreateArticle {
     pub prereqs: Vec<ArticlePrereq>,
     /// If set, the article belongs to this series and its source is stored in the series repo.
     pub series_id: Option<String>,
+    /// Co-author DIDs (the creator is always included automatically).
+    #[serde(default)]
+    pub authors: Vec<String>,
     /// Handles to invite to answer this question (only used when kind=Question).
     #[serde(default)]
     pub invites: Vec<String>,

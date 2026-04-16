@@ -90,16 +90,20 @@ async fn extract_auth_user(pool: &sqlx::PgPool, headers: &HeaderMap) -> Option<A
                     c.strip_prefix("pad_session=").map(|v| v.to_string())
                 })
         })?;
-    let token_ref = token.as_str();
+    extract_auth_user_by_token(pool, &token).await
+}
 
+/// Look up an authenticated user by their session token.
+/// Public so that OAuth callback handlers (e.g. ORCID) can use it.
+pub async fn extract_auth_user_by_token(pool: &sqlx::PgPool, token: &str) -> Option<AuthUser> {
     // Check legacy sessions table first, then oauth_sessions
-    let did = match auth_service::get_did_by_token(pool, token_ref).await.ok()? {
+    let did = match auth_service::get_did_by_token(pool, token).await.ok()? {
         Some(d) => d,
         None => {
             // Try oauth_sessions
             let row: Option<(String,)> = sqlx::query_as(
                 "SELECT did FROM oauth_sessions WHERE token = $1 AND expires_at > NOW()"
-            ).bind(token_ref).fetch_optional(pool).await.ok()?;
+            ).bind(token).fetch_optional(pool).await.ok()?;
             row?.0
         }
     };
@@ -120,7 +124,7 @@ async fn extract_auth_user(pool: &sqlx::PgPool, headers: &HeaderMap) -> Option<A
 
     Some(AuthUser {
         did,
-        token,
+        token: token.to_string(),
         banned,
         phone_verified,
     })

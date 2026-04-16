@@ -32,6 +32,8 @@ mod thoughts;
 mod votes;
 mod ads;
 mod events;
+mod authorship;
+mod orcid;
 
 use axum::{Json, Router, extract::State, routing::{delete, get, patch, post, put}};
 
@@ -110,6 +112,8 @@ pub fn routes() -> Router<AppState> {
         .merge(thought_routes())
         .merge(ad_routes())
         .merge(event_routes())
+        .merge(authorship_routes())
+        .merge(orcid_routes())
 }
 
 // --- Grouped sub-routers ---
@@ -480,6 +484,22 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/history", get(books::get_edit_history))
         .route("/books/{id}/editions/{eid}/cover", post(books::upload_edition_cover))
         .route("/book-covers/{id}", get(books::get_cover))
+}
+
+fn authorship_routes() -> Router<AppState> {
+    Router::new()
+        .route("/authorship", post(authorship::add_author))
+        .route("/authorship/authors", get(authorship::list_authors))
+        .route("/authorship/verify", post(authorship::verify_authorship))
+        .route("/authorship/reject", post(authorship::reject_authorship))
+        .route("/authorship/pending", get(authorship::my_pending_authorships))
+}
+
+fn orcid_routes() -> Router<AppState> {
+    Router::new()
+        .route("/orcid/start", get(orcid::orcid_start))
+        .route("/orcid/callback", get(orcid::orcid_callback))
+        .route("/orcid", get(orcid::get_orcid).delete(orcid::unlink_orcid))
 }
 
 // --- Health ---

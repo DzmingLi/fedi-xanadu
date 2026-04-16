@@ -17,6 +17,9 @@ pub struct AppState {
     pub instance_mode: InstanceMode,
     pub session_store: Arc<dyn atproto_auth::SessionStore>,
     pub series_resolver: Arc<dyn PadProjectResolver>,
+    pub public_url: String,
+    pub orcid_client_id: Option<String>,
+    pub orcid_client_secret: Option<String>,
 }
 
 // FromRef impls
@@ -77,6 +80,9 @@ impl AppState {
             instance_mode,
             session_store,
             series_resolver,
+            public_url: config.public_url.clone(),
+            orcid_client_id: config.orcid_client_id.clone(),
+            orcid_client_secret: config.orcid_client_secret.clone(),
         })
     }
 }

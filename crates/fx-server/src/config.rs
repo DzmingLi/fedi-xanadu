@@ -25,6 +25,12 @@ pub struct Config {
     /// e.g. "https://xanadu.example.com". Set via FX_PUBLIC_URL env var.
     #[serde(default)]
     pub public_url: String,
+    /// ORCID OAuth client ID. Register at https://orcid.org/developer-tools
+    #[serde(default)]
+    pub orcid_client_id: Option<String>,
+    /// ORCID OAuth client secret.
+    #[serde(default)]
+    pub orcid_client_secret: Option<String>,
 }
 
 impl Default for Config {
@@ -39,6 +45,8 @@ impl Default for Config {
             admin_secret: None,
             instance_mode: String::new(),
             public_url: String::new(),
+            orcid_client_id: None,
+            orcid_client_secret: None,
         }
     }
 }

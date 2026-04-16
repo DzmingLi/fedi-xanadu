@@ -6,7 +6,7 @@ use axum::{
 use fx_core::content::{ContentFormat, ContentKind};
 use fx_core::models::*;
 use fx_core::region::default_visibility;
-use fx_core::services::{article_service, collaboration_service, notification_service, series_service, version_service};
+use fx_core::services::{article_service, authorship_service, collaboration_service, notification_service, series_service, version_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult, require_owner};
@@ -869,6 +869,29 @@ pub async fn create_article(
 
     // Register creator as owner collaborator
     let _ = collaboration_service::register_article_owner(&state.pool, &at_uri, &user.did).await;
+
+    // Add creator as verified author (position 0) with PDS authorship record
+    let authorship_record = serde_json::json!({
+        "$type": fx_atproto::lexicon::AUTHORSHIP,
+        "article": at_uri,
+        "createdAt": now_rfc3339(),
+    });
+    let authorship_uri = pds_create_record(
+        &state, &user.token, fx_atproto::lexicon::AUTHORSHIP, authorship_record, None, "creator authorship",
+    ).await;
+    let _ = authorship_service::add_author(&state.pool, &at_uri, &user.did, &user.did, Some(0)).await;
+    if let Some(ref uri) = authorship_uri {
+        let _ = authorship_service::verify_authorship(&state.pool, &at_uri, &user.did, Some(uri)).await;
+    }
+
+    // Add co-authors as pending (they must verify)
+    for (i, author_did) in input.authors.iter().enumerate() {
+        if author_did != &user.did {
+            let _ = authorship_service::add_author(
+                &state.pool, &at_uri, author_did, &user.did, Some((i + 1) as i16),
+            ).await;
+        }
+    }
 
     Ok((StatusCode::CREATED, Json(article)))
 }
