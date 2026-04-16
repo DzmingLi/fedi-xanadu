@@ -56,11 +56,11 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal" onclick={(e) => e.stopPropagation()}>
-      <h2>{isRegister ? (t('auth.register') || 'Register') : t('nav.login')}</h2>
+      <h2>{isRegister ? (t('auth.register')) : t('nav.login')}</h2>
 
       <div class="tabs">
         <button class="tab" class:active={mode === 'platform'} onclick={() => { mode = 'platform'; error = ''; }}>
-          {t('auth.platformLogin') || 'Platform'}
+          {t('auth.platformLogin')}
         </button>
         <button class="tab" class:active={mode === 'atproto'} onclick={() => { mode = 'atproto'; error = ''; isRegister = false; }}>
           AT Protocol
@@ -73,7 +73,7 @@
 
       {#if mode === 'platform'}
         <label>
-          {t('auth.handle') || 'Username'}
+          {t('auth.handle')}
           <input
             type="text"
             bind:value={handle}
@@ -85,12 +85,12 @@
 
         {#if isRegister}
           <label>
-            {t('auth.displayName') || 'Display Name'}
+            {t('auth.displayName')}
             <input
               type="text"
               bind:value={displayName}
               onkeydown={onKeydown}
-              placeholder={t('auth.displayNamePlaceholder') || 'Optional'}
+              placeholder={t('auth.displayNamePlaceholder')}
               disabled={loading}
             />
           </label>
@@ -102,18 +102,18 @@
             type="password"
             bind:value={password}
             onkeydown={onKeydown}
-            placeholder={isRegister ? (t('auth.passwordMin') || '8+ characters') : ''}
+            placeholder={isRegister ? (t('auth.passwordMin')) : ''}
             disabled={loading}
           />
         </label>
 
         <p class="hint small toggle-hint">
           {#if isRegister}
-            {t('auth.hasAccount') || 'Already have an account?'}
+            {t('auth.hasAccount')}
             <button class="link-btn" onclick={() => { isRegister = false; error = ''; }}>{t('nav.login')}</button>
           {:else}
-            {t('auth.noAccountLocal') || "Don't have an account?"}
-            <button class="link-btn" onclick={() => { isRegister = true; error = ''; }}>{t('auth.register') || 'Register'}</button>
+            {t('auth.noAccountLocal')}
+            <button class="link-btn" onclick={() => { isRegister = true; error = ''; }}>{t('auth.register')}</button>
           {/if}
         </p>
       {:else}
@@ -127,7 +127,7 @@
             disabled={loading}
           />
         </label>
-        <p class="hint small">{t('auth.oauthHint') || 'You will be redirected to your PDS to authorize.'}</p>
+        <p class="hint small">{t('auth.oauthHint')}</p>
       {/if}
 
       <div class="actions">
@@ -136,11 +136,11 @@
           {#if loading}
             {t('common.loading')}
           {:else if mode === 'atproto'}
-            {t('auth.submit') || 'Login'}
+            {t('auth.submit')}
           {:else if isRegister}
-            {t('auth.register') || 'Register'}
+            {t('auth.register')}
           {:else}
-            {t('auth.submit') || 'Login'}
+            {t('auth.submit')}
           {/if}
         </button>
       </div>

@@ -399,10 +399,18 @@ export default {
 
   // Auth / Login
   'auth.loginHint': '使用你的 Bluesky handle 和 App Password 登录',
-  'auth.handle': 'Handle',
-  'auth.password': 'App Password',
   'auth.submit': '登录',
   'auth.createAppPw': '在 Bluesky 设置中创建 App Password',
+  'auth.platformLogin': '平台登录',
+  'auth.register': '注册',
+  'auth.displayName': '显示名称',
+  'auth.displayNamePlaceholder': '选填',
+  'auth.passwordMin': '至少8个字符',
+  'auth.hasAccount': '已有账号？',
+  'auth.noAccountLocal': '没有账号？',
+  'auth.oauthHint': '将跳转到你的 PDS 进行授权。',
+  'auth.handle': '用户名',
+  'auth.password': '密码',
 
   // Keybindings
   'kb.title': '快捷键',

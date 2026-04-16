@@ -407,6 +407,14 @@ export default {
   'auth.password': 'App Password',
   'auth.submit': 'Login',
   'auth.createAppPw': 'Create an App Password in Bluesky Settings',
+  'auth.platformLogin': 'Platform Login',
+  'auth.register': 'Register',
+  'auth.displayName': 'Display Name',
+  'auth.displayNamePlaceholder': 'Optional',
+  'auth.passwordMin': '8+ characters',
+  'auth.hasAccount': 'Already have an account?',
+  'auth.noAccountLocal': "Don't have an account?",
+  'auth.oauthHint': 'You will be redirected to your PDS to authorize.',
 
   // Keybindings
   'kb.title': 'Keyboard Shortcuts',
