@@ -437,6 +437,54 @@ enum AdminCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Import a repository directory as a series using batch-publish (single pijul change)
+    ///
+    /// Reads a TOML manifest listing articles and their repo paths, plus
+    /// auto-collects all image files. Everything is uploaded in one batch request.
+    ///
+    /// Manifest format:
+    /// ```toml
+    /// [[article]]
+    /// title = "Chapter 1"
+    /// path = "ch1/intro.md"
+    ///
+    /// [[article]]
+    /// title = "Chapter 2"
+    /// path = "ch2/main.md"
+    /// ```
+    ///
+    /// Image files (.png/.jpg/.gif/.svg) referenced in the markdown are auto-detected
+    /// and included. Or specify `image_dirs` to include all images from directories.
+    #[command(name = "import-repo")]
+    ImportRepo {
+        /// Platform user handle to publish as
+        #[arg(long)]
+        r#as: String,
+        /// Series ID
+        #[arg(long)]
+        series: String,
+        /// Root directory of the repo
+        #[arg(short, long)]
+        dir: PathBuf,
+        /// TOML manifest file listing articles (relative to dir)
+        #[arg(short, long)]
+        manifest: PathBuf,
+        /// Language code
+        #[arg(short, long, default_value = "en")]
+        lang: String,
+        /// License
+        #[arg(long, default_value = "CC-BY-SA-4.0")]
+        license: String,
+        /// Tags for all articles (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// Extra directories to scan for images (relative to dir, comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        image_dirs: Vec<PathBuf>,
+        /// Dry run
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2955,6 +3003,140 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             }
 
             println!("\nImported {} chapters into series {}", published.len(), series);
+        }
+
+        AdminCommand::ImportRepo { r#as: as_handle, series, dir, manifest, lang, license, tags, image_dirs, dry_run } => {
+            use base64::Engine;
+            use std::collections::HashSet;
+
+            let root = dir.canonicalize().context("Cannot resolve directory")?;
+            let manifest_content = std::fs::read_to_string(&manifest)
+                .with_context(|| format!("Cannot read manifest {}", manifest.display()))?;
+            let manifest_data: toml::Value = manifest_content.parse().context("Invalid TOML manifest")?;
+
+            let article_entries = manifest_data.get("article")
+                .and_then(|v| v.as_array())
+                .context("Expected [[article]] array in manifest")?;
+
+            // Build articles list
+            let mut articles = Vec::new();
+            let mut referenced_images: HashSet<String> = HashSet::new();
+
+            for entry in article_entries {
+                let title = entry.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled");
+                let path = entry.get("path").and_then(|v| v.as_str()).context("article missing 'path'")?;
+
+                let full_path = root.join(path);
+                let content = std::fs::read_to_string(&full_path)
+                    .with_context(|| format!("Cannot read {}", full_path.display()))?;
+
+                let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("md");
+                let format = match ext {
+                    "typ" | "typst" => "typst",
+                    "html" | "htm" => "html",
+                    _ => "markdown",
+                };
+
+                // Collect image references from this file
+                let file_dir = std::path::Path::new(path).parent().unwrap_or(std::path::Path::new(""));
+                for cap in regex_lite::Regex::new(r#"src="([^"]+\.(png|jpg|gif|svg))""#).unwrap().captures_iter(&content) {
+                    let src = cap.get(1).unwrap().as_str();
+                    if !src.starts_with("http") {
+                        let src = src.strip_prefix("./").unwrap_or(src);
+                        referenced_images.insert(file_dir.join(src).to_string_lossy().to_string());
+                    }
+                }
+                for cap in regex_lite::Regex::new(r"!\[[^\]]*\]\(([^)]+\.(png|jpg|gif|svg))\)").unwrap().captures_iter(&content) {
+                    let src = cap.get(1).unwrap().as_str();
+                    if !src.starts_with("http") {
+                        let src = src.strip_prefix("./").unwrap_or(src);
+                        referenced_images.insert(file_dir.join(src).to_string_lossy().to_string());
+                    }
+                }
+
+                let entry_tags: Vec<String> = entry.get("tags")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_else(|| tags.clone());
+
+                articles.push(serde_json::json!({
+                    "title": title,
+                    "content": content,
+                    "content_format": format,
+                    "path": path,
+                    "tags": entry_tags,
+                    "license": entry.get("license").and_then(|v| v.as_str()).unwrap_or(&license),
+                }));
+            }
+
+            // Collect images from referenced paths + extra image_dirs
+            let mut all_image_paths: HashSet<String> = referenced_images;
+
+            for img_dir in &image_dirs {
+                let abs_dir = root.join(img_dir);
+                if abs_dir.is_dir() {
+                    for entry in walkdir::WalkDir::new(&abs_dir).into_iter().filter_map(|e| e.ok()) {
+                        if !entry.file_type().is_file() { continue; }
+                        let ext = entry.path().extension().and_then(|e| e.to_str()).unwrap_or("");
+                        if matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp") {
+                            let rel = entry.path().strip_prefix(&root).unwrap_or(entry.path());
+                            all_image_paths.insert(rel.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+
+            // Build files list (base64 encoded)
+            let mut files = Vec::new();
+            for img_path in &all_image_paths {
+                let abs = root.join(img_path);
+                if !abs.exists() { continue; }
+                let data = std::fs::read(&abs)
+                    .with_context(|| format!("Cannot read image {}", abs.display()))?;
+                files.push(serde_json::json!({
+                    "path": img_path,
+                    "data": base64::engine::general_purpose::STANDARD.encode(&data),
+                }));
+            }
+
+            println!("Articles: {}", articles.len());
+            println!("Images: {}", files.len());
+
+            if dry_run {
+                for a in &articles {
+                    println!("  {} -> {}", a["path"].as_str().unwrap_or("?"), a["title"].as_str().unwrap_or("?"));
+                }
+                println!("\n[dry run] No changes made.");
+                return Ok(());
+            }
+
+            let body = serde_json::json!({
+                "as_handle": as_handle,
+                "series_id": series,
+                "articles": articles,
+                "files": files,
+                "lang": lang,
+            });
+
+            let payload = serde_json::to_string(&body)?;
+            let payload_mb = payload.len() as f64 / 1024.0 / 1024.0;
+            println!("Payload: {payload_mb:.1} MB");
+
+            // Write to temp file to avoid CLI length limits
+            let tmp = std::env::temp_dir().join("fx-import-repo.json");
+            std::fs::write(&tmp, &payload)?;
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/series/batch-publish"))
+                .header("x-admin-secret", &secret)
+                .header("content-type", "application/json")
+                .body(std::fs::read(&tmp)?)
+                .send().await?
+                .error_for_status().context("Batch publish failed")?
+                .json().await?;
+
+            let count = resp.as_array().map(|a| a.len()).unwrap_or(0);
+            println!("\nPublished {count} articles into series {series}");
         }
     }
 

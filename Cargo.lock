@@ -1933,10 +1933,12 @@ name = "fx-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "dirs-next",
  "fx-client",
  "fx-core",
+ "regex-lite",
  "reqwest",
  "serde",
  "serde_json",
