@@ -130,7 +130,7 @@ pub async fn create_book(
     tx.commit().await?;
 
     let book = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.*, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+        &format!("SELECT b.id, b.title, b.authors, b.description, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
     )
         .bind(id)
         .fetch_one(pool)
@@ -149,7 +149,7 @@ const BOOK_COVER_SQL: &str = "\
 
 pub async fn get_book(pool: &PgPool, id: &str) -> crate::Result<Book> {
     sqlx::query_as::<_, Book>(
-        &format!("SELECT b.*, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+        &format!("SELECT b.id, b.title, b.authors, b.description, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
     )
         .bind(id)
         .fetch_optional(pool)
@@ -181,7 +181,7 @@ pub async fn get_book_for_viewer(pool: &PgPool, id: &str, viewer_did: &str) -> c
 /// Find a book by ISBN (searches across all editions).
 pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Option<Book>> {
     let row = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.*, {BOOK_COVER_SQL} AS cover_url FROM books b \
+        &format!("SELECT b.id, b.title, b.authors, b.description, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
                   JOIN book_editions be ON be.book_id = b.id WHERE be.isbn = $1 LIMIT 1"),
     )
     .bind(isbn)
@@ -192,7 +192,7 @@ pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Optio
 
 pub async fn list_books(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<Book>> {
     let rows = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.*, {BOOK_COVER_SQL} AS cover_url FROM books b \
+        &format!("SELECT b.id, b.title, b.authors, b.description, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
                   ORDER BY b.created_at DESC LIMIT $1 OFFSET $2"),
     )
     .bind(limit)
