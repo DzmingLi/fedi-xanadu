@@ -314,6 +314,8 @@
     overflow: hidden;
   }
   .profile-nav {
+    max-width: 1080px;
+    margin: 0 auto;
     padding: 0 1rem;
   }
   .profile-container {
@@ -322,6 +324,8 @@
     padding: 0 1rem;
   }
   .top-nav {
+    max-width: 760px;
+    margin: 0 auto;
     padding: 0 1rem;
   }
   .fullwidth-nav {
