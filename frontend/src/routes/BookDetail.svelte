@@ -131,30 +131,42 @@
 
   // Edit modal state
   let showEdit = $state(false);
-  let editTitle = $state('');
-  let editDescription = $state('');
+  let editTitles = $state<Record<string, string>>({});
+  let editDescs = $state<Record<string, string>>({});
   let editSummary = $state('');
   let editSaving = $state(false);
   let editError = $state('');
+  let editLang = $state('en');
+
+  const EDIT_LANGS = [
+    { code: 'en', label: 'English' },
+    { code: 'zh', label: '中文' },
+    { code: 'fr', label: 'Français' },
+  ];
 
   function openEdit() {
     if (!detail) return;
-    editTitle = loc(detail.book.title);
-    editDescription = loc(detail.book.description);
+    editTitles = { ...detail.book.title };
+    editDescs = { ...(detail.book.description || {}) };
+    editLang = getLocale();
     editSummary = '';
     editError = '';
     showEdit = true;
   }
 
   async function saveEdit() {
-    if (!editTitle.trim()) { editError = t('books.editTitleRequired'); return; }
+    // At least one language must have a title
+    const hasTitle = Object.values(editTitles).some(v => v.trim());
+    if (!hasTitle) { editError = t('books.editTitleRequired'); return; }
     editSaving = true;
     editError = '';
     try {
-      const l = getLocale();
+      // Clean empty entries
+      const title = Object.fromEntries(Object.entries(editTitles).filter(([_, v]) => v.trim()));
+      const description = Object.fromEntries(Object.entries(editDescs).filter(([_, v]) => v.trim()));
       await updateBook(id, {
-        title: { ...detail!.book.title, [l]: editTitle.trim() },
-        description: { ...(detail!.book.description || {}), [l]: editDescription.trim() },
+        title,
+        description,
         edit_summary: editSummary.trim() || undefined,
       });
       showEdit = false;
@@ -915,13 +927,24 @@
       <div class="modal" onclick={(e) => e.stopPropagation()}>
         <h3>{t('books.editInfo')}</h3>
         {#if editError}<p class="error-msg">{editError}</p>{/if}
+
+        <!-- Language tabs -->
+        <div class="lang-tabs">
+          {#each EDIT_LANGS as lang}
+            <button class="lang-tab" class:active={editLang === lang.code} onclick={() => editLang = lang.code}>
+              {lang.label}
+              {#if editTitles[lang.code]}<span class="lang-dot"></span>{/if}
+            </button>
+          {/each}
+        </div>
+
         <div class="form-group">
-          <label>{t('books.titleLabel')}</label>
-          <input bind:value={editTitle} />
+          <label>{t('books.titleLabel')} ({editLang})</label>
+          <input bind:value={editTitles[editLang]} placeholder={editTitles['en'] || ''} />
         </div>
         <div class="form-group">
-          <label>{t('books.descriptionLabel')}</label>
-          <textarea bind:value={editDescription} rows="3"></textarea>
+          <label>{t('books.descriptionLabel')} ({editLang})</label>
+          <textarea bind:value={editDescs[editLang]} rows="3" placeholder={editDescs['en'] || ''}></textarea>
         </div>
         <div class="form-group">
           <label>{t('books.editSummary')}</label>
@@ -958,6 +981,12 @@
     color: var(--text); box-sizing: border-box;
   }
   .modal textarea { resize: vertical; }
+  .lang-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+  .lang-tab { font-size: 12px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 3px; background: none; color: var(--text-secondary); cursor: pointer; position: relative; }
+  .lang-tab:hover { border-color: var(--accent); color: var(--accent); }
+  .lang-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .lang-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); position: absolute; top: 2px; right: 2px; }
+  .lang-tab.active .lang-dot { background: white; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   .error-msg { color: #c33; font-size: 13px; margin: 0 0 12px; }
   .book-layout {
