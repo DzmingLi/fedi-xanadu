@@ -406,14 +406,18 @@
   }
   .expand-btn:hover { background: var(--accent); color: white; }
 
-  /* Expanded actions */
+  /* Expanded actions — sticky bottom bar */
   .expanded-actions {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-top: 16px;
-    padding-top: 12px;
+    padding: 12px 0 4px;
     border-top: 1px solid var(--border);
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-white);
+    z-index: 5;
   }
   .expanded-actions .vote-btn {
     background: none;
