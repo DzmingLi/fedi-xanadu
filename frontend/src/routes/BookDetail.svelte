@@ -126,7 +126,6 @@
   let showEdit = $state(false);
   let editTitle = $state('');
   let editDescription = $state('');
-  let editCoverUrl = $state('');
   let editSummary = $state('');
   let editSaving = $state(false);
   let editError = $state('');
@@ -135,7 +134,6 @@
     if (!detail) return;
     editTitle = detail.book.title;
     editDescription = detail.book.description || '';
-    editCoverUrl = detail.book.cover_url || '';
     editSummary = '';
     editError = '';
     showEdit = true;
@@ -149,7 +147,6 @@
       await updateBook(id, {
         title: editTitle.trim(),
         description: editDescription.trim() || undefined,
-        cover_url: editCoverUrl.trim() || undefined,
         edit_summary: editSummary.trim() || undefined,
       });
       showEdit = false;
@@ -858,7 +855,7 @@
           {#if getAuth() && ed.cover_url}
             <button class="set-cover-btn" onclick={async () => {
               await setPreferredEdition(id, ed.id);
-              if (detail) detail.book.cover_url = ed.cover_url;
+              await load();
             }}>{t('books.setAsCover') || 'Use this cover'}</button>
           {/if}
         </div>
@@ -917,10 +914,6 @@
         <div class="form-group">
           <label>{t('books.descriptionLabel')}</label>
           <textarea bind:value={editDescription} rows="3"></textarea>
-        </div>
-        <div class="form-group">
-          <label>{t('books.coverUrlLabel')}</label>
-          <input bind:value={editCoverUrl} placeholder="https://..." />
         </div>
         <div class="form-group">
           <label>{t('books.editSummary')}</label>

@@ -702,7 +702,6 @@ pub async fn admin_revert_book_edit(
         &log.book_id,
         old.get("title").and_then(|v| v.as_str()),
         old.get("description").and_then(|v| v.as_str()),
-        old.get("cover_url").and_then(|v| v.as_str()),
     ).await?;
 
     // Record revert as a new edit log entry

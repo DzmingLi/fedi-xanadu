@@ -53,7 +53,11 @@ pub async fn get_book(
     Path(id): Path<String>,
     MaybeAuth(user): MaybeAuth,
 ) -> ApiResult<Json<BookDetail>> {
-    let book = book_service::get_book(&state.pool, &id).await?;
+    let book = if let Some(ref u) = user {
+        book_service::get_book_for_viewer(&state.pool, &id, &u.did).await?
+    } else {
+        book_service::get_book(&state.pool, &id).await?
+    };
     let editions = book_service::list_editions(&state.pool, &id).await?;
     let chapters = book_service::list_chapters_with_tags(&state.pool, &id).await?;
     let reviews = book_service::get_book_reviews(&state.pool, &id, 100, 0).await?;
@@ -105,7 +109,6 @@ pub struct UpdateBookInput {
     pub id: String,
     pub title: Option<String>,
     pub description: Option<String>,
-    pub cover_url: Option<String>,
     pub edit_summary: Option<String>,
 }
 
@@ -121,7 +124,6 @@ pub async fn update_book(
     let old_snapshot = serde_json::json!({
         "title": old.title,
         "description": old.description,
-        "cover_url": old.cover_url,
     });
 
     book_service::update_book(
@@ -129,7 +131,6 @@ pub async fn update_book(
         &input.id,
         input.title.as_deref(),
         input.description.as_deref(),
-        input.cover_url.as_deref(),
     ).await?;
 
     // Save edit log
@@ -145,7 +146,6 @@ pub async fn update_book(
     .bind(&serde_json::json!({
         "title": input.title,
         "description": input.description,
-        "cover_url": input.cover_url,
     }))
     .bind(input.edit_summary.as_deref().unwrap_or(""))
     .execute(&state.pool)
@@ -439,63 +439,6 @@ pub async fn get_cover(
         .status(StatusCode::NOT_FOUND)
         .body(Body::empty())
         .unwrap()
-}
-
-/// Upload a book cover image (multipart: field "file").
-pub async fn upload_cover(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    WriteAuth(_user): WriteAuth,
-    mut multipart: Multipart,
-) -> ApiResult<Json<serde_json::Value>> {
-    let mut file_data: Option<Vec<u8>> = None;
-    let mut file_name: Option<String> = None;
-
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        AppError(fx_core::Error::BadRequest(format!("Multipart error: {e}")))
-    })? {
-        if field.name() == Some("file") {
-            file_name = field.file_name().map(|s| s.to_string());
-            file_data = Some(
-                field.bytes().await
-                    .map_err(|e| AppError(fx_core::Error::BadRequest(e.to_string())))?
-                    .to_vec()
-            );
-        }
-    }
-
-    let data = file_data.ok_or(AppError(fx_core::Error::BadRequest("Missing file".into())))?;
-    let name = file_name.unwrap_or_default();
-
-    if data.len() > MAX_COVER_SIZE {
-        return Err(AppError(fx_core::Error::BadRequest("Cover too large (max 5MB)".into())));
-    }
-
-    let ext = std::path::Path::new(&name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-        .unwrap_or_else(|| "jpg".into());
-
-    if !COVER_EXTENSIONS.contains(&ext.as_str()) {
-        return Err(AppError(fx_core::Error::BadRequest("Unsupported format. Use jpg, png, or webp.".into())));
-    }
-
-    let safe_id: String = id.chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-        .collect();
-
-    let dest = state.data_dir.join("book-covers").join(format!("{safe_id}.{ext}"));
-    tokio::fs::write(&dest, &data).await?;
-
-    let cover_url = format!("/api/book-covers/{safe_id}");
-    sqlx::query("UPDATE books SET cover_url = $1 WHERE id = $2")
-        .bind(&cover_url)
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
-
-    Ok(Json(serde_json::json!({ "cover_url": cover_url })))
 }
 
 /// Upload a cover for a specific edition.

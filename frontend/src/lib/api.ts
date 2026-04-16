@@ -513,9 +513,9 @@ export const listBooks = (limit = 50, offset = 0) =>
   get<Book[]>(`/books?limit=${limit}&offset=${offset}`);
 export const getBook = (id: string) =>
   get<BookDetail>(`/books/${encodeURIComponent(id)}`);
-export const createBook = (data: { title: string; authors: string[]; description?: string; cover_url?: string; tags: string[]; prereqs?: string[] }) =>
+export const createBook = (data: { title: string; authors: string[]; description?: string; tags: string[]; prereqs?: string[] }) =>
   post<Book>('/books', data);
-export const updateBook = (id: string, data: { title?: string; description?: string; cover_url?: string; edit_summary?: string }) =>
+export const updateBook = (id: string, data: { title?: string; description?: string; edit_summary?: string }) =>
   put<Book>(`/books/${encodeURIComponent(id)}`, data);
 export const addBookEdition = (book_id: string, edition: { title: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
   post<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions`, edition);

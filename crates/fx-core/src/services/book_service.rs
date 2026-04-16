@@ -9,10 +9,12 @@ pub struct Book {
     pub title: String,
     pub authors: Vec<String>,
     pub description: String,
-    pub cover_url: Option<String>,
     pub default_edition_id: Option<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
+    /// Derived from editions at query time, not stored on the books table.
+    #[sqlx(default)]
+    pub cover_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
@@ -21,7 +23,6 @@ pub struct CreateBook {
     pub title: String,
     pub authors: Vec<String>,
     pub description: Option<String>,
-    pub cover_url: Option<String>,
     pub tags: Vec<String>,
     #[serde(default)]
     pub prereqs: Vec<String>,
@@ -85,14 +86,13 @@ pub async fn create_book(
     .await?;
 
     sqlx::query(
-        "INSERT INTO books (id, title, authors, description, cover_url, created_by) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO books (id, title, authors, description, created_by) \
+         VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(id)
     .bind(&input.title)
     .bind(&input.authors)
     .bind(input.description.as_deref().unwrap_or(""))
-    .bind(&input.cover_url)
     .bind(created_by)
     .execute(&mut *tx)
     .await?;
@@ -129,28 +129,60 @@ pub async fn create_book(
 
     tx.commit().await?;
 
-    let book = sqlx::query_as::<_, Book>("SELECT * FROM books WHERE id = $1")
+    let book = sqlx::query_as::<_, Book>(
+        &format!("SELECT b.*, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+    )
         .bind(id)
         .fetch_one(pool)
         .await?;
     Ok(book)
 }
 
+/// Derived cover subquery: pick from editions by most-marked popularity.
+const BOOK_COVER_SQL: &str = "\
+(SELECT e.cover_url FROM book_editions e \
+ LEFT JOIN (SELECT preferred_edition_id, COUNT(*) AS cnt FROM book_reading_status \
+            WHERE book_id = b.id AND preferred_edition_id IS NOT NULL \
+            GROUP BY preferred_edition_id) pop ON pop.preferred_edition_id = e.id \
+ WHERE e.book_id = b.id AND e.cover_url IS NOT NULL \
+ ORDER BY COALESCE(pop.cnt, 0) DESC, e.created_at LIMIT 1)";
+
 pub async fn get_book(pool: &PgPool, id: &str) -> crate::Result<Book> {
-    sqlx::query_as::<_, Book>("SELECT * FROM books WHERE id = $1")
+    sqlx::query_as::<_, Book>(
+        &format!("SELECT b.*, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+    )
         .bind(id)
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| crate::Error::NotFound { entity: "book", id: id.to_string() })
 }
 
+/// Viewer-aware cover: prefer user's selected edition, then most popular.
+pub async fn get_book_for_viewer(pool: &PgPool, id: &str, viewer_did: &str) -> crate::Result<Book> {
+    sqlx::query_as::<_, Book>(
+        &format!(
+            "SELECT b.*, \
+             COALESCE(\
+               (SELECT e.cover_url FROM book_editions e \
+                JOIN book_reading_status rs ON rs.book_id = b.id AND rs.user_did = $2 AND rs.preferred_edition_id = e.id \
+                WHERE e.book_id = b.id AND e.cover_url IS NOT NULL LIMIT 1), \
+               {BOOK_COVER_SQL}\
+             ) AS cover_url \
+             FROM books b WHERE b.id = $1",
+        ),
+    )
+    .bind(id)
+    .bind(viewer_did)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| crate::Error::NotFound { entity: "book", id: id.to_string() })
+}
+
 /// Find a book by ISBN (searches across all editions).
 pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Option<Book>> {
     let row = sqlx::query_as::<_, Book>(
-        "SELECT b.* FROM books b \
-         JOIN book_editions e ON e.book_id = b.id \
-         WHERE e.isbn = $1 \
-         LIMIT 1",
+        &format!("SELECT b.*, {BOOK_COVER_SQL} AS cover_url FROM books b \
+                  JOIN book_editions be ON be.book_id = b.id WHERE be.isbn = $1 LIMIT 1"),
     )
     .bind(isbn)
     .fetch_optional(pool)
@@ -160,7 +192,8 @@ pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Optio
 
 pub async fn list_books(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<Book>> {
     let rows = sqlx::query_as::<_, Book>(
-        "SELECT * FROM books ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+        &format!("SELECT b.*, {BOOK_COVER_SQL} AS cover_url FROM books b \
+                  ORDER BY b.created_at DESC LIMIT $1 OFFSET $2"),
     )
     .bind(limit)
     .bind(offset)
@@ -192,8 +225,6 @@ pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64
            (SELECT e.cover_url FROM book_editions e \
             JOIN book_reading_status rs ON rs.book_id = b.id AND rs.user_did = $3 AND rs.preferred_edition_id = e.id \
             WHERE e.book_id = b.id AND e.cover_url IS NOT NULL LIMIT 1), \
-           (SELECT e.cover_url FROM book_editions e WHERE e.id = b.default_edition_id AND e.cover_url IS NOT NULL LIMIT 1), \
-           b.cover_url, \
            (SELECT e.cover_url FROM book_editions e \
             LEFT JOIN (SELECT preferred_edition_id, COUNT(*) AS cnt FROM book_reading_status WHERE book_id = b.id AND preferred_edition_id IS NOT NULL GROUP BY preferred_edition_id) pop ON pop.preferred_edition_id = e.id \
             WHERE e.book_id = b.id AND e.cover_url IS NOT NULL \
@@ -278,7 +309,6 @@ pub async fn update_book(
     id: &str,
     title: Option<&str>,
     description: Option<&str>,
-    cover_url: Option<&str>,
 ) -> crate::Result<()> {
     if let Some(t) = title {
         sqlx::query("UPDATE books SET title = $1 WHERE id = $2")
@@ -287,10 +317,6 @@ pub async fn update_book(
     if let Some(d) = description {
         sqlx::query("UPDATE books SET description = $1 WHERE id = $2")
             .bind(d).bind(id).execute(pool).await?;
-    }
-    if let Some(c) = cover_url {
-        sqlx::query("UPDATE books SET cover_url = $1 WHERE id = $2")
-            .bind(c).bind(id).execute(pool).await?;
     }
     Ok(())
 }
