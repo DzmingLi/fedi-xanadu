@@ -41,7 +41,8 @@ pub fn router(state: AppState, config: &Config) -> Router {
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(cors)
         .layer(governor_limiter)
-        // Body limit: 256 MB (batch imports with images can be large)
+        // Override axum's default 2MB body limit; use tower-http's 256MB limit instead
+        .layer(axum::extract::DefaultBodyLimit::max(256 * 1024 * 1024))
         .layer(RequestBodyLimitLayer::new(256 * 1024 * 1024))
         .with_state(state)
 }
