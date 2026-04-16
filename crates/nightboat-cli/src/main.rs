@@ -1018,7 +1018,11 @@ impl Config {
 }
 
 fn client() -> reqwest::Client {
-    reqwest::Client::new()
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to create HTTP client")
 }
 
 struct OAuthCallbackResult {
@@ -1320,12 +1324,17 @@ async fn main() -> Result<()> {
                     println!("  + {rel_name}");
                 }
 
-                client()
+                let resp = client()
                     .post(format!("{base}/articles/upload"))
                     .bearer_auth(token)
                     .multipart(form)
-                    .send().await?
-                    .error_for_status().context("Upload failed")?
+                    .send().await?;
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    bail!("Upload failed ({status}): {body}");
+                }
+                resp
                     .json().await?
             };
 

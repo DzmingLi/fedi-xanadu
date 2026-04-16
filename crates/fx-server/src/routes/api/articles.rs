@@ -1338,7 +1338,7 @@ pub async fn convert_content(
 
 // --- Image upload ---
 
-const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
+const MAX_IMAGE_SIZE: usize = 50 * 1024 * 1024;
 const ALLOWED_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp", "pdf", "bib", "csv", "json", "toml", "yaml", "txt"];
 const RESERVED_CONTENT_NAMES: &[&str] = &["content.typ", "content.md", "content.html", "content.tex", "meta.json"];
 
