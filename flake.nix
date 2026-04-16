@@ -282,7 +282,7 @@
           inherit src;
           outputHashes = {
             "git+https://github.com/DzmingLi/atproto-auth.git#8f8f91da26671c35a11d42205f78f7037d0e27ba" = "sha256-W4QrqQ3uBf3xNdp8dTupFep+DS7XULGm/oMwe2cdHLc=";
-            "git+https://github.com/DzmingLi/typst-render.git#9a845519a384f662ce1c74445fb9fb9015114cf9" = "sha256-IIic9W3GIydp6j5btmldvhyv9Dd1rnLxKSU0oedxD/0=";
+            "git+https://github.com/DzmingLi/typst-render.git#8d24e7a46d68c5a2c070f6c3f5537c82879f7357" = "sha256-Bo0/fFm/NP3M3ueUc+ITkHOV7a0aXJfUIw2sSzBBmEI=";
             "git+https://github.com/DzmingLi/pijul-knot.git#d86a9504b001b09f38db2063bc64cc1764f79baf" = "sha256-kV301kyoDvBZmlmRFFSNZZolNHOy6VX+ypbbXXv5YsM=";
           };
         };
