@@ -541,6 +541,61 @@ pub async fn set_visibility(pool: &PgPool, uri: &str, visibility: &str, reason: 
     Ok(())
 }
 
+/// Update an article in-place (for batch re-publish). Keeps the same at_uri.
+pub async fn update_article_batch(
+    pool: &PgPool,
+    uri: &str,
+    input: &CreateArticle,
+    content_hash: &str,
+) -> crate::Result<Article> {
+    let lang = input.lang.as_deref().unwrap_or("zh");
+    let license = input.license.as_deref().unwrap_or("CC-BY-SA-4.0");
+    let category = input.category.as_deref().unwrap_or("general");
+
+    let mut tx = pool.begin().await?;
+
+    sqlx::query(
+        "UPDATE articles SET title = $2, description = $3, content_hash = $4, \
+         content_format = $5, lang = $6, license = $7, category = $8, updated_at = NOW() \
+         WHERE at_uri = $1",
+    )
+    .bind(uri)
+    .bind(&input.title)
+    .bind(input.description.as_deref().unwrap_or(""))
+    .bind(content_hash)
+    .bind(input.content_format)
+    .bind(lang)
+    .bind(license)
+    .bind(category)
+    .execute(&mut *tx)
+    .await?;
+
+    // Replace tags
+    sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
+        .bind(uri).execute(&mut *tx).await?;
+    for tag_id in &input.tags {
+        sqlx::query(
+            "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, (SELECT did FROM articles WHERE at_uri = $3)) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(tag_id).bind(tag_id).bind(uri)
+        .execute(&mut *tx).await?;
+
+        sqlx::query(
+            "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(uri).bind(tag_id)
+        .execute(&mut *tx).await?;
+    }
+
+    tx.commit().await?;
+
+    let article = sqlx::query_as::<_, Article>(&format!("{ARTICLE_BASE} WHERE a.at_uri = $1"))
+        .bind(uri)
+        .fetch_one(pool)
+        .await?;
+    Ok(article)
+}
+
 /// Hard-delete an article. CASCADE handles most FKs; votes cleaned up manually.
 pub async fn delete_article(pool: &PgPool, uri: &str) -> crate::Result<()> {
     let mut tx = pool.begin().await?;

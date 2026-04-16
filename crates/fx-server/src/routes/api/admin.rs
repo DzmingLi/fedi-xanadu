@@ -824,17 +824,34 @@ pub async fn admin_batch_publish(
         tracing::info!("wrote {} extra files to series repo", input.files.len());
     }
 
-    // Phase 1: Write all article files and create DB records (no pijul record yet)
+    // Phase 1: Write all article files and create/update DB records (no pijul record yet)
     for item in &input.articles {
-        let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
-        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
-
         let format = item.content_format.as_deref().unwrap_or("markdown");
         let content_format: ContentFormat = format.parse().unwrap_or(ContentFormat::Markdown);
         let src_ext = fx_renderer::format_extension(format);
+        let hash = content_hash(&item.content);
+        let license = item.license.as_deref().unwrap_or("CC-BY-SA-4.0");
+
+        // Determine repo_path for this article (used as the stable matching key)
+        let repo_path = item.path.clone();
+
+        // Check if an article with this path already exists in the series
+        let existing_uri = if let Some(ref path) = repo_path {
+            series_service::find_article_by_repo_path(&state.pool, &input.series_id, path).await?
+        } else {
+            None
+        };
+
+        let (at_uri, is_update) = if let Some(uri) = existing_uri {
+            (uri, true)
+        } else {
+            (format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid()), false)
+        };
+
+        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
 
         // Write file to series repo — use custom path or default
-        let chapter_path = if let Some(ref p) = item.path {
+        let chapter_path = if let Some(ref p) = repo_path {
             series_repo.join(p)
         } else {
             fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, src_ext)
@@ -852,9 +869,6 @@ pub async fn admin_batch_publish(
                 let _ = tokio::fs::write(cache_dir.join(format!("{chapter_id}.html")), &rendered).await;
             }
         }
-
-        let hash = content_hash(&item.content);
-        let license = item.license.as_deref().unwrap_or("CC-BY-SA-4.0");
 
         let create = CreateArticle {
             title: item.title.clone(),
@@ -874,16 +888,24 @@ pub async fn admin_batch_publish(
             invites: vec![],
         };
 
-        let article = article_service::create_article(
-            &state.pool, &did, &at_uri, &create, &hash, None,
-            default_visibility(true), ContentKind::Article, None,
-        ).await?;
-
-        series_service::add_series_article(&state.pool, &input.series_id, &at_uri).await?;
+        let article = if is_update {
+            tracing::info!("updating existing article {at_uri}");
+            article_service::update_article_batch(&state.pool, &at_uri, &create, &hash).await?
+        } else {
+            let article = article_service::create_article(
+                &state.pool, &did, &at_uri, &create, &hash, None,
+                default_visibility(true), ContentKind::Article, None,
+            ).await?;
+            series_service::add_series_article_with_path(
+                &state.pool, &input.series_id, &at_uri, repo_path.as_deref(),
+            ).await?;
+            article
+        };
 
         results.push(serde_json::json!({
             "at_uri": at_uri,
             "title": article.title,
+            "updated": is_update,
         }));
     }
 

@@ -323,6 +323,15 @@ pub async fn add_series_article(
     series_id: &str,
     article_uri: &str,
 ) -> crate::Result<()> {
+    add_series_article_with_path(pool, series_id, article_uri, None).await
+}
+
+pub async fn add_series_article_with_path(
+    pool: &PgPool,
+    series_id: &str,
+    article_uri: &str,
+    repo_path: Option<&str>,
+) -> crate::Result<()> {
     let order_index: i32 = sqlx::query_scalar::<_, Option<i32>>(
         "SELECT MAX(order_index) FROM series_articles WHERE series_id = $1",
     )
@@ -333,15 +342,32 @@ pub async fn add_series_article(
     + 1;
 
     sqlx::query(
-        "INSERT INTO series_articles (series_id, article_uri, order_index) \
-         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        "INSERT INTO series_articles (series_id, article_uri, order_index, repo_path) \
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
     )
     .bind(series_id)
     .bind(article_uri)
     .bind(order_index)
+    .bind(repo_path)
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Look up an article URI by its repo path within a series.
+pub async fn find_article_by_repo_path(
+    pool: &PgPool,
+    series_id: &str,
+    repo_path: &str,
+) -> crate::Result<Option<String>> {
+    let uri = sqlx::query_scalar::<_, String>(
+        "SELECT article_uri FROM series_articles WHERE series_id = $1 AND repo_path = $2",
+    )
+    .bind(series_id)
+    .bind(repo_path)
+    .fetch_optional(pool)
+    .await?;
+    Ok(uri)
 }
 
 pub async fn remove_series_article(
