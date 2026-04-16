@@ -484,3 +484,45 @@ pub async fn upload_edition_cover(
 
     Ok(Json(serde_json::json!({ "cover_url": cover_url })))
 }
+
+// --- Book resources (supplementary materials) ---
+
+pub async fn list_resources(
+    State(state): State<AppState>,
+    Path(book_id): Path<String>,
+) -> ApiResult<Json<Vec<book_service::BookResource>>> {
+    let resources = book_service::list_book_resources(&state.pool, &book_id).await?;
+    Ok(Json(resources))
+}
+
+#[derive(serde::Deserialize)]
+pub struct AddResourceInput {
+    pub edition_id: Option<String>,
+    pub kind: String,
+    pub label: String,
+    pub url: String,
+    #[serde(default)]
+    pub position: i16,
+}
+
+pub async fn add_resource(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Path(book_id): Path<String>,
+    Json(input): Json<AddResourceInput>,
+) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    let id = book_service::add_book_resource(
+        &state.pool, &book_id, input.edition_id.as_deref(),
+        &input.kind, &input.label, &input.url, input.position, &user.did,
+    ).await?;
+    Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
+}
+
+pub async fn delete_resource(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path((_book_id, resource_id)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    book_service::delete_book_resource(&state.pool, &resource_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}

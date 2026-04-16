@@ -484,6 +484,8 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/preferred-edition", put(books::set_preferred_edition))
         .route("/books/{id}/history", get(books::get_edit_history))
         .route("/books/{id}/editions/{eid}/cover", post(books::upload_edition_cover))
+        .route("/books/{id}/resources", get(books::list_resources).post(books::add_resource))
+        .route("/books/{id}/resources/{rid}", delete(books::delete_resource))
         .route("/book-covers/{id}", get(books::get_cover))
 }
 

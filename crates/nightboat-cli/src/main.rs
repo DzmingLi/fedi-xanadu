@@ -683,6 +683,28 @@ enum BookCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Add a supplementary resource to a book (solutions, videos, slides, etc.)
+    #[command(name = "add-resource")]
+    AddResource {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+        /// Resource kind (solutions, exercises, video, slides, errata, code, other)
+        #[arg(short, long)]
+        kind: String,
+        /// Display label
+        #[arg(short, long)]
+        label: String,
+        /// URL
+        #[arg(short, long)]
+        url: String,
+        /// Edition ID (omit for all editions)
+        #[arg(long)]
+        edition_id: Option<String>,
+        /// Display order
+        #[arg(long, default_value = "0")]
+        position: i16,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1822,6 +1844,26 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             if !dry_run {
                 println!("\nDone. {} chapter(s) created.", cm.chapters.len());
             }
+        }
+
+        BookCommand::AddResource { book_id, kind, label, url, edition_id, position } => {
+            let token = config.token()?;
+            let body = serde_json::json!({
+                "kind": kind,
+                "label": label,
+                "url": url,
+                "edition_id": edition_id,
+                "position": position,
+            });
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/books/{book_id}/resources"))
+                .bearer_auth(token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Add resource failed")?
+                .json().await?;
+            let id = resp["id"].as_str().unwrap_or("?");
+            println!("Added resource: {label} ({id})");
         }
     }
     Ok(())

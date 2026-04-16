@@ -689,3 +689,62 @@ pub async fn list_chapter_progress(
     .await?;
     Ok(rows)
 }
+
+// ---- Book resources (supplementary materials) ----
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct BookResource {
+    pub id: String,
+    pub book_id: String,
+    pub edition_id: Option<String>,
+    pub kind: String,
+    pub label: String,
+    pub url: String,
+    pub position: i16,
+}
+
+pub async fn list_book_resources(pool: &PgPool, book_id: &str) -> crate::Result<Vec<BookResource>> {
+    let rows = sqlx::query_as::<_, BookResource>(
+        "SELECT id, book_id, edition_id, kind, label, url, position \
+         FROM book_resources WHERE book_id = $1 ORDER BY kind, position",
+    )
+    .bind(book_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn add_book_resource(
+    pool: &PgPool,
+    book_id: &str,
+    edition_id: Option<&str>,
+    kind: &str,
+    label: &str,
+    url: &str,
+    position: i16,
+    created_by: &str,
+) -> crate::Result<String> {
+    let id: String = sqlx::query_scalar(
+        "INSERT INTO book_resources (book_id, edition_id, kind, label, url, position, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+    )
+    .bind(book_id)
+    .bind(edition_id)
+    .bind(kind)
+    .bind(label)
+    .bind(url)
+    .bind(position)
+    .bind(created_by)
+    .fetch_one(pool)
+    .await?;
+    Ok(id)
+}
+
+pub async fn delete_book_resource(pool: &PgPool, id: &str) -> crate::Result<bool> {
+    let result = sqlx::query("DELETE FROM book_resources WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
