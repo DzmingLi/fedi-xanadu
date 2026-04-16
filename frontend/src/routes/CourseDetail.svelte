@@ -239,7 +239,11 @@
                       </td>
                       <td class="session-readings">
                         {#if s.readings}
-                          <span class="res-reading">{s.readings}</span>
+                          {#if s.readings.startsWith('/')}
+                            <a href={s.readings} class="res-link res-notes">&#128196; {t('course.notes')}</a>
+                          {:else}
+                            <span class="res-reading">{s.readings}</span>
+                          {/if}
                         {/if}
                       </td>
                       <td class="session-video">
