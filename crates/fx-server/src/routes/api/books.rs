@@ -170,6 +170,17 @@ pub async fn add_edition(
     Ok((StatusCode::CREATED, Json(edition)))
 }
 
+pub async fn update_edition(
+    State(state): State<AppState>,
+    Path((book_id, edition_id)): Path<(String, String)>,
+    WriteAuth(_user): WriteAuth,
+    Json(input): Json<book_service::CreateEdition>,
+) -> ApiResult<Json<book_service::BookEdition>> {
+    let _ = book_service::get_book(&state.pool, &book_id).await?;
+    let edition = book_service::update_edition(&state.pool, &edition_id, &input).await?;
+    Ok(Json(edition))
+}
+
 // --- Book edit history ---
 
 #[derive(serde::Serialize, sqlx::FromRow)]

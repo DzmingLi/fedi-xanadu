@@ -308,6 +308,38 @@ pub async fn create_edition(
     Ok(edition)
 }
 
+pub async fn update_edition(
+    pool: &PgPool,
+    edition_id: &str,
+    input: &CreateEdition,
+) -> crate::Result<BookEdition> {
+    let links_json = sqlx::types::Json(&input.purchase_links);
+    sqlx::query(
+        "UPDATE book_editions SET title = $1, lang = $2, isbn = $3, publisher = $4, \
+         year = $5, translators = $6, purchase_links = $7, cover_url = $8 \
+         WHERE id = $9",
+    )
+    .bind(&input.title)
+    .bind(&input.lang)
+    .bind(&input.isbn)
+    .bind(&input.publisher)
+    .bind(&input.year)
+    .bind(&input.translators)
+    .bind(&links_json)
+    .bind(&input.cover_url)
+    .bind(edition_id)
+    .execute(pool)
+    .await?;
+
+    let edition = sqlx::query_as::<_, BookEdition>(
+        "SELECT * FROM book_editions WHERE id = $1",
+    )
+    .bind(edition_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(edition)
+}
+
 pub async fn update_book(
     pool: &PgPool,
     id: &str,

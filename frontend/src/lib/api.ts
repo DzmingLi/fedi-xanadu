@@ -519,6 +519,8 @@ export const updateBook = (id: string, data: { title?: Record<string, string>; d
   put<Book>(`/books/${encodeURIComponent(id)}`, data);
 export const addBookEdition = (book_id: string, edition: { title: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
   post<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions`, edition);
+export const updateBookEdition = (book_id: string, edition_id: string, edition: { title: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
+  put<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions/${encodeURIComponent(edition_id)}`, edition);
 export const getBookEditHistory = (id: string) =>
   get<any[]>(`/books/${encodeURIComponent(id)}/history`);
 export const rateBook = (book_id: string, rating: number) =>

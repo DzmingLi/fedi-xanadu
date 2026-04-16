@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, updateBook, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition } from '../lib/api';
+  import { getBook, updateBook, updateBookEdition, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -137,6 +137,60 @@
   let editSaving = $state(false);
   let editError = $state('');
   let editLang = $state('en');
+
+  // Edition edit modal state
+  let showEditionEdit = $state(false);
+  let editionEditId = $state('');
+  let editionEditTitle = $state('');
+  let editionEditLang = $state('en');
+  let editionEditIsbn = $state('');
+  let editionEditPublisher = $state('');
+  let editionEditYear = $state('');
+  let editionEditTranslators = $state('');
+  let editionEditLinks = $state('');
+  let editionEditSaving = $state(false);
+  let editionEditError = $state('');
+
+  function openEditionEdit(ed: BookEdition) {
+    editionEditId = ed.id;
+    editionEditTitle = ed.title;
+    editionEditLang = ed.lang;
+    editionEditIsbn = ed.isbn || '';
+    editionEditPublisher = ed.publisher || '';
+    editionEditYear = ed.year || '';
+    editionEditTranslators = ed.translators.join(', ');
+    editionEditLinks = (ed.purchase_links as any[]).map((l: any) => `${l.label}:${l.url}`).join('\n');
+    editionEditError = '';
+    showEditionEdit = true;
+  }
+
+  async function saveEditionEdit() {
+    if (!editionEditTitle.trim()) { editionEditError = 'Title required'; return; }
+    editionEditSaving = true;
+    editionEditError = '';
+    try {
+      const translators = editionEditTranslators.trim() ? editionEditTranslators.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const purchase_links = editionEditLinks.trim() ? editionEditLinks.split('\n').map(line => {
+        const [label, ...rest] = line.split(':');
+        return { label: label.trim(), url: rest.join(':').trim() };
+      }).filter(l => l.label && l.url) : [];
+      await updateBookEdition(id, editionEditId, {
+        title: editionEditTitle,
+        lang: editionEditLang,
+        isbn: editionEditIsbn || undefined,
+        publisher: editionEditPublisher || undefined,
+        year: editionEditYear || undefined,
+        translators,
+        purchase_links,
+      });
+      showEditionEdit = false;
+      await load();
+    } catch (e: any) {
+      editionEditError = e.message || 'Save failed';
+    } finally {
+      editionEditSaving = false;
+    }
+  }
 
   const EDIT_LANGS = [
     { code: 'en', label: 'English' },
@@ -879,11 +933,16 @@
               {/each}
             </div>
           {/if}
-          {#if getAuth() && ed.cover_url}
-            <button class="set-cover-btn" onclick={async () => {
-              await setPreferredEdition(id, ed.id);
-              await load();
-            }}>{t('books.setAsCover') || 'Use this cover'}</button>
+          {#if getAuth()}
+            <div class="edition-actions">
+              <button class="set-cover-btn" onclick={() => openEditionEdit(ed)}>✎</button>
+              {#if ed.cover_url}
+                <button class="set-cover-btn" onclick={async () => {
+                  await setPreferredEdition(id, ed.id);
+                  await load();
+                }}>{t('books.setAsCover') || 'Use this cover'}</button>
+              {/if}
+            </div>
           {/if}
         </div>
       {/each}
@@ -961,6 +1020,54 @@
           <button class="btn btn-secondary" onclick={() => showEdit = false}>{t('books.cancel')}</button>
           <button class="btn btn-primary" onclick={saveEdit} disabled={editSaving}>
             {editSaving ? t('books.saving') : t('books.save')}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Edition edit modal -->
+  {#if showEditionEdit}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal-overlay" onclick={() => showEditionEdit = false}>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="modal" onclick={(e) => e.stopPropagation()}>
+        <h3>Edit Edition</h3>
+        {#if editionEditError}<p class="error-msg">{editionEditError}</p>{/if}
+        <div class="form-group">
+          <label>Title</label>
+          <input bind:value={editionEditTitle} />
+        </div>
+        <div class="form-group">
+          <label>Language</label>
+          <input bind:value={editionEditLang} placeholder="en" />
+        </div>
+        <div class="form-group">
+          <label>ISBN</label>
+          <input bind:value={editionEditIsbn} placeholder="978-..." />
+        </div>
+        <div class="form-group">
+          <label>Publisher</label>
+          <input bind:value={editionEditPublisher} />
+        </div>
+        <div class="form-group">
+          <label>Year</label>
+          <input bind:value={editionEditYear} placeholder="2024" />
+        </div>
+        <div class="form-group">
+          <label>Translators (comma-separated)</label>
+          <input bind:value={editionEditTranslators} placeholder="Name 1, Name 2" />
+        </div>
+        <div class="form-group">
+          <label>Purchase links (one per line, label:url)</label>
+          <textarea bind:value={editionEditLinks} rows="3" placeholder="Amazon:https://..."></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick={() => showEditionEdit = false}>Cancel</button>
+          <button class="btn btn-primary" onclick={saveEditionEdit} disabled={editionEditSaving}>
+            {editionEditSaving ? 'Saving...' : 'Save'}
           </button>
         </div>
       </div>
