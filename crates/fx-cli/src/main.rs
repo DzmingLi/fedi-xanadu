@@ -566,6 +566,18 @@ enum BookCommand {
         /// Book ID
         id: String,
     },
+    /// Upload a cover image for a book edition
+    #[command(name = "upload-cover")]
+    UploadCover {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+        /// Edition ID
+        #[arg(long)]
+        edition_id: String,
+        /// Path to image file
+        file: PathBuf,
+    },
     /// Add a chapter to a book's table of contents
     #[command(name = "add-chapter")]
     AddChapter {
@@ -1394,6 +1406,26 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             let eid = resp["id"].as_str().unwrap_or("?");
             println!("Added edition to book {book_id}: {title} ({lang})");
             println!("Edition ID: {eid}");
+        }
+
+        BookCommand::UploadCover { book_id, edition_id, file } => {
+            let file_bytes = std::fs::read(&file)
+                .with_context(|| format!("Cannot read {}", file.display()))?;
+            let file_name = file.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("cover.jpg");
+            let part = reqwest::multipart::Part::bytes(file_bytes)
+                .file_name(file_name.to_string());
+            let form = reqwest::multipart::Form::new().part("file", part);
+
+            client()
+                .post(format!("{base}/books/{book_id}/editions/{edition_id}/cover"))
+                .bearer_auth(token)
+                .multipart(form)
+                .send().await?
+                .error_for_status().context("Upload cover failed")?;
+
+            println!("Uploaded cover for edition {edition_id}");
         }
 
         BookCommand::Show { id } => {
