@@ -786,6 +786,11 @@ pub async fn admin_batch_publish(
         AppError(fx_core::Error::BadRequest("Series has no pijul repo".into()))
     })?;
 
+    // Ensure pijul repo exists (may have been deleted)
+    if let Err(e) = state.pijul.init_series_repo(&node_id) {
+        tracing::warn!("failed to init series pijul repo: {e}");
+    }
+
     let series_repo = state.pijul.series_repo_path(&node_id);
 
     let mut results = Vec::new();
