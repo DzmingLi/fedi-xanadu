@@ -49,7 +49,7 @@
     const sub = detail?.book.subtitle as Record<string,string> | null;
     const st = ed.subtitle || sub?.[ed.lang] || '';
     const full = st ? `${t}: ${st}` : t;
-    return `${full} (${ed.edition_name})`;
+    return ed.edition_name ? `${full} (${ed.edition_name})` : full;
   }
 
   const RESOURCE_KINDS = ['solutions', 'exercises', 'video', 'slides', 'errata', 'code', 'other'];
@@ -202,7 +202,7 @@
 
   function openEditionEdit(ed: BookEdition) {
     editionEditId = ed.id;
-    editionEditName = ed.edition_name;
+    editionEditName = ed.edition_name || '';
     editionEditTitle = ed.title || '';
     editionEditSubtitle = ed.subtitle || '';
     editionEditLang = ed.lang;
@@ -216,7 +216,7 @@
   }
 
   async function saveEditionEdit() {
-    if (!editionEditName.trim()) { editionEditError = 'Edition name required'; return; }
+    // edition_name is optional now
     editionEditSaving = true;
     editionEditError = '';
     try {
@@ -226,7 +226,7 @@
         return { label: label.trim(), url: rest.join(':').trim() };
       }).filter(l => l.label && l.url) : [];
       await updateBookEdition(id, editionEditId, {
-        edition_name: editionEditName,
+        edition_name: editionEditName.trim() || undefined,
         title: editionEditTitle || undefined,
         subtitle: editionEditSubtitle || undefined,
         lang: editionEditLang,
@@ -565,7 +565,7 @@
               {#if detail.editions.length > 0}
                 <select class="edition-select" bind:value={selectedEdition} title="Edition">
                   {#each detail.editions as ed}
-                    <option value={ed.id}>{ed.edition_name} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
+                    <option value={ed.id}>{ed.edition_name || ed.lang} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
                   {/each}
                 </select>
               {/if}
@@ -895,7 +895,7 @@
               {#if review.edition_id}
                 {@const ed = detail.editions.find(e => e.id === review.edition_id)}
                 {#if ed}
-                  <span class="review-edition">{ed.edition_name} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</span>
+                  <span class="review-edition">{ed.edition_name || ed.lang} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</span>
                 {/if}
               {/if}
               <PostCard article={review} articleTeaches={[]} />
@@ -968,7 +968,7 @@
       {#each detail.editions as ed}
         <div class="edition-card">
           {#if ed.cover_url}
-            <img src={ed.cover_url} alt={ed.edition_name} class="edition-cover" />
+            <img src={ed.cover_url} alt={ed.edition_name || ''} class="edition-cover" />
           {/if}
           <div class="edition-top">
             <strong>{editionFullTitle(ed)}</strong>

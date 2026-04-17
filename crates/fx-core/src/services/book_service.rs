@@ -52,7 +52,7 @@ pub struct PurchaseLink {
 pub struct BookEdition {
     pub id: String,
     pub book_id: String,
-    pub edition_name: String,
+    pub edition_name: Option<String>,
     pub title: Option<String>,
     pub subtitle: Option<String>,
     pub lang: String,
@@ -72,7 +72,8 @@ pub struct BookEdition {
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct CreateEdition {
-    pub edition_name: String,
+    #[serde(default)]
+    pub edition_name: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
