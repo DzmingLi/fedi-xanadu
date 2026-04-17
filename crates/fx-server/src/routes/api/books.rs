@@ -131,6 +131,7 @@ pub struct UpdateBookInput {
     #[serde(default)]
     pub id: String,
     pub title: Option<std::collections::HashMap<String, String>>,
+    pub subtitle: Option<std::collections::HashMap<String, String>>,
     pub description: Option<std::collections::HashMap<String, String>>,
     pub edit_summary: Option<String>,
 }
@@ -146,12 +147,18 @@ pub async fn update_book(
     let old = book_service::get_book(&state.pool, &input.id).await?;
     let old_snapshot = serde_json::json!({
         "title": old.title,
+        "subtitle": old.subtitle,
         "description": old.description,
     });
 
     if let Some(ref title) = input.title {
         let json = serde_json::to_value(title)?;
         sqlx::query("UPDATE books SET title = $1 WHERE id = $2")
+            .bind(&json).bind(&input.id).execute(&state.pool).await?;
+    }
+    if let Some(ref subtitle) = input.subtitle {
+        let json = serde_json::to_value(subtitle)?;
+        sqlx::query("UPDATE books SET subtitle = $1 WHERE id = $2")
             .bind(&json).bind(&input.id).execute(&state.pool).await?;
     }
     if let Some(ref desc) = input.description {

@@ -8,6 +8,8 @@ pub struct Book {
     pub id: String,
     #[ts(type = "Record<string, string>")]
     pub title: sqlx::types::Json<std::collections::HashMap<String, String>>,
+    #[ts(type = "Record<string, string>")]
+    pub subtitle: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub authors: Vec<String>,
     #[ts(type = "Record<string, string>")]
     pub description: sqlx::types::Json<std::collections::HashMap<String, String>>,
@@ -25,6 +27,9 @@ pub struct Book {
 pub struct CreateBook {
     #[ts(type = "Record<string, string>")]
     pub title: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    #[ts(type = "Record<string, string> | undefined")]
+    pub subtitle: Option<std::collections::HashMap<String, String>>,
     pub authors: Vec<String>,
     #[ts(type = "Record<string, string> | undefined")]
     pub description: Option<std::collections::HashMap<String, String>>,
@@ -93,11 +98,12 @@ pub async fn create_book(
     .await?;
 
     sqlx::query(
-        "INSERT INTO books (id, title, authors, description, created_by, abbreviation) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO books (id, title, subtitle, authors, description, created_by, abbreviation) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(id)
     .bind(sqlx::types::Json(&input.title))
+    .bind(sqlx::types::Json(input.subtitle.as_ref().unwrap_or(&std::collections::HashMap::new())))
     .bind(&input.authors)
     .bind(sqlx::types::Json(input.description.as_ref().unwrap_or(&std::collections::HashMap::new())))
     .bind(created_by)
@@ -138,7 +144,7 @@ pub async fn create_book(
     tx.commit().await?;
 
     let book = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
     )
         .bind(id)
         .fetch_one(pool)
@@ -157,7 +163,7 @@ const BOOK_COVER_SQL: &str = "\
 
 pub async fn get_book(pool: &PgPool, id: &str) -> crate::Result<Book> {
     sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
     )
         .bind(id)
         .fetch_optional(pool)
@@ -189,7 +195,7 @@ pub async fn get_book_for_viewer(pool: &PgPool, id: &str, viewer_did: &str) -> c
 /// Find a book by ISBN (searches across all editions).
 pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Option<Book>> {
     let row = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
+        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
                   JOIN book_editions be ON be.book_id = b.id WHERE be.isbn = $1 LIMIT 1"),
     )
     .bind(isbn)
@@ -200,7 +206,7 @@ pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Optio
 
 pub async fn list_books(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<Book>> {
     let rows = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
+        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
                   ORDER BY b.created_at DESC LIMIT $1 OFFSET $2"),
     )
     .bind(limit)
