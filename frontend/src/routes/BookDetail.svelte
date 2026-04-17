@@ -36,11 +36,17 @@
     resources = await listBookResources(id);
   }
 
+  /** Resolve a localized field for a specific language, with fallback to en then any. */
+  function locFor(field: Record<string, string> | null | undefined, lang: string): string {
+    if (!field) return '';
+    return field[lang] || field['en'] || Object.values(field).find(v => v) || '';
+  }
+
   /** Build edition card title using the edition's own language. */
   function editionFullTitle(ed: BookEdition): string {
     if (!detail) return ed.title;
-    const t = (detail.book.title as Record<string,string>)[ed.lang] || loc(detail.book.title);
-    const st = (detail.book.subtitle as Record<string,string>)?.[ed.lang] || loc(detail.book.subtitle);
+    const t = locFor(detail.book.title as Record<string,string>, ed.lang);
+    const st = locFor(detail.book.subtitle as Record<string,string>, ed.lang);
     const full = st ? `${t}: ${st}` : t;
     return `${full} (${ed.title})`;
   }
