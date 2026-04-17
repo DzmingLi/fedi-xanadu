@@ -1606,13 +1606,17 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
                 "cover_url": edition_cover_url,
             });
 
-            let ed_resp: serde_json::Value = client()
+            let ed_response = client()
                 .post(format!("{base}/books/{book_id}/editions"))
                 .bearer_auth(token)
                 .json(&ed_body)
-                .send().await?
-                .error_for_status().context("Create first edition failed")?
-                .json().await?;
+                .send().await?;
+            if !ed_response.status().is_success() {
+                let status = ed_response.status();
+                let body = ed_response.text().await.unwrap_or_default();
+                bail!("Create first edition failed ({status}): {body}");
+            }
+            let ed_resp: serde_json::Value = ed_response.json().await?;
 
             let eid = ed_resp["id"].as_str().unwrap_or("?");
             println!("Created edition: {edition} ({lang})");
