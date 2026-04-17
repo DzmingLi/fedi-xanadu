@@ -1540,6 +1540,8 @@ pub struct UpdateArticleInput {
     pub description: Option<String>,
     pub content: Option<String>,
     pub commit_message: Option<String>,
+    /// Category-specific metadata to update.
+    pub metadata: Option<CategoryMetadata>,
     /// When false, only saves content to working copy without creating a pijul change.
     #[serde(default = "default_true")]
     pub record: bool,
@@ -1584,6 +1586,23 @@ pub async fn update_article(
             update_article_content(&state, &input.uri, &user.did, Some(&user.token), content, &format, msg).await?;
         } else {
             save_article_content(&state, &input.uri, content, &format).await?;
+        }
+    }
+
+    // Update category-specific metadata
+    if let Some(ref meta) = input.metadata {
+        match meta {
+            CategoryMetadata::Paper(paper) => {
+                let _ = article_service::upsert_paper_metadata(&state.pool, &input.uri, paper).await;
+            }
+            CategoryMetadata::Experience(exp) => {
+                let _ = article_service::upsert_experience_metadata(&state.pool, &input.uri, exp).await;
+            }
+            CategoryMetadata::Review { book_id, edition_id, .. } => {
+                sqlx::query("UPDATE articles SET book_id = $1, edition_id = $2 WHERE at_uri = $3")
+                    .bind(book_id.as_deref()).bind(edition_id.as_deref()).bind(&input.uri)
+                    .execute(&state.pool).await?;
+            }
         }
     }
 
