@@ -4,7 +4,7 @@ ALTER TABLE book_chapters ADD COLUMN IF NOT EXISTS title_i18n JSONB;
 
 -- Migrate existing titles: detect language by checking if title contains CJK characters
 UPDATE book_chapters SET title_i18n =
-  CASE WHEN title ~ '[\x{4e00}-\x{9fff}]' THEN jsonb_build_object('zh', title)
+  CASE WHEN title ~ E'[\u4e00-\u9fff]' THEN jsonb_build_object('zh', title)
   ELSE jsonb_build_object('en', title)
   END
 WHERE title_i18n IS NULL;
