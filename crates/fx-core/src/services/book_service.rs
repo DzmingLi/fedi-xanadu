@@ -81,24 +81,6 @@ pub async fn create_book(
     input: &CreateBook,
     created_by: &str,
 ) -> crate::Result<Book> {
-    // Check for duplicate: same title (any language) + same authors
-    let title_json = serde_json::to_value(&input.title)?;
-    let dup: Option<String> = sqlx::query_scalar(
-        "SELECT id FROM books WHERE authors = $1 AND EXISTS ( \
-           SELECT 1 FROM jsonb_each_text(title) t1, jsonb_each_text($2::jsonb) t2 \
-           WHERE t1.value = t2.value AND t1.value != '' \
-         )"
-    )
-    .bind(&input.authors)
-    .bind(&title_json)
-    .fetch_optional(pool)
-    .await?;
-    if let Some(existing_id) = dup {
-        return Err(crate::Error::BadRequest(
-            format!("A book with the same title and authors already exists: {existing_id}")
-        ));
-    }
-
     let mut tx = pool.begin().await?;
 
     // Insert into content table so content_teaches FK works

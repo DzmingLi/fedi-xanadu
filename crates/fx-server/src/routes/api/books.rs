@@ -93,13 +93,35 @@ pub async fn create_book(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
     Json(input): Json<book_service::CreateBook>,
-) -> ApiResult<(StatusCode, Json<book_service::Book>)> {
+) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     if input.title.values().all(|v| v.trim().is_empty()) {
         return Err(AppError(fx_core::Error::BadRequest("title required".into())));
     }
+
+    // Check for duplicate: same title (any language) + same authors
+    let title_json = serde_json::to_value(&input.title)?;
+    let dup: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM books WHERE authors = $1 AND EXISTS ( \
+           SELECT 1 FROM jsonb_each_text(title) t1, jsonb_each_text($2::jsonb) t2 \
+           WHERE t1.value = t2.value AND t1.value != '' \
+         )"
+    )
+    .bind(&input.authors)
+    .bind(&title_json)
+    .fetch_optional(&state.pool)
+    .await?;
+
     let id = format!("bk-{}", tid());
     let book = book_service::create_book(&state.pool, &id, &input, &user.did).await?;
-    Ok((StatusCode::CREATED, Json(book)))
+
+    let mut resp = serde_json::to_value(&book)?;
+    if let Some(existing_id) = dup {
+        resp["warning"] = serde_json::json!(format!(
+            "A book with the same title and authors already exists: {existing_id}"
+        ));
+    }
+
+    Ok((StatusCode::CREATED, Json(resp)))
 }
 
 // --- Update book ---

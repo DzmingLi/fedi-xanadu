@@ -1585,6 +1585,9 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
                 .json().await?;
 
             let book_id = resp["id"].as_str().unwrap_or("?");
+            if let Some(warning) = resp["warning"].as_str() {
+                eprintln!("Warning: {warning}");
+            }
             println!("Created book: {title}");
             println!("ID: {book_id}");
 
