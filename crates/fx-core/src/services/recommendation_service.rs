@@ -289,7 +289,7 @@ scored AS (
 )
 
 -- Final SELECT matching Article struct field order
-SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS author_reputation,
+SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation,
        a.kind, a.title, a.description,
        a.content_hash, a.content_format, a.lang, a.translation_group, a.license,
        a.prereq_threshold, a.question_uri, a.answer_count, a.restricted, a.category,
@@ -359,7 +359,7 @@ user_mastered AS (
     SELECT tag_id FROM user_skills WHERE did = $1 AND status = 'mastered'
 ),
 questions AS (
-    SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS author_reputation,
+    SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation,
            a.kind, a.title, a.description,
            a.content_hash, a.content_format, a.lang, a.translation_group, a.license,
            a.prereq_threshold, a.question_uri, a.answer_count, a.restricted, a.category,
@@ -405,7 +405,7 @@ scored AS (
     -- Exclude user's own questions
     WHERE q.did != $1
 )
-SELECT at_uri, did, author_handle, author_reputation, kind, title, description,
+SELECT at_uri, did, author_handle, author_display_name, author_avatar, author_reputation, kind, title, description,
        content_hash, content_format, lang, translation_group, license,
        prereq_threshold, question_uri, answer_count, restricted, category,
        book_id, edition_id, vote_score, bookmark_count, comment_count, fork_count, created_at, updated_at
