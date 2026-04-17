@@ -353,7 +353,11 @@ export interface AccessGrant {
 }
 
 /** Fixed contact fields shown on the profile card, plus free-form extras.
- * Undefined/empty fields should be stripped before sending to the server. */
+ * Undefined/empty fields should be stripped before sending to the server.
+ *
+ * `tangled` and `bilibili` store `{url, username}` since neither platform
+ * maps usernames to a canonical URL pattern — the URL is what we link to,
+ * the username is what we display. */
 export interface Contacts {
   website?: string | null;
   email?: string | null;
@@ -361,10 +365,15 @@ export interface Contacts {
   matrix?: string | null;
   github?: string | null;
   codeberg?: string | null;
-  tangled?: string | null;
+  tangled?: LinkedHandle | null;
   youtube?: string | null;
-  bilibili?: string | null;
+  bilibili?: LinkedHandle | null;
   custom?: CustomLink[];
+}
+
+export interface LinkedHandle {
+  url: string;
+  username: string;
 }
 
 export interface CustomLink {

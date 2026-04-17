@@ -7,8 +7,14 @@
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { ProfileData, Article, Series, ContentTeachRow, Contacts, ContactKind, CustomLink, BookmarkWithTitle, EducationEntry, EducationTranslation, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
+  import type { ProfileData, Article, Series, ContentTeachRow, Contacts, ContactKind, CustomLink, LinkedHandle, BookmarkWithTitle, EducationEntry, EducationTranslation, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
   import { CONTACT_KINDS } from '../lib/types';
+
+  /** Contact kinds that store {url, username} rather than a bare string. */
+  const LINKED_HANDLE_KINDS = ['tangled', 'bilibili'] as const;
+  function isLinkedHandleKind(k: ContactKind): k is 'tangled' | 'bilibili' {
+    return (LINKED_HANDLE_KINDS as readonly string[]).includes(k);
+  }
 
   /** Resolve a localized field (Record<string, string>) to the current locale with fallback. */
   function loc(field: Record<string, string> | null | undefined): string {
@@ -252,9 +258,13 @@
   }
 
   function startEditContacts() {
-    const src = profile?.contacts || {};
+    const src: Contacts = profile?.contacts || {};
     editContacts = {
       ...src,
+      // Ensure LinkedHandle kinds always have a writable object so <input>
+      // bindings don't crash when the user has nothing saved yet.
+      tangled: src.tangled ? { ...src.tangled } : { url: '', username: '' },
+      bilibili: src.bilibili ? { ...src.bilibili } : { url: '', username: '' },
       custom: [...(src.custom || []).map(l => ({ ...l }))],
     };
     editingContacts = true;
@@ -268,9 +278,10 @@
       matrix: '@user:matrix.org',
       github: 'username',
       codeberg: 'username',
-      tangled: 'https://tangled.sh/@...',
+      // tangled/bilibili use paired username+url inputs, not this placeholder.
+      tangled: '',
       youtube: '@channel',
-      bilibili: 'https://space.bilibili.com/...',
+      bilibili: '',
     };
     return hints[kind];
   }
@@ -278,8 +289,15 @@
   async function saveContacts() {
     const cleaned: Contacts = {};
     for (const k of CONTACT_KINDS) {
-      const v = editContacts[k]?.trim() || '';
-      if (v) cleaned[k] = v;
+      if (isLinkedHandleKind(k)) {
+        const lh = editContacts[k] as LinkedHandle | undefined;
+        const url = lh?.url.trim() || '';
+        const username = lh?.username.trim() || '';
+        if (url || username) cleaned[k] = { url, username };
+      } else {
+        const v = (editContacts[k] as string | undefined)?.trim() || '';
+        if (v) (cleaned as Record<string, unknown>)[k] = v;
+      }
     }
     const custom = (editContacts.custom || [])
       .map(l => ({ label: l.label.trim(), url: l.url.trim() }))
@@ -311,6 +329,7 @@
       case 'codeberg':
         return value.startsWith('http') ? value : `https://codeberg.org/${value.replace(/^@/, '')}`;
       case 'tangled':
+        // Callers pass the LinkedHandle's `url` field.
         return value.startsWith('http') ? value : `https://${value.replace(/^\/+/, '')}`;
       case 'youtube': {
         if (value.startsWith('http')) return value;
@@ -337,7 +356,12 @@
   }
 
   let hasAnyContact = $derived(
-    CONTACT_KINDS.some(k => !!profile?.contacts?.[k])
+    CONTACT_KINDS.some(k => {
+      const v = profile?.contacts?.[k];
+      if (!v) return false;
+      if (typeof v === 'string') return v.length > 0;
+      return v.url.length > 0 || v.username.length > 0;
+    })
       || (profile?.contacts?.custom?.length ?? 0) > 0
   );
 
@@ -420,10 +444,17 @@
       {#each CONTACT_KINDS as kind}
         {@const v = profile?.contacts?.[kind]}
         {#if v}
-          <a href={contactHref(kind, v)} target="_blank" rel="noopener" class="contact-row" title={contactLabel(kind)}>
-            <span class="contact-icon">{@render contactIcon(kind)}</span>
-            <span class="contact-value">{v}</span>
-          </a>
+          {#if typeof v === 'string'}
+            <a href={contactHref(kind, v)} target="_blank" rel="noopener" class="contact-row" title={contactLabel(kind)}>
+              <span class="contact-icon">{@render contactIcon(kind)}</span>
+              <span class="contact-value">{v}</span>
+            </a>
+          {:else if v.url || v.username}
+            <a href={v.url ? contactHref(kind, v.url) : '#'} target="_blank" rel="noopener" class="contact-row" title={contactLabel(kind)}>
+              <span class="contact-icon">{@render contactIcon(kind)}</span>
+              <span class="contact-value">{v.username || v.url}</span>
+            </a>
+          {/if}
         {/if}
       {/each}
       {#each (profile?.contacts?.custom || []) as link}
@@ -700,15 +731,27 @@
         <h3>{t('profile.editContactsTitle')}</h3>
         <div class="contacts-edit-grid">
           {#each CONTACT_KINDS as kind}
-            <label class="contact-edit-row">
+            <div class="contact-edit-row">
               <span class="contact-edit-icon">{@render contactIcon(kind)}</span>
               <span class="contact-edit-label">{contactLabel(kind)}</span>
-              <input
-                class="contact-edit-input"
-                bind:value={editContacts[kind]}
-                placeholder={contactPlaceholder(kind)}
-              />
-            </label>
+              {#if kind === 'tangled'}
+                <div class="contact-edit-paired">
+                  <input class="contact-edit-input" bind:value={editContacts.tangled!.username} placeholder={t('profile.contactUsername')} />
+                  <input class="contact-edit-input" bind:value={editContacts.tangled!.url} placeholder="https://tangled.sh/..." />
+                </div>
+              {:else if kind === 'bilibili'}
+                <div class="contact-edit-paired">
+                  <input class="contact-edit-input" bind:value={editContacts.bilibili!.username} placeholder={t('profile.contactUsername')} />
+                  <input class="contact-edit-input" bind:value={editContacts.bilibili!.url} placeholder="https://space.bilibili.com/..." />
+                </div>
+              {:else}
+                <input
+                  class="contact-edit-input"
+                  bind:value={editContacts[kind] as string}
+                  placeholder={contactPlaceholder(kind)}
+                />
+              {/if}
+            </div>
           {/each}
         </div>
         <h4 class="contacts-custom-heading">{t('profile.contactsCustom')}</h4>
@@ -1592,6 +1635,12 @@
   .contact-edit-input:focus {
     outline: none;
     border-color: var(--accent);
+  }
+  .contact-edit-paired {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
   }
   .contacts-custom-heading {
     font-size: 13px;

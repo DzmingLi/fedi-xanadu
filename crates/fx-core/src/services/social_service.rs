@@ -38,12 +38,15 @@ pub struct Contacts {
     pub github: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codeberg: Option<String>,
+    /// Tangled stores both a full URL (for the hyperlink) and a username
+    /// (for display), since usernames don't map to a canonical URL pattern.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tangled: Option<String>,
+    pub tangled: Option<LinkedHandle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub youtube: Option<String>,
+    /// Bilibili — same rationale as tangled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bilibili: Option<String>,
+    pub bilibili: Option<LinkedHandle>,
     /// Free-form extra links with user-supplied labels.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom: Vec<CustomLink>,
@@ -54,6 +57,16 @@ pub struct Contacts {
 pub struct CustomLink {
     pub label: String,
     pub url: String,
+}
+
+/// A hyperlink whose displayed text and destination URL differ, used where
+/// platforms (bilibili, tangled) don't have a canonical `domain/{username}`
+/// URL pattern.
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct LinkedHandle {
+    pub url: String,
+    pub username: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]

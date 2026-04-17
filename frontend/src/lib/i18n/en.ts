@@ -244,6 +244,7 @@ export default {
   'profile.addContacts': 'Add contacts',
   'profile.contactsCustom': 'Other links',
   'profile.contactsAddCustom': 'Add link',
+  'profile.contactUsername': 'username',
   'profile.education': 'Education',
   'profile.works': 'Works',
   'profile.noWorks': 'No works yet',

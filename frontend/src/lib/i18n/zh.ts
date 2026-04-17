@@ -244,6 +244,7 @@ export default {
   'profile.addContacts': '添加联系方式',
   'profile.contactsCustom': '其他链接',
   'profile.contactsAddCustom': '添加链接',
+  'profile.contactUsername': '用户名',
   'profile.education': '教育经历',
   'profile.works': '作品',
   'profile.noWorks': '暂无作品',
