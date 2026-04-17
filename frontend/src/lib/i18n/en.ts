@@ -630,6 +630,15 @@ export default {
   'books.askTitlePlaceholder': 'What do you want to know about this book?',
   'books.askContentPlaceholder': 'Add details (optional)...',
   'books.setAsCover': 'Use this cover',
+  'books.resources': 'Supplementary Resources',
+  'books.addResource': '+ Add Resource',
+  'books.resourceKind.solutions': 'Solutions',
+  'books.resourceKind.exercises': 'Exercises',
+  'books.resourceKind.video': 'Video',
+  'books.resourceKind.slides': 'Slides',
+  'books.resourceKind.errata': 'Errata',
+  'books.resourceKind.code': 'Code',
+  'books.resourceKind.other': 'Other',
 
   // Book edition form
   'bookEdition.title': 'Add Edition',

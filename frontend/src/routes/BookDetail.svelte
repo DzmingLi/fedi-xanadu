@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, updateBook, updateBookEdition, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources } from '../lib/api';
+  import { getBook, updateBook, updateBookEdition, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource } from '../lib/api';
   import type { BookResource } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
@@ -19,6 +19,29 @@
 
   let detail = $state<BookDetail | null>(null);
   let resources = $state<BookResource[]>([]);
+  let showAddResource = $state(false);
+  let newResKind = $state('other');
+  let newResLabel = $state('');
+  let newResUrl = $state('');
+
+  async function submitResource() {
+    if (!newResLabel.trim() || !newResUrl.trim()) return;
+    await addBookResource(id, { kind: newResKind, label: newResLabel.trim(), url: newResUrl.trim() });
+    newResLabel = ''; newResUrl = ''; showAddResource = false;
+    resources = await listBookResources(id);
+  }
+
+  async function removeResource(rid: string) {
+    await deleteBookResource(id, rid);
+    resources = await listBookResources(id);
+  }
+
+  const RESOURCE_KINDS = ['solutions', 'exercises', 'video', 'slides', 'errata', 'code', 'other'];
+
+  function resourceKindLabel(kind: string): string {
+    return t(`books.resourceKind.${kind}`) || kind;
+  }
+
   let groupedResources = $derived(
     resources.reduce((acc, r) => { (acc[r.kind] = acc[r.kind] || []).push(r); return acc; }, {} as Record<string, BookResource[]>)
   );
@@ -964,17 +987,41 @@
       </div>
 
       <!-- Supplementary Resources -->
-      {#if resources.length > 0}
+      {#if resources.length > 0 || getAuth()}
         <div class="resources-section">
-          <h3>Supplementary Materials</h3>
+          <h3>{t('books.resources')}</h3>
           {#each Object.entries(groupedResources) as [kind, items]}
             <div class="resource-group">
-              <h4 class="resource-kind">{kind}</h4>
+              <h4 class="resource-kind">{resourceKindLabel(kind)}</h4>
               {#each items as r}
-                <a href={r.url} target="_blank" rel="noopener" class="resource-link">{r.label}</a>
+                <div class="resource-row">
+                  <a href={r.url} target="_blank" rel="noopener" class="resource-link">{r.label}</a>
+                  {#if getAuth()}
+                    <button class="resource-del" onclick={() => removeResource(r.id)} title="Delete">×</button>
+                  {/if}
+                </div>
               {/each}
             </div>
           {/each}
+          {#if getAuth()}
+            {#if showAddResource}
+              <div class="resource-form">
+                <select bind:value={newResKind} class="res-input">
+                  {#each RESOURCE_KINDS as k}
+                    <option value={k}>{resourceKindLabel(k)}</option>
+                  {/each}
+                </select>
+                <input class="res-input" bind:value={newResLabel} placeholder="Label" />
+                <input class="res-input" bind:value={newResUrl} placeholder="URL" />
+                <div class="res-form-actions">
+                  <button class="btn btn-primary btn-sm" onclick={submitResource} disabled={!newResLabel.trim() || !newResUrl.trim()}>OK</button>
+                  <button class="btn btn-secondary btn-sm" onclick={() => showAddResource = false}>{t('books.cancel')}</button>
+                </div>
+              </div>
+            {:else}
+              <button class="add-resource-btn" onclick={() => showAddResource = true}>{t('books.addResource')}</button>
+            {/if}
+          {/if}
         </div>
       {/if}
 
@@ -1374,8 +1421,17 @@
   .resources-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .resource-group { margin-bottom: 10px; }
   .resource-kind { font-size: 12px; color: var(--text-hint); text-transform: capitalize; margin: 0 0 4px; font-weight: 500; }
-  .resource-link { display: block; font-size: 13px; color: var(--accent); text-decoration: none; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .resource-row { display: flex; align-items: center; gap: 4px; }
+  .resource-link { flex: 1; font-size: 13px; color: var(--accent); text-decoration: none; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .resource-link:hover { text-decoration: underline; }
+  .resource-del { background: none; border: none; color: var(--text-hint); cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; }
+  .resource-del:hover { color: #c62828; }
+  .resource-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .res-input { font-size: 12px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 3px; }
+  .res-form-actions { display: flex; gap: 6px; }
+  .btn-sm { font-size: 12px; padding: 3px 10px; }
+  .add-resource-btn { font-size: 13px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 4px 0; }
+  .add-resource-btn:hover { text-decoration: underline; }
   .edit-history {
     margin-top: 1.5rem;
     padding-top: 1rem;

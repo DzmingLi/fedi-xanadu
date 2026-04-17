@@ -547,6 +547,10 @@ export const updateChapterTags = (book_id: string, chapter_id: string, teaches: 
 export interface BookResource { id: string; book_id: string; edition_id: string | null; kind: string; label: string; url: string; position: number; }
 export const listBookResources = (book_id: string) =>
   get<BookResource[]>(`/books/${encodeURIComponent(book_id)}/resources`);
+export const addBookResource = (book_id: string, data: { kind: string; label: string; url: string; edition_id?: string; position?: number }) =>
+  post<{ id: string }>(`/books/${encodeURIComponent(book_id)}/resources`, data);
+export const deleteBookResource = (book_id: string, resource_id: string) =>
+  del<void>(`/books/${encodeURIComponent(book_id)}/resources/${encodeURIComponent(resource_id)}`);
 
 // Members
 export const listMembers = () =>
