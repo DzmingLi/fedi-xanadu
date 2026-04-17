@@ -3,6 +3,7 @@
   import type { Discussion } from '../lib/api';
   import ArticleHistory from '../lib/components/ArticleHistory.svelte';
   import { getAuth } from '../lib/auth.svelte';
+  import { timeAgo } from '../lib/utils';
   import { tagName } from '../lib/display';
   import { isBlocked, addBlocked } from '../lib/blocklist.svelte';
   import { t, LANG_NAMES } from '../lib/i18n/index.svelte';
@@ -28,6 +29,9 @@
   let isOwner = $derived(!!getAuth() && article?.did === getAuth()?.did);
   let learned = $state(false);
   let accessDenied = $state(false);
+  let paperMeta = $state<any>(null);
+  let experienceMeta = $state<any>(null);
+
   let accessGrants = $state<AccessGrant[]>([]);
   let newGrantDid = $state('');
   let reportOpen = $state(false);
@@ -101,6 +105,8 @@
       votes = { target_uri: uri, score: data.votes.score, upvotes: data.votes.upvotes, downvotes: data.votes.downvotes };
       seriesContext = data.series_context;
       translations = data.translations;
+      paperMeta = data.paper || null;
+      experienceMeta = data.experience || null;
       myVote = data.my_vote;
       learned = data.learned;
       accessDenied = data.access_denied;
@@ -575,7 +581,7 @@ try {
 
       <div class="article-meta">
         <a href="/profile?did={encodeURIComponent(article.did)}" class="author-link">{article.author_handle ? `@${article.author_handle}` : article.did}</a>
-        <span>{article.created_at.split(' ')[0]}</span>
+        <span>{timeAgo(article.created_at)}</span>
         <span>{article.content_format}</span>
         <span>{article.license}</span>
         {#if prereqs.length > 0}
@@ -585,6 +591,25 @@ try {
           {/each}
         {/if}
       </div>
+
+      {#if paperMeta}
+        <div class="category-meta paper-meta">
+          {#if paperMeta.venue}<span class="meta-badge venue">{paperMeta.venue}{#if paperMeta.year} {paperMeta.year}{/if}</span>{/if}
+          {#if paperMeta.venue_type}<span class="meta-label">{paperMeta.venue_type}</span>{/if}
+          {#if paperMeta.accepted}<span class="meta-badge accepted">Accepted</span>{/if}
+          {#if paperMeta.doi}<a href="https://doi.org/{paperMeta.doi}" target="_blank" rel="noopener" class="meta-link">DOI: {paperMeta.doi}</a>{/if}
+          {#if paperMeta.arxiv_id}<a href="https://arxiv.org/abs/{paperMeta.arxiv_id}" target="_blank" rel="noopener" class="meta-link">arXiv: {paperMeta.arxiv_id}</a>{/if}
+        </div>
+      {/if}
+
+      {#if experienceMeta}
+        <div class="category-meta experience-meta">
+          {#if experienceMeta.kind}<span class="meta-badge">{experienceMeta.kind}</span>{/if}
+          {#if experienceMeta.target}<span class="meta-label">{experienceMeta.target}</span>{/if}
+          {#if experienceMeta.year}<span class="meta-label">{experienceMeta.year}</span>{/if}
+          {#if experienceMeta.result}<span class="meta-badge {experienceMeta.result}">{experienceMeta.result}</span>{/if}
+        </div>
+      {/if}
 
       {#if accessDenied}
         <div class="paywall-notice">
@@ -1001,6 +1026,29 @@ try {
     color: var(--text-secondary);
     text-decoration: none;
   }
+  .category-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 13px;
+    margin-bottom: 1.5rem;
+  }
+  .meta-badge {
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  .meta-badge.venue { background: var(--accent-light, #e8f5e9); color: var(--accent); }
+  .meta-badge.accepted { background: #e8f5e9; color: #2e7d32; }
+  .meta-badge.rejected, .meta-badge.failed { background: #ffebee; color: #c62828; }
+  .meta-badge.passed, .meta-badge.accepted { background: #e8f5e9; color: #2e7d32; }
+  .meta-badge.pending { background: #fff3e0; color: #e65100; }
+  .meta-label { color: var(--text-hint); }
+  .meta-link { color: var(--accent); text-decoration: none; font-size: 12px; }
+  .meta-link:hover { text-decoration: underline; }
   .author-link:hover { color: var(--accent); }
   .prereq-sep {
     color: var(--text-hint);
