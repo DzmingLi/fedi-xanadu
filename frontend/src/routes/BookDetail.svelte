@@ -294,6 +294,9 @@
   // ---- Chapter management ----
   let showChapterForm = $state(false);
   let newChapterTitle = $state('');
+  let newChapterTitles = $state<Record<string, string>>({ en: '', zh: '' });
+  let chapterTitleLang = $state('en');
+  const CHAPTER_LANGS = [{ code: 'en', label: 'EN' }, { code: 'zh', label: '中文' }];
   let newChapterParentId = $state('');
   let newChapterArticleUri = $state('');
   let newChapterTeaches = $state<string[]>([]);
@@ -346,19 +349,27 @@
   }
 
   async function submitNewChapter() {
-    if (!newChapterTitle.trim()) return;
+    // Use first non-empty title as the primary title
+    const primaryTitle = newChapterTitles[chapterTitleLang]?.trim() || Object.values(newChapterTitles).find(v => v.trim()) || '';
+    if (!primaryTitle) return;
     chapterSaving = true;
+    // Build title_i18n: only include non-empty entries
+    const titleI18n: Record<string, string> = {};
+    for (const [lang, val] of Object.entries(newChapterTitles)) {
+      if (val.trim()) titleI18n[lang] = val.trim();
+    }
     try {
       const rootChapters = detail?.chapters.filter(c => !c.parent_id) ?? [];
       await createChapter(id, {
-        title: newChapterTitle.trim(),
+        title: primaryTitle,
+        title_i18n: titleI18n,
         parent_id: newChapterParentId || undefined,
         order_index: rootChapters.length,
         article_uri: newChapterArticleUri.trim() || undefined,
         teaches: newChapterTeaches,
         prereqs: newChapterPrereqs,
-      });
-      newChapterTitle = '';
+      } as any);
+      newChapterTitles = { en: '', zh: '' };
       newChapterParentId = '';
       newChapterArticleUri = '';
       newChapterTeaches = [];
@@ -605,12 +616,20 @@
         <!-- Add chapter form -->
         {#if showChapterForm}
           <div class="chapter-form">
-            <input class="chapter-input" bind:value={newChapterTitle} placeholder="章节标题" />
+            <div class="lang-tabs">
+              {#each CHAPTER_LANGS as lang}
+                <button class="lang-tab" class:active={chapterTitleLang === lang.code} onclick={() => chapterTitleLang = lang.code}>
+                  {lang.label}
+                  {#if newChapterTitles[lang.code]?.trim()}<span class="lang-dot"></span>{/if}
+                </button>
+              {/each}
+            </div>
+            <input class="chapter-input" bind:value={newChapterTitles[chapterTitleLang]} placeholder={chapterTitleLang === 'zh' ? '章节标题' : 'Chapter title'} />
             <input class="chapter-input" bind:value={newChapterArticleUri} placeholder="关联文章 URI（可选）" />
             <select class="chapter-input" bind:value={newChapterParentId}>
               <option value="">顶层章节</option>
               {#each (detail?.chapters ?? []).filter(c => !c.parent_id) as ch}
-                <option value={ch.id}>{ch.title}</option>
+                <option value={ch.id}>{loc(ch.title_i18n) || ch.title}</option>
               {/each}
             </select>
 
@@ -671,7 +690,7 @@
               {/if}
             </div>
 
-            <button class="action-btn primary" onclick={submitNewChapter} disabled={chapterSaving || !newChapterTitle.trim()}>
+            <button class="action-btn primary" onclick={submitNewChapter} disabled={chapterSaving || !Object.values(newChapterTitles).some(v => v.trim())}>
               {chapterSaving ? '保存中…' : '保存章节'}
             </button>
           </div>
@@ -693,9 +712,9 @@
                 {/if}
                 <div class="chapter-content">
                   {#if ch.article_uri}
-                    <a href="/article?uri={encodeURIComponent(ch.article_uri)}" class="chapter-title">{ch.title}</a>
+                    <a href="/article?uri={encodeURIComponent(ch.article_uri)}" class="chapter-title">{loc(ch.title_i18n) || ch.title}</a>
                   {:else}
-                    <span class="chapter-title">{ch.title}</span>
+                    <span class="chapter-title">{loc(ch.title_i18n) || ch.title}</span>
                   {/if}
                   <!-- Chapter tags display -->
                   {#if ch.teaches.length > 0 || ch.prereqs.length > 0}
