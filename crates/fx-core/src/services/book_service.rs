@@ -52,7 +52,8 @@ pub struct PurchaseLink {
 pub struct BookEdition {
     pub id: String,
     pub book_id: String,
-    pub title: String,
+    pub edition_name: String,
+    pub title: Option<String>,
     pub lang: String,
     pub isbn: Option<String>,
     pub publisher: Option<String>,
@@ -70,7 +71,9 @@ pub struct BookEdition {
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct CreateEdition {
-    pub title: String,
+    pub edition_name: String,
+    #[serde(default)]
+    pub title: Option<String>,
     pub lang: String,
     pub isbn: Option<String>,
     pub publisher: Option<String>,
@@ -293,11 +296,12 @@ pub async fn create_edition(
 
     let links_json = sqlx::types::Json(&input.purchase_links);
     sqlx::query(
-        "INSERT INTO book_editions (id, book_id, title, lang, isbn, publisher, year, translators, purchase_links, cover_url) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+        "INSERT INTO book_editions (id, book_id, edition_name, title, lang, isbn, publisher, year, translators, purchase_links, cover_url) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     )
     .bind(id)
     .bind(book_id)
+    .bind(&input.edition_name)
     .bind(&input.title)
     .bind(&input.lang)
     .bind(&input.isbn)
@@ -325,10 +329,11 @@ pub async fn update_edition(
 ) -> crate::Result<BookEdition> {
     let links_json = sqlx::types::Json(&input.purchase_links);
     sqlx::query(
-        "UPDATE book_editions SET title = $1, lang = $2, isbn = $3, publisher = $4, \
-         year = $5, translators = $6, purchase_links = $7, cover_url = $8 \
-         WHERE id = $9",
+        "UPDATE book_editions SET edition_name = $1, title = $2, lang = $3, isbn = $4, publisher = $5, \
+         year = $6, translators = $7, purchase_links = $8, cover_url = $9 \
+         WHERE id = $10",
     )
+    .bind(&input.edition_name)
     .bind(&input.title)
     .bind(&input.lang)
     .bind(&input.isbn)

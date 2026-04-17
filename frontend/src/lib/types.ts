@@ -169,7 +169,8 @@ export interface PurchaseLink {
 export interface BookEdition {
   id: string;
   book_id: string;
-  title: string;
+  edition_name: string;
+  title: string | null;
   lang: string;
   isbn: string | null;
   publisher: string | null;

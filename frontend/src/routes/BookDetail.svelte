@@ -43,14 +43,15 @@
     return field['en'] || Object.values(field).find(v => v) || '';
   }
 
-  /** Build edition card title using the edition's own language. Subtitle does not fallback across languages. */
+  /** Build edition card title. Uses edition.title if set, otherwise constructs from book title + edition_name. */
   function editionFullTitle(ed: BookEdition): string {
-    if (!detail) return ed.title;
+    if (ed.title) return `${ed.title} (${ed.edition_name})`;
+    if (!detail) return ed.edition_name;
     const t = locFor(detail.book.title as Record<string,string>, ed.lang);
     const sub = detail.book.subtitle as Record<string,string> | null;
     const st = sub?.[ed.lang] || '';
     const full = st ? `${t}: ${st}` : t;
-    return `${full} (${ed.title})`;
+    return `${full} (${ed.edition_name})`;
   }
 
   const RESOURCE_KINDS = ['solutions', 'exercises', 'video', 'slides', 'errata', 'code', 'other'];
@@ -189,6 +190,7 @@
   // Edition edit modal state
   let showEditionEdit = $state(false);
   let editionEditId = $state('');
+  let editionEditName = $state('');
   let editionEditTitle = $state('');
   let editionEditLang = $state('en');
   let editionEditIsbn = $state('');
@@ -201,7 +203,8 @@
 
   function openEditionEdit(ed: BookEdition) {
     editionEditId = ed.id;
-    editionEditTitle = ed.title;
+    editionEditName = ed.edition_name;
+    editionEditTitle = ed.title || '';
     editionEditLang = ed.lang;
     editionEditIsbn = ed.isbn || '';
     editionEditPublisher = ed.publisher || '';
@@ -213,7 +216,7 @@
   }
 
   async function saveEditionEdit() {
-    if (!editionEditTitle.trim()) { editionEditError = 'Title required'; return; }
+    if (!editionEditName.trim()) { editionEditError = 'Edition name required'; return; }
     editionEditSaving = true;
     editionEditError = '';
     try {
@@ -223,7 +226,8 @@
         return { label: label.trim(), url: rest.join(':').trim() };
       }).filter(l => l.label && l.url) : [];
       await updateBookEdition(id, editionEditId, {
-        title: editionEditTitle,
+        edition_name: editionEditName,
+        title: editionEditTitle || undefined,
         lang: editionEditLang,
         isbn: editionEditIsbn || undefined,
         publisher: editionEditPublisher || undefined,
@@ -560,7 +564,7 @@
               {#if detail.editions.length > 0}
                 <select class="edition-select" bind:value={selectedEdition} title="Edition">
                   {#each detail.editions as ed}
-                    <option value={ed.id}>{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
+                    <option value={ed.id}>{ed.edition_name} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
                   {/each}
                 </select>
               {/if}
@@ -890,7 +894,7 @@
               {#if review.edition_id}
                 {@const ed = detail.editions.find(e => e.id === review.edition_id)}
                 {#if ed}
-                  <span class="review-edition">{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</span>
+                  <span class="review-edition">{ed.edition_name} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</span>
                 {/if}
               {/if}
               <PostCard article={review} articleTeaches={[]} />
@@ -963,7 +967,7 @@
       {#each detail.editions as ed}
         <div class="edition-card">
           {#if ed.cover_url}
-            <img src={ed.cover_url} alt={ed.title} class="edition-cover" />
+            <img src={ed.cover_url} alt={ed.edition_name} class="edition-cover" />
           {/if}
           <div class="edition-top">
             <strong>{editionFullTitle(ed)}</strong>
@@ -1147,11 +1151,15 @@
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="modal" onclick={(e) => e.stopPropagation()}>
-        <h3>Edit Edition</h3>
+        <h3>{t('books.editEdition') || 'Edit Edition'}</h3>
         {#if editionEditError}<p class="error-msg">{editionEditError}</p>{/if}
         <div class="form-group">
-          <label>Title</label>
-          <input bind:value={editionEditTitle} />
+          <label>{t('books.editionName') || 'Edition Name'}</label>
+          <input bind:value={editionEditName} placeholder="e.g. 3rd Edition, 中文版" />
+        </div>
+        <div class="form-group">
+          <label>{t('books.editionTitle') || 'Title (optional, for translated editions)'}</label>
+          <input bind:value={editionEditTitle} placeholder="e.g. 计算理论导引" />
         </div>
         <div class="form-group">
           <label>Language</label>

@@ -1599,7 +1599,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             };
             let ed_body = serde_json::json!({
                 "book_id": book_id,
-                "title": edition,
+                "edition_name": edition,
                 "lang": lang,
                 "isbn": isbn,
                 "publisher": publisher,
@@ -1654,7 +1654,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
 
             let body = serde_json::json!({
                 "book_id": book_id,
-                "title": title,
+                "edition_name": title,
                 "lang": lang,
                 "isbn": isbn,
                 "publisher": publisher,

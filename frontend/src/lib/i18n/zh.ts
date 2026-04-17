@@ -626,6 +626,8 @@ export default {
   'books.askTitlePlaceholder': '关于这本书你想知道什么？',
   'books.askContentPlaceholder': '补充细节（可选）...',
   'books.setAsCover': '使用此封面',
+  'books.editEdition': '编辑版本',
+  'books.editionName': '版本名称',
   'books.resources': '补充资源',
   'books.addResource': '+ 添加资源',
   'books.resourceKind.solutions': '习题答案',
