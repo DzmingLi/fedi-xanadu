@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport, getForkAhead, applyChange, listDiscussions, createDiscussion } from '../lib/api';
+  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport, getForkAhead, applyChange, listDiscussions, createDiscussion, listArticleAuthors } from '../lib/api';
+  import type { ArticleAuthor } from '../lib/api';
   import type { Discussion } from '../lib/api';
   import ArticleHistory from '../lib/components/ArticleHistory.svelte';
   import { getAuth } from '../lib/auth.svelte';
@@ -31,6 +32,7 @@
   let accessDenied = $state(false);
   let paperMeta = $state<any>(null);
   let experienceMeta = $state<any>(null);
+  let articleAuthors = $state<ArticleAuthor[]>([]);
 
   let accessGrants = $state<AccessGrant[]>([]);
   let newGrantDid = $state('');
@@ -111,6 +113,7 @@
       learned = data.learned;
       accessDenied = data.access_denied;
       document.title = `${data.article.title} — NightBoat`;
+      listArticleAuthors(uri).then(a => { articleAuthors = a; }).catch(() => {});
       // Load access grants if owner of restricted article
       if (data.article.restricted && data.article.did === getAuth()?.did) {
         listAccessGrants(uri).then(g => { accessGrants = g; }).catch(() => {});
@@ -579,9 +582,41 @@ try {
         </div>
       {/if}
 
+      <!-- Authors -->
+      {#if articleAuthors.length > 0}
+        <div class="article-authors">
+          {#each articleAuthors as au}
+            {#if au.author_did}
+              <a href="/profile?did={encodeURIComponent(au.author_did)}" class="author-chip">
+                {#if au.author_avatar}
+                  <img src={au.author_avatar} alt="" class="author-avatar" />
+                {:else}
+                  <span class="author-avatar placeholder">{(au.author_display_name || au.author_handle || '?').charAt(0)}</span>
+                {/if}
+                <span class="author-info">
+                  <span class="author-display-name">{au.author_display_name || au.author_handle || au.author_did.slice(0, 16)}</span>
+                  {#if au.author_handle}<span class="author-handle">@{au.author_handle}</span>{/if}
+                </span>
+                {#if au.status === 'verified'}<span class="author-verified" title="Verified">✓</span>{/if}
+              </a>
+            {:else if au.author_name}
+              <span class="author-chip text-only">
+                <span class="author-avatar placeholder">{au.author_name.charAt(0)}</span>
+                <span class="author-display-name">{au.author_name}</span>
+              </span>
+            {/if}
+          {/each}
+        </div>
+      {:else}
+        <div class="article-authors">
+          <a href="/profile?did={encodeURIComponent(article.did)}" class="author-chip">
+            <span class="author-avatar placeholder">{(article.author_handle || '?').charAt(0)}</span>
+            <span class="author-display-name">{article.author_handle || article.did}</span>
+          </a>
+        </div>
+      {/if}
+
       <div class="article-meta">
-        <a href="/profile?did={encodeURIComponent(article.did)}" class="author-link">{article.author_handle ? `@${article.author_handle}` : article.did}</a>
-        <span class="meta-sep">&middot;</span>
         <span>{timeAgo(article.created_at)}</span>
         {#if paperMeta}
           {#if paperMeta.venue}
@@ -1018,6 +1053,38 @@ try {
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--border);
   }
+  .article-authors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .author-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px 4px 4px;
+    border-radius: 20px;
+    background: var(--bg-secondary);
+    text-decoration: none;
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: background 0.15s;
+  }
+  .author-chip:hover { background: var(--border); }
+  .author-chip.text-only { cursor: default; }
+  .author-chip.text-only:hover { background: var(--bg-secondary); }
+  .author-avatar {
+    width: 28px; height: 28px; border-radius: 50%; object-fit: cover;
+  }
+  .author-avatar.placeholder {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--accent); color: white; font-size: 13px; font-weight: 600;
+  }
+  .author-info { display: flex; flex-direction: column; line-height: 1.2; }
+  .author-display-name { font-weight: 500; font-size: 14px; }
+  .author-handle { font-size: 11px; color: var(--text-hint); }
+  .author-verified { color: var(--accent); font-size: 12px; margin-left: 2px; }
   .meta-sep { color: var(--text-hint); }
   .author-link {
     color: var(--text-secondary);
