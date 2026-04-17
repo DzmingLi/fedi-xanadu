@@ -50,6 +50,7 @@ export default {
   'creator.titleCol': '标题',
 
   'home.expand': '展开全文',
+  'home.expandFirst': '展开首篇文章',
   'home.collapse': '收起',
   'home.readFull': '阅读原文 →',
 

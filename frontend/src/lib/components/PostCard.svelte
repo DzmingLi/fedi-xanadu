@@ -240,7 +240,7 @@
       </span>
     </div>
     <button class="expand-btn" onclick={toggleExpand}>
-      {#if expandLoading}...{:else}{expanded ? t('home.collapse') : t('home.expand')}{/if}
+      {#if expandLoading}...{:else}{expanded ? t('home.collapse') : t('home.expandFirst')}{/if}
     </button>
   </a>
 

@@ -50,6 +50,7 @@ export default {
   'creator.titleCol': 'Titel',
 
   'home.expand': 'Erweitern',
+  'home.expandFirst': 'Ersten Artikel erweitern',
   'home.collapse': 'Einklappen',
   'home.readFull': 'Vollständig lesen →',
 
