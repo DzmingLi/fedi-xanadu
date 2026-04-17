@@ -43,11 +43,10 @@
     return field['en'] || Object.values(field).find(v => v) || '';
   }
 
-  /** Build edition card title. Uses edition title/subtitle if set, otherwise from book. */
+  /** Build edition card title. */
   function editionFullTitle(ed: BookEdition): string {
-    const t = ed.title || (detail ? locFor(detail.book.title as Record<string,string>, ed.lang) : '');
-    const sub = detail?.book.subtitle as Record<string,string> | null;
-    const st = ed.subtitle || sub?.[ed.lang] || '';
+    const t = ed.title;
+    const st = ed.subtitle || '';
     const full = st ? `${t}: ${st}` : t;
     return ed.edition_name ? `${full} (${ed.edition_name})` : full;
   }
@@ -216,7 +215,7 @@
   }
 
   async function saveEditionEdit() {
-    // edition_name is optional now
+    if (!editionEditTitle.trim()) { editionEditError = 'Title is required'; return; }
     editionEditSaving = true;
     editionEditError = '';
     try {
@@ -227,7 +226,7 @@
       }).filter(l => l.label && l.url) : [];
       await updateBookEdition(id, editionEditId, {
         edition_name: editionEditName.trim() || undefined,
-        title: editionEditTitle || undefined,
+        title: editionEditTitle.trim(),
         subtitle: editionEditSubtitle || undefined,
         lang: editionEditLang,
         isbn: editionEditIsbn || undefined,
@@ -1149,7 +1148,7 @@
         </div>
         <div class="form-group">
           <label>{t('books.editionSubtitle') || 'Subtitle (optional)'}</label>
-          <input bind:value={editionEditSubtitle} placeholder="e.g. 第三版" />
+          <input bind:value={editionEditSubtitle} placeholder="e.g. A Compact History of Infinity" />
         </div>
         <div class="form-group">
           <label>Language</label>

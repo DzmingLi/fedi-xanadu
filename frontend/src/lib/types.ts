@@ -172,7 +172,7 @@ export interface BookEdition {
   id: string;
   book_id: string;
   edition_name: string | null;
-  title: string | null;
+  title: string;
   subtitle: string | null;
   lang: string;
   isbn: string | null;
@@ -202,6 +202,7 @@ export interface BookChapter {
   book_id: string;
   parent_id: string | null;
   title: string;
+  title_i18n: Record<string, string>;
   order_index: number;
   article_uri: string | null;
   teaches: string[];

@@ -271,8 +271,12 @@ export default {
   'series.upvote': '赞',
   'series.bookmark': '收藏',
   'series.prereqLabel': '前置:',
+  'series.backToParent': '← 返回母系列',
+
   // NewSeries
   'newSeries.title': '创建系列讲义',
+  'newSeries.parentLabel': '母系列（可选）',
+  'newSeries.parentPlaceholder': '搜索母系列...',
   'newSeries.titleLabel': '标题',
   'newSeries.descPlaceholder': '系列讲义的简要描述（卡片上显示）',
   'newSeries.longDescLabel': '详细介绍',
@@ -421,6 +425,9 @@ export default {
   'kb.close': '关闭',
   'kb.syncHint': '登录后可将快捷键同步至 PDS',
   'kb.resetDefault': '恢复默认',
+  'kb.customizeTitle': '自定义快捷键',
+  'kb.pressKey': '请按键...',
+  'kb.helpHint': '按 <kbd>?</kbd> 切换 · <kbd>Esc</kbd> 关闭',
 
   // Questions & Answers
   'nav.questions': '问答',
@@ -628,6 +635,8 @@ export default {
   'books.setAsCover': '使用此封面',
   'books.editEdition': '编辑版本',
   'books.editionName': '版本名称',
+  'books.editionTitle': '书名',
+  'books.editionSubtitle': '副标题（可选）',
   'books.resources': '补充资源',
   'books.addResource': '+ 添加资源',
   'books.resourceKind.solutions': '习题答案',
@@ -637,7 +646,6 @@ export default {
   'books.resourceKind.errata': '勘误',
   'books.resourceKind.code': '代码',
   'books.resourceKind.other': '其他',
-  'books.anyEdition': '任意版本',
 
   // Book edition form
   'bookEdition.title': '添加版本',

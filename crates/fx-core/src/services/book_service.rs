@@ -53,7 +53,7 @@ pub struct BookEdition {
     pub id: String,
     pub book_id: String,
     pub edition_name: Option<String>,
-    pub title: Option<String>,
+    pub title: String,
     pub subtitle: Option<String>,
     pub lang: String,
     pub isbn: Option<String>,
@@ -74,8 +74,7 @@ pub struct BookEdition {
 pub struct CreateEdition {
     #[serde(default)]
     pub edition_name: Option<String>,
-    #[serde(default)]
-    pub title: Option<String>,
+    pub title: String,
     #[serde(default)]
     pub subtitle: Option<String>,
     pub lang: String,
@@ -509,6 +508,8 @@ pub struct BookChapter {
     pub book_id: String,
     pub parent_id: Option<String>,
     pub title: String,
+    #[ts(type = "Record<string, string>")]
+    pub title_i18n: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub order_index: i32,
     pub article_uri: Option<String>,
 }
@@ -527,6 +528,8 @@ pub struct BookChapterWithTags {
     pub book_id: String,
     pub parent_id: Option<String>,
     pub title: String,
+    #[ts(type = "Record<string, string>")]
+    pub title_i18n: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub order_index: i32,
     pub article_uri: Option<String>,
     pub teaches: Vec<String>,
@@ -601,6 +604,7 @@ pub async fn list_chapters_with_tags(pool: &PgPool, book_id: &str) -> crate::Res
             book_id: c.book_id,
             parent_id: c.parent_id,
             title: c.title,
+            title_i18n: c.title_i18n,
             order_index: c.order_index,
             article_uri: c.article_uri,
         }
@@ -617,12 +621,20 @@ pub async fn create_chapter(
     let mut tx = pool.begin().await?;
     let content_uri = format!("chapter:{id}");
 
+    // Build title_i18n: if title looks Chinese, key it as "zh", otherwise "en"
+    let title_i18n: std::collections::HashMap<String, String> = {
+        let mut m = std::collections::HashMap::new();
+        let lang = if input.title.chars().any(|c| c >= '\u{4e00}' && c <= '\u{9fff}') { "zh" } else { "en" };
+        m.insert(lang.to_string(), input.title.clone());
+        m
+    };
+
     sqlx::query(
-        "INSERT INTO book_chapters (id, book_id, parent_id, title, order_index, article_uri) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO book_chapters (id, book_id, parent_id, title, title_i18n, order_index, article_uri) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(id).bind(book_id).bind(&input.parent_id)
-    .bind(&input.title).bind(input.order_index).bind(&input.article_uri)
+    .bind(&input.title).bind(sqlx::types::Json(&title_i18n)).bind(input.order_index).bind(&input.article_uri)
     .execute(&mut *tx).await?;
 
     sqlx::query("INSERT INTO content (uri, content_type) VALUES ($1, 'chapter') ON CONFLICT DO NOTHING")

@@ -425,6 +425,9 @@ export default {
   'kb.close': 'Close',
   'kb.syncHint': 'Log in to sync shortcuts to PDS',
   'kb.resetDefault': 'Reset to default',
+  'kb.customizeTitle': 'Customize Shortcuts',
+  'kb.pressKey': 'Press key...',
+  'kb.helpHint': 'Press <kbd>?</kbd> to toggle · <kbd>Esc</kbd> to close',
 
   // Questions & Answers
   'nav.questions': 'Q&A',
@@ -632,6 +635,8 @@ export default {
   'books.setAsCover': 'Use this cover',
   'books.editEdition': 'Edit Edition',
   'books.editionName': 'Edition Name',
+  'books.editionTitle': 'Title',
+  'books.editionSubtitle': 'Subtitle (optional)',
   'books.resources': 'Supplementary Resources',
   'books.addResource': '+ Add Resource',
   'books.resourceKind.solutions': 'Solutions',
