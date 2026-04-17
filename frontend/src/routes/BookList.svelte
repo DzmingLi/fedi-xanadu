@@ -99,6 +99,9 @@
           {/if}
           <div class="book-info">
             <h3 class="book-title">{loc(book.title)}</h3>
+            {#if book.subtitle && loc(book.subtitle)}
+              <p class="book-subtitle">{loc(book.subtitle)}</p>
+            {/if}
             <p class="book-authors">{book.authors.join(', ')}</p>
 
             <div class="book-stats">
@@ -197,6 +200,13 @@
     font-family: var(--font-serif);
     color: var(--text-primary);
     line-height: 1.3;
+  }
+  .book-subtitle {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--text-hint);
+    font-style: italic;
+    line-height: 1.35;
   }
   .book-authors {
     margin: 3px 0 0;

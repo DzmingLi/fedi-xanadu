@@ -227,6 +227,7 @@ pub async fn list_books(pool: &PgPool, limit: i64, offset: i64) -> crate::Result
 pub struct BookListItem {
     pub id: String,
     pub title: sqlx::types::Json<std::collections::HashMap<String, String>>,
+    pub subtitle: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub authors: Vec<String>,
     pub description: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub cover_url: Option<String>,
@@ -240,7 +241,7 @@ pub struct BookListItem {
 pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64, offset: i64) -> crate::Result<Vec<BookListItem>> {
     let did = viewer_did.unwrap_or("");
     let rows = sqlx::query_as::<_, BookListItem>(
-        "SELECT b.id, b.title, b.authors, b.description, \
+        "SELECT b.id, b.title, b.subtitle, b.authors, b.description, \
          COALESCE(\
            (SELECT e.cover_url FROM book_editions e \
             JOIN book_reading_status rs ON rs.book_id = b.id AND rs.user_did = $3 AND rs.preferred_edition_id = e.id \

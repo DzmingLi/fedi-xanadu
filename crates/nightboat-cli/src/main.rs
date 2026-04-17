@@ -584,6 +584,9 @@ enum BookCommand {
         /// Cover image URL for this edition
         #[arg(long)]
         edition_cover_url: Option<String>,
+        /// Subtitle of the first edition
+        #[arg(long)]
+        edition_subtitle: Option<String>,
     },
     /// Update a book's info
     Update {
@@ -1560,7 +1563,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
         }
 
         BookCommand::Create { title, subtitle, authors, desc, cover_url, tags, prereqs,
-                             edition, lang, isbn, publisher, year, translators, purchase_links, edition_cover_url } => {
+                             edition, lang, isbn, publisher, year, translators, purchase_links, edition_cover_url, edition_subtitle } => {
             // Title/subtitle/desc can be JSON like {"en":"...","zh":"..."} or plain string
             let parse_i18n = |s: &str| -> serde_json::Value {
                 if s.starts_with('{') {
@@ -1606,6 +1609,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             let ed_body = serde_json::json!({
                 "book_id": book_id,
                 "title": title,
+                "subtitle": edition_subtitle,
                 "edition_name": edition,
                 "lang": lang,
                 "isbn": isbn,
