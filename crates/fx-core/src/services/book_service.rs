@@ -54,12 +54,13 @@ pub struct BookEdition {
     pub book_id: String,
     pub edition_name: String,
     pub title: Option<String>,
+    pub subtitle: Option<String>,
     pub lang: String,
     pub isbn: Option<String>,
     pub publisher: Option<String>,
     pub year: Option<String>,
     pub translators: Vec<String>,
-    
+
     #[ts(type = "Array<{label: string, url: string}>")]
 
     
@@ -74,6 +75,8 @@ pub struct CreateEdition {
     pub edition_name: String,
     #[serde(default)]
     pub title: Option<String>,
+    #[serde(default)]
+    pub subtitle: Option<String>,
     pub lang: String,
     pub isbn: Option<String>,
     pub publisher: Option<String>,
@@ -296,13 +299,14 @@ pub async fn create_edition(
 
     let links_json = sqlx::types::Json(&input.purchase_links);
     sqlx::query(
-        "INSERT INTO book_editions (id, book_id, edition_name, title, lang, isbn, publisher, year, translators, purchase_links, cover_url) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        "INSERT INTO book_editions (id, book_id, edition_name, title, subtitle, lang, isbn, publisher, year, translators, purchase_links, cover_url) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
     )
     .bind(id)
     .bind(book_id)
     .bind(&input.edition_name)
     .bind(&input.title)
+    .bind(&input.subtitle)
     .bind(&input.lang)
     .bind(&input.isbn)
     .bind(&input.publisher)
@@ -329,12 +333,13 @@ pub async fn update_edition(
 ) -> crate::Result<BookEdition> {
     let links_json = sqlx::types::Json(&input.purchase_links);
     sqlx::query(
-        "UPDATE book_editions SET edition_name = $1, title = $2, lang = $3, isbn = $4, publisher = $5, \
-         year = $6, translators = $7, purchase_links = $8, cover_url = $9 \
-         WHERE id = $10",
+        "UPDATE book_editions SET edition_name = $1, title = $2, subtitle = $3, lang = $4, isbn = $5, publisher = $6, \
+         year = $7, translators = $8, purchase_links = $9, cover_url = $10 \
+         WHERE id = $11",
     )
     .bind(&input.edition_name)
     .bind(&input.title)
+    .bind(&input.subtitle)
     .bind(&input.lang)
     .bind(&input.isbn)
     .bind(&input.publisher)

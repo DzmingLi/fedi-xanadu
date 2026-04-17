@@ -1,0 +1,1 @@
+ALTER TABLE book_editions ADD COLUMN IF NOT EXISTS subtitle VARCHAR(500);

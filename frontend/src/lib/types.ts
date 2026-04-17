@@ -171,6 +171,7 @@ export interface BookEdition {
   book_id: string;
   edition_name: string;
   title: string | null;
+  subtitle: string | null;
   lang: string;
   isbn: string | null;
   publisher: string | null;

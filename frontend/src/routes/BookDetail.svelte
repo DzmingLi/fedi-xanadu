@@ -43,13 +43,11 @@
     return field['en'] || Object.values(field).find(v => v) || '';
   }
 
-  /** Build edition card title. Uses edition.title if set, otherwise constructs from book title + edition_name. */
+  /** Build edition card title. Uses edition title/subtitle if set, otherwise from book. */
   function editionFullTitle(ed: BookEdition): string {
-    if (ed.title) return `${ed.title} (${ed.edition_name})`;
-    if (!detail) return ed.edition_name;
-    const t = locFor(detail.book.title as Record<string,string>, ed.lang);
-    const sub = detail.book.subtitle as Record<string,string> | null;
-    const st = sub?.[ed.lang] || '';
+    const t = ed.title || (detail ? locFor(detail.book.title as Record<string,string>, ed.lang) : '');
+    const sub = detail?.book.subtitle as Record<string,string> | null;
+    const st = ed.subtitle || sub?.[ed.lang] || '';
     const full = st ? `${t}: ${st}` : t;
     return `${full} (${ed.edition_name})`;
   }
@@ -192,6 +190,7 @@
   let editionEditId = $state('');
   let editionEditName = $state('');
   let editionEditTitle = $state('');
+  let editionEditSubtitle = $state('');
   let editionEditLang = $state('en');
   let editionEditIsbn = $state('');
   let editionEditPublisher = $state('');
@@ -205,6 +204,7 @@
     editionEditId = ed.id;
     editionEditName = ed.edition_name;
     editionEditTitle = ed.title || '';
+    editionEditSubtitle = ed.subtitle || '';
     editionEditLang = ed.lang;
     editionEditIsbn = ed.isbn || '';
     editionEditPublisher = ed.publisher || '';
@@ -228,6 +228,7 @@
       await updateBookEdition(id, editionEditId, {
         edition_name: editionEditName,
         title: editionEditTitle || undefined,
+        subtitle: editionEditSubtitle || undefined,
         lang: editionEditLang,
         isbn: editionEditIsbn || undefined,
         publisher: editionEditPublisher || undefined,
@@ -1143,8 +1144,12 @@
           <input bind:value={editionEditName} placeholder="e.g. 3rd Edition, 中文版" />
         </div>
         <div class="form-group">
-          <label>{t('books.editionTitle') || 'Title (optional, for translated editions)'}</label>
+          <label>{t('books.editionTitle') || 'Title (optional)'}</label>
           <input bind:value={editionEditTitle} placeholder="e.g. 计算理论导引" />
+        </div>
+        <div class="form-group">
+          <label>{t('books.editionSubtitle') || 'Subtitle (optional)'}</label>
+          <input bind:value={editionEditSubtitle} placeholder="e.g. 第三版" />
         </div>
         <div class="form-group">
           <label>Language</label>
