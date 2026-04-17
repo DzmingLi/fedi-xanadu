@@ -170,17 +170,15 @@ a.tag:hover {
 .content p, .preview p {
   overflow-wrap: break-word;
 }
-/* Let lines with tall inline math breathe */
-.content p:has(math mfrac),
-.content p:has(math mover),
-.content p:has(math munder),
-.content p:has(math munderover),
-.content p:has(math msup),
-.content p:has(math msub),
-.preview p:has(math mfrac),
-.preview p:has(math mover),
-.preview p:has(math munder) {
-  line-height: 2.4;
+/* Give tall inline math elements some breathing room without affecting paragraph line-height */
+.content math mfrac,
+.content math mover,
+.content math munder,
+.content math munderover,
+.preview math mfrac,
+.preview math mover,
+.preview math munder {
+  padding: 0.15em 0;
 }
 
 /* SVG fallback frames */
