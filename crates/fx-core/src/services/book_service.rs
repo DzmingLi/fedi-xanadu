@@ -11,6 +11,7 @@ pub struct Book {
     pub authors: Vec<String>,
     #[ts(type = "Record<string, string>")]
     pub description: sqlx::types::Json<std::collections::HashMap<String, String>>,
+    pub abbreviation: Option<String>,
     pub default_edition_id: Option<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
@@ -30,6 +31,8 @@ pub struct CreateBook {
     pub tags: Vec<String>,
     #[serde(default)]
     pub prereqs: Vec<String>,
+    #[serde(default)]
+    pub abbreviation: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
@@ -90,14 +93,15 @@ pub async fn create_book(
     .await?;
 
     sqlx::query(
-        "INSERT INTO books (id, title, authors, description, created_by) \
-         VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO books (id, title, authors, description, created_by, abbreviation) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(id)
     .bind(sqlx::types::Json(&input.title))
     .bind(&input.authors)
     .bind(sqlx::types::Json(input.description.as_ref().unwrap_or(&std::collections::HashMap::new())))
     .bind(created_by)
+    .bind(&input.abbreviation)
     .execute(&mut *tx)
     .await?;
 
@@ -134,7 +138,7 @@ pub async fn create_book(
     tx.commit().await?;
 
     let book = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.authors, b.description, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+        &format!("SELECT b.id, b.title, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
     )
         .bind(id)
         .fetch_one(pool)
@@ -153,7 +157,7 @@ const BOOK_COVER_SQL: &str = "\
 
 pub async fn get_book(pool: &PgPool, id: &str) -> crate::Result<Book> {
     sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.authors, b.description, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+        &format!("SELECT b.id, b.title, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
     )
         .bind(id)
         .fetch_optional(pool)
@@ -185,7 +189,7 @@ pub async fn get_book_for_viewer(pool: &PgPool, id: &str, viewer_did: &str) -> c
 /// Find a book by ISBN (searches across all editions).
 pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Option<Book>> {
     let row = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.authors, b.description, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
+        &format!("SELECT b.id, b.title, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
                   JOIN book_editions be ON be.book_id = b.id WHERE be.isbn = $1 LIMIT 1"),
     )
     .bind(isbn)
@@ -196,7 +200,7 @@ pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Optio
 
 pub async fn list_books(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<Book>> {
     let rows = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.authors, b.description, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
+        &format!("SELECT b.id, b.title, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
                   ORDER BY b.created_at DESC LIMIT $1 OFFSET $2"),
     )
     .bind(limit)

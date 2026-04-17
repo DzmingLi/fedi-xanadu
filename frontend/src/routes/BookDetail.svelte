@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { getBook, updateBook, updateBookEdition, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition } from '../lib/api';
+  import { getBook, updateBook, updateBookEdition, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources } from '../lib/api';
+  import type { BookResource } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -17,6 +18,10 @@
   }
 
   let detail = $state<BookDetail | null>(null);
+  let resources = $state<BookResource[]>([]);
+  let groupedResources = $derived(
+    resources.reduce((acc, r) => { (acc[r.kind] = acc[r.kind] || []).push(r); return acc; }, {} as Record<string, BookResource[]>)
+  );
   let loading = $state(true);
 
   // Rating state
@@ -83,6 +88,7 @@
       chapterDone = new Map(detail.my_chapter_progress.map(p => [p.chapter_id, p.completed]));
       getBookEditHistory(id).then(h => { editHistory = h; }).catch(() => {});
       getQuestionsByBook(id).then(qs => { bookQuestions = qs; }).catch(() => {});
+      listBookResources(id).then(r => { resources = r; }).catch(() => {});
     } catch { /* */ }
     loading = false;
   }
@@ -957,6 +963,21 @@
         <span>{detail.review_count} {t('books.reviewCount')}</span>
       </div>
 
+      <!-- Supplementary Resources -->
+      {#if resources.length > 0}
+        <div class="resources-section">
+          <h3>Supplementary Materials</h3>
+          {#each Object.entries(groupedResources) as [kind, items]}
+            <div class="resource-group">
+              <h4 class="resource-kind">{kind}</h4>
+              {#each items as r}
+                <a href={r.url} target="_blank" rel="noopener" class="resource-link">{r.label}</a>
+              {/each}
+            </div>
+          {/each}
+        </div>
+      {/if}
+
       <!-- Edit history -->
       <div class="edit-history">
         <h3>{t('books.editHistory')}</h3>
@@ -1349,6 +1370,12 @@
   }
 
   /* Edit history */
+  .resources-section { margin-top: 16px; }
+  .resources-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .resource-group { margin-bottom: 10px; }
+  .resource-kind { font-size: 12px; color: var(--text-hint); text-transform: capitalize; margin: 0 0 4px; font-weight: 500; }
+  .resource-link { display: block; font-size: 13px; color: var(--accent); text-decoration: none; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .resource-link:hover { text-decoration: underline; }
   .edit-history {
     margin-top: 1.5rem;
     padding-top: 1rem;
