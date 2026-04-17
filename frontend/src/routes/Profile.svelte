@@ -638,6 +638,7 @@
         </div>
         <div class="profile-col education-col">
           {#if profile.education.length > 0 || isOwnProfile}
+            <h4 class="col-heading">{t('profile.education')}</h4>
             <div class="education-list">
               {#each [...profile.education].sort((a, b) => (b.start_date || '').localeCompare(a.start_date || '')) as edu}
                 {@const school = eduField(edu, 'school', locale) || edu.school}
@@ -667,6 +668,7 @@
         </div>
         <div class="profile-col experience-col">
           {#if profile.experience.length > 0 || isOwnProfile}
+            <h4 class="col-heading">{t('profile.experience')}</h4>
             <div class="experience-list">
               {#each [...profile.experience].sort((a, b) => (b.start_date || '').localeCompare(a.start_date || '')) as exp}
                 {@const company = expField(exp, 'company', locale) || exp.company}
@@ -1676,6 +1678,14 @@
     .profile-columns { grid-template-columns: 1fr; gap: 12px; }
   }
   .profile-col { min-width: 0; }
+  .col-heading {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-hint);
+    margin: 0 0 6px;
+  }
 
   /* Contacts list */
   .contacts-list {
