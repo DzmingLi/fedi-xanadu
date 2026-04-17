@@ -1,16 +1,18 @@
 import zh from './zh';
 import en from './en';
 import fr from './fr';
+import de from './de';
 
 export type TranslationKey = keyof typeof zh;
-export type Locale = 'zh' | 'en' | 'fr';
+export type Locale = 'zh' | 'en' | 'fr' | 'de';
 
-const messages: Record<Locale, Record<string, string>> = { zh, en, fr };
+const messages: Record<Locale, Record<string, string>> = { zh, en, fr, de };
 
 export const LOCALES: { code: Locale; label: string }[] = [
   { code: 'zh', label: '中文' },
   { code: 'en', label: 'English' },
   { code: 'fr', label: 'Français' },
+  { code: 'de', label: 'Deutsch' },
 ];
 
 /** Language display names -- usable regardless of current locale. */

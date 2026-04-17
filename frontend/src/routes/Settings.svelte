@@ -392,10 +392,10 @@
     <div class="settings-section keybindings-section">
       <h2>{t('settings.keybindings')}</h2>
       {#each [...actionsByCategory] as [category, actions]}
-        <h3 class="kb-category">{CATEGORY_LABELS[category]?.[locale === 'zh' ? 'zh' : 'en'] || category}</h3>
+        <h3 class="kb-category">{CATEGORY_LABELS[category]?.[locale] || category}</h3>
         {#each actions as action}
           <div class="kb-row">
-            <span class="kb-action">{locale === 'zh' ? action.labelZh : action.label}</span>
+            <span class="kb-action">{action.labels[locale]}</span>
             {#if editingAction === action.id}
               <span class="kb-key capturing">...</span>
             {:else}

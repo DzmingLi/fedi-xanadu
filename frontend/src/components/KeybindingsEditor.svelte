@@ -4,6 +4,7 @@
     formatKeyDisplay, CATEGORY_LABELS,
   } from '../lib/keybindings.svelte';
   import { getToken } from '../lib/auth.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -104,17 +105,17 @@
 <div class="editor">
   {#each Object.entries(groupedActions()) as [cat, actions]}
     <div class="ed-category">
-      <h3>{CATEGORY_LABELS[cat]?.en ?? cat}</h3>
+      <h3>{CATEGORY_LABELS[cat]?.[getLocale()] ?? cat}</h3>
       {#each actions as action}
         <div class="ed-row">
-          <span class="ed-label">{action.label}</span>
+          <span class="ed-label">{action.labels[getLocale()]}</span>
           <div class="ed-key-area">
             {#if recording === action.id}
               <span class="ed-recording">
                 {#if recordedKeys.length > 0}
                   {recordedKeys.join(' ')} ...
                 {:else}
-                  Press key...
+                  {t('kb.pressKey')}
                 {/if}
               </span>
             {:else}
@@ -126,7 +127,7 @@
               <button
                 class="ed-reset-btn"
                 onclick={() => { setBinding(action.id, action.defaultKey); bindings = getAllBindings(); dirty = true; }}
-                title="Reset to default"
+                title={t('kb.resetDefault')}
               >&times;</button>
             {/if}
           </div>
@@ -137,13 +138,13 @@
 </div>
 
 <div class="ed-footer">
-  <button class="ed-reset-all" onclick={resetAll}>Reset all</button>
+  <button class="ed-reset-all" onclick={resetAll}>{t('kb.resetAll')}</button>
   <div class="ed-footer-right">
     {#if !getToken()}
-      <span class="ed-hint">Log in to sync shortcuts to PDS</span>
+      <span class="ed-hint">{t('kb.syncHint')}</span>
     {/if}
     <button class="ed-save-btn" onclick={save}>
-      {dirty ? 'Save & Close' : 'Close'}
+      {dirty ? t('kb.save') : t('kb.close')}
     </button>
   </div>
 </div>

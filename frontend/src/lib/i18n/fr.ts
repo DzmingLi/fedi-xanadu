@@ -26,7 +26,35 @@ export default {
   'nav.login': 'Connexion',
   'nav.logout': 'Déconnexion',
   'nav.drafts': 'Brouillons',
+  'nav.creator': 'Créateur',
   'nav.notifications': 'Notifications',
+
+  // Creator Dashboard
+  'creator.articles': 'Articles',
+  'creator.series': 'Séries',
+  'creator.drafts': 'Brouillons',
+  'creator.views': 'Vues',
+  'creator.comments': 'Commentaires',
+  'creator.bookmarks': 'Favoris',
+  'creator.votes': 'Votes',
+  'creator.published': 'Publié',
+  'creator.analytics': 'Statistiques',
+  'creator.publish': 'Publier',
+  'creator.unpublish': 'Dépublier',
+  'creator.draftSeries': 'Séries en brouillon',
+  'creator.articleDrafts': 'Brouillons d\'articles',
+  'creator.noArticles': 'Aucun article',
+  'creator.noDrafts': 'Aucun brouillon',
+  'creator.noData': 'Aucune donnée disponible',
+  'creator.last30days': '30 derniers jours',
+  'creator.titleCol': 'Titre',
+
+  'home.expand': 'Déplier',
+  'home.collapse': 'Replier',
+  'home.readFull': 'Lire en entier →',
+
+  'auth.noAccount': 'Pas de compte ?',
+  'auth.registerHint': '— inscrivez-vous là-bas d\'abord, puis connectez-vous ici avec votre identifiant.',
 
   // Notifications
   'notification.commentReply': 'a répondu à votre commentaire',
@@ -35,7 +63,7 @@ export default {
   'notification.articleFork': 'a forké votre article',
   'notification.markAllRead': 'Tout marquer comme lu',
   'notification.empty': 'Aucune notification',
-  'notification.justNow': "à l'instant",
+  'notification.justNow': 'à l\'instant',
 
   // Sidebar
   'sidebar.home': 'Accueil',
@@ -60,6 +88,8 @@ export default {
   // Home
   'home.trending': 'Tendances',
   'home.recent': 'Articles récents',
+  'home.recommend': 'Recommandés',
+  'home.noFollowing': 'Suivez des utilisateurs pour voir leurs articles ici.',
   'home.all': 'Tout',
   'home.noArticles': 'Aucun contenu pour le moment',
   'home.writeOne': 'Écrire un article',
@@ -89,6 +119,7 @@ export default {
   'article.edit': 'Modifier',
   'article.delete': 'Supprimer',
   'article.deleteConfirm': 'Voulez-vous vraiment supprimer cet article ? Cette action est irréversible.',
+  'article.accepted': 'Accepté',
   'article.restricted': 'Cet article est réservé aux utilisateurs autorisés.',
   'article.restrictedToggle': 'Restreindre l\'accès (utilisateurs autorisés uniquement)',
   'article.accessList': 'Utilisateurs autorisés',
@@ -162,7 +193,7 @@ export default {
   'newArticle.recommended': 'Recommandé',
   'newArticle.suggested': 'Suggéré',
   'newArticle.addPrereq': 'Ajouter',
-  'newArticle.commitPlaceholder': 'Description du changement (optionnel)',
+  'newArticle.commitPlaceholder': 'Description du changement (optionnel, ex. « corriger une coquille », « ajouter des exemples »)',
   'newArticle.converting': 'Conversion en cours...',
   'newArticle.convertError': 'Échec de la conversion',
   'newArticle.publishing': 'Publication...',
@@ -232,6 +263,7 @@ export default {
   'library.emptyHint': 'Cliquez sur « Favori » sur un article pour l\'ajouter ici',
   'library.removeBookmark': 'Retirer des favoris',
   'library.seriesFolder': 'Séries',
+  'library.selectArticle': 'Sélectionnez un article pour commencer la lecture',
 
   // Series
   'series.articles': 'articles',
@@ -266,6 +298,30 @@ export default {
   'newSeries.errCreate': 'Échec de la création',
   'newSeries.selectedTag': 'Sélectionné : {0}',
   'newSeries.prereqNeedsReading': 'nécessite la lecture de',
+  'newSeries.titlePlaceholder': 'Titre de la série',
+
+  // Series editor
+  'seriesEditor.viewSeries': 'Voir la série',
+  'seriesEditor.newFile': 'Nouveau fichier',
+  'seriesEditor.files': 'Fichiers',
+  'seriesEditor.compile': 'Compiler',
+  'seriesEditor.compiling': 'Compilation...',
+  'seriesEditor.compileHint': 'La compilation découpe les fichiers de chapitres selon les titres et génère des articles individuels.',
+  'seriesEditor.compileHeadings': 'titres',
+  'seriesEditor.compileCreated': 'créés',
+  'seriesEditor.compileUpdated': 'mis à jour',
+  'seriesEditor.save': 'Enregistrer',
+  'seriesEditor.saving': 'Enregistrement...',
+  'seriesEditor.unsaved': 'Modifications non enregistrées',
+  'seriesEditor.unsavedChanges': 'Vous avez des modifications non enregistrées. Changer quand même ?',
+  'seriesEditor.noFile': 'Sélectionnez un fichier à gauche pour commencer l\'édition',
+  'seriesEditor.confirmDelete': 'Supprimer {0} ?',
+  'seriesEditor.tabEditor': 'Éditeur',
+  'seriesEditor.tabPrereqs': 'Prérequis',
+  'seriesEditor.prereqHint': 'Compilez d\'abord la série pour générer les articles, puis définissez les prérequis ici',
+  'seriesEditor.noPrereqs': 'Aucun prérequis défini',
+  'seriesEditor.prereqSelectArticle': 'Sélectionner un article',
+  'seriesEditor.prereqSelectPrereq': 'Sélectionner un prérequis',
 
   // Skills
   'skills.mySkills': 'Mes compétences',
@@ -274,6 +330,8 @@ export default {
   'skills.createTree': 'Créer un arbre',
   'skills.browseHint': 'Parcourez les arbres partagés. Adoptez-en un ou forkez-le pour le personnaliser.',
   'skills.noTrees': 'Aucun arbre de compétences',
+  'skills.noSkillsInGroup': 'Aucune compétence dans ce groupe pour l\'instant.',
+  'skills.nextToLearn': 'À apprendre ensuite',
   'skills.createFirst': 'Créer le premier',
   'skills.edgeCount': 'relations',
   'skills.adoptCount': 'adoptions',
@@ -305,8 +363,13 @@ export default {
   'skillTree.parentTag': 'ID du tag parent',
   'skillTree.childTag': 'ID du tag enfant',
   'skillTree.autoCreateHint': 'Les IDs inexistants créeront automatiquement de nouveaux tags',
-  'skillTree.allRelations': 'Toutes les relations ({0})',
+  'skillTree.allRelations': 'Hiérarchie ({0})',
   'skillTree.collapse': 'Déplier/Replier',
+  'skillTree.editPrereqs': 'Modifier les prérequis',
+  'skillTree.prereqFrom': 'Tag prérequis',
+  'skillTree.prereqTo': 'Tag cible',
+  'skillTree.allPrereqs': 'Prérequis ({0})',
+  'skillTree.noPrereqs': 'Aucun prérequis défini.',
 
   // New Skill Tree
   'newSkillTree.title': 'Créer un arbre de compétences',
@@ -324,6 +387,10 @@ export default {
   'newSkillTree.errTitle': 'Veuillez saisir un titre',
   'newSkillTree.errRelations': 'Ajoutez au moins une relation',
   'newSkillTree.errCreate': 'Échec de la création',
+  'newSkillTree.addPrereq': 'Ajouter des prérequis',
+  'newSkillTree.prereqHint': 'Définissez les dépendances d\'apprentissage entre les tags. Un prérequis doit être maîtrisé avant que la compétence cible ne soit débloquée.',
+  'newSkillTree.prereqFromPlaceholder': 'Tag prérequis',
+  'newSkillTree.prereqToPlaceholder': 'Tag cible',
 
   // Forks
   'forks.backToOriginal': '← Retour à l\'original',
@@ -341,6 +408,14 @@ export default {
   'auth.password': 'Mot de passe d\'application',
   'auth.submit': 'Connexion',
   'auth.createAppPw': 'Créer un mot de passe d\'application dans les paramètres Bluesky',
+  'auth.platformLogin': 'Connexion plateforme',
+  'auth.register': 'Inscription',
+  'auth.displayName': 'Nom affiché',
+  'auth.displayNamePlaceholder': 'Optionnel',
+  'auth.passwordMin': '8 caractères minimum',
+  'auth.hasAccount': 'Déjà un compte ?',
+  'auth.noAccountLocal': 'Pas encore de compte ?',
+  'auth.oauthHint': 'Vous serez redirigé vers votre PDS pour l\'autorisation.',
 
   // Keybindings
   'kb.title': 'Raccourcis clavier',
@@ -350,6 +425,9 @@ export default {
   'kb.close': 'Fermer',
   'kb.syncHint': 'Connectez-vous pour synchroniser les raccourcis vers PDS',
   'kb.resetDefault': 'Réinitialiser',
+  'kb.customizeTitle': 'Personnaliser les raccourcis',
+  'kb.pressKey': 'Appuyez sur une touche...',
+  'kb.helpHint': 'Appuyez sur <kbd>?</kbd> pour basculer · <kbd>Esc</kbd> pour fermer',
 
   // Questions & Answers
   'nav.questions': 'Q&R',
@@ -363,6 +441,8 @@ export default {
   'qa.answerPlaceholder': 'Écrivez votre réponse...',
   'qa.questionBadge': 'Question',
   'article.reviewBadge': 'Critique',
+  'qa.showComments': 'Commentaires',
+  'qa.hideComments': 'Masquer les commentaires',
   'qa.answerBadge': 'Réponse',
   'qa.answerCount': '{0} réponses',
   'qa.myQuestions': 'Mes questions',
@@ -372,6 +452,7 @@ export default {
   'qa.translations': 'Autres versions linguistiques',
   'qa.translationTitle': 'Titre traduit',
   'notification.newAnswer': 'a répondu à votre question',
+  'notification.inviteAnswer': 'vous a invité à répondre à une question',
   'profile.questions': 'Q&R',
 
   // Settings
@@ -386,6 +467,9 @@ export default {
   'settings.hideUnknown': 'Masquer les articles dans les langues inconnues',
   'settings.hideUnknownHint': 'Masquer les articles rédigés dans des langues que vous ne connaissez pas',
   'settings.defaultFormat': 'Format d\'écriture par défaut',
+  'settings.bio': 'Bio',
+  'settings.bioHint': 'Une courte présentation de vous-même',
+  'settings.bioPlaceholder': 'Écrivez quelque chose...',
   'settings.email': 'Email',
   'settings.emailHint': 'Affiché sur votre page de profil',
   'settings.membersHint': 'Les membres peuvent voir tout votre contenu restreint',
@@ -428,17 +512,26 @@ export default {
   'category.review': 'Critique',
   'newArticle.categoryLabel': 'Catégorie',
 
+  // Sidebar - Happening
+  'sidebar.happening': 'En ce moment',
+  'sidebar.hiring': 'Recrutement académique — consultez les postes ouverts',
+  'sidebar.creators': 'Bienvenue aux créateurs — commencez à écrire dès aujourd\'hui',
+  'sidebar.incentives': 'Incitations pour les créateurs bientôt disponibles',
+
   // Footer
   'footer.guidelines': 'Règles',
   'footer.rights': 'Tous droits réservés.',
-  'guidelines.comingSoon': 'Les règles de la communauté sont en cours de rédaction.',
+  'guidelines.comingSoon': 'Les règles de la communauté sont en cours de rédaction. Revenez bientôt.',
+  'footer.feedback': 'Retour',
+  'feedback.comingSoon': 'Le système de signalement de bugs et de retours arrive bientôt.',
+  'feedback.githubHint': 'En attendant, veuillez signaler les problèmes sur',
 
   // Thoughts
   'nav.thoughts': 'Pensées',
   'thoughts.title': 'Pensées',
   'thoughts.subtitle': 'Partagez vos idées, observations et discussions',
   'thoughts.empty': 'Aucune pensée',
-  'thoughts.new': 'Publier',
+  'thoughts.new': 'Publier une pensée',
   'thoughts.placeholder': 'Partagez une pensée...',
 
   // Listings
@@ -496,6 +589,7 @@ export default {
 
   // Books
   'nav.books': 'Livres',
+  'nav.courses': 'Cours',
   'books.title': 'Livres',
   'books.subtitle': 'Parcourir et critiquer des livres, ajouter des éditions et des liens d\'achat',
   'books.addBook': 'Ajouter un livre',
@@ -533,6 +627,25 @@ export default {
   'books.editHistory': 'Historique des modifications',
   'books.noEditHistory': 'Aucune modification',
   'books.reportDispute': 'Signaler un litige',
+  'books.qa': 'Questions et réponses',
+  'books.askQuestion': 'Poser une question',
+  'books.noQuestions': 'Aucune question pour l\'instant. Soyez le premier à poser !',
+  'books.askTitlePlaceholder': 'Que souhaitez-vous savoir sur ce livre ?',
+  'books.askContentPlaceholder': 'Ajouter des détails (optionnel)...',
+  'books.setAsCover': 'Utiliser cette couverture',
+  'books.editEdition': 'Modifier l\'édition',
+  'books.editionName': 'Nom de l\'édition',
+  'books.editionTitle': 'Titre (optionnel, pour les éditions traduites)',
+  'books.editionSubtitle': 'Sous-titre (optionnel)',
+  'books.resources': 'Ressources complémentaires',
+  'books.addResource': '+ Ajouter une ressource',
+  'books.resourceKind.solutions': 'Corrigés',
+  'books.resourceKind.exercises': 'Exercices',
+  'books.resourceKind.video': 'Vidéo',
+  'books.resourceKind.slides': 'Diapositives',
+  'books.resourceKind.errata': 'Errata',
+  'books.resourceKind.code': 'Code',
+  'books.resourceKind.other': 'Autre',
 
   // Book edition form
   'bookEdition.title': 'Ajouter une édition',
@@ -559,6 +672,60 @@ export default {
   'profile.tabReviews': 'Critiques',
   'profile.tabQA': 'Q&R',
   'profile.tabBookmarks': 'Favoris',
+  'profile.tabAllArticles': 'Tous les articles',
+
+  // Editor layout
+  'editor.settings': 'Paramètres',
+  'editor.basicInfo': 'Informations',
+
+  // Version panel
+  'version.diff': 'Modifications',
+  'version.history': 'Historique',
+  'version.noChanges': 'Aucune modification',
+  'version.noHistory': 'Aucun historique',
+  'version.record': 'Enregistrer',
+  'version.recordPlaceholder': 'Description du changement...',
+  'version.unrecord': 'Annuler ce changement',
+  'version.confirmUnrecord': 'Annuler ce changement ? Le contenu reviendra à la version précédente.',
+  'version.togglePanel': 'Panneau de versions',
+  'version.unsaved': 'Non enregistré',
+  'version.saved': 'Enregistré',
+
+  // Series sidebar
+  'series.tableOfContents': 'Table des matières',
+  'series.collapseSidebar': 'Replier la barre latérale',
+
+  // Course
+  'course.calendar': 'Calendrier',
+  'course.topic': 'Sujet',
+  'course.readings': 'Lectures',
+  'course.video': 'Vidéo',
+  'course.hw': 'Devoir',
+  'course.notes': 'Notes',
+  'course.discussion': 'Discussion',
+  'course.syllabus': 'Syllabus',
+  'course.textbooks': 'Manuels',
+  'course.staff': 'Enseignants',
+  'course.prerequisites': 'Prérequis',
+  'course.skillTrees': 'Arbres de compétences',
+  'course.materials': 'Supports de cours',
+  'course.source': 'Source',
+  'course.license': 'Licence',
+  'course.language': 'Langue',
+  'course.myRating': 'Ma note',
+  'course.reviews': 'Critiques',
+  'course.writeReview': 'Écrire une critique',
+  'course.noReviews': 'Aucune critique pour l\'instant.',
+  'course.qa': 'Q&R',
+  'course.askQuestion': 'Posez une question ou lancez une discussion...',
+  'course.post': 'Publier',
+  'course.reply': 'Répondre',
+  'course.noDiscussions': 'Aucune discussion pour l\'instant.',
+  'course.allSessions': 'Tout',
+  'courses.title': 'Cours',
+  'courses.create': 'Nouveau cours',
+  'courses.empty': 'Aucun cours pour l\'instant.',
+  'courses.sessions': 'cours',
 
   // Roadmap
   'roadmap.title': 'Feuille de route',

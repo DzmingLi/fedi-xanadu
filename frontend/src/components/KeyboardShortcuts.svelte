@@ -4,6 +4,7 @@
     CATEGORY_LABELS, loadFromServer,
   } from '../lib/keybindings.svelte';
   import { getAuth } from '../lib/auth.svelte';
+  import { t, getLocale } from '../lib/i18n/index.svelte';
 
   let helpOpen = $state(false);
   let settingsOpen = $state(false);
@@ -167,16 +168,16 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="kb-modal" onclick={(e) => e.stopPropagation()}>
       <div class="kb-header">
-        <h2>Keyboard Shortcuts</h2>
+        <h2>{t('kb.title')}</h2>
         <button class="kb-close" onclick={() => { helpOpen = false; }}>&times;</button>
       </div>
       <div class="kb-body">
         {#each Object.entries(groupedActions()) as [cat, actions]}
           <div class="kb-category">
-            <h3>{CATEGORY_LABELS[cat]?.en ?? cat}</h3>
+            <h3>{CATEGORY_LABELS[cat]?.[getLocale()] ?? cat}</h3>
             {#each actions as action}
               <div class="kb-row">
-                <span class="kb-label">{action.label}</span>
+                <span class="kb-label">{action.labels[getLocale()]}</span>
                 <kbd class="kb-key">{formatKeyDisplay(bindings[action.id] ?? action.defaultKey)}</kbd>
               </div>
             {/each}
@@ -184,9 +185,9 @@
         {/each}
       </div>
       <div class="kb-footer">
-        <span class="kb-hint">Press <kbd>?</kbd> to toggle · <kbd>Esc</kbd> to close</span>
+        <span class="kb-hint">{@html t('kb.helpHint')}</span>
         <button class="kb-settings-btn" onclick={() => { helpOpen = false; settingsOpen = true; }}>
-          Customize
+          {t('kb.customize')}
         </button>
       </div>
     </div>
@@ -202,7 +203,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="kb-modal kb-settings-modal" onclick={(e) => e.stopPropagation()}>
       <div class="kb-header">
-        <h2>Customize Shortcuts</h2>
+        <h2>{t('kb.customizeTitle')}</h2>
         <button class="kb-close" onclick={() => { settingsOpen = false; }}>&times;</button>
       </div>
       <div class="kb-body">

@@ -1,10 +1,10 @@
 import { getKeybindings, setKeybindings } from './api';
 import { getToken } from './auth.svelte';
+import type { Locale } from './i18n/index.svelte';
 
 export interface KeyAction {
   id: string;
-  label: string;
-  labelZh: string;
+  labels: Record<Locale, string>;
   category: string;
   defaultKey: string;
 }
@@ -12,27 +12,27 @@ export interface KeyAction {
 // All available actions with default keybindings
 export const ACTIONS: KeyAction[] = [
   // Navigation
-  { id: 'goto.home', label: 'Go to Home', labelZh: '前往首页', category: 'navigation', defaultKey: 'g h' },
-  { id: 'goto.skills', label: 'Go to Skills', labelZh: '前往技能', category: 'navigation', defaultKey: 'g s' },
-  { id: 'goto.library', label: 'Go to Library', labelZh: '前往书架', category: 'navigation', defaultKey: 'g l' },
-  { id: 'goto.about', label: 'Go to About', labelZh: '前往关于', category: 'navigation', defaultKey: 'g a' },
-  { id: 'goto.newArticle', label: 'New Article', labelZh: '新建文章', category: 'navigation', defaultKey: 'n a' },
-  { id: 'goto.newSeries', label: 'New Series', labelZh: '新建系列', category: 'navigation', defaultKey: 'n s' },
+  { id: 'goto.home', labels: { en: 'Go to Home', zh: '前往首页', fr: 'Aller à l\'accueil', de: 'Zur Startseite' }, category: 'navigation', defaultKey: 'g h' },
+  { id: 'goto.skills', labels: { en: 'Go to Skills', zh: '前往技能', fr: 'Aller aux compétences', de: 'Zu den Fähigkeiten' }, category: 'navigation', defaultKey: 'g s' },
+  { id: 'goto.library', labels: { en: 'Go to Library', zh: '前往书架', fr: 'Aller à la bibliothèque', de: 'Zur Bibliothek' }, category: 'navigation', defaultKey: 'g l' },
+  { id: 'goto.about', labels: { en: 'Go to About', zh: '前往关于', fr: 'Aller à À propos', de: 'Zu „Über“' }, category: 'navigation', defaultKey: 'g a' },
+  { id: 'goto.newArticle', labels: { en: 'New Article', zh: '新建文章', fr: 'Nouvel article', de: 'Neuer Artikel' }, category: 'navigation', defaultKey: 'n a' },
+  { id: 'goto.newSeries', labels: { en: 'New Series', zh: '新建系列', fr: 'Nouvelle série', de: 'Neue Serie' }, category: 'navigation', defaultKey: 'n s' },
 
   // Global
-  { id: 'search', label: 'Search', labelZh: '搜索', category: 'global', defaultKey: '/' },
-  { id: 'help', label: 'Show shortcuts', labelZh: '显示快捷键', category: 'global', defaultKey: '?' },
-  { id: 'settings', label: 'Shortcut settings', labelZh: '快捷键设置', category: 'global', defaultKey: 'Ctrl+,' },
+  { id: 'search', labels: { en: 'Search', zh: '搜索', fr: 'Rechercher', de: 'Suchen' }, category: 'global', defaultKey: '/' },
+  { id: 'help', labels: { en: 'Show shortcuts', zh: '显示快捷键', fr: 'Afficher les raccourcis', de: 'Tastaturkürzel anzeigen' }, category: 'global', defaultKey: '?' },
+  { id: 'settings', labels: { en: 'Shortcut settings', zh: '快捷键设置', fr: 'Paramètres des raccourcis', de: 'Tastaturkürzel-Einstellungen' }, category: 'global', defaultKey: 'Ctrl+,' },
 
   // Article page
-  { id: 'article.upvote', label: 'Upvote', labelZh: '赞', category: 'article', defaultKey: 'Shift+u' },
-  { id: 'article.downvote', label: 'Downvote', labelZh: '踩', category: 'article', defaultKey: 'Shift+d' },
-  { id: 'article.bookmark', label: 'Bookmark', labelZh: '收藏', category: 'article', defaultKey: 'b' },
+  { id: 'article.upvote', labels: { en: 'Upvote', zh: '赞', fr: 'Pour', de: 'Dafür' }, category: 'article', defaultKey: 'Shift+u' },
+  { id: 'article.downvote', labels: { en: 'Downvote', zh: '踩', fr: 'Contre', de: 'Dagegen' }, category: 'article', defaultKey: 'Shift+d' },
+  { id: 'article.bookmark', labels: { en: 'Bookmark', zh: '收藏', fr: 'Favori', de: 'Lesezeichen' }, category: 'article', defaultKey: 'b' },
 
   // List navigation
-  { id: 'list.next', label: 'Next item', labelZh: '下一项', category: 'list', defaultKey: 'j' },
-  { id: 'list.prev', label: 'Previous item', labelZh: '上一项', category: 'list', defaultKey: 'k' },
-  { id: 'list.open', label: 'Open item', labelZh: '打开', category: 'list', defaultKey: 'Enter' },
+  { id: 'list.next', labels: { en: 'Next item', zh: '下一项', fr: 'Suivant', de: 'Nächstes' }, category: 'list', defaultKey: 'j' },
+  { id: 'list.prev', labels: { en: 'Previous item', zh: '上一项', fr: 'Précédent', de: 'Vorheriges' }, category: 'list', defaultKey: 'k' },
+  { id: 'list.open', labels: { en: 'Open item', zh: '打开', fr: 'Ouvrir', de: 'Öffnen' }, category: 'list', defaultKey: 'Enter' },
 ];
 
 const STORAGE_KEY = 'fx_keybindings';
@@ -138,9 +138,9 @@ export function formatKeyDisplay(combo: string): string {
   }).join(' ');
 }
 
-export const CATEGORY_LABELS: Record<string, { en: string; zh: string }> = {
-  navigation: { en: 'Navigation', zh: '导航' },
-  global: { en: 'Global', zh: '全局' },
-  article: { en: 'Article', zh: '文章' },
-  list: { en: 'List', zh: '列表' },
+export const CATEGORY_LABELS: Record<string, Record<Locale, string>> = {
+  navigation: { en: 'Navigation', zh: '导航', fr: 'Navigation', de: 'Navigation' },
+  global: { en: 'Global', zh: '全局', fr: 'Global', de: 'Global' },
+  article: { en: 'Article', zh: '文章', fr: 'Article', de: 'Artikel' },
+  list: { en: 'List', zh: '列表', fr: 'Liste', de: 'Liste' },
 };
