@@ -294,9 +294,8 @@
   // ---- Chapter management ----
   let showChapterForm = $state(false);
   let newChapterTitle = $state('');
-  let newChapterTitles = $state<Record<string, string>>({ en: '', zh: '' });
+  let newChapterTitles = $state<Record<string, string>>({});
   let chapterTitleLang = $state('en');
-  const CHAPTER_LANGS = [{ code: 'en', label: 'EN' }, { code: 'zh', label: '中文' }];
   let newChapterParentId = $state('');
   let newChapterArticleUri = $state('');
   let newChapterTeaches = $state<string[]>([]);
@@ -369,7 +368,7 @@
         teaches: newChapterTeaches,
         prereqs: newChapterPrereqs,
       } as any);
-      newChapterTitles = { en: '', zh: '' };
+      newChapterTitles = {};
       newChapterParentId = '';
       newChapterArticleUri = '';
       newChapterTeaches = [];
@@ -617,7 +616,7 @@
         {#if showChapterForm}
           <div class="chapter-form">
             <div class="lang-tabs">
-              {#each CHAPTER_LANGS as lang}
+              {#each EDIT_LANGS as lang}
                 <button class="lang-tab" class:active={chapterTitleLang === lang.code} onclick={() => chapterTitleLang = lang.code}>
                   {lang.label}
                   {#if newChapterTitles[lang.code]?.trim()}<span class="lang-dot"></span>{/if}
