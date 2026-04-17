@@ -1,7 +1,8 @@
 <script lang="ts">
   import { tagName, authorName, fmtRep } from '../display';
   import { t } from '../i18n/index.svelte';
-  import { getArticleContent, getSeries, castVote, getMyVote, addBookmark, removeBookmark } from '../api';
+  import { getArticleContent, getSeries, castVote, getMyVote, addBookmark, removeBookmark, listArticleAuthors } from '../api';
+  import type { ArticleAuthor } from '../api';
   import { getAuth } from '../auth.svelte';
   import { timeAgo } from '../utils';
   import type { Article, ArticleContent, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
@@ -41,6 +42,7 @@
   let expandedVote = $state(0);
   let expandedVoteScore = $state(0);
   let expandedBookmarked = $state(false);
+  let expandedAuthors = $state<ArticleAuthor[]>([]);
   let showComments = $state(false);
 
   // Render KaTeX after expanded content is inserted into DOM
@@ -76,6 +78,9 @@
           expandedContent = await getArticleContent(uri);
           expandedTitle = article.title;
           expandedVoteScore = article.vote_score;
+          // Fetch full author list (avatar + display_name + role) so the
+          // expanded header matches the Article detail page.
+          listArticleAuthors(uri).then(a => { expandedAuthors = a; }).catch(() => { expandedAuthors = []; });
         } else if (series) {
           const detail = await getSeries(series.id);
           if (detail.articles.length > 0) {
@@ -194,10 +199,39 @@
     <div class="expanded-full">
       <div class="expanded-header">
         <h1 class="expanded-title"><a href="/article?uri={encodeURIComponent(expandedUri)}">{expandedTitle}</a></h1>
+        <div class="expanded-authors">
+          {#if expandedAuthors.length > 0}
+            {#each expandedAuthors as au}
+              {#if au.author_did}
+                <a href="/profile?did={encodeURIComponent(au.author_did)}" class="exp-author-chip">
+                  {#if au.author_avatar}
+                    <img src={au.author_avatar} alt="" class="exp-author-avatar" />
+                  {:else}
+                    <span class="exp-author-avatar placeholder">{(au.author_display_name || au.author_handle || '?').charAt(0).toUpperCase()}</span>
+                  {/if}
+                  <span class="exp-author-name">{au.author_display_name || au.author_handle || '?'}</span>
+                  {#if au.is_corresponding}<span class="exp-corr" title="Corresponding">✉</span>{/if}
+                </a>
+              {:else if au.author_name}
+                <span class="exp-author-chip static">
+                  <span class="exp-author-avatar placeholder">{au.author_name.charAt(0).toUpperCase()}</span>
+                  <span class="exp-author-name">{au.author_name}</span>
+                </span>
+              {/if}
+            {/each}
+          {:else}
+            <!-- Fallback while authors load — uses the primary author we already have -->
+            <a href="/profile?did={encodeURIComponent(article.did)}" class="exp-author-chip">
+              {#if article.author_avatar}
+                <img src={article.author_avatar} alt="" class="exp-author-avatar" />
+              {:else}
+                <span class="exp-author-avatar placeholder">{(article.author_display_name || article.author_handle || '?').charAt(0).toUpperCase()}</span>
+              {/if}
+              <span class="exp-author-name">{article.author_display_name || authorName(article)}</span>
+            </a>
+          {/if}
+        </div>
         <div class="expanded-meta">
-          <a href="/profile?did={encodeURIComponent(article.did)}">{authorName(article)}</a>
-          {#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if}
-          <span>&middot;</span>
           <span>{fmtTime(article.created_at)}</span>
           <span>&middot;</span>
           <span>{article.content_format}</span>
@@ -532,6 +566,26 @@
   }
   .expanded-title a { color: inherit; text-decoration: none; }
   .expanded-title a:hover { color: var(--accent); }
+  .expanded-authors {
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: 6px 10px; margin: 8px 0 6px;
+  }
+  .exp-author-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    color: var(--text-primary); text-decoration: none;
+    font-size: 13px;
+  }
+  .exp-author-chip:hover { color: var(--accent); text-decoration: none; }
+  .exp-author-chip.static { color: var(--text-secondary); cursor: default; }
+  .exp-author-avatar {
+    width: 20px; height: 20px; border-radius: 50%; object-fit: cover;
+    background: var(--bg-hover, #f5f5f5);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600; color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .exp-author-name { font-weight: 500; }
+  .exp-corr { color: var(--accent); font-size: 11px; }
   .expanded-meta {
     display: flex;
     align-items: center;
