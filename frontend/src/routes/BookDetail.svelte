@@ -565,7 +565,7 @@
               {#if detail.editions.length > 0}
                 <select class="edition-select" bind:value={selectedEdition} title="Edition">
                   {#each detail.editions as ed}
-                    <option value={ed.id}>{ed.edition_name || ed.lang} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
+                    <option value={ed.id}>{editionFullTitle(ed)} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
                   {/each}
                 </select>
               {/if}
@@ -895,7 +895,7 @@
               {#if review.edition_id}
                 {@const ed = detail.editions.find(e => e.id === review.edition_id)}
                 {#if ed}
-                  <span class="review-edition">{ed.edition_name || ed.lang} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</span>
+                  <span class="review-edition">{editionFullTitle(ed)}</span>
                 {/if}
               {/if}
               <PostCard article={review} articleTeaches={[]} />
