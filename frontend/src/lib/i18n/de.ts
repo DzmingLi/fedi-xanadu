@@ -286,6 +286,8 @@ export default {
   'profile.uploadBanner': 'Banner hochladen',
   'profile.rssTitle': 'RSS-Feed',
   'profile.openPositions': 'Offene Stellen',
+  'profile.reputation': 'Rep.',
+  'profile.reputationFull': 'Reputation',
   'profile.experience': 'Berufserfahrung',
   'profile.editExperience': 'Berufserfahrung bearbeiten',
   'profile.addExperience': 'Berufserfahrung hinzufügen',

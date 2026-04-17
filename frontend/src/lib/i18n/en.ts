@@ -286,6 +286,8 @@ export default {
   'profile.uploadBanner': 'Upload banner',
   'profile.rssTitle': 'RSS Feed',
   'profile.openPositions': 'Open Positions',
+  'profile.reputation': 'rep',
+  'profile.reputationFull': 'Reputation',
   'profile.experience': 'Work Experience',
   'profile.editExperience': 'Edit Work Experience',
   'profile.addExperience': 'Add Experience',

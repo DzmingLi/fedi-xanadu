@@ -286,6 +286,8 @@ export default {
   'profile.uploadBanner': '上传背景图',
   'profile.rssTitle': 'RSS 订阅',
   'profile.openPositions': '开放职位',
+  'profile.reputation': '声望',
+  'profile.reputationFull': '声望值',
   'profile.experience': '工作经历',
   'profile.editExperience': '编辑工作经历',
   'profile.addExperience': '添加工作经历',

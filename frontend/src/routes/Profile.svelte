@@ -696,7 +696,7 @@
         </div>
       </div>
       <div class="profile-stats">
-        <span class="rep-stat" title="Reputation"><strong>{profile.reputation.toLocaleString()}</strong> rep</span>
+        <span class="rep-stat" title={t('profile.reputationFull')}><strong>{profile.reputation.toLocaleString()}</strong> {t('profile.reputation')}</span>
         <span>{profile.article_count} {t('profile.articles')}</span>
         <span>{profile.series_count} {t('profile.seriesCount')}</span>
         <button class="stat-btn" onclick={() => { showFollowTab = showFollowTab === 'following' ? null : 'following'; }}>

@@ -286,6 +286,8 @@ export default {
   'profile.uploadBanner': 'Téléverser une bannière',
   'profile.rssTitle': 'Flux RSS',
   'profile.openPositions': 'Postes ouverts',
+  'profile.reputation': 'rép.',
+  'profile.reputationFull': 'Réputation',
   'profile.experience': 'Expérience professionnelle',
   'profile.editExperience': 'Modifier l\'expérience',
   'profile.addExperience': 'Ajouter une expérience',
