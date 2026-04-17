@@ -639,7 +639,7 @@
         <div class="profile-col education-col">
           {#if profile.education.length > 0 || isOwnProfile}
             <div class="education-list">
-              {#each profile.education as edu}
+              {#each [...profile.education].sort((a, b) => (b.start_date || '').localeCompare(a.start_date || '')) as edu}
                 {@const school = eduField(edu, 'school', locale) || edu.school}
                 {@const dept = eduField(edu, 'department', locale)}
                 {@const major = eduField(edu, 'major', locale)}
@@ -668,7 +668,7 @@
         <div class="profile-col experience-col">
           {#if profile.experience.length > 0 || isOwnProfile}
             <div class="experience-list">
-              {#each profile.experience as exp}
+              {#each [...profile.experience].sort((a, b) => (b.start_date || '').localeCompare(a.start_date || '')) as exp}
                 {@const company = expField(exp, 'company', locale) || exp.company}
                 {@const dept = expField(exp, 'department', locale)}
                 {@const title = expField(exp, 'title', locale)}
