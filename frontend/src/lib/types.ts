@@ -23,6 +23,7 @@ export interface Article {
   title: string;
   description: string;
   description_html: string;
+  cover_url: string | null;
   content_hash: string | null;
   content_format: ContentFormat;
   lang: string;
@@ -150,11 +151,14 @@ export interface Series {
   category: Category;
   vote_score: number;
   bookmark_count: number;
+  cover_url?: string | null;
 }
 
 export interface Book {
   id: string;
   title: L;
+  subtitle?: L;
+  abbreviation: string | null;
   authors: string[];
   description: L;
   cover_url: string | null;
@@ -888,6 +892,7 @@ export interface SeriesListRow {
   is_published: boolean;
   vote_score: number;
   bookmark_count: number;
+  cover_url?: string | null;
 }
 
 export interface PublicationViewerState {

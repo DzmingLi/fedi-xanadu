@@ -22,6 +22,8 @@ pub struct Article {
     pub description: String,
     #[sqlx(default)]
     pub description_html: String,
+    #[sqlx(default)]
+    pub cover_url: Option<String>,
     pub content_hash: Option<String>,
     pub content_format: ContentFormat,
     pub lang: String,

@@ -133,6 +133,9 @@ pub struct UpdateBookInput {
     pub title: Option<std::collections::HashMap<String, String>>,
     pub subtitle: Option<std::collections::HashMap<String, String>>,
     pub description: Option<std::collections::HashMap<String, String>>,
+    /// Short citation form ("CLRS", "SICP", "LADR"). Not translated.
+    /// Pass empty string to clear; omit to leave unchanged.
+    pub abbreviation: Option<String>,
     pub edit_summary: Option<String>,
 }
 
@@ -149,6 +152,7 @@ pub async fn update_book(
         "title": old.title,
         "subtitle": old.subtitle,
         "description": old.description,
+        "abbreviation": old.abbreviation,
     });
 
     if let Some(ref title) = input.title {
@@ -166,6 +170,12 @@ pub async fn update_book(
         sqlx::query("UPDATE books SET description = $1 WHERE id = $2")
             .bind(&json).bind(&input.id).execute(&state.pool).await?;
     }
+    if let Some(ref abbr) = input.abbreviation {
+        let trimmed = abbr.trim();
+        let value: Option<&str> = if trimmed.is_empty() { None } else { Some(trimmed) };
+        sqlx::query("UPDATE books SET abbreviation = $1 WHERE id = $2")
+            .bind(value).bind(&input.id).execute(&state.pool).await?;
+    }
 
     // Save edit log
     let edit_id = tid();
@@ -180,6 +190,7 @@ pub async fn update_book(
     .bind(&serde_json::json!({
         "title": input.title,
         "description": input.description,
+        "abbreviation": input.abbreviation,
     }))
     .bind(input.edit_summary.as_deref().unwrap_or(""))
     .execute(&state.pool)

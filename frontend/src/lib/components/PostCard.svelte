@@ -125,7 +125,8 @@
 </script>
 
 {#if article}
-  <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card" class:hidden={expanded}>
+  <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card" class:hidden={expanded} class:has-cover={!!article.cover_url}>
+    <div class="card-body">
     <div class="card-top">
       {#if article.kind === 'question'}
         <span class="question-badge">{t('qa.questionBadge')}</span>
@@ -177,6 +178,10 @@
     <button class="expand-btn" onclick={toggleExpand}>
       {#if expandLoading}...{:else}{expanded ? t('home.collapse') : t('home.expand')}{/if}
     </button>
+    </div>
+    {#if article.cover_url}
+      <img class="post-cover" src={article.cover_url} alt="" loading="lazy" />
+    {/if}
   </a>
 
   {#if expanded && expandedContent}
@@ -213,7 +218,8 @@
     </div>
   {/if}
 {:else if series}
-  <a href="/series?id={encodeURIComponent(series.id)}" class="post-card series-card">
+  <a href="/series?id={encodeURIComponent(series.id)}" class="post-card series-card" class:has-cover={!!series.cover_url}>
+    <div class="card-body">
     <div class="card-top">
       <span class="post-title">{series.title}</span>
       <span class="series-badge">{t('home.series')}</span>
@@ -248,6 +254,10 @@
     <button class="expand-btn" onclick={toggleExpand}>
       {#if expandLoading}...{:else}{expanded ? t('home.collapse') : t('home.expandFirst')}{/if}
     </button>
+    </div>
+    {#if series.cover_url}
+      <img class="post-cover" src={series.cover_url} alt="" loading="lazy" />
+    {/if}
   </a>
 
   {#if expanded && expandedContent}
@@ -285,7 +295,9 @@
     display: none;
   }
   .post-card {
-    display: block;
+    display: flex;
+    align-items: stretch;
+    gap: 14px;
     position: relative;
     background: var(--bg-white);
     border: 1px solid var(--border);
@@ -300,6 +312,19 @@
     border-color: var(--border-strong);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
     text-decoration: none;
+  }
+  .card-body {
+    flex: 1;
+    min-width: 0;
+  }
+  .post-cover {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 3px;
+    flex-shrink: 0;
+    align-self: center;
+    background: var(--bg-hover, #f5f5f5);
   }
   .card-top {
     display: flex;

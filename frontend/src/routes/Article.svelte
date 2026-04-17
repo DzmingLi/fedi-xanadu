@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport, getForkAhead, applyChange, listDiscussions, createDiscussion, listArticleAuthors } from '../lib/api';
+  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport, getForkAhead, applyChange, listDiscussions, createDiscussion, listArticleAuthors, uploadArticleCover, removeArticleCover } from '../lib/api';
   import type { ArticleAuthor } from '../lib/api';
   import type { Discussion } from '../lib/api';
   import ArticleHistory from '../lib/components/ArticleHistory.svelte';
@@ -593,6 +593,33 @@ try {
         </a>
       {/if}
 
+      {#if isOwner}
+        <div class="cover-strip">
+          {#if article.cover_url}
+            <img src={article.cover_url} alt="" class="cover-thumb" />
+          {:else}
+            <div class="cover-thumb placeholder">{t('article.noCover')}</div>
+          {/if}
+          <label class="cover-btn">
+            <input type="file" accept="image/*" class="sr-only" onchange={async (e) => {
+              const file = (e.target as HTMLInputElement).files?.[0];
+              if (!file) return;
+              try {
+                const url = await uploadArticleCover(uri, file);
+                if (article) article.cover_url = url;
+              } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+            }} />
+            {article.cover_url ? t('article.changeCover') : t('article.uploadCover')}
+          </label>
+          {#if article.cover_url}
+            <button class="cover-btn danger" onclick={async () => {
+              try { await removeArticleCover(uri); if (article) article.cover_url = null; }
+              catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+            }}>{t('article.removeCover')}</button>
+          {/if}
+        </div>
+      {/if}
+
       <h1 class="article-title">{article.title}</h1>
 
       {#if translations.length > 0}
@@ -1051,6 +1078,33 @@ try {
     gap: 6px;
     margin-bottom: 0.5rem;
     font-size: 13px;
+  }
+
+  /* Cover upload strip, visible only to the author. */
+  .cover-strip {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 0.75rem;
+    padding: 8px; border: 1px dashed var(--border); border-radius: 4px;
+    background: var(--bg-hover, #f6f6f1);
+  }
+  .cover-thumb {
+    width: 80px; height: 80px; object-fit: cover; border-radius: 3px;
+    background: var(--bg-white);
+  }
+  .cover-thumb.placeholder {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--text-hint); text-align: center;
+    border: 1px solid var(--border);
+  }
+  .cover-btn {
+    font-size: 12px; padding: 4px 10px; border: 1px solid var(--border);
+    border-radius: 3px; background: var(--bg-white); color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .cover-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .cover-btn.danger:hover { border-color: #dc2626; color: #dc2626; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); border: 0;
   }
 
   /* CC BY attribution banner — required when republishing a derivative. */

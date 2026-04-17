@@ -70,6 +70,7 @@ impl AppState {
         std::fs::create_dir_all(data_dir.join("book-covers"))?;
         std::fs::create_dir_all(data_dir.join("avatars"))?;
         std::fs::create_dir_all(data_dir.join("banners"))?;
+        std::fs::create_dir_all(data_dir.join("covers"))?;
 
         Ok(Self {
             pool,

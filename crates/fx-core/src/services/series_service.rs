@@ -21,6 +21,8 @@ pub struct SeriesRow {
     pub category: String,
     pub split_level: i32,
     pub is_published: bool,
+    #[sqlx(default)]
+    pub cover_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -45,6 +47,8 @@ pub struct SeriesListRow {
     pub is_published: bool,
     pub vote_score: i64,
     pub bookmark_count: i64,
+    #[sqlx(default)]
+    pub cover_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -125,6 +129,7 @@ pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesL
         "SELECT s.id, s.title, s.description, s.description_html, s.long_description, \
                 s.order_index, s.created_by, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, s.created_at, \
                 s.lang, s.translation_group, s.category, s.split_level, s.is_published, \
+                s.cover_url, \
                 COALESCE(v.score, 0) AS vote_score, \
                 COALESCE(bk.cnt, 0) AS bookmark_count \
          FROM series s \
@@ -218,6 +223,7 @@ pub async fn list_series_by_creator(pool: &PgPool, did: &str) -> crate::Result<V
         "SELECT s.id, s.title, s.description, s.description_html, s.long_description, \
                 s.order_index, s.created_by, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, s.created_at, \
                 s.lang, s.translation_group, s.category, s.split_level, s.is_published, \
+                s.cover_url, \
                 COALESCE(v.score, 0) AS vote_score, \
                 COALESCE(bk.cnt, 0) AS bookmark_count \
          FROM series s \

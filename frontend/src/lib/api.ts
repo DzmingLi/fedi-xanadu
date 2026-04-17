@@ -220,6 +220,28 @@ export const uploadAvatar = async (file: File): Promise<string> => {
   return data.avatar_url;
 };
 
+// Article / series covers
+export const uploadArticleCover = async (uri: string, file: File): Promise<string> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/articles/cover?uri=${encodeURIComponent(uri)}`, { method: 'POST', headers: authHeaders(), body: form });
+  if (!res.ok) throw new Error(`${res.status}`);
+  const data = await res.json();
+  return data.cover_url;
+};
+export const removeArticleCover = (uri: string) =>
+  del<void>(`/articles/cover?uri=${encodeURIComponent(uri)}`);
+export const uploadSeriesCover = async (id: string, file: File): Promise<string> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/series/cover?id=${encodeURIComponent(id)}`, { method: 'POST', headers: authHeaders(), body: form });
+  if (!res.ok) throw new Error(`${res.status}`);
+  const data = await res.json();
+  return data.cover_url;
+};
+export const removeSeriesCover = (id: string) =>
+  del<void>(`/series/cover?id=${encodeURIComponent(id)}`);
+
 // Series
 export const listSeries = () => get<Series[]>('/series');
 export const getSeries = (id: string) => get<SeriesDetail>(`/series/${encodeURIComponent(id)}`);
@@ -517,7 +539,7 @@ export const getBook = (id: string) =>
   get<BookDetail>(`/books/${encodeURIComponent(id)}`);
 export const createBook = (data: { title: Record<string, string>; authors: string[]; description?: Record<string, string>; tags: string[]; prereqs?: string[] }) =>
   post<Book>('/books', data);
-export const updateBook = (id: string, data: { title?: Record<string, string>; description?: Record<string, string>; edit_summary?: string }) =>
+export const updateBook = (id: string, data: { title?: Record<string, string>; description?: Record<string, string>; abbreviation?: string; edit_summary?: string }) =>
   put<Book>(`/books/${encodeURIComponent(id)}`, data);
 export const addBookEdition = (book_id: string, edition: { edition_name?: string; title: string; subtitle?: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
   post<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions`, edition);

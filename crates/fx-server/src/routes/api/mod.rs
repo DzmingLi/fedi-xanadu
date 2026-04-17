@@ -36,6 +36,7 @@ mod authors;
 mod authorship;
 mod orcid;
 mod publication;
+mod covers;
 
 use axum::{Json, Router, extract::State, routing::{delete, get, patch, post, put}};
 
@@ -118,6 +119,14 @@ pub fn routes() -> Router<AppState> {
         .merge(authorship_routes())
         .merge(orcid_routes())
         .merge(publication_routes())
+        .merge(cover_routes())
+}
+
+fn cover_routes() -> Router<AppState> {
+    Router::new()
+        .route("/covers/{id}", get(covers::get_cover))
+        .route("/articles/cover", post(covers::upload_article_cover).delete(covers::remove_article_cover))
+        .route("/series/cover", post(covers::upload_series_cover).delete(covers::remove_series_cover))
 }
 
 fn publication_routes() -> Router<AppState> {

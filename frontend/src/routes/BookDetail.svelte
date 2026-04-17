@@ -178,7 +178,9 @@
   // Edit modal state
   let showEdit = $state(false);
   let editTitles = $state<Record<string, string>>({});
+  let editAbbreviation = $state('');
   let editDescs = $state<Record<string, string>>({});
+  let editSubtitles = $state<Record<string, string>>({});
   let editSummary = $state('');
   let editSaving = $state(false);
   let editError = $state('');
@@ -278,13 +280,17 @@
     if (!detail) return;
     // Ensure every language has an entry (even if empty) so bind:value works
     const titles: Record<string, string> = {};
+    const subs: Record<string, string> = {};
     const descs: Record<string, string> = {};
     for (const lang of EDIT_LANGS) {
       titles[lang.code] = (detail.book.title as Record<string, string>)[lang.code] || '';
+      subs[lang.code] = (detail.book.subtitle as Record<string, string> | null | undefined || {})[lang.code] || '';
       descs[lang.code] = (detail.book.description as Record<string, string> || {})[lang.code] || '';
     }
     editTitles = titles;
+    editSubtitles = subs;
     editDescs = descs;
+    editAbbreviation = detail.book.abbreviation || '';
     editLang = getLocale();
     editSummary = '';
     editError = '';
@@ -300,10 +306,13 @@
     try {
       // Clean empty entries
       const title = Object.fromEntries(Object.entries(editTitles).filter(([_, v]) => v.trim()));
+      const subtitle = Object.fromEntries(Object.entries(editSubtitles).filter(([_, v]) => v.trim()));
       const description = Object.fromEntries(Object.entries(editDescs).filter(([_, v]) => v.trim()));
       await updateBook(id, {
         title,
+        subtitle,
         description,
+        abbreviation: editAbbreviation.trim(),
         edit_summary: editSummary.trim() || undefined,
       });
       showEdit = false;
@@ -490,7 +499,10 @@
           </div>
         {/if}
         <div class="book-meta">
-          <h1>{loc(detail.book.title)}</h1>
+          <h1>
+            {loc(detail.book.title)}
+            {#if detail.book.abbreviation}<span class="book-abbr" title={t('books.abbreviationLabel')}>{detail.book.abbreviation}</span>{/if}
+          </h1>
           {#if loc(detail.book.subtitle)}
             <p class="book-subtitle">{loc(detail.book.subtitle)}</p>
           {/if}
@@ -1165,8 +1177,16 @@
           <input bind:value={editTitles[editLang]} placeholder={editTitles['en'] || ''} />
         </div>
         <div class="form-group">
+          <label>{t('books.subtitleLabel')} ({editLang})</label>
+          <input bind:value={editSubtitles[editLang]} placeholder={editSubtitles['en'] || ''} />
+        </div>
+        <div class="form-group">
           <label>{t('books.descriptionLabel')} ({editLang})</label>
           <textarea bind:value={editDescs[editLang]} rows="3" placeholder={editDescs['en'] || ''}></textarea>
+        </div>
+        <div class="form-group">
+          <label>{t('books.abbreviationLabel')}</label>
+          <input bind:value={editAbbreviation} placeholder="e.g. CLRS, SICP, LADR" maxlength="50" />
         </div>
         <div class="form-group">
           <label>{t('books.editSummary')}</label>
@@ -1361,6 +1381,20 @@
     font-size: 1.6rem;
   }
   .book-subtitle { font-size: 1.1rem; color: var(--text-secondary); margin: -4px 0 4px; font-style: italic; }
+  .book-abbr {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    font-size: 0.7em;
+    font-weight: 500;
+    font-family: var(--font-mono, monospace);
+    color: var(--text-secondary);
+    background: var(--bg-subtle, rgba(0,0,0,0.04));
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    vertical-align: middle;
+    letter-spacing: 0.03em;
+  }
   .authors {
     margin: 4px 0 0;
     font-size: 15px;
