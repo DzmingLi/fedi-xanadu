@@ -543,6 +543,10 @@ export const setChapterProgress = (book_id: string, chapter_id: string, complete
 export const updateChapterTags = (book_id: string, chapter_id: string, teaches: string[], prereqs: ChapterPrereqEntry[]) =>
   put<void>(`/books/${encodeURIComponent(book_id)}/chapters/tags`, { chapter_id, teaches, prereqs });
 
+// Authors
+export const getAuthor = (id: string) => get<any>(`/authors/${encodeURIComponent(id)}`);
+export const searchAuthors = (q: string, limit = 20) => get<any[]>(`/authors/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+
 // Authorship
 export interface ArticleAuthor { author_did: string | null; author_name: string | null; author_handle: string | null; author_display_name: string | null; author_avatar: string | null; author_reputation: number; position: number | null; status: string; authorship_uri: string | null; }
 export const listArticleAuthors = (uri: string) =>

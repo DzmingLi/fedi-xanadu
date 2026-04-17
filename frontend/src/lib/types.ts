@@ -16,6 +16,8 @@ export interface Article {
   at_uri: string;
   did: string;
   author_handle: string | null;
+  author_display_name: string | null;
+  author_avatar: string | null;
   author_reputation: number;
   kind: ContentKind;
   title: string;

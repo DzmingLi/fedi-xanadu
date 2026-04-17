@@ -14,6 +14,8 @@ pub struct Article {
     pub at_uri: String,
     pub did: String,
     pub author_handle: Option<String>,
+    pub author_display_name: Option<String>,
+    pub author_avatar: Option<String>,
     pub author_reputation: i32,
     pub kind: ContentKind,
     pub title: String,

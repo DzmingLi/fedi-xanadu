@@ -6,7 +6,7 @@ use crate::region::{InstanceMode, visibility_filter};
 
 /// Base SELECT for article queries (no WHERE clause).
 const ARTICLE_BASE: &str = "\
-    SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS author_reputation, \
+    SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation, \
     a.kind, a.title, a.description, \
     a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
     a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \

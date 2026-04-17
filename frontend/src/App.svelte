@@ -67,6 +67,7 @@
   const lazyDiscussion = () => import('./routes/Discussion.svelte');
   const lazyCreator = () => import('./routes/CreatorDashboard.svelte');
   const lazyThoughts = () => import('./routes/Thoughts.svelte');
+  const lazyAuthor = () => import('./routes/AuthorDetail.svelte');
   const lazyGuidelines = () => import('./routes/Guidelines.svelte');
   const lazyFeedback = () => import('./routes/Feedback.svelte');
   const lazyAdmin = () => import('./routes/Admin.svelte');
@@ -169,7 +170,7 @@
       {/await}
     {/if}
   </div>
-{:else if route.page !== 'book' && route.page !== 'books'}
+{:else if route.page !== 'book' && route.page !== 'books' && route.page !== 'author'}
   <div class="top-nav">
     <NavBar />
   </div>
@@ -308,6 +309,17 @@
   <div class="container-wide">
     {#await lazyBookList() then mod}
       <mod.default />
+    {/await}
+  </div>
+{/if}
+
+{#if route.page === 'author'}
+  <div class="top-nav-wide">
+    <NavBar />
+  </div>
+  <div class="container-wide">
+    {#await lazyAuthor() then mod}
+      <mod.default id={route.params.id || ''} />
     {/await}
   </div>
 {/if}

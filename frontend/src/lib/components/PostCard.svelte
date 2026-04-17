@@ -153,8 +153,13 @@
     <div class="card-bottom">
       <span class="post-meta">
         <span class="author-link" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(article.did)}`; }}>
-          <img src="/api/avatars/{encodeURIComponent(article.did)}" alt="" class="post-avatar" onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-          {authorName(article)}
+          {#if article.author_avatar}
+            <img src={article.author_avatar} alt="" class="post-avatar" />
+          {:else}
+            <img src="/api/avatars/{encodeURIComponent(article.did)}" alt="" class="post-avatar" onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          {/if}
+          {article.author_display_name || authorName(article)}
+          {#if article.author_handle && article.author_display_name}<span class="post-handle">@{article.author_handle}</span>{/if}
         </span>
         {#if article.author_reputation > 0}<span class="rep-badge" title="Reputation">{fmtRep(article.author_reputation)}</span>{/if}
         &middot; {fmtTime(article.created_at)}
@@ -327,6 +332,7 @@
   .author-link { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; }
   .author-link:hover { color: var(--accent); text-decoration: none; }
   .post-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+  .post-handle { font-size: 11px; color: var(--text-hint); margin-left: 2px; }
   .rep-badge {
     display: inline-block;
     font-size: 11px;

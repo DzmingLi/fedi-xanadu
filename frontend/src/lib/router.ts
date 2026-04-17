@@ -42,6 +42,7 @@ export const routes: Route[] = [
   { pattern: '/courses', page: 'courses' },
   { pattern: '/course', page: 'course-detail' },
   { pattern: '/new-course', page: 'new-course' },
+  { pattern: '/author', page: 'author' },
   { pattern: '/guidelines', page: 'guidelines' },
   { pattern: '/feedback', page: 'feedback' },
   { pattern: '/admin', page: 'admin' },
