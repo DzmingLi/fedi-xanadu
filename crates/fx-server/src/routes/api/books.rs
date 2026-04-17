@@ -106,9 +106,10 @@ pub async fn create_book(
 
 #[derive(serde::Deserialize)]
 pub struct UpdateBookInput {
+    #[serde(default)]
     pub id: String,
-    pub title: Option<String>,
-    pub description: Option<String>,
+    pub title: Option<std::collections::HashMap<String, String>>,
+    pub description: Option<std::collections::HashMap<String, String>>,
     pub edit_summary: Option<String>,
 }
 
@@ -126,12 +127,16 @@ pub async fn update_book(
         "description": old.description,
     });
 
-    book_service::update_book(
-        &state.pool,
-        &input.id,
-        input.title.as_deref(),
-        input.description.as_deref(),
-    ).await?;
+    if let Some(ref title) = input.title {
+        let json = serde_json::to_value(title)?;
+        sqlx::query("UPDATE books SET title = $1 WHERE id = $2")
+            .bind(&json).bind(&input.id).execute(&state.pool).await?;
+    }
+    if let Some(ref desc) = input.description {
+        let json = serde_json::to_value(desc)?;
+        sqlx::query("UPDATE books SET description = $1 WHERE id = $2")
+            .bind(&json).bind(&input.id).execute(&state.pool).await?;
+    }
 
     // Save edit log
     let edit_id = tid();

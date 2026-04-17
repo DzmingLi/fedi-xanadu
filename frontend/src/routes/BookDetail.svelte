@@ -42,8 +42,9 @@
     return t(`books.resourceKind.${kind}`) || kind;
   }
 
+  let bookLevelResources = $derived(resources.filter(r => !r.edition_id));
   let groupedResources = $derived(
-    resources.reduce((acc, r) => { (acc[r.kind] = acc[r.kind] || []).push(r); return acc; }, {} as Record<string, BookResource[]>)
+    bookLevelResources.reduce((acc, r) => { (acc[r.kind] = acc[r.kind] || []).push(r); return acc; }, {} as Record<string, BookResource[]>)
   );
   let loading = $state(true);
 
@@ -963,6 +964,14 @@
               {/each}
             </div>
           {/if}
+          {#each resources.filter(r => r.edition_id === ed.id) as r}
+            <div class="resource-row">
+              <a href={r.url} target="_blank" rel="noopener" class="purchase-link">{r.label}</a>
+              {#if getAuth()}
+                <button class="resource-del" onclick={() => removeResource(r.id)} title="Delete">×</button>
+              {/if}
+            </div>
+          {/each}
           {#if getAuth()}
             <div class="edition-actions">
               <button class="set-cover-btn" onclick={() => openEditionEdit(ed)}>✎</button>
@@ -988,7 +997,7 @@
       </div>
 
       <!-- Supplementary Resources -->
-      {#if resources.length > 0 || getAuth()}
+      {#if bookLevelResources.length > 0 || getAuth()}
         <div class="resources-section">
           <h3>{t('books.resources')}</h3>
           {#each Object.entries(groupedResources) as [kind, items]}
