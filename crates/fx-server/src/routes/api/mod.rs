@@ -243,7 +243,7 @@ fn interest_routes() -> Router<AppState> {
 fn profile_routes() -> Router<AppState> {
     Router::new()
         .route("/profile", get(profile::get_profile))
-        .route("/profile/links", put(profile::update_profile_links))
+        .route("/profile/contacts", put(profile::update_profile_contacts))
         .route("/profile/bio", put(profile::update_bio))
         .route("/profile/display-name", put(profile::update_display_name))
         .route("/profile/education", put(profile::update_education))

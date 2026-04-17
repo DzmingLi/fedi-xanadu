@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod avatar_cache;
 mod config;
 mod error;
 mod prerender;
@@ -67,8 +68,11 @@ async fn main() -> Result<()> {
 
     // Background task: clean up expired sessions every hour
     let cleanup_pool = state.pool.clone();
+    let sync_at_client = state.at_client.clone();
+    let sync_data_dir = state.data_dir.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+        let mut tick: u64 = 0;
         loop {
             interval.tick().await;
             match fx_core::services::auth_service::cleanup_expired_sessions(&cleanup_pool).await {
@@ -88,6 +92,17 @@ async fn main() -> Result<()> {
                 Err(e) => tracing::warn!("article cleanup failed: {e}"),
                 _ => {}
             }
+
+            // Daily: re-sync Bluesky profiles (handle / display_name / avatar).
+            // The on-demand sync in get_profile already caches for active
+            // users; this catches stale rows no one has opened recently.
+            if tick % 24 == 0 {
+                let n = resync_bsky_profiles(&cleanup_pool, &sync_at_client, &sync_data_dir).await;
+                if n > 0 {
+                    tracing::info!("re-synced {n} Bluesky profiles");
+                }
+            }
+            tick = tick.wrapping_add(1);
         }
     });
 
@@ -110,4 +125,53 @@ async fn shutdown_signal() {
         .await
         .expect("failed to listen for ctrl+c");
     tracing::info!("shutting down");
+}
+
+/// Re-fetch every AT Proto user's profile from the Bluesky public API and
+/// refresh our cache (handle, display_name, avatar_url). Avatars are
+/// downloaded to disk so the browser never needs to hit the Bluesky CDN.
+async fn resync_bsky_profiles(
+    pool: &sqlx::PgPool,
+    at_client: &fx_atproto::client::AtClient,
+    data_dir: &std::path::Path,
+) -> usize {
+    let dids: Vec<String> = match sqlx::query_scalar::<_, String>(
+        "SELECT did FROM profiles WHERE did LIKE 'did:plc:%' OR did LIKE 'did:web:%'",
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("resync_bsky_profiles: fetch dids failed: {e}");
+            return 0;
+        }
+    };
+
+    let mut count = 0;
+    for did in dids {
+        let Ok(bsky) = at_client.get_public_profile(&did).await else { continue };
+        let cached = match bsky.avatar.as_deref() {
+            Some(remote) => avatar_cache::cache_remote_avatar(data_dir, &did, remote).await,
+            None => None,
+        };
+        let av = cached.or_else(|| bsky.avatar.clone());
+        if let Err(e) = sqlx::query(
+            "UPDATE profiles SET handle = $1, display_name = $2, \
+             avatar_url = $3, banner_url = COALESCE($4, banner_url) WHERE did = $5",
+        )
+        .bind(&bsky.handle)
+        .bind(&bsky.display_name)
+        .bind(&av)
+        .bind(&bsky.banner)
+        .bind(&did)
+        .execute(pool)
+        .await
+        {
+            tracing::debug!("resync: update {did} failed: {e}");
+            continue;
+        }
+        count += 1;
+    }
+    count
 }

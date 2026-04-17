@@ -20,9 +20,38 @@ pub struct FollowEntry {
     pub avatar_url: Option<String>,
 }
 
+/// Fixed set of contact fields shown on the profile card, plus an optional
+/// list of free-form extra links. Omitted keys should be stripped by the
+/// frontend so the stored JSON stays compact.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct Contacts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub website: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telegram: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matrix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codeberg: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tangled: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub youtube: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bilibili: Option<String>,
+    /// Free-form extra links with user-supplied labels.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom: Vec<CustomLink>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
-pub struct ProfileLink {
+pub struct CustomLink {
     pub label: String,
     pub url: String,
 }
@@ -117,7 +146,7 @@ pub struct ProfileResponse {
     pub reputation: i32,
     pub article_count: i64,
     pub series_count: i64,
-    pub links: Vec<ProfileLink>,
+    pub contacts: Contacts,
     pub email: Option<String>,
     pub education: Vec<EducationEntry>,
     pub publications: Vec<PublicationEntry>,
@@ -220,7 +249,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         banner_url: Option<String>,
         bio: String,
         reputation: i32,
-        links: Option<String>,
+        contacts: serde_json::Value,
         email: Option<String>,
         education: serde_json::Value,
         publications: serde_json::Value,
@@ -234,7 +263,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
 
     let row = sqlx::query_as::<_, ProfileRow>(
         "SELECT \
-            p.handle, p.display_name, p.avatar_url, p.banner_url, p.bio, p.reputation, p.links, \
+            p.handle, p.display_name, p.avatar_url, p.banner_url, p.bio, p.reputation, p.contacts, \
             us.email, \
             p.education, p.publications, p.projects, p.teaching, \
             p.affiliation, \
@@ -249,14 +278,10 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
     .fetch_optional(pool)
     .await?;
 
-    let links: Vec<ProfileLink> = row
-        .as_ref()
-        .and_then(|r| r.links.as_deref())
-        .and_then(|l| serde_json::from_str(l).ok())
-        .unwrap_or_default();
-
     match row {
         Some(r) => {
+            let contacts: Contacts =
+                serde_json::from_value(r.contacts).unwrap_or_default();
             let education: Vec<EducationEntry> =
                 serde_json::from_value(r.education).unwrap_or_default();
             let publications: Vec<PublicationEntry> =
@@ -275,7 +300,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
                 reputation: r.reputation,
                 article_count: r.article_count,
                 series_count: r.series_count,
-                links,
+                contacts,
                 email: r.email,
                 education,
                 publications,
@@ -295,7 +320,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
             reputation: 0,
             article_count: 0,
             series_count: 0,
-            links: Vec::new(),
+            contacts: Contacts::default(),
             email: None,
             education: Vec::new(),
             publications: Vec::new(),
@@ -307,13 +332,13 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
     }
 }
 
-pub async fn update_profile_links(
+pub async fn update_profile_contacts(
     pool: &PgPool,
     did: &str,
-    links_json: &str,
+    contacts: &Contacts,
 ) -> crate::Result<()> {
-    sqlx::query("UPDATE profiles SET links = $1 WHERE did = $2")
-        .bind(links_json)
+    sqlx::query("UPDATE profiles SET contacts = $1 WHERE did = $2")
+        .bind(sqlx::types::Json(contacts))
         .bind(did)
         .execute(pool)
         .await?;

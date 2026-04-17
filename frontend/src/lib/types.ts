@@ -350,10 +350,32 @@ export interface AccessGrant {
   granted_at: string;
 }
 
-export interface ProfileLink {
+/** Fixed contact fields shown on the profile card, plus free-form extras.
+ * Undefined/empty fields should be stripped before sending to the server. */
+export interface Contacts {
+  website?: string | null;
+  email?: string | null;
+  telegram?: string | null;
+  matrix?: string | null;
+  github?: string | null;
+  codeberg?: string | null;
+  tangled?: string | null;
+  youtube?: string | null;
+  bilibili?: string | null;
+  custom?: CustomLink[];
+}
+
+export interface CustomLink {
   label: string;
   url: string;
 }
+
+export const CONTACT_KINDS = [
+  'website', 'email', 'telegram', 'matrix',
+  'github', 'codeberg', 'tangled',
+  'youtube', 'bilibili',
+] as const;
+export type ContactKind = typeof CONTACT_KINDS[number];
 
 export interface EducationTranslation {
   school?: string | null;
@@ -410,7 +432,7 @@ export interface ProfileData {
   reputation: number;
   article_count: number;
   series_count: number;
-  links: ProfileLink[];
+  contacts: Contacts;
   email: string | null;
   education: EducationEntry[];
   publications: PublicationEntry[];

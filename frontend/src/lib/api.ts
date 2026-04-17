@@ -193,8 +193,8 @@ export const setInterests = (tag_ids: string[]) => put<void>('/interests', { tag
 
 // Profile
 export const getProfile = (did: string) => get<ProfileData>(`/profile?did=${encodeURIComponent(did)}`);
-export const updateProfileLinks = (links: { label: string; url: string }[]) =>
-  post<void>('/profile/links', { links });
+export const updateProfileContacts = (contacts: import('./types').Contacts) =>
+  put<void>('/profile/contacts', { contacts });
 export const updateBio = (bio: string) => put<void>('/profile/bio', { bio });
 export const updateDisplayName = (display_name: string) => put<void>('/profile/display-name', { display_name });
 export const updateEducation = (education: import('./types').EducationEntry[]) => put<void>('/profile/education', education);

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar, uploadBanner, updateBio, updateDisplayName } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileContacts, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar, uploadBanner, updateBio, updateDisplayName } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
@@ -7,7 +7,8 @@
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { ProfileData, Article, Series, ContentTeachRow, ProfileLink, BookmarkWithTitle, EducationEntry, EducationTranslation, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
+  import type { ProfileData, Article, Series, ContentTeachRow, Contacts, ContactKind, CustomLink, BookmarkWithTitle, EducationEntry, EducationTranslation, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
+  import { CONTACT_KINDS } from '../lib/types';
 
   /** Resolve a localized field (Record<string, string>) to the current locale with fallback. */
   function loc(field: Record<string, string> | null | undefined): string {
@@ -42,17 +43,12 @@
   let loading = $state(true);
   let isFollowing = $state(false);
   let followLoading = $state(false);
-  let editingLinks = $state(false);
-  let editLinks = $state<ProfileLink[]>([]);
-  let newLinkLabel = $state('');
-  let newLinkUrl = $state('');
+  let editingContacts = $state(false);
+  let editContacts = $state<Contacts>({});
   let editingBio = $state(false);
   let editBio = $state('');
   let editingName = $state(false);
   let editName = $state('');
-  let editingEmail = $state(false);
-  let editEmail = $state('');
-
   // Academic profile state
   let editingEdu = $state(false);
   let editEdu = $state<EducationEntry[]>([]);
@@ -255,28 +251,107 @@
     followLoading = false;
   }
 
-  function startEditLinks() {
-    editLinks = [...(profile?.links || [])];
-    editingLinks = true;
+  function startEditContacts() {
+    const src = profile?.contacts || {};
+    editContacts = {
+      ...src,
+      custom: [...(src.custom || []).map(l => ({ ...l }))],
+    };
+    editingContacts = true;
   }
 
-  function addLink() {
-    if (!newLinkLabel.trim() || !newLinkUrl.trim()) return;
-    editLinks = [...editLinks, { label: newLinkLabel.trim(), url: newLinkUrl.trim() }];
-    newLinkLabel = '';
-    newLinkUrl = '';
+  function contactPlaceholder(kind: ContactKind): string {
+    const hints: Record<ContactKind, string> = {
+      website: 'https://example.com',
+      email: 'you@example.com',
+      telegram: '@username',
+      matrix: '@user:matrix.org',
+      github: 'username',
+      codeberg: 'username',
+      tangled: 'https://tangled.sh/@...',
+      youtube: '@channel',
+      bilibili: 'https://space.bilibili.com/...',
+    };
+    return hints[kind];
   }
 
-  function removeLink(idx: number) {
-    editLinks = editLinks.filter((_, i) => i !== idx);
-  }
-
-  async function saveLinks() {
+  async function saveContacts() {
+    const cleaned: Contacts = {};
+    for (const k of CONTACT_KINDS) {
+      const v = editContacts[k]?.trim() || '';
+      if (v) cleaned[k] = v;
+    }
+    const custom = (editContacts.custom || [])
+      .map(l => ({ label: l.label.trim(), url: l.url.trim() }))
+      .filter(l => l.label && l.url);
+    if (custom.length > 0) cleaned.custom = custom;
     try {
-      await updateProfileLinks(editLinks);
-      if (profile) profile.links = editLinks;
-      editingLinks = false;
+      await updateProfileContacts(cleaned);
+      if (profile) profile.contacts = cleaned;
+      editingContacts = false;
     } catch { /* */ }
+  }
+
+  /** Build the `href` for a contact value, adding a protocol/prefix as needed. */
+  function contactHref(kind: ContactKind, value: string): string {
+    switch (kind) {
+      case 'email': return value.startsWith('mailto:') ? value : `mailto:${value}`;
+      case 'telegram': {
+        if (value.startsWith('http')) return value;
+        const u = value.replace(/^@/, '');
+        return `https://t.me/${u}`;
+      }
+      case 'matrix': {
+        if (value.startsWith('http')) return value;
+        const id = value.startsWith('@') ? value : `@${value}`;
+        return `https://matrix.to/#/${encodeURIComponent(id)}`;
+      }
+      case 'github':
+        return value.startsWith('http') ? value : `https://github.com/${value.replace(/^@/, '')}`;
+      case 'codeberg':
+        return value.startsWith('http') ? value : `https://codeberg.org/${value.replace(/^@/, '')}`;
+      case 'tangled':
+        return value.startsWith('http') ? value : `https://${value.replace(/^\/+/, '')}`;
+      case 'youtube': {
+        if (value.startsWith('http')) return value;
+        // Accept @handle, channel/..., or plain user id
+        const v = value.replace(/^@/, '');
+        return `https://youtube.com/@${v}`;
+      }
+      case 'bilibili':
+        return value.startsWith('http') ? value : `https://${value.replace(/^\/+/, '')}`;
+      case 'website':
+      default:
+        return value.startsWith('http') ? value : `https://${value}`;
+    }
+  }
+
+  function contactLabel(kind: ContactKind): string {
+    const map: Record<ContactKind, string> = {
+      website: 'Website', email: 'Email', telegram: 'Telegram',
+      matrix: 'Matrix',
+      github: 'GitHub', codeberg: 'Codeberg', tangled: 'Tangled',
+      youtube: 'YouTube', bilibili: 'Bilibili',
+    };
+    return map[kind];
+  }
+
+  let hasAnyContact = $derived(
+    CONTACT_KINDS.some(k => !!profile?.contacts?.[k])
+      || (profile?.contacts?.custom?.length ?? 0) > 0
+  );
+
+  function addCustomLink() {
+    editContacts = {
+      ...editContacts,
+      custom: [...(editContacts.custom || []), { label: '', url: '' }],
+    };
+  }
+  function removeCustomLink(idx: number) {
+    editContacts = {
+      ...editContacts,
+      custom: (editContacts.custom || []).filter((_, i) => i !== idx),
+    };
   }
 
   async function toggleBlock() {
@@ -308,30 +383,63 @@
     }
   }
 
-  function startEditEmail() {
-    editEmail = profile?.email || '';
-    editingEmail = true;
-  }
-
-  async function saveEmail() {
-    try {
-      const s = await getSettings();
-      await setSettings({ ...s, email: editEmail.trim() || null });
-      if (profile) profile.email = editEmail.trim() || null;
-      editingEmail = false;
-    } catch { /* */ }
-  }
-
-  function linkIcon(url: string): string {
-    if (url.includes('github.com') || url.includes('gitlab.com') || url.includes('codeberg.org')) return 'code';
-    if (url.includes('bsky.app') || url.includes('bsky.social')) return 'bluesky';
-    return 'link';
-  }
-
   function shortDid(d: string) {
     return d.replace('did:plc:', '').slice(0, 12);
   }
 </script>
+
+{#snippet contactIcon(kind: ContactKind | 'custom')}
+  {#if kind === 'website'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+  {:else if kind === 'email'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+  {:else if kind === 'telegram'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+  {:else if kind === 'matrix'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M.632.55v22.9H2.28V24H0V0h2.28v.55zm7.043 7.26v1.157h.033a3.312 3.312 0 0 1 1.117-1.024c.433-.245.936-.367 1.5-.367.54 0 1.033.107 1.481.314.448.208.785.582 1.02 1.108.254-.374.6-.706 1.034-.992.434-.287.95-.43 1.546-.43.453 0 .872.056 1.26.167.388.11.716.286.993.525.276.24.489.548.646.93.157.38.236.85.236 1.406v5.686h-2.322v-4.81c0-.29-.012-.562-.034-.82a1.798 1.798 0 0 0-.176-.685 1.089 1.089 0 0 0-.412-.459c-.184-.116-.436-.174-.755-.174-.313 0-.566.07-.76.21a1.338 1.338 0 0 0-.445.542c-.108.217-.18.464-.215.74-.034.276-.05.53-.05.762v4.692h-2.324v-5.025c0-.298-.012-.566-.034-.806-.022-.24-.084-.441-.186-.608a.984.984 0 0 0-.403-.409c-.174-.098-.424-.148-.748-.148-.205 0-.398.042-.58.125-.18.083-.356.213-.52.393-.165.18-.297.392-.395.634-.099.243-.148.517-.148.827v5.017H5.36V7.81zm15.693 15.64V.55H21.72V0H24v24h-2.28v-.55z"/></svg>
+  {:else if kind === 'bluesky'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.911.58-7.386 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.206-.659-.298-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z"/></svg>
+  {:else if kind === 'github'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.52 11.52 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+  {:else if kind === 'codeberg'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.955.49A12 12 0 0 0 0 12.49a12 12 0 0 0 6.568 10.692L11.97 13.46v-.002l-.982-6.56a.313.313 0 0 1 .612-.12l.4 1.26-.005.007 1.86 5.874-.003.001 4.162 9.443a12 12 0 0 0 6.022-10.416A12 12 0 0 0 11.955.49z"/></svg>
+  {:else if kind === 'tangled'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/><path d="M8 16c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/><path d="M6 10l4-2M14 14l4-2"/></svg>
+  {:else if kind === 'youtube'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+  {:else if kind === 'bilibili'}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373z"/></svg>
+  {:else}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+  {/if}
+{/snippet}
+
+{#snippet contactsBlock()}
+  {#if hasAnyContact || isOwnProfile}
+    <div class="contacts-list">
+      {#each CONTACT_KINDS as kind}
+        {@const v = profile?.contacts?.[kind]}
+        {#if v}
+          <a href={contactHref(kind, v)} target="_blank" rel="noopener" class="contact-row" title={contactLabel(kind)}>
+            <span class="contact-icon">{@render contactIcon(kind)}</span>
+            <span class="contact-value">{v}</span>
+          </a>
+        {/if}
+      {/each}
+      {#each (profile?.contacts?.custom || []) as link}
+        <a href={link.url} target="_blank" rel="noopener" class="contact-row" title={link.label}>
+          <span class="contact-icon">{@render contactIcon('custom')}</span>
+          <span class="contact-value">{link.label}</span>
+        </a>
+      {/each}
+      {#if isOwnProfile}
+        <button class="contacts-edit-btn" onclick={startEditContacts}>
+          {hasAnyContact ? t('common.edit') : t('profile.addContacts')}
+        </button>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
 
 {#snippet seriesTree(s: Series, totalArticles?: number)}
   {@const articleUris = seriesArticleMap.get(s.id) || []}
@@ -439,9 +547,22 @@
         </h1>
       {/if}
       {#if profile.handle}
-        <p class="handle">@{profile.handle}</p>
+        <p class="handle">
+          @{profile.handle}
+          {#if (profile.did.startsWith('did:plc:') || profile.did.startsWith('did:web:')) && profile.handle}
+            <a
+              href="https://bsky.app/profile/{profile.handle}"
+              target="_blank"
+              rel="noopener"
+              class="handle-bsky"
+              title="Bluesky"
+              aria-label="Bluesky profile"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364-3.911.58-7.386 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.206-.659-.298-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z"/></svg>
+            </a>
+          {/if}
+        </p>
       {/if}
-      <a href="/feed/{encodeURIComponent(did)}.xml" class="rss-link" title="RSS Feed">RSS</a>
       {#if editingBio}
         <div class="bio-edit">
           <textarea class="bio-input" bind:value={editBio} placeholder={t('settings.bioPlaceholder')} rows="3"></textarea>
@@ -468,56 +589,40 @@
           {/if}
         </p>
       {/if}
-      {#if profile.education.length > 0 || isOwnProfile}
-        <div class="education-list">
-          {#each profile.education as edu}
-            {@const school = eduField(edu, 'school', locale) || edu.school}
-            {@const dept = eduField(edu, 'department', locale)}
-            {@const major = eduField(edu, 'major', locale)}
-            <div class="education-entry">
-              <span class="edu-degree">{t('profile.degree.' + edu.degree) || edu.degree}</span>
-              <span class="edu-school">{school}{#if dept}, {dept}{/if}</span>
-              {#if major}<span class="edu-major">{major}</span>{/if}
-              <span class="edu-dates">
-                {edu.start_date || ''}{#if edu.start_date} – {/if}{#if edu.current}{t('profile.present') || 'Present'}{:else}{edu.end_date || ''}{/if}
-              </span>
+      <div class="profile-columns">
+        <div class="profile-col contacts-col">
+          {@render contactsBlock()}
+        </div>
+        <div class="profile-col education-col">
+          {#if profile.education.length > 0 || isOwnProfile}
+            <div class="education-list">
+              {#each profile.education as edu}
+                {@const school = eduField(edu, 'school', locale) || edu.school}
+                {@const dept = eduField(edu, 'department', locale)}
+                {@const major = eduField(edu, 'major', locale)}
+                <div class="education-entry">
+                  <span class="edu-degree">{t('profile.degree.' + edu.degree) || edu.degree}</span>
+                  <span class="edu-school">{school}{#if dept}, {dept}{/if}</span>
+                  {#if major}<span class="edu-major">{major}</span>{/if}
+                  <span class="edu-dates">
+                    {edu.start_date || ''}{#if edu.start_date} – {/if}{#if edu.current}{t('profile.present') || 'Present'}{:else}{edu.end_date || ''}{/if}
+                  </span>
+                </div>
+              {/each}
+              {#if profile.credentials_verified && !profile.affiliation}
+                <span class="verified-badge" title={t('profile.verified')}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)" stroke="white" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </span>
+              {/if}
+              {#if isOwnProfile}
+                <button class="edit-section-btn" onclick={() => { editEdu = JSON.parse(JSON.stringify(profile!.education)); editingEdu = true; }}>
+                  {profile.education.length > 0 ? t('common.edit') : t('profile.add')}
+                </button>
+              {/if}
             </div>
-          {/each}
-          {#if profile.credentials_verified && !profile.affiliation}
-            <span class="verified-badge" title={t('profile.verified')}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)" stroke="white" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            </span>
-          {/if}
-          {#if isOwnProfile}
-            <button class="edit-section-btn" onclick={() => { editEdu = JSON.parse(JSON.stringify(profile!.education)); editingEdu = true; }}>
-              {profile.education.length > 0 ? t('common.edit') : t('profile.add')}
-            </button>
           {/if}
         </div>
-      {/if}
-      {#if profile.email || isOwnProfile}
-        <div class="profile-email">
-          {#if editingEmail}
-            <input
-              type="email"
-              bind:value={editEmail}
-              placeholder="user@example.com"
-              class="email-input"
-            />
-            <button class="email-save" onclick={saveEmail}>{t('common.save')}</button>
-            <button class="email-cancel" onclick={() => { editingEmail = false; }}>{t('common.cancel')}</button>
-          {:else}
-            {#if profile.email}
-              <a href="mailto:{profile.email}" class="email-link">{profile.email}</a>
-            {/if}
-            {#if isOwnProfile}
-              <button class="edit-email-btn" onclick={startEditEmail}>
-                {profile.email ? t('common.edit') : t('settings.email')}
-              </button>
-            {/if}
-          {/if}
-        </div>
-      {/if}
+      </div>
       <div class="profile-stats">
         <span class="rep-stat" title="Reputation"><strong>{profile.reputation.toLocaleString()}</strong> rep</span>
         <span>{profile.article_count} {t('profile.articles')}</span>
@@ -530,16 +635,22 @@
         </button>
       </div>
     </div>
-    {#if getAuth() && !isOwnProfile}
-      <button
-        class="follow-btn"
-        class:following={isFollowing}
-        onclick={toggleFollow}
-        disabled={followLoading}
-      >
-        {isFollowing ? t('profile.unfollow') : t('profile.follow')}
-      </button>
-    {/if}
+    <div class="profile-actions-row">
+      {#if getAuth() && !isOwnProfile}
+        <button
+          class="follow-btn"
+          class:following={isFollowing}
+          onclick={toggleFollow}
+          disabled={followLoading}
+        >
+          {isFollowing ? t('profile.unfollow') : t('profile.follow')}
+        </button>
+      {/if}
+      {#if isOwnProfile}
+        <a href="/settings" class="settings-link">{t('profile.settings')}</a>
+      {/if}
+      <a href="/feed/{encodeURIComponent(did)}.xml" class="rss-link" title="RSS Feed" target="_blank" rel="noopener">RSS</a>
+    </div>
     {#if getAuth() && !isOwnProfile}
       <div class="profile-actions-secondary">
         <button class="action-btn" class:active={userBlocked} onclick={toggleBlock}>
@@ -549,9 +660,6 @@
           {t('report.report')}
         </button>
       </div>
-    {/if}
-    {#if isOwnProfile}
-      <a href="/settings" class="settings-link">{t('profile.settings')}</a>
     {/if}
   </div>
 
@@ -581,53 +689,40 @@
     </div>
   {/if}
 
-  <!-- Profile links -->
-  {#if profile.links.length > 0 || isOwnProfile}
-    <div class="profile-links">
-      {#each profile.links as link}
-        <a href={link.url} target="_blank" rel="noopener" class="profile-link">
-          {#if linkIcon(link.url) === 'code'}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-          {:else if linkIcon(link.url) === 'bluesky'}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/></svg>
-          {:else}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
-          {/if}
-          {link.label}
-        </a>
-      {/each}
-      {#if isOwnProfile}
-        <button class="edit-links-btn" onclick={startEditLinks}>
-          {t('profile.editLinks')}
-        </button>
-      {/if}
-    </div>
-  {/if}
-
-  <!-- Edit links modal -->
-  {#if editingLinks}
+  <!-- Edit contacts modal -->
+  {#if editingContacts}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="links-overlay" onclick={() => { editingLinks = false; }}>
+    <div class="links-overlay" onclick={() => { editingContacts = false; }}>
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="links-modal" onclick={(e) => e.stopPropagation()}>
-        <h3>{t('profile.editLinksTitle')}</h3>
-        {#each editLinks as link, i}
-          <div class="link-row">
-            <span class="link-label">{link.label}</span>
-            <span class="link-url">{link.url}</span>
-            <button class="link-remove" onclick={() => removeLink(i)}>&times;</button>
+        <h3>{t('profile.editContactsTitle')}</h3>
+        <div class="contacts-edit-grid">
+          {#each CONTACT_KINDS as kind}
+            <label class="contact-edit-row">
+              <span class="contact-edit-icon">{@render contactIcon(kind)}</span>
+              <span class="contact-edit-label">{contactLabel(kind)}</span>
+              <input
+                class="contact-edit-input"
+                bind:value={editContacts[kind]}
+                placeholder={contactPlaceholder(kind)}
+              />
+            </label>
+          {/each}
+        </div>
+        <h4 class="contacts-custom-heading">{t('profile.contactsCustom')}</h4>
+        {#each (editContacts.custom || []) as _link, i}
+          <div class="link-add-row">
+            <input bind:value={editContacts.custom![i].label} placeholder={t('profile.linkLabel')} />
+            <input bind:value={editContacts.custom![i].url} placeholder="https://..." />
+            <button class="link-remove" onclick={() => removeCustomLink(i)}>&times;</button>
           </div>
         {/each}
-        <div class="link-add-row">
-          <input bind:value={newLinkLabel} placeholder={t('profile.linkLabel')} />
-          <input bind:value={newLinkUrl} placeholder="https://..." />
-          <button class="link-add-btn" onclick={addLink} disabled={!newLinkLabel.trim() || !newLinkUrl.trim()}>+</button>
-        </div>
+        <button class="add-entry" onclick={addCustomLink}>+ {t('profile.contactsAddCustom')}</button>
         <div class="link-actions">
-          <button class="link-cancel" onclick={() => { editingLinks = false; }}>{t('common.cancel')}</button>
-          <button class="link-save" onclick={saveLinks}>{t('common.save')}</button>
+          <button class="link-cancel" onclick={() => { editingContacts = false; }}>{t('common.cancel')}</button>
+          <button class="link-save" onclick={saveContacts}>{t('common.save')}</button>
         </div>
       </div>
     </div>
@@ -1405,32 +1500,51 @@
     color: var(--accent);
   }
 
-  /* Profile links */
-  .profile-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    margin-bottom: 20px;
+  /* Two-column layout inside the profile card: contacts left, education right. */
+  .profile-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    margin: 10px 0 16px;
   }
-  .profile-link {
+  @media (max-width: 640px) {
+    .profile-columns { grid-template-columns: 1fr; gap: 12px; }
+  }
+  .profile-col { min-width: 0; }
+
+  /* Contacts list */
+  .contacts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .contact-row {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     font-size: 13px;
     color: var(--text-secondary);
     text-decoration: none;
-    padding: 3px 10px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    transition: all 0.15s;
+    padding: 2px 0;
+    min-width: 0;
   }
-  .profile-link:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-    text-decoration: none;
+  .contact-row:hover { color: var(--accent); text-decoration: none; }
+  .contact-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    color: var(--text-hint);
+    flex-shrink: 0;
   }
-  .edit-links-btn {
+  .contact-row:hover .contact-icon { color: var(--accent); }
+  .contact-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .contacts-edit-btn {
+    align-self: flex-start;
     font-size: 12px;
     color: var(--text-hint);
     background: none;
@@ -1438,11 +1552,72 @@
     border-radius: 3px;
     padding: 3px 10px;
     cursor: pointer;
+    margin-top: 4px;
     transition: all 0.15s;
   }
-  .edit-links-btn:hover {
+  .contacts-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Edit contacts modal layout */
+  .contacts-edit-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin: 12px 0;
+  }
+  .contact-edit-row {
+    display: grid;
+    grid-template-columns: 20px 90px 1fr;
+    align-items: center;
+    gap: 8px;
+  }
+  .contact-edit-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-hint);
+  }
+  .contact-edit-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .contact-edit-input {
+    font-size: 13px;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-input, var(--bg-white));
+    color: var(--text-primary);
+    min-width: 0;
+  }
+  .contact-edit-input:focus {
+    outline: none;
     border-color: var(--accent);
-    color: var(--accent);
+  }
+  .contacts-custom-heading {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 14px 0 6px;
+  }
+
+  /* Bluesky badge next to handle */
+  .handle-bsky {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px;
+    color: var(--text-hint);
+    vertical-align: middle;
+    text-decoration: none;
+  }
+  .handle-bsky:hover { color: #0085ff; }
+
+  /* Profile actions row (follow / settings / RSS on one line) */
+  .profile-actions-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
   }
 
   /* Edit links modal */

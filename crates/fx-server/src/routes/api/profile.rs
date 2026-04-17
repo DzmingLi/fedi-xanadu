@@ -6,14 +6,15 @@ use axum::{
 };
 use fx_core::services::social_service;
 
+use crate::avatar_cache;
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
 use crate::auth::WriteAuth;
 use super::DidQuery;
 
 #[derive(serde::Deserialize)]
-pub(crate) struct UpdateProfileLinksInput {
-    links: Vec<social_service::ProfileLink>,
+pub(crate) struct UpdateProfileContactsInput {
+    contacts: social_service::Contacts,
 }
 
 pub async fn get_profile(
@@ -22,27 +23,36 @@ pub async fn get_profile(
 ) -> ApiResult<Json<social_service::ProfileResponse>> {
     let mut profile = social_service::get_profile(&state.pool, &did).await?;
 
-    // Sync profile from PDS for AT Protocol users
+    // Sync profile from PDS for AT Protocol users. Cache the remote avatar
+    // locally so subsequent pageviews hit /api/avatars/{did} instead of the
+    // Bluesky CDN.
     if did.starts_with("did:plc:") || did.starts_with("did:web:") {
         if let Ok(bsky) = state.at_client.get_public_profile(&did).await {
-            // Update local cache in background
+            let cached_avatar = if let Some(remote) = bsky.avatar.as_deref() {
+                avatar_cache::cache_remote_avatar(&state.data_dir, &did, remote).await
+            } else {
+                None
+            };
+            let effective_avatar = cached_avatar.clone().or_else(|| bsky.avatar.clone());
+
             let pool = state.pool.clone();
             let did_clone = did.clone();
-            let bsky_clone = bsky.clone();
+            let dn = bsky.display_name.clone();
+            let av = effective_avatar.clone();
+            let banner = bsky.banner.clone();
             tokio::spawn(async move {
                 let _ = sqlx::query(
                     "UPDATE profiles SET display_name = $1, avatar_url = $2, banner_url = COALESCE($3, banner_url) WHERE did = $4"
                 )
-                .bind(&bsky_clone.display_name)
-                .bind(&bsky_clone.avatar)
-                .bind(&bsky_clone.banner)
+                .bind(&dn)
+                .bind(&av)
+                .bind(&banner)
                 .bind(&did_clone)
                 .execute(&pool).await;
             });
 
-            // Use PDS values for this response
             profile.display_name = bsky.display_name;
-            profile.avatar_url = bsky.avatar;
+            profile.avatar_url = effective_avatar;
             if bsky.banner.is_some() { profile.banner_url = bsky.banner; }
         }
     }
@@ -50,13 +60,12 @@ pub async fn get_profile(
     Ok(Json(profile))
 }
 
-pub async fn update_profile_links(
+pub async fn update_profile_contacts(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
-    Json(input): Json<UpdateProfileLinksInput>,
+    Json(input): Json<UpdateProfileContactsInput>,
 ) -> ApiResult<StatusCode> {
-    let links_json = serde_json::to_string(&input.links)?;
-    social_service::update_profile_links(&state.pool, &user.did, &links_json).await?;
+    social_service::update_profile_contacts(&state.pool, &user.did, &input.contacts).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
