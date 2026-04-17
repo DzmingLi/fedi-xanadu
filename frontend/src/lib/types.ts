@@ -331,12 +331,23 @@ export interface SeriesContextItem {
   next: { article_uri: string; title: string }[];
 }
 
+export interface ForkSourceInfo {
+  source_uri: string;
+  title: string;
+  license: string;
+  lang: string;
+  did: string;
+  author_handle: string | null;
+  author_display_name: string | null;
+  author_avatar: string | null;
+}
+
 export interface ArticleFullResponse {
   article: Article;
   content: ArticleContent;
   prereqs: ArticlePrereqRow[];
   forks: ForkWithTitle[];
-  fork_source: string | null;
+  fork_source: ForkSourceInfo | null;
   votes: VoteSummary;
   series_context: SeriesContextItem[];
   translations: Article[];

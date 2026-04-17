@@ -325,14 +325,37 @@ pub async fn get_article_prereqs(pool: &PgPool, uri: &str) -> crate::Result<Vec<
 }
 
 /// If this article is a fork, returns the source article's URI.
-pub async fn get_fork_source(pool: &PgPool, forked_uri: &str) -> crate::Result<Option<String>> {
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT source_uri FROM forks WHERE forked_uri = $1 LIMIT 1",
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct ForkSourceInfo {
+    pub source_uri: String,
+    pub title: String,
+    pub license: String,
+    pub lang: String,
+    pub did: String,
+    pub author_handle: Option<String>,
+    pub author_display_name: Option<String>,
+    pub author_avatar: Option<String>,
+}
+
+/// Full metadata about a forked article's origin — title, license, and the
+/// source author's public profile. The Article detail page uses this to
+/// render an attribution banner for CC-BY-* derivative works.
+pub async fn get_fork_source(pool: &PgPool, forked_uri: &str) -> crate::Result<Option<ForkSourceInfo>> {
+    let row = sqlx::query_as::<_, ForkSourceInfo>(
+        "SELECT f.source_uri, a.title, a.license, a.lang, a.did, \
+                p.handle AS author_handle, p.display_name AS author_display_name, \
+                p.avatar_url AS author_avatar \
+         FROM forks f \
+         JOIN articles a ON a.at_uri = f.source_uri \
+         LEFT JOIN profiles p ON p.did = a.did \
+         WHERE f.forked_uri = $1 \
+         LIMIT 1",
     )
     .bind(forked_uri)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|r| r.0))
+    Ok(row)
 }
 
 pub async fn get_article_forks(pool: &PgPool, uri: &str) -> crate::Result<Vec<ForkWithTitle>> {

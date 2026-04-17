@@ -1091,7 +1091,7 @@ pub struct ArticleFullResponse {
     content: ArticleContent,
     prereqs: Vec<ArticlePrereqRow>,
     forks: Vec<ForkWithTitle>,
-    fork_source: Option<String>,
+    fork_source: Option<fx_core::services::article_service::ForkSourceInfo>,
     votes: ArticleVoteSummary,
     series_context: Vec<fx_core::services::series_service::SeriesContextItem>,
     translations: Vec<Article>,

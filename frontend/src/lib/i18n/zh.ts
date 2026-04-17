@@ -137,6 +137,7 @@ export default {
   'article.writeReply': '写回复...',
   'article.viewAllForks': '查看全部 {0} 个 fork →',
   'article.versionHistory': '版本历史',
+  'article.forkedFrom': '改编自',
   'history.title': '版本历史',
   'history.empty': '暂无版本记录',
   'history.selectHint': '点击左侧版本查看变更内容',

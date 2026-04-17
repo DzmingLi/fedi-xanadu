@@ -137,6 +137,7 @@ export default {
   'article.writeReply': 'Antwort schreiben...',
   'article.viewAllForks': 'Alle {0} Forks ansehen →',
   'article.versionHistory': 'Versionsverlauf',
+  'article.forkedFrom': 'Geforkt von',
   'history.title': 'Versionsverlauf',
   'history.empty': 'Noch keine Versionen',
   'history.selectHint': 'Klicke auf eine Version, um Änderungen anzuzeigen',

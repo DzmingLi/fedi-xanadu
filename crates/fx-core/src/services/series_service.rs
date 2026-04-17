@@ -10,6 +10,10 @@ pub struct SeriesRow {
     pub id: String,
     pub title: String,
     pub description: Option<String>,
+    #[sqlx(default)]
+    pub description_html: String,
+    #[sqlx(default)]
+    pub auto_description: bool,
     pub long_description: Option<String>,
     pub order_index: i32,
     pub created_by: String,
@@ -27,6 +31,8 @@ pub struct SeriesListRow {
     pub id: String,
     pub title: String,
     pub description: Option<String>,
+    pub description_html: String,
+    pub auto_description: bool,
     pub long_description: Option<String>,
     pub order_index: i32,
     pub created_by: String,

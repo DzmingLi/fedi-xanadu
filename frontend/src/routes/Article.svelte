@@ -10,7 +10,7 @@
   import { t, LANG_NAMES } from '../lib/i18n/index.svelte';
   import CommentThread from '../lib/components/CommentThread.svelte';
   import SeriesSidebar from '../lib/components/SeriesSidebar.svelte';
-  import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, BookmarkWithTitle, VoteSummary, SeriesContextItem, AccessGrant } from '../lib/types';
+  import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, ForkSourceInfo, BookmarkWithTitle, VoteSummary, SeriesContextItem, AccessGrant } from '../lib/types';
 
   let { uri, seriesId = '' }: { uri: string; seriesId?: string } = $props();
 
@@ -18,7 +18,7 @@
   let content = $state<ArticleContent | null>(null);
   let prereqs = $state<ArticlePrereqRow[]>([]);
   let forks = $state<ForkWithTitle[]>([]);
-  let forkSource = $state<string | null>(null);
+  let forkSource = $state<ForkSourceInfo | null>(null);
   let translations = $state<Article[]>([]);
   let error = $state('');
   let bookmarks = $state<BookmarkWithTitle[]>([]);
@@ -247,9 +247,9 @@
     if (!article || !forkSource || !discTitle.trim()) return;
     creatingDisc = true;
     try {
-      const ahead = await getForkAhead(uri, forkSource);
+      const ahead = await getForkAhead(uri, forkSource.source_uri);
       const disc = await createDiscussion({
-        target_uri: forkSource,
+        target_uri: forkSource.source_uri,
         source_uri: uri,
         title: discTitle.trim(),
         body: discBody.trim() || undefined,
@@ -571,6 +571,28 @@ try {
         {/each}
       {/if}
 
+      {#if forkSource && /^CC-BY-/i.test(forkSource.license)}
+        <!-- CC BY attribution: required when redistributing a derivative work -->
+        <a class="fork-attrib" href="/article?uri={encodeURIComponent(forkSource.source_uri)}">
+          <svg class="fork-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          <span class="fork-label">{t('article.forkedFrom')}</span>
+          {#if forkSource.author_avatar}
+            <img src={forkSource.author_avatar} alt="" class="fork-avatar" />
+          {:else}
+            <span class="fork-avatar placeholder">{(forkSource.author_display_name || forkSource.author_handle || '?').charAt(0).toUpperCase()}</span>
+          {/if}
+          <span class="fork-author-name">
+            {forkSource.author_display_name || forkSource.author_handle || forkSource.did.slice(0, 12)}
+          </span>
+          {#if forkSource.author_handle && forkSource.author_display_name}
+            <span class="fork-author-handle">@{forkSource.author_handle}</span>
+          {/if}
+          <span class="fork-sep">·</span>
+          <span class="fork-source-title">{forkSource.title}</span>
+          <span class="fork-license">{forkSource.license}</span>
+        </a>
+      {/if}
+
       <h1 class="article-title">{article.title}</h1>
 
       {#if translations.length > 0}
@@ -804,7 +826,7 @@ try {
         <details class="history-section">
           <summary>{t('article.versionHistory')}</summary>
           <div class="history-wrap">
-            <ArticleHistory {uri} {isOwner} applyTargetUri={forkSource || ''} />
+            <ArticleHistory {uri} {isOwner} applyTargetUri={forkSource?.source_uri || ''} />
           </div>
         </details>
       {/if}
@@ -1029,6 +1051,50 @@ try {
     gap: 6px;
     margin-bottom: 0.5rem;
     font-size: 13px;
+  }
+
+  /* CC BY attribution banner — required when republishing a derivative. */
+  .fork-attrib {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 10px;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    background: var(--bg-hover, #f6f6f1);
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: background 0.15s;
+  }
+  .fork-attrib:hover { background: var(--bg-white, #fff); }
+  .fork-attrib .fork-icon { color: var(--accent); flex-shrink: 0; }
+  .fork-attrib .fork-label { color: var(--text-hint); }
+  .fork-attrib .fork-avatar {
+    width: 18px; height: 18px; border-radius: 50%; object-fit: cover;
+    background: var(--bg-hover, #eee);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600; color: var(--text-secondary);
+  }
+  .fork-attrib .fork-author-name { color: var(--text-primary); font-weight: 500; }
+  .fork-attrib .fork-author-handle { color: var(--text-hint); font-size: 11px; }
+  .fork-attrib .fork-sep { color: var(--text-hint); }
+  .fork-attrib .fork-source-title {
+    color: var(--text-primary);
+    max-width: 240px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .fork-attrib .fork-license {
+    margin-left: auto;
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-hint);
   }
   .lang-current {
     color: var(--accent);
