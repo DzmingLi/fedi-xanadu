@@ -32,6 +32,7 @@ mod thoughts;
 mod votes;
 mod ads;
 mod events;
+mod authors;
 mod authorship;
 mod orcid;
 
@@ -112,6 +113,7 @@ pub fn routes() -> Router<AppState> {
         .merge(thought_routes())
         .merge(ad_routes())
         .merge(event_routes())
+        .merge(author_routes())
         .merge(authorship_routes())
         .merge(orcid_routes())
 }
@@ -489,6 +491,12 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/resources", get(books::list_resources).post(books::add_resource))
         .route("/books/{id}/resources/{rid}", delete(books::delete_resource))
         .route("/book-covers/{id}", get(books::get_cover))
+}
+
+fn author_routes() -> Router<AppState> {
+    Router::new()
+        .route("/authors/search", get(authors::search_authors))
+        .route("/authors/{id}", get(authors::get_author))
 }
 
 fn authorship_routes() -> Router<AppState> {
