@@ -99,7 +99,7 @@ pub async fn list_authors(
         "SELECT aa.author_did, aa.author_name, p.handle AS author_handle, \
                 p.display_name AS author_display_name, p.avatar_url AS author_avatar, \
                 COALESCE(p.reputation, 0) AS author_reputation, \
-                aa.position, aa.status, aa.authorship_uri \
+                aa.position, aa.is_corresponding, aa.status, aa.authorship_uri \
          FROM article_authors aa \
          LEFT JOIN profiles p ON aa.author_did = p.did \
          WHERE aa.article_uri = $1 AND aa.status != 'rejected' \
@@ -120,12 +120,12 @@ pub async fn list_authors_batch(
         return Ok(vec![]);
     }
 
-    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, i32, Option<i16>, String, Option<String>)> =
+    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, i32, Option<i16>, bool, String, Option<String>)> =
         sqlx::query_as(
             "SELECT aa.article_uri, aa.author_did, aa.author_name, p.handle, \
                     p.display_name, p.avatar_url, \
                     COALESCE(p.reputation, 0), \
-                    aa.position, aa.status, aa.authorship_uri \
+                    aa.position, aa.is_corresponding, aa.status, aa.authorship_uri \
              FROM article_authors aa \
              LEFT JOIN profiles p ON aa.author_did = p.did \
              WHERE aa.article_uri = ANY($1) AND aa.status != 'rejected' \
@@ -137,7 +137,7 @@ pub async fn list_authors_batch(
 
     Ok(rows
         .into_iter()
-        .map(|(uri, did, name, handle, display_name, avatar, rep, pos, status, auri)| {
+        .map(|(uri, did, name, handle, display_name, avatar, rep, pos, is_corresponding, status, auri)| {
             (
                 uri,
                 ArticleAuthor {
@@ -148,6 +148,7 @@ pub async fn list_authors_batch(
                     author_avatar: avatar,
                     author_reputation: rep,
                     position: pos,
+                    is_corresponding,
                     status,
                     authorship_uri: auri,
                 },

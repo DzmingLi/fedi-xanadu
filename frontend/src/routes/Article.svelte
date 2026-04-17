@@ -597,6 +597,7 @@ try {
                   <span class="author-display-name">{au.author_display_name || au.author_handle || au.author_did.slice(0, 16)}</span>
                   {#if au.author_handle}<span class="author-handle">@{au.author_handle}</span>{/if}
                 </span>
+                {#if au.is_corresponding}<span class="author-corresponding" title="Corresponding author">✉</span>{/if}
                 {#if au.status === 'verified'}<span class="author-verified" title="Verified">✓</span>{/if}
               </a>
             {:else if au.author_name}
@@ -1084,6 +1085,7 @@ try {
   .author-info { display: flex; flex-direction: column; line-height: 1.2; }
   .author-display-name { font-weight: 500; font-size: 14px; }
   .author-handle { font-size: 11px; color: var(--text-hint); }
+  .author-corresponding { font-size: 12px; margin-left: 2px; color: var(--text-secondary); }
   .author-verified { color: var(--accent); font-size: 12px; margin-left: 2px; }
   .meta-sep { color: var(--text-hint); }
   .author-link {
