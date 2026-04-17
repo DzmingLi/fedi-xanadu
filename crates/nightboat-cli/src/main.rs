@@ -1256,6 +1256,7 @@ async fn main() -> Result<()> {
             let body = CreateArticle {
                 title: title.clone(),
                 description: None,
+                auto_description: true,
                 content: String::new(),
                 content_format: fx_core::content::ContentFormat::Markdown,
                 lang: Some(lang),
@@ -1330,9 +1331,12 @@ async fn main() -> Result<()> {
                 None
             };
 
+            let desc_text = desc.unwrap_or_default();
+            let auto_description = desc_text.is_empty();
             let body = CreateArticle {
                 title: title.clone(),
-                description: Some(desc.unwrap_or_default()),
+                description: Some(desc_text),
+                auto_description,
                 content,
                 content_format,
                 lang: Some(lang),

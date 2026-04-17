@@ -71,9 +71,13 @@ pub async fn admin_create_article(
     let did = platform_user_service::local_did(&input.as_handle);
     let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
 
-    super::articles::publish_article_content(
+    let publish = super::articles::publish_article_content(
         &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
         input.article.series_id.as_deref(), "Initial publish",
+        super::articles::DescriptionInput {
+            user_source: input.article.description.as_deref(),
+            auto: input.article.auto_description,
+        },
     ).await?;
 
     let hash = content_hash(&input.article.content);
@@ -86,6 +90,7 @@ pub async fn admin_create_article(
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, translation_group,
         default_visibility(true), ContentKind::Article, None,
+        &publish.description_source, &publish.description_html,
     ).await?;
 
     if let Some(ref sid) = input.article.series_id {
@@ -137,11 +142,19 @@ pub async fn admin_create_series(
         tracing::warn!("failed to init series pijul repo: {e}");
     }
 
+    let desc_html = match input.description.as_deref() {
+        Some(d) if !d.is_empty() => crate::description::render_description_inline(
+            "markdown", d, &state.pijul.series_repo_path(&node_id),
+        ).unwrap_or_default(),
+        _ => String::new(),
+    };
+
     let row = series_service::create_series(
         &state.pool,
         &id,
         &input.title,
         input.description.as_deref(),
+        &desc_html,
         input.long_description.as_deref(),
         &topics,
         &did,
@@ -196,7 +209,12 @@ pub async fn admin_update_article(
         article_service::update_article_title(&state.pool, &input.uri, title).await?;
     }
     if let Some(ref desc) = input.description {
-        article_service::update_article_description(&state.pool, &input.uri, desc).await?;
+        let format = article_service::get_content_format(&state.pool, &input.uri).await?;
+        let node_id = fx_core::util::uri_to_node_id(&input.uri);
+        let repo_path = state.pijul.repo_path(&node_id);
+        let desc_html = crate::description::render_description_inline(format.as_str(), desc, &repo_path)
+            .unwrap_or_default();
+        article_service::update_article_description(&state.pool, &input.uri, desc, &desc_html, false).await?;
     }
 
     if let Some(ref content) = input.content {
@@ -603,9 +621,13 @@ pub async fn admin_create_question(
     let did = platform_user_service::local_did(&input.as_handle);
     let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
 
-    super::articles::publish_article_content(
+    let publish = super::articles::publish_article_content(
         &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
         None, "Initial publish",
+        super::articles::DescriptionInput {
+            user_source: input.article.description.as_deref(),
+            auto: input.article.auto_description,
+        },
     ).await?;
 
     let hash = content_hash(&input.article.content);
@@ -613,6 +635,7 @@ pub async fn admin_create_question(
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, None,
         default_visibility(true), ContentKind::Question, None,
+        &publish.description_source, &publish.description_html,
     ).await?;
 
     let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
@@ -645,9 +668,13 @@ pub async fn admin_post_answer(
     let did = platform_user_service::local_did(&input.as_handle);
     let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
 
-    super::articles::publish_article_content(
+    let publish = super::articles::publish_article_content(
         &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
         None, "Initial publish",
+        super::articles::DescriptionInput {
+            user_source: input.article.description.as_deref(),
+            auto: input.article.auto_description,
+        },
     ).await?;
 
     let hash = content_hash(&input.article.content);
@@ -655,6 +682,7 @@ pub async fn admin_post_answer(
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, None,
         default_visibility(true), ContentKind::Answer, Some(&input.question_uri),
+        &publish.description_source, &publish.description_html,
     ).await?;
 
     // Notify question author
@@ -872,6 +900,7 @@ pub async fn admin_batch_publish(
         let create = CreateArticle {
             title: item.title.clone(),
             description: item.description.clone(),
+            auto_description: item.description.as_deref().is_none_or(str::is_empty),
             content: item.content.clone(),
             content_format,
             lang: Some(lang.to_string()),
@@ -887,13 +916,20 @@ pub async fn admin_batch_publish(
             invites: vec![],
         };
 
+        let resolved_desc = create.description.as_deref().unwrap_or("").to_string();
+        let desc_html = crate::description::render_description_inline(
+            create.content_format.as_str(), &resolved_desc,
+            &state.pijul.repo_path(&node_id),
+        ).unwrap_or_default();
+
         let article = if is_update {
             tracing::info!("updating existing article {at_uri}");
-            article_service::update_article_batch(&state.pool, &at_uri, &create, &hash).await?
+            article_service::update_article_batch(&state.pool, &at_uri, &create, &hash, &resolved_desc, &desc_html).await?
         } else {
             let article = article_service::create_article(
                 &state.pool, &did, &at_uri, &create, &hash, None,
                 default_visibility(true), ContentKind::Article, None,
+                &resolved_desc, &desc_html,
             ).await?;
             series_service::add_series_article_with_path(
                 &state.pool, &input.series_id, &at_uri, repo_path.as_deref(),

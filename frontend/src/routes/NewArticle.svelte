@@ -33,6 +33,7 @@
   let allArticles = $state<Article[]>([]);
   let title = $state('');
   let description = $state('');
+  let autoDescription = $state(true);
   let content = $state('');
   let contentFormat = $state<ContentFormat>(getLangPrefs()?.default_format || 'markdown');
   let lang = $state(getLangPrefs()?.native_lang || getLocale());
@@ -114,6 +115,7 @@
         const article = await createArticle({
           title: title.trim(),
           description: description.trim() || undefined,
+          auto_description: autoDescription,
           content: content.trim(),
           content_format: contentFormat,
           lang: lang || getLocale(),
@@ -136,6 +138,7 @@
           await saveArticle(savedArticleUri, {
             title: title.trim(),
             description: description.trim(),
+            auto_description: autoDescription,
             content: content.trim(),
           });
           lastSavedContent = content;
@@ -157,6 +160,7 @@
       await saveArticle(savedArticleUri, {
         title: title.trim(),
         description: description.trim(),
+            auto_description: autoDescription,
         content: content.trim(),
       });
       lastSavedContent = content;
@@ -373,6 +377,7 @@
         const article = await createArticle({
           title: title.trim(),
           description: description.trim() || undefined,
+          auto_description: autoDescription,
           content: content.trim(),
           content_format: contentFormat,
           lang: lang || getLocale(),
@@ -419,6 +424,7 @@
       const article = await createArticle({
         title: title.trim(),
         description: description.trim() || undefined,
+          auto_description: autoDescription,
         content: content.trim(),
         content_format: contentFormat,
         lang: lang || getLocale(),
@@ -522,6 +528,7 @@
       const data = {
         title: title.trim() || t('newArticle.untitledDraft'),
         description: description.trim() || undefined,
+          auto_description: autoDescription,
         content: content,
         content_format: contentFormat,
         lang: lang || getLocale(),
@@ -553,6 +560,7 @@
         const article = await updateArticle(editUri, {
           title: title.trim(),
           description: description.trim(),
+            auto_description: autoDescription,
           content: content.trim(),
           commit_message: commitMessage.trim() || undefined,
         });
@@ -565,6 +573,7 @@
           await updateArticle(forked.at_uri, {
             title: title.trim(),
             description: description.trim() || undefined,
+          auto_description: autoDescription,
             content: content.trim(),
             commit_message: 'Initial fork edits',
           });
@@ -574,6 +583,7 @@
         const article = await createArticle({
           title: title.trim(),
           description: description.trim() || undefined,
+          auto_description: autoDescription,
           content: content.trim(),
           content_format: contentFormat,
           lang: lang || getLocale(),
@@ -593,6 +603,7 @@
             await createArticle({
               title: title.trim(),
               description: description.trim() || undefined,
+          auto_description: autoDescription,
               content: lv.content.trim(),
               content_format: lv.contentFormat,
               lang: lv.lang,
@@ -662,11 +673,18 @@
         bind:value={title}
         placeholder={t('newArticle.titleLabel')}
       />
-      <input
-        class="desc-input"
-        bind:value={description}
-        placeholder={t('newArticle.descPlaceholder')}
-      />
+      <div class="desc-row">
+        <input
+          class="desc-input"
+          bind:value={description}
+          disabled={autoDescription}
+          placeholder={autoDescription ? t('newArticle.autoDescPlaceholder') : t('newArticle.descPlaceholder')}
+        />
+        <label class="auto-desc-toggle">
+          <input type="checkbox" bind:checked={autoDescription} />
+          {t('newArticle.autoDescription')}
+        </label>
+      </div>
     </div>
 
     <!-- Main body: version panel + editor + settings sidebar -->
@@ -1090,6 +1108,24 @@
     border-bottom: 1px solid var(--border);
   }
   .desc-input::placeholder { color: var(--text-hint); }
+  .desc-input:disabled { color: var(--text-hint); cursor: not-allowed; font-style: italic; }
+  .desc-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .desc-row .desc-input { border-bottom: none; flex: 1; }
+  .auto-desc-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-hint);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .auto-desc-toggle input { cursor: pointer; }
 
   /* === Main body === */
   .editor-body {

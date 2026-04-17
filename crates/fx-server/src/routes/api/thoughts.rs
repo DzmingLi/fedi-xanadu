@@ -40,10 +40,16 @@ pub async fn create_thought(
     let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
     let hash = content_hash(&input.content);
 
+    let resolved_desc = input.description.as_deref().unwrap_or("").to_string();
+    let desc_html = crate::description::render_description_inline(
+        input.content_format.as_str(), &resolved_desc, std::path::Path::new("."),
+    ).unwrap_or_default();
+
     // Store article metadata in DB (no pijul repo for thoughts)
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, None,
         default_visibility(user.phone_verified), ContentKind::Thought, None,
+        &resolved_desc, &desc_html,
     ).await?;
 
     // Render and store source + HTML in article_versions (no pijul)

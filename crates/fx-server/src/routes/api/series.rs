@@ -65,11 +65,23 @@ pub async fn create_series(
     }
     let pijul_node_id = Some(node_id);
 
+    let desc_html = match input.description.as_deref() {
+        Some(desc) if !desc.is_empty() => {
+            let repo_path = pijul_node_id.as_deref()
+                .map(|n| state.pijul.series_repo_path(n))
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            crate::description::render_description_inline("markdown", desc, &repo_path)
+                .unwrap_or_default()
+        }
+        _ => String::new(),
+    };
+
     let row = series_service::create_series(
         &state.pool,
         &id,
         &input.title,
         input.description.as_deref(),
+        &desc_html,
         input.long_description.as_deref(),
         &topics,
         &user.did,
@@ -456,6 +468,7 @@ pub async fn fork_series(
         &fork_id,
         &fork_title,
         original.series.description.as_deref(),
+        &original.series.description_html,
         original.series.long_description.as_deref(),
         &[],
         &user.did,
@@ -625,6 +638,7 @@ pub async fn compile_series(
             let input = CreateArticle {
                 title: slice.heading_title.clone(),
                 description: None,
+                auto_description: true,
                 content: String::new(), // content is in cache
                 content_format: ContentFormat::Html,
                 lang: Some(series.series.lang.clone()),
@@ -642,6 +656,7 @@ pub async fn compile_series(
             article_service::create_article(
                 &state.pool, &user.did, &at_uri, &input, &hash, None,
                 "public", ContentKind::Article, None,
+                "", "",
             ).await?;
 
             // Insert series_articles with heading info

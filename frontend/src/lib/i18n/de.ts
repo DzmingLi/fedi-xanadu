@@ -178,6 +178,8 @@ export default {
   'newArticle.titleLabel': 'Titel',
   'newArticle.descLabel': 'Beschreibung',
   'newArticle.descPlaceholder': 'Kurzbeschreibung für die Startseiten-Vorschau',
+  'newArticle.autoDescription': 'Zusammenfassung automatisch erstellen',
+  'newArticle.autoDescPlaceholder': 'Wird aus dem Inhalt erzeugt',
   'newArticle.langLabel': 'Sprache',
   'newArticle.licenseLabel': 'Lizenz',
   'newArticle.restricted': 'Zugriff beschränken (bezahlter Inhalt, nicht ans PDS synchronisiert)',

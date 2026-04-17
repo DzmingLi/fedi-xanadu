@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod avatar_cache;
 mod config;
+mod description;
 mod error;
 mod prerender;
 mod routes;

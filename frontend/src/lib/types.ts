@@ -22,6 +22,8 @@ export interface Article {
   kind: ContentKind;
   title: string;
   description: string;
+  description_html: string;
+  auto_description: boolean;
   content_hash: string | null;
   content_format: ContentFormat;
   lang: string;
@@ -136,6 +138,8 @@ export interface Series {
   id: string;
   title: string;
   description: string | null;
+  description_html: string;
+  auto_description: boolean;
   long_description: string | null;
   order_index: number;
   created_by: string;
@@ -579,6 +583,7 @@ export interface Report {
 export interface CreateArticle {
   title: string;
   description?: string;
+  auto_description?: boolean;
   content: string;
   content_format: ContentFormat;
   lang?: string;

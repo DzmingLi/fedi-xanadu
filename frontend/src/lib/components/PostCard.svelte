@@ -146,7 +146,10 @@
       </div>
     {/if}
 
-    {#if article.description}
+    {#if article.description_html}
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+      <p class="post-desc">{@html article.description_html}</p>
+    {:else if article.description}
       <p class="post-desc">{article.description}</p>
     {/if}
 
@@ -216,7 +219,10 @@
       <span class="series-badge">{t('home.series')}</span>
     </div>
 
-    {#if series.description}
+    {#if series.description_html}
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+      <p class="post-desc">{@html series.description_html}</p>
+    {:else if series.description}
       <p class="post-desc">{series.description}</p>
     {/if}
 

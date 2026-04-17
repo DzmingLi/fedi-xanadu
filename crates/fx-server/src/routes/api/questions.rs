@@ -84,9 +84,15 @@ pub async fn create_question(
 
     let hash = content_hash(&input.content);
 
+    let resolved_desc = input.description.as_deref().unwrap_or("").to_string();
+    let desc_html = crate::description::render_description_inline(
+        input.content_format.as_str(), &resolved_desc, &repo_path,
+    ).unwrap_or_default();
+
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, None,
         default_visibility(user.phone_verified), ContentKind::Question, None,
+        &resolved_desc, &desc_html,
     ).await?;
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
@@ -154,9 +160,15 @@ pub async fn post_answer(
 
     let hash = content_hash(&input.content);
 
+    let resolved_desc = input.description.as_deref().unwrap_or("").to_string();
+    let desc_html = crate::description::render_description_inline(
+        input.content_format.as_str(), &resolved_desc, &repo_path,
+    ).unwrap_or_default();
+
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, None,
         default_visibility(user.phone_verified), ContentKind::Answer, Some(question_uri),
+        &resolved_desc, &desc_html,
     ).await?;
 
     // Notify question author
