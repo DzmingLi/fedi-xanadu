@@ -541,6 +541,9 @@ enum BookCommand {
         /// Book title
         #[arg(short, long)]
         title: String,
+        /// Subtitle
+        #[arg(short = 'S', long)]
+        subtitle: Option<String>,
         /// Authors (comma-separated)
         #[arg(short, long, value_delimiter = ',')]
         authors: Vec<String>,
@@ -1550,25 +1553,22 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             }
         }
 
-        BookCommand::Create { title, authors, desc, cover_url, tags, prereqs,
+        BookCommand::Create { title, subtitle, authors, desc, cover_url, tags, prereqs,
                              edition, lang, isbn, publisher, year, translators, purchase_links, edition_cover_url } => {
-            // Title can be JSON like {"en":"...","zh":"..."} or plain string (wrapped as {"en":"..."})
-            let title_val: serde_json::Value = if title.starts_with('{') {
-                serde_json::from_str(&title).unwrap_or(serde_json::json!({"en": title}))
-            } else {
-                serde_json::json!({"en": title})
-            };
-            let desc_val: serde_json::Value = if let Some(ref d) = desc {
-                if d.starts_with('{') {
-                    serde_json::from_str(d).unwrap_or(serde_json::json!({"en": d}))
+            // Title/subtitle/desc can be JSON like {"en":"...","zh":"..."} or plain string
+            let parse_i18n = |s: &str| -> serde_json::Value {
+                if s.starts_with('{') {
+                    serde_json::from_str(s).unwrap_or(serde_json::json!({"en": s}))
                 } else {
-                    serde_json::json!({"en": d})
+                    serde_json::json!({"en": s})
                 }
-            } else {
-                serde_json::json!({})
             };
+            let title_val = parse_i18n(&title);
+            let subtitle_val = subtitle.as_deref().map(parse_i18n).unwrap_or(serde_json::json!({}));
+            let desc_val = desc.as_deref().map(parse_i18n).unwrap_or(serde_json::json!({}));
             let body = serde_json::json!({
                 "title": title_val,
+                "subtitle": subtitle_val,
                 "authors": authors,
                 "description": desc_val,
                 "cover_url": cover_url,
