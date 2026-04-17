@@ -122,6 +122,17 @@ pub async fn update_education(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn update_experience(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<Vec<social_service::WorkExperienceEntry>>,
+) -> ApiResult<StatusCode> {
+    let json = serde_json::to_value(&input)?;
+    sqlx::query("UPDATE profiles SET experience = $1 WHERE did = $2")
+        .bind(&json).bind(&user.did).execute(&state.pool).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn update_publications(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,

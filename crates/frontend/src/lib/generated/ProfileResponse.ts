@@ -4,5 +4,6 @@ import type { EducationEntry } from "./EducationEntry";
 import type { ProjectEntry } from "./ProjectEntry";
 import type { PublicationEntry } from "./PublicationEntry";
 import type { TeachingEntry } from "./TeachingEntry";
+import type { WorkExperienceEntry } from "./WorkExperienceEntry";
 
-export type ProfileResponse = { did: string, handle: string | null, display_name: string | null, avatar_url: string | null, banner_url: string | null, bio: string, reputation: number, article_count: bigint, series_count: bigint, contacts: Contacts, email: string | null, education: Array<EducationEntry>, publications: Array<PublicationEntry>, projects: Array<ProjectEntry>, teaching: Array<TeachingEntry>, affiliation: string | null, credentials_verified: boolean, };
+export type ProfileResponse = { did: string, handle: string | null, display_name: string | null, avatar_url: string | null, banner_url: string | null, bio: string, reputation: number, article_count: bigint, series_count: bigint, contacts: Contacts, email: string | null, education: Array<EducationEntry>, experience: Array<WorkExperienceEntry>, publications: Array<PublicationEntry>, projects: Array<ProjectEntry>, teaching: Array<TeachingEntry>, affiliation: string | null, credentials_verified: boolean, };

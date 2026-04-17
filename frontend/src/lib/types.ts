@@ -405,6 +405,16 @@ export interface EducationEntry {
   translations?: Record<string, EducationTranslation>;
 }
 
+export interface WorkExperienceEntry {
+  company: string;
+  title?: string | null;
+  location?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  current?: boolean;
+  description?: string | null;
+}
+
 /** Locale -> text map, e.g. {"en": "NightBoat", "zh": "夜舟"} */
 export type L = Record<string, string>;
 
@@ -446,6 +456,7 @@ export interface ProfileData {
   contacts: Contacts;
   email: string | null;
   education: EducationEntry[];
+  experience: WorkExperienceEntry[];
   publications: PublicationEntry[];
   projects: ProjectEntry[];
   teaching: TeachingEntry[];

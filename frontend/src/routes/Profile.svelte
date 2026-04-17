@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileContacts, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar, uploadBanner, updateBio, updateDisplayName } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileContacts, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updateExperience, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar, uploadBanner, updateBio, updateDisplayName } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
@@ -7,7 +7,7 @@
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { ProfileData, Article, Series, ContentTeachRow, Contacts, ContactKind, CustomLink, LinkedHandle, BookmarkWithTitle, EducationEntry, EducationTranslation, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
+  import type { ProfileData, Article, Series, ContentTeachRow, Contacts, ContactKind, CustomLink, LinkedHandle, BookmarkWithTitle, EducationEntry, EducationTranslation, WorkExperienceEntry, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
   import { CONTACT_KINDS } from '../lib/types';
 
   /** Contact kinds that store {url, username} rather than a bare string. */
@@ -58,6 +58,8 @@
   // Academic profile state
   let editingEdu = $state(false);
   let editEdu = $state<EducationEntry[]>([]);
+  let editingExp = $state(false);
+  let editExp = $state<WorkExperienceEntry[]>([]);
   let userListings = $state<Listing[]>([]);
   let editingPubs = $state(false);
   let editPubs = $state<PublicationEntry[]>([]);
@@ -653,6 +655,28 @@
             </div>
           {/if}
         </div>
+        <div class="profile-col experience-col">
+          {#if profile.experience.length > 0 || isOwnProfile}
+            <div class="experience-list">
+              {#each profile.experience as exp}
+                <div class="experience-entry">
+                  <span class="exp-company">{exp.company}</span>
+                  {#if exp.title}<span class="exp-title">{exp.title}</span>{/if}
+                  {#if exp.location}<span class="exp-location">{exp.location}</span>{/if}
+                  <span class="edu-dates">
+                    {exp.start_date || ''}{#if exp.start_date} – {/if}{#if exp.current}{t('profile.present')}{:else}{exp.end_date || ''}{/if}
+                  </span>
+                  {#if exp.description}<p class="exp-desc">{exp.description}</p>{/if}
+                </div>
+              {/each}
+              {#if isOwnProfile}
+                <button class="edit-section-btn" onclick={() => { editExp = JSON.parse(JSON.stringify(profile!.experience)); editingExp = true; }}>
+                  {profile.experience.length > 0 ? t('common.edit') : t('profile.add')}
+                </button>
+              {/if}
+            </div>
+          {/if}
+        </div>
       </div>
       <div class="profile-stats">
         <span class="rep-stat" title="Reputation"><strong>{profile.reputation.toLocaleString()}</strong> rep</span>
@@ -1191,6 +1215,48 @@
   </div>
 {/if}
 
+<!-- Work Experience Editor Modal -->
+{#if editingExp}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={() => editingExp = false}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal academic-modal" onclick={(e) => e.stopPropagation()}>
+      <h3>{t('profile.editExperience')}</h3>
+      {#each editExp as exp, i}
+        <div class="modal-entry">
+          <input type="text" bind:value={exp.company} placeholder={t('profile.company')} />
+          <div class="modal-row">
+            <input type="text" bind:value={exp.title} placeholder={t('profile.jobTitle')} />
+            <input type="text" bind:value={exp.location} placeholder={t('profile.location')} />
+          </div>
+          <div class="modal-row">
+            <input type="month" bind:value={exp.start_date} placeholder={t('profile.start')} />
+            <span class="date-sep">–</span>
+            {#if exp.current}
+              <span class="date-present">{t('profile.present')}</span>
+            {:else}
+              <input type="month" bind:value={exp.end_date} placeholder={t('profile.end')} />
+            {/if}
+            <label class="current-toggle">
+              <input type="checkbox" bind:checked={exp.current} onchange={() => { if (exp.current) exp.end_date = null; }} />
+              {t('profile.enrolled')}
+            </label>
+          </div>
+          <textarea bind:value={exp.description} placeholder={t('profile.description')} rows="2"></textarea>
+          <button class="remove-entry" onclick={() => { editExp = editExp.filter((_, j) => j !== i); }}>{t('profile.remove')}</button>
+        </div>
+      {/each}
+      <button class="add-entry" onclick={() => { editExp = [...editExp, { company: '', title: '', location: '', start_date: '', end_date: '', current: true, description: '' }]; }}>+ {t('profile.addExperience')}</button>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick={() => editingExp = false}>{t('common.cancel')}</button>
+        <button class="btn-save" onclick={async () => { await updateExperience(editExp); profile!.experience = editExp; editingExp = false; }}>{t('common.save')}</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .profile-header {
     position: relative;
@@ -1405,6 +1471,15 @@
   .edu-trans-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
   .edu-trans-lang { font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; }
   .edu-add-lang { font-size: 12px; margin-top: 6px; padding: 3px 6px; border: 1px dashed var(--border); border-radius: 3px; background: none; color: var(--text-hint); cursor: pointer; font-family: var(--font-sans); }
+
+  /* Work experience */
+  .experience-list { margin: 0; }
+  .experience-entry { margin-bottom: 10px; font-size: 13px; line-height: 1.5; }
+  .exp-company { font-weight: 600; display: block; }
+  .exp-title { color: var(--text-secondary); display: block; }
+  .exp-location { color: var(--text-hint); font-size: 12px; display: block; }
+  .exp-desc { color: var(--text-secondary); font-size: 12px; margin: 4px 0 0; }
+  .current-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
   .profile-email {
     display: flex;
     align-items: center;
@@ -1546,11 +1621,14 @@
   /* Two-column layout inside the profile card: contacts left, education right. */
   .profile-columns {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
     gap: 24px;
     margin: 10px 0 16px;
   }
-  @media (max-width: 640px) {
+  @media (max-width: 800px) {
+    .profile-columns { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 540px) {
     .profile-columns { grid-template-columns: 1fr; gap: 12px; }
   }
   .profile-col { min-width: 0; }

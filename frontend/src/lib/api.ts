@@ -198,6 +198,7 @@ export const updateProfileContacts = (contacts: import('./types').Contacts) =>
 export const updateBio = (bio: string) => put<void>('/profile/bio', { bio });
 export const updateDisplayName = (display_name: string) => put<void>('/profile/display-name', { display_name });
 export const updateEducation = (education: import('./types').EducationEntry[]) => put<void>('/profile/education', education);
+export const updateExperience = (experience: import('./types').WorkExperienceEntry[]) => put<void>('/profile/experience', experience);
 export const updatePublications = (pubs: import('./types').PublicationEntry[]) => put<void>('/profile/publications', pubs);
 export const updateProjects = (projects: import('./types').ProjectEntry[]) => put<void>('/profile/projects', projects);
 export const updateTeaching = (teaching: import('./types').TeachingEntry[]) => put<void>('/profile/teaching', teaching);

@@ -103,6 +103,25 @@ pub struct EducationTranslation {
     pub major: Option<String>,
 }
 
+/// A work-experience entry on the user profile.
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct WorkExperienceEntry {
+    pub company: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub start_date: Option<String>,
+    #[serde(default)]
+    pub end_date: Option<String>,
+    #[serde(default)]
+    pub current: bool,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
 /// Locale -> text map. E.g. `{"en": "NightBoat", "zh": "夜舟"}`.
 pub type L = std::collections::HashMap<String, String>;
 
@@ -162,6 +181,7 @@ pub struct ProfileResponse {
     pub contacts: Contacts,
     pub email: Option<String>,
     pub education: Vec<EducationEntry>,
+    pub experience: Vec<WorkExperienceEntry>,
     pub publications: Vec<PublicationEntry>,
     pub projects: Vec<ProjectEntry>,
     pub teaching: Vec<TeachingEntry>,
@@ -265,6 +285,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         contacts: serde_json::Value,
         email: Option<String>,
         education: serde_json::Value,
+        experience: serde_json::Value,
         publications: serde_json::Value,
         projects: serde_json::Value,
         teaching: serde_json::Value,
@@ -278,7 +299,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
         "SELECT \
             p.handle, p.display_name, p.avatar_url, p.banner_url, p.bio, p.reputation, p.contacts, \
             us.email, \
-            p.education, p.publications, p.projects, p.teaching, \
+            p.education, p.experience, p.publications, p.projects, p.teaching, \
             p.affiliation, \
             p.credentials_verified, \
             (SELECT COUNT(*) FROM articles WHERE did = $1) AS article_count, \
@@ -297,6 +318,8 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
                 serde_json::from_value(r.contacts).unwrap_or_default();
             let education: Vec<EducationEntry> =
                 serde_json::from_value(r.education).unwrap_or_default();
+            let experience: Vec<WorkExperienceEntry> =
+                serde_json::from_value(r.experience).unwrap_or_default();
             let publications: Vec<PublicationEntry> =
                 serde_json::from_value(r.publications).unwrap_or_default();
             let projects: Vec<ProjectEntry> =
@@ -316,6 +339,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
                 contacts,
                 email: r.email,
                 education,
+                experience,
                 publications,
                 projects,
                 teaching,
@@ -336,6 +360,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
             contacts: Contacts::default(),
             email: None,
             education: Vec::new(),
+            experience: Vec::new(),
             publications: Vec::new(),
             projects: Vec::new(),
             teaching: Vec::new(),
