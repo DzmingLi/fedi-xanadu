@@ -1180,7 +1180,7 @@
           </div>
           <input type="text" bind:value={edu.school} placeholder={t('profile.school')} />
           <div class="modal-row">
-            <input type="text" bind:value={edu.department} placeholder={t('profile.department')} />
+            <input type="text" bind:value={edu.department} placeholder={t('profile.eduDepartment')} />
             <input type="text" bind:value={edu.major} placeholder={t('profile.major')} />
           </div>
           <div class="modal-row">
@@ -1206,7 +1206,7 @@
                 </div>
                 <input type="text" value={tr?.school || ''} placeholder={t('profile.school')} oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].school = (e.target as HTMLInputElement).value || null; }} />
                 <div class="modal-row">
-                  <input type="text" value={tr?.department || ''} placeholder={t('profile.department')} oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].department = (e.target as HTMLInputElement).value || null; }} />
+                  <input type="text" value={tr?.department || ''} placeholder={t('profile.eduDepartment')} oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].department = (e.target as HTMLInputElement).value || null; }} />
                   <input type="text" value={tr?.major || ''} placeholder={t('profile.major')} oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].major = (e.target as HTMLInputElement).value || null; }} />
                 </div>
               </div>
@@ -1243,7 +1243,7 @@
         <div class="modal-entry">
           <input type="text" bind:value={exp.company} placeholder={t('profile.company')} />
           <div class="modal-row">
-            <input type="text" bind:value={exp.department} placeholder={t('profile.department')} />
+            <input type="text" bind:value={exp.department} placeholder={t('profile.workDepartment')} />
             <input type="text" bind:value={exp.title} placeholder={t('profile.jobTitle')} />
             <input type="text" bind:value={exp.location} placeholder={t('profile.location')} />
           </div>
@@ -1275,7 +1275,7 @@
                 </div>
                 <input type="text" value={tr?.company || ''} placeholder={t('profile.company')} oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].company = (e.target as HTMLInputElement).value || null; }} />
                 <div class="modal-row">
-                  <input type="text" value={tr?.department || ''} placeholder={t('profile.department')} oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].department = (e.target as HTMLInputElement).value || null; }} />
+                  <input type="text" value={tr?.department || ''} placeholder={t('profile.workDepartment')} oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].department = (e.target as HTMLInputElement).value || null; }} />
                   <input type="text" value={tr?.title || ''} placeholder={t('profile.jobTitle')} oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].title = (e.target as HTMLInputElement).value || null; }} />
                   <input type="text" value={tr?.location || ''} placeholder={t('profile.location')} oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].location = (e.target as HTMLInputElement).value || null; }} />
                 </div>
