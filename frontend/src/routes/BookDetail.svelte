@@ -112,7 +112,7 @@
   // Edit history
   interface EditLog { id: string; editor_did: string; editor_handle: string | null; old_data: Record<string, any>; new_data: Record<string, any>; summary: string; created_at: string; }
   let editHistory = $state<EditLog[]>([]);
-  let expandedLogId = $state('');
+  let selectedLog = $state<EditLog | null>(null);
 
   $effect(() => {
     load();
@@ -1066,26 +1066,11 @@
           <p class="empty-hint">{t('books.noEditHistory')}</p>
         {:else}
           {#each editHistory.slice(0, 10) as log}
-            <button class="edit-log" onclick={() => expandedLogId = expandedLogId === log.id ? '' : log.id}>
+            <button class="edit-log" onclick={() => selectedLog = log}>
               <span class="edit-log-who">{log.editor_handle ? `@${log.editor_handle}` : log.editor_did.slice(0, 20)}</span>
               <span class="edit-log-summary">{log.summary || '—'}</span>
               <span class="edit-log-time">{new Date(log.created_at).toLocaleDateString()}</span>
             </button>
-            {#if expandedLogId === log.id}
-              <div class="edit-diff">
-                {#each Object.keys({ ...log.old_data, ...log.new_data }) as key}
-                  {@const oldVal = typeof log.old_data[key] === 'object' ? JSON.stringify(log.old_data[key]) : String(log.old_data[key] ?? '')}
-                  {@const newVal = typeof log.new_data[key] === 'object' ? JSON.stringify(log.new_data[key]) : String(log.new_data[key] ?? '')}
-                  {#if oldVal !== newVal}
-                    <div class="diff-field">
-                      <span class="diff-key">{key}</span>
-                      {#if oldVal}<div class="diff-old">- {oldVal}</div>{/if}
-                      {#if newVal}<div class="diff-new">+ {newVal}</div>{/if}
-                    </div>
-                  {/if}
-                {/each}
-              </div>
-            {/if}
           {/each}
         {/if}
         {#if getAuth()}
@@ -1190,6 +1175,40 @@
           <button class="btn btn-primary" onclick={saveEditionEdit} disabled={editionEditSaving}>
             {editionEditSaving ? 'Saving...' : 'Save'}
           </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Edit history diff modal -->
+  {#if selectedLog}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal-overlay" onclick={() => selectedLog = null}>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="modal" onclick={(e) => e.stopPropagation()}>
+        <h3>{t('books.editHistory')}</h3>
+        <div class="diff-meta">
+          <span class="edit-log-who">{selectedLog.editor_handle ? `@${selectedLog.editor_handle}` : selectedLog.editor_did.slice(0, 20)}</span>
+          <span class="edit-log-time">{new Date(selectedLog.created_at).toLocaleDateString()}</span>
+          {#if selectedLog.summary}<p class="edit-log-summary">{selectedLog.summary}</p>{/if}
+        </div>
+        <div class="edit-diff">
+          {#each Object.keys({ ...selectedLog.old_data, ...selectedLog.new_data }) as key}
+            {@const oldVal = typeof selectedLog.old_data[key] === 'object' ? JSON.stringify(selectedLog.old_data[key], null, 2) : String(selectedLog.old_data[key] ?? '')}
+            {@const newVal = typeof selectedLog.new_data[key] === 'object' ? JSON.stringify(selectedLog.new_data[key], null, 2) : String(selectedLog.new_data[key] ?? '')}
+            {#if oldVal !== newVal}
+              <div class="diff-field">
+                <span class="diff-key">{key}</span>
+                {#if oldVal}<div class="diff-old">- {oldVal}</div>{/if}
+                {#if newVal}<div class="diff-new">+ {newVal}</div>{/if}
+              </div>
+            {/if}
+          {/each}
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick={() => selectedLog = null}>{t('books.cancel') || 'Close'}</button>
         </div>
       </div>
     </div>
