@@ -436,6 +436,9 @@
         {/if}
         <div class="book-meta">
           <h1>{loc(detail.book.title)}</h1>
+          {#if loc(detail.book.subtitle)}
+            <p class="book-subtitle">{loc(detail.book.subtitle)}</p>
+          {/if}
           <p class="authors">{detail.book.authors.join(', ')}</p>
           {#if loc(detail.book.description)}
             <p class="description">{loc(detail.book.description)}</p>
@@ -946,7 +949,7 @@
             <img src={ed.cover_url} alt={ed.title} class="edition-cover" />
           {/if}
           <div class="edition-top">
-            <strong>{ed.title}</strong>
+            <strong>{loc(detail.book.title)}{#if loc(detail.book.subtitle)}: {loc(detail.book.subtitle)}{/if} ({ed.title})</strong>
             <span class="edition-lang">{langLabel(ed.lang)}</span>
           </div>
           <div class="edition-details">
@@ -1255,6 +1258,7 @@
     font-family: var(--font-serif);
     font-size: 1.6rem;
   }
+  .book-subtitle { font-size: 1.1rem; color: var(--text-secondary); margin: -4px 0 4px; font-style: italic; }
   .authors {
     margin: 4px 0 0;
     font-size: 15px;
