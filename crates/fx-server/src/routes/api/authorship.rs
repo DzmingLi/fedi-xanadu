@@ -32,7 +32,7 @@ pub async fn add_author(
     let is_publisher = article.did == user.did;
     let is_verified_author = if !is_publisher {
         let authors = authorship_service::list_authors(&state.pool, &input.article_uri).await?;
-        authors.iter().any(|a| a.author_did == user.did && a.status == "verified")
+        authors.iter().any(|a| a.author_did.as_deref() == Some(&user.did) && a.status == "verified")
     } else {
         true
     };

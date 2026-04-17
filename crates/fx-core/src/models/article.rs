@@ -42,8 +42,11 @@ pub struct Article {
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct ArticleAuthor {
-    pub author_did: String,
+    pub author_did: Option<String>,
+    pub author_name: Option<String>,
     pub author_handle: Option<String>,
+    pub author_display_name: Option<String>,
+    pub author_avatar: Option<String>,
     pub author_reputation: i32,
     pub position: Option<i16>,
     pub status: String,

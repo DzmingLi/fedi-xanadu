@@ -20,7 +20,7 @@ pub async fn add_author(
     sqlx::query(
         "INSERT INTO article_authors (article_uri, author_did, position, status, added_by, verified_at) \
          VALUES ($1, $2, $3, $4, $5, $6) \
-         ON CONFLICT (article_uri, author_did) DO NOTHING",
+         ON CONFLICT (article_uri, author_did) WHERE author_did IS NOT NULL DO NOTHING",
     )
     .bind(article_uri)
     .bind(author_did)
@@ -28,6 +28,27 @@ pub async fn add_author(
     .bind(status)
     .bind(added_by)
     .bind(verified_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Add a non-user author by name only (no DID).
+pub async fn add_author_by_name(
+    pool: &PgPool,
+    article_uri: &str,
+    author_name: &str,
+    added_by: &str,
+    position: Option<i16>,
+) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO article_authors (article_uri, author_name, position, status, added_by) \
+         VALUES ($1, $2, $3, 'verified', $4)",
+    )
+    .bind(article_uri)
+    .bind(author_name)
+    .bind(position)
+    .bind(added_by)
     .execute(pool)
     .await?;
     Ok(())
@@ -75,7 +96,8 @@ pub async fn list_authors(
     article_uri: &str,
 ) -> crate::Result<Vec<ArticleAuthor>> {
     let rows = sqlx::query_as::<_, ArticleAuthor>(
-        "SELECT aa.author_did, p.handle AS author_handle, \
+        "SELECT aa.author_did, aa.author_name, p.handle AS author_handle, \
+                p.display_name AS author_display_name, p.avatar_url AS author_avatar, \
                 COALESCE(p.reputation, 0) AS author_reputation, \
                 aa.position, aa.status, aa.authorship_uri \
          FROM article_authors aa \
@@ -98,9 +120,10 @@ pub async fn list_authors_batch(
         return Ok(vec![]);
     }
 
-    let rows: Vec<(String, String, Option<String>, i32, Option<i16>, String, Option<String>)> =
+    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, i32, Option<i16>, String, Option<String>)> =
         sqlx::query_as(
-            "SELECT aa.article_uri, aa.author_did, p.handle, \
+            "SELECT aa.article_uri, aa.author_did, aa.author_name, p.handle, \
+                    p.display_name, p.avatar_url, \
                     COALESCE(p.reputation, 0), \
                     aa.position, aa.status, aa.authorship_uri \
              FROM article_authors aa \
@@ -114,12 +137,15 @@ pub async fn list_authors_batch(
 
     Ok(rows
         .into_iter()
-        .map(|(uri, did, handle, rep, pos, status, auri)| {
+        .map(|(uri, did, name, handle, display_name, avatar, rep, pos, status, auri)| {
             (
                 uri,
                 ArticleAuthor {
                     author_did: did,
+                    author_name: name,
                     author_handle: handle,
+                    author_display_name: display_name,
+                    author_avatar: avatar,
                     author_reputation: rep,
                     position: pos,
                     status,
