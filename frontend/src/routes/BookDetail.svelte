@@ -36,6 +36,15 @@
     resources = await listBookResources(id);
   }
 
+  /** Build edition card title using the edition's own language. */
+  function editionFullTitle(ed: BookEdition): string {
+    if (!detail) return ed.title;
+    const t = (detail.book.title as Record<string,string>)[ed.lang] || loc(detail.book.title);
+    const st = (detail.book.subtitle as Record<string,string>)?.[ed.lang] || loc(detail.book.subtitle);
+    const full = st ? `${t}: ${st}` : t;
+    return `${full} (${ed.title})`;
+  }
+
   const RESOURCE_KINDS = ['solutions', 'exercises', 'video', 'slides', 'errata', 'code', 'other'];
 
   function resourceKindLabel(kind: string): string {
@@ -949,7 +958,7 @@
             <img src={ed.cover_url} alt={ed.title} class="edition-cover" />
           {/if}
           <div class="edition-top">
-            <strong>{loc(detail.book.title)}{#if loc(detail.book.subtitle)}: {loc(detail.book.subtitle)}{/if} ({ed.title})</strong>
+            <strong>{editionFullTitle(ed)}</strong>
             <span class="edition-lang">{langLabel(ed.lang)}</span>
           </div>
           <div class="edition-details">
