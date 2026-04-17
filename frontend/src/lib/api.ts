@@ -548,7 +548,7 @@ export const getAuthor = (id: string) => get<any>(`/authors/${encodeURIComponent
 export const searchAuthors = (q: string, limit = 20) => get<any[]>(`/authors/search?q=${encodeURIComponent(q)}&limit=${limit}`);
 
 // Authorship
-export interface ArticleAuthor { author_did: string | null; author_name: string | null; author_handle: string | null; author_display_name: string | null; author_avatar: string | null; author_reputation: number; position: number | null; is_corresponding: boolean; status: string; authorship_uri: string | null; }
+export interface ArticleAuthor { author_did: string | null; author_name: string | null; author_handle: string | null; author_display_name: string | null; author_avatar: string | null; author_reputation: number; position: number | null; role: string; is_corresponding: boolean; status: string; authorship_uri: string | null; }
 export const listArticleAuthors = (uri: string) =>
   get<ArticleAuthor[]>(`/authorship/authors?uri=${encodeURIComponent(uri)}`);
 

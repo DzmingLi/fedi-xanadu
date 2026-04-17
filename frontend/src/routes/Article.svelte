@@ -597,6 +597,8 @@ try {
                   <span class="author-display-name">{au.author_display_name || au.author_handle || au.author_did.slice(0, 16)}</span>
                   {#if au.author_handle}<span class="author-handle">@{au.author_handle}</span>{/if}
                 </span>
+                {#if au.role === 'translator'}<span class="author-role" title="Translator">译</span>{/if}
+                {#if au.role === 'editor'}<span class="author-role" title="Editor">编</span>{/if}
                 {#if au.is_corresponding}<span class="author-corresponding" title="Corresponding author">✉</span>{/if}
                 {#if au.status === 'verified'}<span class="author-verified" title="Verified">✓</span>{/if}
               </a>
@@ -604,6 +606,9 @@ try {
               <span class="author-chip text-only">
                 <span class="author-avatar placeholder">{au.author_name.charAt(0)}</span>
                 <span class="author-display-name">{au.author_name}</span>
+                {#if au.role === 'translator'}<span class="author-role" title="Translator">译</span>{/if}
+                {#if au.role === 'editor'}<span class="author-role" title="Editor">编</span>{/if}
+                {#if au.is_corresponding}<span class="author-corresponding" title="Corresponding author">✉</span>{/if}
               </span>
             {/if}
           {/each}
@@ -1085,6 +1090,7 @@ try {
   .author-info { display: flex; flex-direction: column; line-height: 1.2; }
   .author-display-name { font-weight: 500; font-size: 14px; }
   .author-handle { font-size: 11px; color: var(--text-hint); }
+  .author-role { font-size: 10px; padding: 1px 4px; border-radius: 3px; background: var(--bg-secondary); color: var(--text-hint); margin-left: 2px; }
   .author-corresponding { font-size: 12px; margin-left: 2px; color: var(--text-secondary); }
   .author-verified { color: var(--accent); font-size: 12px; margin-left: 2px; }
   .meta-sep { color: var(--text-hint); }

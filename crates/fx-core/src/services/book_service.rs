@@ -540,6 +540,8 @@ pub struct BookChapterWithTags {
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct CreateChapter {
     pub title: String,
+    #[serde(default)]
+    pub title_i18n: Option<std::collections::HashMap<String, String>>,
     pub parent_id: Option<String>,
     pub order_index: i32,
     pub article_uri: Option<String>,
@@ -621,13 +623,11 @@ pub async fn create_chapter(
     let mut tx = pool.begin().await?;
     let content_uri = format!("chapter:{id}");
 
-    // Build title_i18n: if title looks Chinese, key it as "zh", otherwise "en"
-    let title_i18n: std::collections::HashMap<String, String> = {
+    let title_i18n: std::collections::HashMap<String, String> = input.title_i18n.clone().unwrap_or_else(|| {
         let mut m = std::collections::HashMap::new();
-        let lang = if input.title.chars().any(|c| c >= '\u{4e00}' && c <= '\u{9fff}') { "zh" } else { "en" };
-        m.insert(lang.to_string(), input.title.clone());
+        m.insert("en".to_string(), input.title.clone());
         m
-    };
+    });
 
     sqlx::query(
         "INSERT INTO book_chapters (id, book_id, parent_id, title, title_i18n, order_index, article_uri) \

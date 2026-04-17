@@ -51,6 +51,7 @@ pub struct ArticleAuthor {
     pub author_avatar: Option<String>,
     pub author_reputation: i32,
     pub position: Option<i16>,
+    pub role: String,
     pub is_corresponding: bool,
     pub status: String,
     pub authorship_uri: Option<String>,
