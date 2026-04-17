@@ -3,4 +3,4 @@
 /**
  * A work-experience entry on the user profile.
  */
-export type WorkExperienceEntry = { company: string, title: string | null, location: string | null, start_date: string | null, end_date: string | null, current: boolean, description: string | null, };
+export type WorkExperienceEntry = { company: string, department: string | null, title: string | null, location: string | null, start_date: string | null, end_date: string | null, current: boolean, description: string | null, };

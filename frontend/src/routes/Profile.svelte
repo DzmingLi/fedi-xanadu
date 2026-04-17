@@ -660,7 +660,7 @@
             <div class="experience-list">
               {#each profile.experience as exp}
                 <div class="experience-entry">
-                  <span class="exp-company">{exp.company}</span>
+                  <span class="exp-company">{exp.company}{#if exp.department}, {exp.department}{/if}</span>
                   {#if exp.title}<span class="exp-title">{exp.title}</span>{/if}
                   {#if exp.location}<span class="exp-location">{exp.location}</span>{/if}
                   <span class="edu-dates">
@@ -1228,6 +1228,7 @@
         <div class="modal-entry">
           <input type="text" bind:value={exp.company} placeholder={t('profile.company')} />
           <div class="modal-row">
+            <input type="text" bind:value={exp.department} placeholder={t('profile.department')} />
             <input type="text" bind:value={exp.title} placeholder={t('profile.jobTitle')} />
             <input type="text" bind:value={exp.location} placeholder={t('profile.location')} />
           </div>
@@ -1248,7 +1249,7 @@
           <button class="remove-entry" onclick={() => { editExp = editExp.filter((_, j) => j !== i); }}>{t('profile.remove')}</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editExp = [...editExp, { company: '', title: '', location: '', start_date: '', end_date: '', current: true, description: '' }]; }}>+ {t('profile.addExperience')}</button>
+      <button class="add-entry" onclick={() => { editExp = [...editExp, { company: '', department: '', title: '', location: '', start_date: '', end_date: '', current: true, description: '' }]; }}>+ {t('profile.addExperience')}</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingExp = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateExperience(editExp); profile!.experience = editExp; editingExp = false; }}>{t('common.save')}</button>

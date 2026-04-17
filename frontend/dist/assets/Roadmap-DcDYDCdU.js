@@ -1,4 +1,4 @@
-# 路线图
+import{p as e,aN as i,T as s,k as r,l as p,v as d}from"./index-CTzLkHeH.js";import{g as l}from"./marked.esm-s8m4VXvQ.js";const m=`# 路线图
 
 NightBoat 的开发计划。欢迎提 issue 或 PR 参与贡献。
 
@@ -24,3 +24,4 @@ NightBoat 的开发计划。欢迎提 issue 或 PR 参与贡献。
 - **移动端适配（PWA）** — 响应式布局 + Service Worker，让移动端用户无需安装即可使用
 - **移动端 App（Tauri Mobile）** — 基于 Tauri 2.0 构建 iOS/Android 原生应用，复用 Rust + Svelte 现有技术栈，支持 Typst 本地渲染和离线缓存
 - **Logseq 插件** — 在 Logseq 中发布和同步 NightBoat 文章（低优先级）
+`;var g=d('<div class="content roadmap-content svelte-1cn1z2"></div>');function S(a,o){e(o,!1);const t=l.parse(m);i();var n=g();s(n,()=>t,!0),r(a,n),p()}export{S as default};

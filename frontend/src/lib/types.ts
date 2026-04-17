@@ -407,6 +407,7 @@ export interface EducationEntry {
 
 export interface WorkExperienceEntry {
   company: string;
+  department?: string | null;
   title?: string | null;
   location?: string | null;
   start_date?: string | null;

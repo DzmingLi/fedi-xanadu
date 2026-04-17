@@ -109,6 +109,8 @@ pub struct EducationTranslation {
 pub struct WorkExperienceEntry {
     pub company: String,
     #[serde(default)]
+    pub department: Option<String>,
+    #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
     pub location: Option<String>,
