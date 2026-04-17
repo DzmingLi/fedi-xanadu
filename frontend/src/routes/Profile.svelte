@@ -528,7 +528,7 @@
       <div class="banner-placeholder"></div>
     {/if}
     {#if isOwnProfile}
-      <label class="banner-upload" title="Upload banner">
+      <label class="banner-upload" title={t('profile.uploadBanner')}>
         <input type="file" accept="image/*" class="sr-only" onchange={async (e) => {
           const file = (e.target as HTMLInputElement).files?.[0];
           if (!file) return;
@@ -549,7 +549,7 @@
         <div class="avatar placeholder">{(profile.handle || profile.did).charAt(0).toUpperCase()}</div>
       {/if}
       {#if isOwnProfile}
-        <label class="avatar-upload" title="Upload avatar">
+        <label class="avatar-upload" title={t('profile.uploadAvatar')}>
           <input type="file" accept="image/*" class="sr-only" onchange={async (e) => {
             const file = (e.target as HTMLInputElement).files?.[0];
             if (!file) return;
@@ -565,7 +565,7 @@
     <div class="profile-info">
       {#if editingName}
         <div class="name-edit">
-          <input class="name-input" bind:value={editName} placeholder="Display name" />
+          <input class="name-input" bind:value={editName} placeholder={t('profile.displayNamePlaceholder')} />
           <button class="email-save" onclick={async () => { await updateDisplayName(editName.trim()); if (profile) profile.display_name = editName.trim() || null; editingName = false; }}>{t('common.save')}</button>
           <button class="email-cancel" onclick={() => { editingName = false; }}>{t('common.cancel')}</button>
         </div>
@@ -680,7 +680,7 @@
       {#if isOwnProfile}
         <a href="/settings" class="settings-link">{t('profile.settings')}</a>
       {/if}
-      <a href="/feed/{encodeURIComponent(did)}.xml" class="rss-link" title="RSS Feed" target="_blank" rel="noopener">RSS</a>
+      <a href="/feed/{encodeURIComponent(did)}.xml" class="rss-link" title={t('profile.rssTitle')} target="_blank" rel="noopener">RSS</a>
     </div>
     {#if getAuth() && !isOwnProfile}
       <div class="profile-actions-secondary">
@@ -1004,7 +1004,7 @@
       <!-- Open Listings -->
       {#if userListings.length > 0}
         <div class="sidebar-card">
-          <div class="section-header"><h3>Open Positions</h3></div>
+          <div class="section-header"><h3>{t('profile.openPositions')}</h3></div>
           {#each userListings as l}
             <a href="/listing?id={encodeURIComponent(l.id)}" class="listing-mini">
               <span class="listing-kind">{l.kind.toUpperCase()}</span>
@@ -1026,23 +1026,23 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal academic-modal" onclick={(e) => e.stopPropagation()}>
-      <h3>Edit Publications</h3>
+      <h3>{t('profile.editPublications')}</h3>
       {#each editPubs as pub_entry, i}
         <div class="modal-entry">
-          <input type="text" bind:value={pub_entry.title[getLocale()]} placeholder="Title" />
-          <input type="text" bind:value={pub_entry.venue[getLocale()]} placeholder="Venue (e.g. ICML 2025)" />
+          <input type="text" bind:value={pub_entry.title[getLocale()]} placeholder={t('profile.pubTitle')} />
+          <input type="text" bind:value={pub_entry.venue[getLocale()]} placeholder={t('profile.pubVenue')} />
           <div class="modal-row">
-            <input type="text" value={pub_entry.authors.join(', ')} oninput={(e) => { pub_entry.authors = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()); }} placeholder="Authors (comma separated)" />
-            <input type="number" bind:value={pub_entry.year} placeholder="Year" class="year-input" />
+            <input type="text" value={pub_entry.authors.join(', ')} oninput={(e) => { pub_entry.authors = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()); }} placeholder={t('profile.pubAuthors')} />
+            <input type="number" bind:value={pub_entry.year} placeholder={t('profile.year')} class="year-input" />
           </div>
           <div class="modal-row">
             <input type="url" bind:value={pub_entry.url} placeholder="URL" />
-            <input type="text" bind:value={pub_entry.doi} placeholder="DOI" />
+            <input type="text" bind:value={pub_entry.doi} placeholder={t('profile.doi')} />
           </div>
-          <button class="remove-entry" onclick={() => { editPubs = editPubs.filter((_, j) => j !== i); }}>Remove</button>
+          <button class="remove-entry" onclick={() => { editPubs = editPubs.filter((_, j) => j !== i); }}>{t('profile.remove')}</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editPubs = [...editPubs, { title: {}, authors: [], venue: {}, year: new Date().getFullYear(), url: null, doi: null, abstract_text: null }]; }}>+ Add Publication</button>
+      <button class="add-entry" onclick={() => { editPubs = [...editPubs, { title: {}, authors: [], venue: {}, year: new Date().getFullYear(), url: null, doi: null, abstract_text: null }]; }}>+ {t('profile.addPublication')}</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingPubs = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updatePublications(editPubs); profile!.publications = editPubs; editingPubs = false; }}>{t('common.save')}</button>
@@ -1059,23 +1059,23 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal academic-modal" onclick={(e) => e.stopPropagation()}>
-      <h3>Edit Projects</h3>
+      <h3>{t('profile.editProjects')}</h3>
       {#each editProj as proj, i}
         <div class="modal-entry">
-          <input type="text" bind:value={proj.title[getLocale()]} placeholder="Project name" />
-          <textarea bind:value={proj.description[getLocale()]} placeholder="Description" rows="2"></textarea>
+          <input type="text" bind:value={proj.title[getLocale()]} placeholder={t('profile.projectName')} />
+          <textarea bind:value={proj.description[getLocale()]} placeholder={t('profile.description')} rows="2"></textarea>
           <div class="modal-row">
             <input type="url" bind:value={proj.url} placeholder="URL" />
             <select bind:value={proj.status}>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="archived">Archived</option>
+              <option value="active">{t('profile.projectStatus.active')}</option>
+              <option value="completed">{t('profile.projectStatus.completed')}</option>
+              <option value="archived">{t('profile.projectStatus.archived')}</option>
             </select>
           </div>
-          <button class="remove-entry" onclick={() => { editProj = editProj.filter((_, j) => j !== i); }}>Remove</button>
+          <button class="remove-entry" onclick={() => { editProj = editProj.filter((_, j) => j !== i); }}>{t('profile.remove')}</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editProj = [...editProj, { title: {}, description: {}, url: null, status: 'active' }]; }}>+ Add Project</button>
+      <button class="add-entry" onclick={() => { editProj = [...editProj, { title: {}, description: {}, url: null, status: 'active' }]; }}>+ {t('profile.addProject')}</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingProjects = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateProjects(editProj); profile!.projects = editProj; editingProjects = false; }}>{t('common.save')}</button>
@@ -1092,19 +1092,19 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal academic-modal" onclick={(e) => e.stopPropagation()}>
-      <h3>Edit Teaching</h3>
+      <h3>{t('profile.editTeaching')}</h3>
       {#each editTeach as te, i}
         <div class="modal-entry">
-          <input type="text" bind:value={te.course_name[getLocale()]} placeholder="Course name" />
+          <input type="text" bind:value={te.course_name[getLocale()]} placeholder={t('profile.courseName')} />
           <div class="modal-row">
-            <input type="text" bind:value={te.role[getLocale()]} placeholder="Role (e.g. Instructor, TA)" />
-            <input type="text" bind:value={te.institution[getLocale()]} placeholder="Institution" />
-            <input type="number" bind:value={te.year} placeholder="Year" class="year-input" />
+            <input type="text" bind:value={te.role[getLocale()]} placeholder={t('profile.courseRole')} />
+            <input type="text" bind:value={te.institution[getLocale()]} placeholder={t('profile.institution')} />
+            <input type="number" bind:value={te.year} placeholder={t('profile.year')} class="year-input" />
           </div>
-          <button class="remove-entry" onclick={() => { editTeach = editTeach.filter((_, j) => j !== i); }}>Remove</button>
+          <button class="remove-entry" onclick={() => { editTeach = editTeach.filter((_, j) => j !== i); }}>{t('profile.remove')}</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editTeach = [...editTeach, { course_name: {}, role: {}, institution: {}, year: new Date().getFullYear(), description: null }]; }}>+ Add Course</button>
+      <button class="add-entry" onclick={() => { editTeach = [...editTeach, { course_name: {}, role: {}, institution: {}, year: new Date().getFullYear(), description: null }]; }}>+ {t('profile.addCourse')}</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingTeach = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateTeaching(editTeach); profile!.teaching = editTeach; editingTeach = false; }}>{t('common.save')}</button>
@@ -1121,68 +1121,68 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal academic-modal" onclick={(e) => e.stopPropagation()}>
-      <h3>Edit Education</h3>
+      <h3>{t('profile.editEducation')}</h3>
       {#each editEdu as edu, i}
         <div class="modal-entry">
           <div class="modal-row">
             <select bind:value={edu.degree}>
-              <option value="">-- Degree --</option>
-              <option value="Bachelor">Bachelor / 本科</option>
-              <option value="Master">Master / 硕士</option>
-              <option value="PhD">PhD / 博士</option>
-              <option value="Postdoc">Postdoc / 博士后</option>
-              <option value="Associate">Associate / 专科</option>
-              <option value="Other">Other</option>
+              <option value="">{t('profile.degreeSelect')}</option>
+              <option value="Bachelor">{t('profile.degree.Bachelor')}</option>
+              <option value="Master">{t('profile.degree.Master')}</option>
+              <option value="PhD">{t('profile.degree.PhD')}</option>
+              <option value="Postdoc">{t('profile.degree.Postdoc')}</option>
+              <option value="Associate">{t('profile.degree.Associate')}</option>
+              <option value="Other">{t('profile.degree.Other')}</option>
             </select>
             <select bind:value={edu.current} onchange={() => { if (edu.current) edu.end_date = null; }}>
-              <option value={true}>在读 / Enrolled</option>
-              <option value={false}>毕业 / Graduated</option>
+              <option value={true}>{t('profile.enrolled')}</option>
+              <option value={false}>{t('profile.graduated')}</option>
             </select>
           </div>
-          <input type="text" bind:value={edu.school} placeholder="School / 学校" />
+          <input type="text" bind:value={edu.school} placeholder={t('profile.school')} />
           <div class="modal-row">
-            <input type="text" bind:value={edu.department} placeholder="Department / 院系" />
-            <input type="text" bind:value={edu.major} placeholder="Major / 专业" />
+            <input type="text" bind:value={edu.department} placeholder={t('profile.department')} />
+            <input type="text" bind:value={edu.major} placeholder={t('profile.major')} />
           </div>
           <div class="modal-row">
-            <input type="month" bind:value={edu.start_date} placeholder="Start" />
+            <input type="month" bind:value={edu.start_date} placeholder={t('profile.start')} />
             <span class="date-sep">–</span>
             {#if edu.current}
-              <span class="date-present">{t('profile.present') || 'Present'}</span>
+              <span class="date-present">{t('profile.present')}</span>
             {:else}
-              <input type="month" bind:value={edu.end_date} placeholder="End" />
+              <input type="month" bind:value={edu.end_date} placeholder={t('profile.end')} />
             {/if}
           </div>
           <!-- Translations -->
           <details class="edu-translations">
             <summary class="edu-trans-summary">
-              Translations ({Object.keys(edu.translations || {}).length})
+              {t('profile.translations')} ({Object.keys(edu.translations || {}).length})
             </summary>
             {#each Object.keys(edu.translations || {}) as lang}
               {@const tr = (edu.translations || {})[lang]}
               <div class="edu-trans-block">
                 <div class="edu-trans-header">
                   <span class="edu-trans-lang">{lang.toUpperCase()}</span>
-                  <button class="remove-entry" onclick={() => { const t = { ...(edu.translations || {}) }; delete t[lang]; edu.translations = t; editEdu = [...editEdu]; }}>×</button>
+                  <button class="remove-entry" onclick={() => { const copy = { ...(edu.translations || {}) }; delete copy[lang]; edu.translations = copy; editEdu = [...editEdu]; }}>×</button>
                 </div>
-                <input type="text" value={tr?.school || ''} placeholder="School" oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].school = (e.target as HTMLInputElement).value || null; }} />
+                <input type="text" value={tr?.school || ''} placeholder={t('profile.school')} oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].school = (e.target as HTMLInputElement).value || null; }} />
                 <div class="modal-row">
-                  <input type="text" value={tr?.department || ''} placeholder="Department" oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].department = (e.target as HTMLInputElement).value || null; }} />
-                  <input type="text" value={tr?.major || ''} placeholder="Major" oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].major = (e.target as HTMLInputElement).value || null; }} />
+                  <input type="text" value={tr?.department || ''} placeholder={t('profile.department')} oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].department = (e.target as HTMLInputElement).value || null; }} />
+                  <input type="text" value={tr?.major || ''} placeholder={t('profile.major')} oninput={(e) => { if (!edu.translations) edu.translations = {}; if (!edu.translations[lang]) edu.translations[lang] = {}; edu.translations[lang].major = (e.target as HTMLInputElement).value || null; }} />
                 </div>
               </div>
             {/each}
             <select class="edu-add-lang" onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (!v) return; if (!edu.translations) edu.translations = {}; edu.translations[v] = { school: null, department: null, major: null }; editEdu = [...editEdu]; (e.target as HTMLSelectElement).value = ''; }}>
-              <option value="">+ Add language...</option>
+              <option value="">{t('profile.addLanguage')}</option>
               {#each ['en', 'zh', 'ja', 'ko', 'fr', 'de'].filter(l => !Object.keys(edu.translations || {}).includes(l)) as l}
                 <option value={l}>{l.toUpperCase()}</option>
               {/each}
             </select>
           </details>
-          <button class="remove-entry" onclick={() => { editEdu = editEdu.filter((_, j) => j !== i); }}>Remove</button>
+          <button class="remove-entry" onclick={() => { editEdu = editEdu.filter((_, j) => j !== i); }}>{t('profile.remove')}</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editEdu = [...editEdu, { degree: '', school: '', department: '', major: '', start_date: '', end_date: '', current: true, translations: {} }]; }}>+ Add Education</button>
+      <button class="add-entry" onclick={() => { editEdu = [...editEdu, { degree: '', school: '', department: '', major: '', start_date: '', end_date: '', current: true, translations: {} }]; }}>+ {t('profile.addEducation')}</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingEdu = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateEducation(editEdu); profile!.education = editEdu; editingEdu = false; }}>{t('common.save')}</button>
