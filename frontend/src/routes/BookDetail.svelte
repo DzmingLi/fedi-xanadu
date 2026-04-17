@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, updateBook, updateBookEdition, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource } from '../lib/api';
+  import { getBook, updateBook, updateBookEdition, uploadEditionCover, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource } from '../lib/api';
   import type { BookResource } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
@@ -198,6 +198,30 @@
   let editionEditLinks = $state('');
   let editionEditSaving = $state(false);
   let editionEditError = $state('');
+  let uploadingCoverId = $state('');
+  let coverErrorId = $state('');
+  let coverErrorMsg = $state('');
+
+  async function handleEditionCoverUpload(editionId: string, file: File) {
+    coverErrorId = '';
+    coverErrorMsg = '';
+    if (file.size > 5 * 1024 * 1024) {
+      coverErrorId = editionId; coverErrorMsg = t('books.coverTooLarge'); return;
+    }
+    if (!/\.(jpe?g|png|webp)$/i.test(file.name)) {
+      coverErrorId = editionId; coverErrorMsg = t('books.coverWrongType'); return;
+    }
+    uploadingCoverId = editionId;
+    try {
+      await uploadEditionCover(id, editionId, file);
+      await load();
+    } catch (e: any) {
+      coverErrorId = editionId;
+      coverErrorMsg = e.message || 'Upload failed';
+    } finally {
+      uploadingCoverId = '';
+    }
+  }
 
   function openEditionEdit(ed: BookEdition) {
     editionEditId = ed.id;
@@ -1017,6 +1041,15 @@
           {#if getAuth()}
             <div class="edition-actions">
               <button class="set-cover-btn" onclick={() => openEditionEdit(ed)}>✎</button>
+              <label class="set-cover-btn" class:disabled={uploadingCoverId === ed.id}>
+                {uploadingCoverId === ed.id ? t('books.uploadingCover') : t('books.uploadCover')}
+                <input type="file" accept="image/jpeg,image/png,image/webp" hidden onchange={async (e) => {
+                  const input = e.target as HTMLInputElement;
+                  const file = input.files?.[0];
+                  if (file) await handleEditionCoverUpload(ed.id, file);
+                  input.value = '';
+                }} />
+              </label>
               {#if ed.cover_url}
                 <button class="set-cover-btn" onclick={async () => {
                   await setPreferredEdition(id, ed.id);
@@ -1024,6 +1057,9 @@
                 }}>{t('books.setAsCover') || 'Use this cover'}</button>
               {/if}
             </div>
+            {#if coverErrorId === ed.id}
+              <p class="error-msg">{coverErrorMsg}</p>
+            {/if}
           {/if}
         </div>
       {/each}
@@ -1787,6 +1823,7 @@
     margin-top: 4px;
   }
   .set-cover-btn:hover { background: var(--accent); color: white; }
+  .set-cover-btn.disabled { opacity: 0.6; pointer-events: none; }
 
   /* Q&A Section */
   .qa-section { margin-top: 2rem; }

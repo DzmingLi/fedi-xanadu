@@ -523,6 +523,14 @@ export const addBookEdition = (book_id: string, edition: { edition_name?: string
   post<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions`, edition);
 export const updateBookEdition = (book_id: string, edition_id: string, edition: { edition_name?: string; title: string; subtitle?: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
   put<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions/${encodeURIComponent(edition_id)}`, edition);
+export const uploadEditionCover = async (book_id: string, edition_id: string, file: File): Promise<string> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/books/${encodeURIComponent(book_id)}/editions/${encodeURIComponent(edition_id)}/cover`, { method: 'POST', headers: authHeaders(), body: form });
+  if (!res.ok) throw new Error(`${res.status}`);
+  const data = await res.json();
+  return data.cover_url;
+};
 export const getBookEditHistory = (id: string) =>
   get<any[]>(`/books/${encodeURIComponent(id)}/history`);
 export const rateBook = (book_id: string, rating: number) =>
