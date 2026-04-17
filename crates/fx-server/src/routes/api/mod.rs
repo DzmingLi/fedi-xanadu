@@ -243,6 +243,7 @@ fn profile_routes() -> Router<AppState> {
         .route("/profile", get(profile::get_profile))
         .route("/profile/links", put(profile::update_profile_links))
         .route("/profile/bio", put(profile::update_bio))
+        .route("/profile/display-name", put(profile::update_display_name))
         .route("/profile/education", put(profile::update_education))
         .route("/profile/publications", put(profile::update_publications))
         .route("/profile/projects", put(profile::update_projects))

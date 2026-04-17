@@ -84,6 +84,24 @@ pub async fn update_bio(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(serde::Deserialize)]
+pub(crate) struct UpdateDisplayNameInput {
+    display_name: String,
+}
+
+pub async fn update_display_name(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<UpdateDisplayNameInput>,
+) -> ApiResult<StatusCode> {
+    sqlx::query("UPDATE profiles SET display_name = $1 WHERE did = $2")
+        .bind(&input.display_name)
+        .bind(&user.did)
+        .execute(&state.pool)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn update_education(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,

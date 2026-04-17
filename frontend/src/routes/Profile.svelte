@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar, uploadBanner, updateBio } from '../lib/api';
+  import { getProfile, getArticlesByDid, getQuestionsByDid, getAnswersByDid, listSeries, getAllArticleTeaches, getAllSeriesArticles, listFollows, followUser, unfollowUser, markFollowSeen, updateProfileLinks, getFollowing, getFollowers, getSettings, setSettings, blockUser as apiBlockUser, unblockUser as apiUnblockUser, createReport, listPublicBookmarks, updateEducation, updatePublications, updateProjects, updateTeaching, getUserListings, uploadAvatar, uploadBanner, updateBio, updateDisplayName } from '../lib/api';
   import type { FollowEntry } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { isBlocked, addBlocked, removeBlocked } from '../lib/blocklist.svelte';
@@ -48,6 +48,8 @@
   let newLinkUrl = $state('');
   let editingBio = $state(false);
   let editBio = $state('');
+  let editingName = $state(false);
+  let editName = $state('');
   let editingEmail = $state(false);
   let editEmail = $state('');
 
@@ -422,7 +424,20 @@
       {/if}
     </div>
     <div class="profile-info">
-      <h1 class="display-name">{profile.display_name || profile.handle || shortDid(profile.did)}</h1>
+      {#if editingName}
+        <div class="name-edit">
+          <input class="name-input" bind:value={editName} placeholder="Display name" />
+          <button class="email-save" onclick={async () => { await updateDisplayName(editName.trim()); if (profile) profile.display_name = editName.trim() || null; editingName = false; }}>{t('common.save')}</button>
+          <button class="email-cancel" onclick={() => { editingName = false; }}>{t('common.cancel')}</button>
+        </div>
+      {:else}
+        <h1 class="display-name">
+          {profile.display_name || profile.handle || shortDid(profile.did)}
+          {#if isOwnProfile}
+            <button class="edit-name-btn" onclick={() => { editName = profile?.display_name || ''; editingName = true; }}>✎</button>
+          {/if}
+        </h1>
+      {/if}
       {#if profile.handle}
         <p class="handle">@{profile.handle}</p>
       {/if}
@@ -1156,6 +1171,13 @@
     margin: 0;
     font-size: 1.5rem;
   }
+  .edit-name-btn {
+    background: none; border: none; cursor: pointer; color: var(--text-hint);
+    font-size: 14px; padding: 0 4px; vertical-align: middle;
+  }
+  .edit-name-btn:hover { color: var(--accent); }
+  .name-edit { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+  .name-input { font-size: 1.2rem; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-family: var(--font-serif); }
   .handle {
     font-size: 14px;
     color: var(--text-secondary);

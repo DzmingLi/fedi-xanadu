@@ -196,6 +196,7 @@ export const getProfile = (did: string) => get<ProfileData>(`/profile?did=${enco
 export const updateProfileLinks = (links: { label: string; url: string }[]) =>
   post<void>('/profile/links', { links });
 export const updateBio = (bio: string) => put<void>('/profile/bio', { bio });
+export const updateDisplayName = (display_name: string) => put<void>('/profile/display-name', { display_name });
 export const updateEducation = (education: import('./types').EducationEntry[]) => put<void>('/profile/education', education);
 export const updatePublications = (pubs: import('./types').PublicationEntry[]) => put<void>('/profile/publications', pubs);
 export const updateProjects = (projects: import('./types').ProjectEntry[]) => put<void>('/profile/projects', projects);
