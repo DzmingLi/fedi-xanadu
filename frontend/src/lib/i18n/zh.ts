@@ -178,8 +178,6 @@ export default {
   'newArticle.titleLabel': '标题',
   'newArticle.descLabel': '描述',
   'newArticle.descPlaceholder': '首页预览的简短描述',
-  'newArticle.autoDescription': '自动生成摘要',
-  'newArticle.autoDescPlaceholder': '将从正文自动生成',
   'newArticle.langLabel': '语言',
   'newArticle.licenseLabel': '许可证',
   'newArticle.restricted': '限制访问（付费内容，不同步到 PDS）',

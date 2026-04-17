@@ -7,7 +7,7 @@ use crate::region::{InstanceMode, visibility_filter};
 /// Base SELECT for article queries (no WHERE clause).
 const ARTICLE_BASE: &str = "\
     SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation, \
-    a.kind, a.title, a.description, a.description_html, a.auto_description, \
+    a.kind, a.title, a.description, a.description_html, \
     a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
     a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
     COALESCE(v.vote_score, 0) AS vote_score, \
@@ -431,15 +431,14 @@ pub async fn create_article(
     let category = input.category.as_deref().unwrap_or("general");
 
     sqlx::query(
-        "INSERT INTO articles (at_uri, did, title, description, description_html, auto_description, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id, edition_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0.8, $12, $13, $14, $15, $16, $17, $18)",
+        "INSERT INTO articles (at_uri, did, title, description, description_html, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id, edition_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0.8, $11, $12, $13, $14, $15, $16, $17)",
     )
     .bind(at_uri)
     .bind(did)
     .bind(&input.title)
     .bind(resolved_description)
     .bind(description_html)
-    .bind(input.auto_description)
     .bind(content_hash)
     .bind(input.content_format)
     .bind(lang)
@@ -541,24 +540,13 @@ pub async fn update_article_title(pool: &PgPool, uri: &str, title: &str) -> crat
 }
 
 pub async fn update_article_description(
-    pool: &PgPool, uri: &str, desc: &str, desc_html: &str, auto: bool,
+    pool: &PgPool, uri: &str, desc: &str, desc_html: &str,
 ) -> crate::Result<()> {
     sqlx::query(
-        "UPDATE articles SET description = $1, description_html = $2, auto_description = $3, updated_at = NOW() WHERE at_uri = $4",
+        "UPDATE articles SET description = $1, description_html = $2, updated_at = NOW() WHERE at_uri = $3",
     )
-    .bind(desc).bind(desc_html).bind(auto).bind(uri).execute(pool).await?;
+    .bind(desc).bind(desc_html).bind(uri).execute(pool).await?;
     Ok(())
-}
-
-/// Look up whether an article has auto_description enabled.
-pub async fn get_article_auto_description(pool: &PgPool, uri: &str) -> crate::Result<bool> {
-    let v: bool = sqlx::query_scalar(
-        "SELECT auto_description FROM articles WHERE at_uri = $1",
-    )
-    .bind(uri)
-    .fetch_one(pool)
-    .await?;
-    Ok(v)
 }
 
 pub async fn update_article_content_hash(pool: &PgPool, uri: &str, hash: &str) -> crate::Result<()> {
@@ -611,7 +599,7 @@ pub async fn update_article_batch(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "UPDATE articles SET title = $2, description = $3, description_html = $9, auto_description = $10, content_hash = $4, \
+        "UPDATE articles SET title = $2, description = $3, description_html = $9, content_hash = $4, \
          content_format = $5, lang = $6, license = $7, category = $8, updated_at = NOW() \
          WHERE at_uri = $1",
     )
@@ -624,7 +612,6 @@ pub async fn update_article_batch(
     .bind(license)
     .bind(category)
     .bind(description_html)
-    .bind(input.auto_description)
     .execute(&mut *tx)
     .await?;
 

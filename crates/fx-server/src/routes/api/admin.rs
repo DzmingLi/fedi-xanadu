@@ -76,7 +76,6 @@ pub async fn admin_create_article(
         input.article.series_id.as_deref(), "Initial publish",
         super::articles::DescriptionInput {
             user_source: input.article.description.as_deref(),
-            auto: input.article.auto_description,
         },
     ).await?;
 
@@ -214,7 +213,7 @@ pub async fn admin_update_article(
         let repo_path = state.pijul.repo_path(&node_id);
         let desc_html = crate::description::render_description_inline(format.as_str(), desc, &repo_path)
             .unwrap_or_default();
-        article_service::update_article_description(&state.pool, &input.uri, desc, &desc_html, false).await?;
+        article_service::update_article_description(&state.pool, &input.uri, desc, &desc_html).await?;
     }
 
     if let Some(ref content) = input.content {
@@ -626,7 +625,6 @@ pub async fn admin_create_question(
         None, "Initial publish",
         super::articles::DescriptionInput {
             user_source: input.article.description.as_deref(),
-            auto: input.article.auto_description,
         },
     ).await?;
 
@@ -673,7 +671,6 @@ pub async fn admin_post_answer(
         None, "Initial publish",
         super::articles::DescriptionInput {
             user_source: input.article.description.as_deref(),
-            auto: input.article.auto_description,
         },
     ).await?;
 
@@ -900,7 +897,6 @@ pub async fn admin_batch_publish(
         let create = CreateArticle {
             title: item.title.clone(),
             description: item.description.clone(),
-            auto_description: item.description.as_deref().is_none_or(str::is_empty),
             content: item.content.clone(),
             content_format,
             lang: Some(lang.to_string()),

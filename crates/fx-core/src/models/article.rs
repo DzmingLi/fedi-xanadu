@@ -22,8 +22,6 @@ pub struct Article {
     pub description: String,
     #[sqlx(default)]
     pub description_html: String,
-    #[sqlx(default)]
-    pub auto_description: bool,
     pub content_hash: Option<String>,
     pub content_format: ContentFormat,
     pub lang: String,
@@ -76,17 +74,11 @@ pub struct PaperMetadata {
 
 // ---- Request ----
 
-fn default_auto_description() -> bool { true }
-
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct CreateArticle {
     pub title: String,
     pub description: Option<String>,
-    /// When true (default), description is auto-generated from content's rendered
-    /// plaintext at publish; author-supplied description is ignored.
-    #[serde(default = "default_auto_description")]
-    pub auto_description: bool,
     pub content: String,
     pub content_format: ContentFormat,
     pub lang: Option<String>,

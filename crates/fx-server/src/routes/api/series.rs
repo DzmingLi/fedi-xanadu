@@ -638,7 +638,6 @@ pub async fn compile_series(
             let input = CreateArticle {
                 title: slice.heading_title.clone(),
                 description: None,
-                auto_description: true,
                 content: String::new(), // content is in cache
                 content_format: ContentFormat::Html,
                 lang: Some(series.series.lang.clone()),

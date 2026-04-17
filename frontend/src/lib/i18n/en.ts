@@ -178,8 +178,6 @@ export default {
   'newArticle.titleLabel': 'Title',
   'newArticle.descLabel': 'Description',
   'newArticle.descPlaceholder': 'Brief description for homepage preview',
-  'newArticle.autoDescription': 'Auto-generate summary',
-  'newArticle.autoDescPlaceholder': 'Auto-generated from content',
   'newArticle.langLabel': 'Language',
   'newArticle.licenseLabel': 'License',
   'newArticle.restricted': 'Restrict access (paid content, not synced to PDS)',

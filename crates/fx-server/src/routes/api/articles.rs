@@ -577,12 +577,11 @@ pub(super) struct PublishResult {
     pub description_html: String,
 }
 
-/// Author-supplied description + auto flag. When `auto` is true, the source is
-/// derived from the content's rendered plaintext excerpt and `user_source` is
-/// ignored; otherwise `user_source` is used verbatim.
+/// Author-supplied description source (markdown/typst, same format as content).
+/// Used verbatim when present; when empty, description is left empty until the
+/// author fills it in (no auto-extraction — tracked on the roadmap as AI summary).
 pub(super) struct DescriptionInput<'a> {
     pub user_source: Option<&'a str>,
-    pub auto: bool,
 }
 
 /// Shared: write source file, render, record pijul, track version.
@@ -654,8 +653,6 @@ pub(super) async fn publish_article_content(
     tokio::fs::write(&loc.content_path, content).await?;
 
     // Render content (best-effort — may fail if resources not yet uploaded).
-    // Capture rendered HTML for auto-description extraction.
-    let mut content_html: Option<String> = None;
     if format != ContentFormat::Html {
         match render_content(fmt, content, &loc.repo_path) {
             Ok(rendered) => {
@@ -663,22 +660,12 @@ pub(super) async fn publish_article_content(
                     let _ = tokio::fs::create_dir_all(parent).await;
                 }
                 let _ = tokio::fs::write(&loc.cache_path, &rendered).await;
-                content_html = Some(rendered);
             }
             Err(e) => tracing::warn!("initial render skipped (resources may be pending): {e:?}"),
         }
-    } else {
-        content_html = Some(content.to_string());
     }
 
-    // Resolve description source: auto-extract from rendered content, or use author input.
-    let description_source = if description.auto {
-        content_html.as_deref()
-            .map(crate::description::extract_excerpt_from_html)
-            .unwrap_or_default()
-    } else {
-        description.user_source.unwrap_or("").to_string()
-    };
+    let description_source = description.user_source.unwrap_or("").to_string();
 
     // Render description to inline-only HTML (cached in DB for list views).
     let description_html = crate::description::render_description_inline(
@@ -895,7 +882,6 @@ pub async fn create_article(
         input.series_id.as_deref(), "Initial publish",
         DescriptionInput {
             user_source: input.description.as_deref(),
-            auto: input.auto_description,
         },
     ).await?;
 
@@ -1069,7 +1055,6 @@ pub async fn create_article_multipart(
         input.series_id.as_deref(), "Initial publish",
         DescriptionInput {
             user_source: input.description.as_deref(),
-            auto: input.auto_description,
         },
     ).await?;
 
@@ -1643,46 +1628,25 @@ pub async fn update_article(
         article_service::update_article_title(&state.pool, &input.uri, title).await?;
     }
 
-    // Resolve final description + auto flag for this update, given what the author sent
-    // and (when only content changed) the existing auto_description state.
+    // If the author supplied a new description, render + write description.{ext}
+    // to the repo so it lands in the same pijul patch as the content update.
     let format = article_service::get_content_format(&state.pool, &input.uri).await?;
     let node_id = uri_to_node_id(&input.uri);
     let repo_path = state.pijul.repo_path(&node_id);
 
-    let (final_desc, final_desc_html, final_auto): (Option<String>, Option<String>, Option<bool>) =
-        if let Some(ref desc) = input.description {
-            // Author typed a description explicitly → auto off.
-            let html = crate::description::render_description_inline(format.as_str(), desc, &repo_path)
-                .unwrap_or_default();
-            (Some(desc.clone()), Some(html), Some(false))
-        } else if let Some(ref content) = input.content {
-            // Content changed, no explicit description: if auto on, re-extract.
-            let auto = article_service::get_article_auto_description(&state.pool, &input.uri)
-                .await.unwrap_or(false);
-            if auto {
-                let rendered = render_content(format.as_str(), content, &repo_path).ok();
-                let excerpt = rendered.as_deref()
-                    .map(crate::description::extract_excerpt_from_html)
-                    .unwrap_or_default();
-                let html = crate::description::render_description_inline(format.as_str(), &excerpt, &repo_path)
-                    .unwrap_or_default();
-                (Some(excerpt), Some(html), Some(true))
-            } else {
-                (None, None, None)
-            }
-        } else { (None, None, None) };
-
-    // Write description file to repo so it lands in the same pijul patch as content.
-    if let Some(ref desc_src) = final_desc {
+    let desc_html = if let Some(ref desc) = input.description {
+        let html = crate::description::render_description_inline(format.as_str(), desc, &repo_path)
+            .unwrap_or_default();
         let src_ext = fx_renderer::format_extension(format.as_str());
         let desc_path = repo_path.join(format!("description.{src_ext}"));
         if let Some(parent) = desc_path.parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
         }
-        if let Err(e) = tokio::fs::write(&desc_path, desc_src).await {
+        if let Err(e) = tokio::fs::write(&desc_path, desc).await {
             tracing::warn!("write description file failed: {e}");
         }
-    }
+        Some(html)
+    } else { None };
 
     if let Some(ref content) = input.content {
         if input.record {
@@ -1693,8 +1657,8 @@ pub async fn update_article(
         }
     }
 
-    if let (Some(desc), Some(html), Some(auto)) = (&final_desc, &final_desc_html, final_auto) {
-        article_service::update_article_description(&state.pool, &input.uri, desc, html, auto).await?;
+    if let (Some(desc), Some(html)) = (&input.description, &desc_html) {
+        article_service::update_article_description(&state.pool, &input.uri, desc, html).await?;
     }
 
     // Update category-specific metadata
@@ -2081,7 +2045,7 @@ pub(super) async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_pa
             .unwrap_or_else(|_| "markdown".to_string());
         let html = crate::description::render_description_inline(&format, desc, repo_path)
             .unwrap_or_default();
-        let _ = article_service::update_article_description(&state.pool, article_uri, desc, &html, false).await;
+        let _ = article_service::update_article_description(&state.pool, article_uri, desc, &html).await;
     }
     // Sync tags: clear old, insert new
     if !meta.tags.is_empty() {

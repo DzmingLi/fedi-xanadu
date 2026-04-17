@@ -307,7 +307,6 @@ mod tests {
         let input = crate::models::CreateArticle {
             title: "Test".into(),
             description: None,
-            auto_description: true,
             content: "Hello".into(),
             content_format: ContentFormat::Typst,
             lang: None,
@@ -331,7 +330,6 @@ mod tests {
         let input = crate::models::CreateArticle {
             title: "".into(),
             description: None,
-            auto_description: true,
             content: "x".repeat(500_001),
             content_format: ContentFormat::Typst,
             lang: None,
