@@ -14,7 +14,7 @@ export const ACTIONS: KeyAction[] = [
   // Navigation
   { id: 'goto.home', labels: { en: 'Go to Home', zh: '前往首页', fr: 'Aller à l\'accueil', de: 'Zur Startseite' }, category: 'navigation', defaultKey: 'g h' },
   { id: 'goto.skills', labels: { en: 'Go to Skills', zh: '前往技能', fr: 'Aller aux compétences', de: 'Zu den Fähigkeiten' }, category: 'navigation', defaultKey: 'g s' },
-  { id: 'goto.library', labels: { en: 'Go to Library', zh: '前往书架', fr: 'Aller à la bibliothèque', de: 'Zur Bibliothek' }, category: 'navigation', defaultKey: 'g l' },
+  { id: 'goto.library', labels: { en: 'Go to Library', zh: '前往收藏夹', fr: 'Aller à la bibliothèque', de: 'Zur Bibliothek' }, category: 'navigation', defaultKey: 'g l' },
   { id: 'goto.about', labels: { en: 'Go to About', zh: '前往关于', fr: 'Aller à À propos', de: 'Zu „Über“' }, category: 'navigation', defaultKey: 'g a' },
   { id: 'goto.newArticle', labels: { en: 'New Article', zh: '新建文章', fr: 'Nouvel article', de: 'Neuer Artikel' }, category: 'navigation', defaultKey: 'n a' },
   { id: 'goto.newSeries', labels: { en: 'New Series', zh: '新建系列', fr: 'Nouvelle série', de: 'Neue Serie' }, category: 'navigation', defaultKey: 'n s' },

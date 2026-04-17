@@ -17,7 +17,7 @@ export default {
 
   // Nav
   'nav.skills': '技能树',
-  'nav.library': '书架',
+  'nav.library': '收藏夹',
   'nav.about': '关于',
   'nav.roadmap': '路线图',
   'nav.newArticle': '写文章',
@@ -68,7 +68,7 @@ export default {
   // Sidebar
   'sidebar.home': '首页',
   'sidebar.skills': '技能树',
-  'sidebar.library': '书架',
+  'sidebar.library': '收藏夹',
   'sidebar.guide': '指南',
   'sidebar.about': '关于',
   'sidebar.desc': '基于 AT Protocol 的联邦化知识共享平台，前置知识感知内容匹配。',
