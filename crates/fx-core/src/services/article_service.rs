@@ -8,6 +8,7 @@ use crate::region::{InstanceMode, visibility_filter};
 const ARTICLE_BASE: &str = "\
     SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation, \
     a.kind, a.title, a.description, a.description_html, a.cover_url, \
+    pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
     a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
     a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
     COALESCE(v.vote_score, 0) AS vote_score, \
@@ -17,6 +18,7 @@ const ARTICLE_BASE: &str = "\
     a.created_at, a.updated_at \
     FROM articles a \
     LEFT JOIN profiles p ON a.did = p.did \
+    LEFT JOIN paper_metadata pm ON pm.article_uri = a.at_uri \
     LEFT JOIN (SELECT target_uri, SUM(value) AS vote_score FROM votes GROUP BY target_uri) v ON v.target_uri = a.at_uri \
     LEFT JOIN (SELECT article_uri, COUNT(*) AS bookmark_count FROM user_bookmarks GROUP BY article_uri) b ON b.article_uri = a.at_uri \
     LEFT JOIN (SELECT content_uri, COUNT(*) AS comment_count FROM comments GROUP BY content_uri) cm ON cm.content_uri = a.at_uri \

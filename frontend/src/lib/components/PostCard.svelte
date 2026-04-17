@@ -134,6 +134,12 @@
         <a href="/book?id={encodeURIComponent(article.book_id)}" class="review-badge" onclick={(e) => e.stopPropagation()}>{t('article.reviewBadge')}</a>
       {/if}
       <span class="post-title">{article.title}</span>
+      {#if article.category === 'paper' && article.paper_accepted && article.paper_venue}
+        <!-- Accepted-venue badge for papers: surfaces the publication outlet inline -->
+        <span class="venue-badge" title={t('article.acceptedAt')}>
+          {article.paper_venue}{#if article.paper_year} {article.paper_year}{/if}
+        </span>
+      {/if}
     </div>
 
     {#if articleTeaches.length > 0 || articlePrereqs.length > 0}
@@ -417,6 +423,19 @@
     flex-shrink: 0;
     white-space: nowrap;
     text-decoration: none;
+  }
+  .venue-badge {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    background: rgba(95, 155, 101, 0.1);
+    border: 1px solid rgba(95, 155, 101, 0.3);
+    padding: 1px 7px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    align-self: center;
   }
   .review-badge:hover {
     background: rgba(99, 102, 241, 0.2);

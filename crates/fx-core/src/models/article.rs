@@ -24,6 +24,14 @@ pub struct Article {
     pub description_html: String,
     #[sqlx(default)]
     pub cover_url: Option<String>,
+    /// Paper metadata (joined). `paper_accepted` drives the "accepted venue"
+    /// badge next to the title on cards. None for non-papers.
+    #[sqlx(default)]
+    pub paper_venue: Option<String>,
+    #[sqlx(default)]
+    pub paper_year: Option<i16>,
+    #[sqlx(default)]
+    pub paper_accepted: Option<bool>,
     pub content_hash: Option<String>,
     pub content_format: ContentFormat,
     pub lang: String,

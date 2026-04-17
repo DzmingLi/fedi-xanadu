@@ -24,6 +24,9 @@ export interface Article {
   description: string;
   description_html: string;
   cover_url: string | null;
+  paper_venue: string | null;
+  paper_year: number | null;
+  paper_accepted: boolean | null;
   content_hash: string | null;
   content_format: ContentFormat;
   lang: string;

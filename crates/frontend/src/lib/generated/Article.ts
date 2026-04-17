@@ -2,4 +2,9 @@
 import type { ContentFormat } from "./ContentFormat";
 import type { ContentKind } from "./ContentKind";
 
-export type Article = { at_uri: string, did: string, author_handle: string | null, author_display_name: string | null, author_avatar: string | null, author_reputation: number, kind: ContentKind, title: string, description: string, content_hash: string | null, content_format: ContentFormat, lang: string, translation_group: string | null, license: string, prereq_threshold: number, category: string, question_uri: string | null, book_id: string | null, edition_id: string | null, answer_count: number, restricted: boolean, vote_score: bigint, bookmark_count: bigint, comment_count: bigint, fork_count: bigint, created_at: string, updated_at: string, };
+export type Article = { at_uri: string, did: string, author_handle: string | null, author_display_name: string | null, author_avatar: string | null, author_reputation: number, kind: ContentKind, title: string, description: string, description_html: string, cover_url: string | null, 
+/**
+ * Paper metadata (joined). `paper_accepted` drives the "accepted venue"
+ * badge next to the title on cards. None for non-papers.
+ */
+paper_venue: string | null, paper_year: number | null, paper_accepted: boolean | null, content_hash: string | null, content_format: ContentFormat, lang: string, translation_group: string | null, license: string, prereq_threshold: number, category: string, question_uri: string | null, book_id: string | null, edition_id: string | null, answer_count: number, restricted: boolean, vote_score: bigint, bookmark_count: bigint, comment_count: bigint, fork_count: bigint, created_at: string, updated_at: string, };

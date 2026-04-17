@@ -142,6 +142,7 @@ export default {
   'article.uploadCover': 'Cover hochladen',
   'article.changeCover': 'Cover ändern',
   'article.removeCover': 'Entfernen',
+  'article.acceptedAt': 'Angenommen bei',
   'history.title': 'Versionsverlauf',
   'history.empty': 'Noch keine Versionen',
   'history.selectHint': 'Klicke auf eine Version, um Änderungen anzuzeigen',

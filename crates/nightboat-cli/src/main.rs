@@ -608,9 +608,15 @@ enum BookCommand {
         /// Book ID
         #[arg(long)]
         book_id: String,
-        /// Edition title
+        /// Edition title (localized title of this edition, e.g. Chinese translation title)
         #[arg(short, long)]
         title: String,
+        /// Edition subtitle
+        #[arg(short = 'S', long)]
+        subtitle: Option<String>,
+        /// Edition name (e.g. "Fourth Edition", "Revised Edition"). Defaults to title.
+        #[arg(short = 'n', long)]
+        edition_name: Option<String>,
         /// Language code (e.g. zh, en, ja)
         #[arg(short, long, default_value = "zh")]
         lang: String,
@@ -1599,6 +1605,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             };
             let ed_body = serde_json::json!({
                 "book_id": book_id,
+                "title": title,
                 "edition_name": edition,
                 "lang": lang,
                 "isbn": isbn,
@@ -1645,16 +1652,19 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             println!("Updated book {id}");
         }
 
-        BookCommand::AddEdition { book_id, title, lang, isbn, publisher, year, translators, purchase_links, cover_url } => {
+        BookCommand::AddEdition { book_id, title, subtitle, edition_name, lang, isbn, publisher, year, translators, purchase_links, cover_url } => {
             let links: Vec<serde_json::Value> = if let Some(ref pl) = purchase_links {
                 serde_json::from_str(pl).context("Invalid JSON for --purchase-links")?
             } else {
                 vec![]
             };
 
+            let edition_name = edition_name.unwrap_or_else(|| title.clone());
             let body = serde_json::json!({
                 "book_id": book_id,
-                "edition_name": title,
+                "title": title,
+                "subtitle": subtitle,
+                "edition_name": edition_name,
                 "lang": lang,
                 "isbn": isbn,
                 "publisher": publisher,
@@ -1699,7 +1709,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
 
         BookCommand::Show { id } => {
             let resp: serde_json::Value = client()
-                .get(format!("{base}/books/by-id?id={id}"))
+                .get(format!("{base}/books/{id}"))
                 .send().await?
                 .error_for_status().context("Get book failed")?
                 .json().await?;

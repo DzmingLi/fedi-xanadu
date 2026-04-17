@@ -142,6 +142,7 @@ export default {
   'article.uploadCover': '上传封面',
   'article.changeCover': '更换封面',
   'article.removeCover': '移除',
+  'article.acceptedAt': '录用于',
   'history.title': '版本历史',
   'history.empty': '暂无版本记录',
   'history.selectHint': '点击左侧版本查看变更内容',

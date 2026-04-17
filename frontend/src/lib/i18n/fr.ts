@@ -142,6 +142,7 @@ export default {
   'article.uploadCover': 'Ajouter une couverture',
   'article.changeCover': 'Changer la couverture',
   'article.removeCover': 'Retirer',
+  'article.acceptedAt': 'Accepté à',
   'history.title': 'Historique des versions',
   'history.empty': 'Aucune version',
   'history.selectHint': 'Cliquez sur une version pour voir les changements',
