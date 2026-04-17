@@ -504,8 +504,8 @@
         </a>
         <span class="series-badge">{t('profile.seriesBadge')}</span>
       </div>
-      {#if s.description}
-        <p class="series-tree-desc">{s.description}</p>
+      {#if s.summary}
+        <p class="series-tree-desc">{s.summary}</p>
       {/if}
       <div class="series-tree-bottom">
         <span class="post-meta">{s.created_at.split(' ')[0]}</span>

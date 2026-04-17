@@ -67,8 +67,8 @@
           </button>
           <span class="draft-format">{draft.content_format === 'markdown' ? 'MD' : draft.content_format === 'html' ? 'HTML' : 'Typst'}</span>
         </div>
-        {#if draft.description}
-          <p class="draft-desc">{draft.description}</p>
+        {#if draft.summary}
+          <p class="draft-desc">{draft.summary}</p>
         {/if}
         <div class="draft-meta">
           <span>{formatDate(draft.updated_at)}</span>

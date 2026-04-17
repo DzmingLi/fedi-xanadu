@@ -9,9 +9,9 @@ use crate::error::Error;
 pub struct SeriesRow {
     pub id: String,
     pub title: String,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     #[sqlx(default)]
-    pub description_html: String,
+    pub summary_html: String,
     pub long_description: Option<String>,
     pub order_index: i32,
     pub created_by: String,
@@ -30,9 +30,9 @@ pub struct SeriesRow {
 pub struct SeriesListRow {
     pub id: String,
     pub title: String,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     #[sqlx(default)]
-    pub description_html: String,
+    pub summary_html: String,
     pub long_description: Option<String>,
     pub order_index: i32,
     pub created_by: String,
@@ -57,7 +57,7 @@ pub struct SeriesArticleRow {
     pub series_id: String,
     pub article_uri: String,
     pub title: String,
-    pub description: String,
+    pub summary: String,
     pub lang: String,
     pub order_index: i32,
     pub heading_title: Option<String>,
@@ -126,7 +126,7 @@ pub struct SeriesHeadingRow {
 
 pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
-        "SELECT s.id, s.title, s.description, s.description_html, s.long_description, \
+        "SELECT s.id, s.title, s.summary, s.summary_html, s.long_description, \
                 s.order_index, s.created_by, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, s.created_at, \
                 s.lang, s.translation_group, s.category, s.split_level, s.is_published, \
                 s.cover_url, \
@@ -149,8 +149,8 @@ pub async fn create_series(
     pool: &PgPool,
     id: &str,
     title: &str,
-    description: Option<&str>,
-    description_html: &str,
+    summary: Option<&str>,
+    summary_html: &str,
     long_description: Option<&str>,
     topics: &[String],
     created_by: &str,
@@ -162,13 +162,13 @@ pub async fn create_series(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO series (id, title, description, description_html, long_description, order_index, created_by, lang, translation_group, category, pijul_node_id) \
+        "INSERT INTO series (id, title, summary, summary_html, long_description, order_index, created_by, lang, translation_group, category, pijul_node_id) \
          VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10)",
     )
     .bind(id)
     .bind(title)
-    .bind(description)
-    .bind(description_html)
+    .bind(summary)
+    .bind(summary_html)
     .bind(long_description)
     .bind(created_by)
     .bind(lang)
@@ -191,7 +191,7 @@ pub async fn create_series(
     tx.commit().await?;
 
     let row = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, description_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
+        "SELECT id, title, summary, summary_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -220,7 +220,7 @@ pub async fn unpublish_series(pool: &PgPool, id: &str) -> crate::Result<()> {
 /// List all series by a creator (including drafts).
 pub async fn list_series_by_creator(pool: &PgPool, did: &str) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
-        "SELECT s.id, s.title, s.description, s.description_html, s.long_description, \
+        "SELECT s.id, s.title, s.summary, s.summary_html, s.long_description, \
                 s.order_index, s.created_by, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, s.created_at, \
                 s.lang, s.translation_group, s.category, s.split_level, s.is_published, \
                 s.cover_url, \
@@ -241,7 +241,7 @@ pub async fn list_series_by_creator(pool: &PgPool, did: &str) -> crate::Result<V
 
 pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesDetailResponse> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, description_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
+        "SELECT id, title, summary, summary_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
          FROM series WHERE id = $1",
     )
     .bind(id)
@@ -253,7 +253,7 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
     })?;
 
     let articles = sqlx::query_as::<_, SeriesArticleRow>(
-        "SELECT sa.series_id, sa.article_uri, a.title, COALESCE(a.description, '') AS description, \
+        "SELECT sa.series_id, sa.article_uri, a.title, COALESCE(a.summary, '') AS summary, \
                 a.lang, sa.order_index, sa.heading_title, sa.heading_anchor \
          FROM series_articles sa JOIN articles a ON sa.article_uri = a.at_uri \
          WHERE sa.series_id = $1 ORDER BY sa.order_index",
@@ -321,7 +321,7 @@ pub async fn get_series_translations(pool: &PgPool, id: &str) -> crate::Result<V
     };
 
     let rows = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, description_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
+        "SELECT id, title, summary, summary_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
          FROM series WHERE translation_group = $1 AND id != $2 ORDER BY lang",
     )
     .bind(&group)
@@ -470,7 +470,7 @@ pub async fn all_series_articles(pool: &PgPool, limit: i64) -> crate::Result<Vec
 /// Build a flat tree node for a series (no children — parent series removed).
 pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<SeriesTreeNode> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, description, description_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
+        "SELECT id, title, summary, summary_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
          FROM series WHERE id = $1",
     )
     .bind(root_id)
@@ -479,7 +479,7 @@ pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<Seri
     .ok_or_else(|| Error::NotFound { entity: "series", id: root_id.to_string() })?;
 
     let articles = sqlx::query_as::<_, SeriesArticleRow>(
-        "SELECT sa.series_id, sa.article_uri, a.title, COALESCE(a.description, '') AS description, \
+        "SELECT sa.series_id, sa.article_uri, a.title, COALESCE(a.summary, '') AS summary, \
                 a.lang, sa.order_index, sa.heading_title, sa.heading_anchor \
          FROM series_articles sa JOIN articles a ON sa.article_uri = a.at_uri \
          WHERE sa.series_id = $1 ORDER BY sa.order_index",

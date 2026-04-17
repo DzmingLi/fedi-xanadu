@@ -19,9 +19,9 @@ pub struct Article {
     pub author_reputation: i32,
     pub kind: ContentKind,
     pub title: String,
-    pub description: String,
+    pub summary: String,
     #[sqlx(default)]
-    pub description_html: String,
+    pub summary_html: String,
     #[sqlx(default)]
     pub cover_url: Option<String>,
     /// Paper metadata (joined). `paper_accepted` drives the "accepted venue"
@@ -88,7 +88,7 @@ pub struct PaperMetadata {
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct CreateArticle {
     pub title: String,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub content: String,
     pub content_format: ContentFormat,
     pub lang: Option<String>,

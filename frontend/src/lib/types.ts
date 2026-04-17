@@ -21,8 +21,8 @@ export interface Article {
   author_reputation: number;
   kind: ContentKind;
   title: string;
-  description: string;
-  description_html: string;
+  summary: string;
+  summary_html: string;
   cover_url: string | null;
   paper_venue: string | null;
   paper_year: number | null;
@@ -119,7 +119,7 @@ export interface BookmarkWithTitle {
   folder_path: string;
   created_at: string;
   title: string;
-  description: string;
+  summary: string;
 }
 
 export interface AuthUser {
@@ -140,8 +140,8 @@ export interface VoteSummary {
 export interface Series {
   id: string;
   title: string;
-  description: string | null;
-  description_html: string;
+  summary: string | null;
+  summary_html: string;
   long_description: string | null;
   order_index: number;
   created_by: string;
@@ -251,7 +251,7 @@ export interface SeriesArticle {
   series_id: string;
   article_uri: string;
   title: string;
-  description: string;
+  summary: string;
   lang: string;
   order_index: number;
 }
@@ -534,7 +534,7 @@ export interface Draft {
   id: string;
   did: string;
   title: string;
-  description: string;
+  summary: string;
   content: string;
   content_format: ContentFormat;
   lang: string;
@@ -587,7 +587,7 @@ export interface Report {
 
 export interface CreateArticle {
   title: string;
-  description?: string;
+  summary?: string;
   content: string;
   content_format: ContentFormat;
   lang?: string;
@@ -880,7 +880,8 @@ export interface PublicationContentItem {
 export interface SeriesListRow {
   id: string;
   title: string;
-  description: string | null;
+  summary: string | null;
+  summary_html: string;
   long_description: string | null;
   order_index: number;
   created_by: string;

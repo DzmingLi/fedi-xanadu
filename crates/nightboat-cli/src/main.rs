@@ -1264,7 +1264,7 @@ async fn main() -> Result<()> {
             let token = config.token()?;
             let body = CreateArticle {
                 title: title.clone(),
-                description: None,
+                summary: None,
                 content: String::new(),
                 content_format: fx_core::content::ContentFormat::Markdown,
                 lang: Some(lang),
@@ -1341,7 +1341,7 @@ async fn main() -> Result<()> {
 
             let body = CreateArticle {
                 title: title.clone(),
-                description: desc,
+                summary: desc,
                 content,
                 content_format,
                 lang: Some(lang),

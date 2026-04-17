@@ -12,7 +12,7 @@ pub struct Draft {
     pub id: String,
     pub did: String,
     pub title: String,
-    pub description: String,
+    pub summary: String,
     pub content: String,
     pub content_format: ContentFormat,
     pub lang: String,
@@ -30,7 +30,7 @@ pub struct Draft {
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SaveDraft {
     pub title: String,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub content: String,
     pub content_format: ContentFormat,
     pub lang: Option<String>,
@@ -44,7 +44,7 @@ pub struct SaveDraft {
 pub struct UpdateDraft {
     pub id: String,
     pub title: Option<String>,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub content: Option<String>,
     pub content_format: Option<ContentFormat>,
     pub lang: Option<String>,

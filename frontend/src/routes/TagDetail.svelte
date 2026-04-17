@@ -79,8 +79,8 @@
             <span class="article-score">{voteMap.get(a.at_uri) ?? 0}</span>
             <div class="article-info">
               <span class="article-title">{a.title}</span>
-              {#if a.description}
-                <span class="article-desc">{a.description}</span>
+              {#if a.summary}
+                <span class="article-desc">{a.summary}</span>
               {/if}
               <span class="article-meta">{authorName(a)} &middot; {a.created_at.split(' ')[0]}</span>
             </div>
@@ -95,8 +95,8 @@
             <span class="article-score">{voteMap.get(a.at_uri) ?? 0}</span>
             <div class="article-info">
               <span class="article-title">{a.title}</span>
-              {#if a.description}
-                <span class="article-desc">{a.description}</span>
+              {#if a.summary}
+                <span class="article-desc">{a.summary}</span>
               {/if}
               <span class="article-meta">{authorName(a)} &middot; {a.created_at.split(' ')[0]}</span>
             </div>

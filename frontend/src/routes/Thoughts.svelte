@@ -142,7 +142,7 @@
             {#if contentCache.has(th.at_uri)}
               {@html contentCache.get(th.at_uri)!.html}
             {:else}
-              <p class="raw-desc">{th.description || '...'}</p>
+              <p class="raw-desc">{th.summary || '...'}</p>
             {/if}
           </div>
 

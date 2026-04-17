@@ -5,7 +5,7 @@ use crate::Result;
 
 pub async fn list_drafts(pool: &PgPool, did: &str) -> Result<Vec<Draft>> {
     let drafts = sqlx::query_as::<_, Draft>(
-        "SELECT id, did, title, description, content, content_format, lang, license, \
+        "SELECT id, did, title, summary, content, content_format, lang, license, \
          tags, prereqs, at_uri, created_at, updated_at \
          FROM drafts WHERE did = $1 ORDER BY updated_at DESC",
     )
@@ -17,7 +17,7 @@ pub async fn list_drafts(pool: &PgPool, did: &str) -> Result<Vec<Draft>> {
 
 pub async fn get_draft(pool: &PgPool, id: &str) -> Result<Draft> {
     sqlx::query_as::<_, Draft>(
-        "SELECT id, did, title, description, content, content_format, lang, license, \
+        "SELECT id, did, title, summary, content, content_format, lang, license, \
          tags, prereqs, at_uri, created_at, updated_at \
          FROM drafts WHERE id = $1",
     )
@@ -42,13 +42,13 @@ pub async fn save_draft(
     let license = input.license.as_deref().unwrap_or("CC-BY-SA-4.0");
 
     sqlx::query(
-        "INSERT INTO drafts (id, did, title, description, content, content_format, lang, license, tags, prereqs)
+        "INSERT INTO drafts (id, did, title, summary, content, content_format, lang, license, tags, prereqs)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(id)
     .bind(did)
     .bind(&input.title)
-    .bind(input.description.as_deref().unwrap_or(""))
+    .bind(input.summary.as_deref().unwrap_or(""))
     .bind(&input.content)
     .bind(input.content_format)
     .bind(lang)
@@ -78,8 +78,8 @@ pub async fn update_draft(pool: &PgPool, did: &str, input: &UpdateDraft) -> Resu
             .execute(&mut *tx)
             .await?;
     }
-    if let Some(ref desc) = input.description {
-        sqlx::query("UPDATE drafts SET description = $1, updated_at = NOW() WHERE id = $2")
+    if let Some(ref desc) = input.summary {
+        sqlx::query("UPDATE drafts SET summary = $1, updated_at = NOW() WHERE id = $2")
             .bind(desc)
             .bind(&input.id)
             .execute(&mut *tx)
@@ -178,13 +178,13 @@ pub async fn publish_to_article(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO articles (at_uri, did, title, description, content_hash, content_format, lang, license, prereq_threshold, visibility, kind)
+        "INSERT INTO articles (at_uri, did, title, summary, content_hash, content_format, lang, license, prereq_threshold, visibility, kind)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0.8, $9, $10)",
     )
     .bind(at_uri)
     .bind(&draft.did)
     .bind(&draft.title)
-    .bind(&draft.description)
+    .bind(&draft.summary)
     .bind(content_hash)
     .bind(draft.content_format)
     .bind(&draft.lang)

@@ -245,7 +245,7 @@ export const removeSeriesCover = (id: string) =>
 // Series
 export const listSeries = () => get<Series[]>('/series');
 export const getSeries = (id: string) => get<SeriesDetail>(`/series/${encodeURIComponent(id)}`);
-export const createSeries = (data: { title: string; description?: string; long_description?: string; topics?: string[]; category?: string }) =>
+export const createSeries = (data: { title: string; summary?: string; long_description?: string; topics?: string[]; category?: string }) =>
   post<Series>('/series', data);
 export const addSeriesArticle = (series_id: string, article_uri: string) =>
   post<void>(`/series/${encodeURIComponent(series_id)}/articles`, { article_uri });
@@ -478,10 +478,10 @@ export const getMyCommentVotes = (uri: string) =>
   get<MyCommentVote[]>(`/comments/my-votes?uri=${encodeURIComponent(uri)}`);
 
 // Article edit/delete
-export const updateArticle = (uri: string, data: { title?: string; description?: string; content?: string; commit_message?: string; record?: boolean }) =>
+export const updateArticle = (uri: string, data: { title?: string; summary?: string; content?: string; commit_message?: string; record?: boolean }) =>
   put<Article>('/articles/update', { uri, ...data });
 /** Save content to working copy without creating a pijul change. */
-export const saveArticle = (uri: string, data: { title?: string; description?: string; content?: string }) =>
+export const saveArticle = (uri: string, data: { title?: string; summary?: string; content?: string }) =>
   put<Article>('/articles/update', { uri, ...data, record: false });
 /** Explicitly record the current working copy as a pijul change. Returns updated history. */
 export const recordArticle = (uri: string, message: string) =>

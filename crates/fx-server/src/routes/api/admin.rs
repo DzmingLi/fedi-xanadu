@@ -74,8 +74,8 @@ pub async fn admin_create_article(
     let publish = super::articles::publish_article_content(
         &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
         input.article.series_id.as_deref(), "Initial publish",
-        super::articles::DescriptionInput {
-            user_source: input.article.description.as_deref(),
+        super::articles::SummaryInput {
+            user_source: input.article.summary.as_deref(),
         },
     ).await?;
 
@@ -89,7 +89,7 @@ pub async fn admin_create_article(
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, translation_group,
         default_visibility(true), ContentKind::Article, None,
-        &publish.description_source, &publish.description_html,
+        &publish.summary_source, &publish.summary_html,
     ).await?;
 
     if let Some(ref sid) = input.article.series_id {
@@ -107,7 +107,7 @@ pub async fn admin_create_article(
 pub struct AdminCreateSeriesInput {
     pub as_handle: String,
     pub title: String,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub long_description: Option<String>,
     pub topics: Option<Vec<String>>,
     pub lang: Option<String>,
@@ -141,8 +141,8 @@ pub async fn admin_create_series(
         tracing::warn!("failed to init series pijul repo: {e}");
     }
 
-    let desc_html = match input.description.as_deref() {
-        Some(d) if !d.is_empty() => crate::description::render_description_inline(
+    let desc_html = match input.summary.as_deref() {
+        Some(d) if !d.is_empty() => crate::summary::render_summary_inline(
             "markdown", d, &state.pijul.series_repo_path(&node_id),
         ).unwrap_or_default(),
         _ => String::new(),
@@ -152,7 +152,7 @@ pub async fn admin_create_series(
         &state.pool,
         &id,
         &input.title,
-        input.description.as_deref(),
+        input.summary.as_deref(),
         &desc_html,
         input.long_description.as_deref(),
         &topics,
@@ -193,7 +193,7 @@ pub async fn admin_add_series_article(
 pub struct AdminUpdateArticleInput {
     pub uri: String,
     pub title: Option<String>,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub content: Option<String>,
 }
 
@@ -207,13 +207,13 @@ pub async fn admin_update_article(
     if let Some(ref title) = input.title {
         article_service::update_article_title(&state.pool, &input.uri, title).await?;
     }
-    if let Some(ref desc) = input.description {
+    if let Some(ref summary) = input.summary {
         let format = article_service::get_content_format(&state.pool, &input.uri).await?;
         let node_id = fx_core::util::uri_to_node_id(&input.uri);
         let repo_path = state.pijul.repo_path(&node_id);
-        let desc_html = crate::description::render_description_inline(format.as_str(), desc, &repo_path)
+        let summary_html = crate::summary::render_summary_inline(format.as_str(), summary, &repo_path)
             .unwrap_or_default();
-        article_service::update_article_description(&state.pool, &input.uri, desc, &desc_html).await?;
+        article_service::update_article_summary(&state.pool, &input.uri, summary, &summary_html).await?;
     }
 
     if let Some(ref content) = input.content {
@@ -623,8 +623,8 @@ pub async fn admin_create_question(
     let publish = super::articles::publish_article_content(
         &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
         None, "Initial publish",
-        super::articles::DescriptionInput {
-            user_source: input.article.description.as_deref(),
+        super::articles::SummaryInput {
+            user_source: input.article.summary.as_deref(),
         },
     ).await?;
 
@@ -633,7 +633,7 @@ pub async fn admin_create_question(
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, None,
         default_visibility(true), ContentKind::Question, None,
-        &publish.description_source, &publish.description_html,
+        &publish.summary_source, &publish.summary_html,
     ).await?;
 
     let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
@@ -669,8 +669,8 @@ pub async fn admin_post_answer(
     let publish = super::articles::publish_article_content(
         &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
         None, "Initial publish",
-        super::articles::DescriptionInput {
-            user_source: input.article.description.as_deref(),
+        super::articles::SummaryInput {
+            user_source: input.article.summary.as_deref(),
         },
     ).await?;
 
@@ -679,7 +679,7 @@ pub async fn admin_post_answer(
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, None,
         default_visibility(true), ContentKind::Answer, Some(&input.question_uri),
-        &publish.description_source, &publish.description_html,
+        &publish.summary_source, &publish.summary_html,
     ).await?;
 
     // Notify question author
@@ -772,7 +772,7 @@ pub async fn admin_set_default_edition(
 #[derive(serde::Deserialize)]
 pub struct BatchArticle {
     pub title: String,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub content: String,
     pub content_format: Option<String>,
     pub tags: Option<Vec<String>>,
@@ -896,7 +896,7 @@ pub async fn admin_batch_publish(
 
         let create = CreateArticle {
             title: item.title.clone(),
-            description: item.description.clone(),
+            summary: item.summary.clone(),
             content: item.content.clone(),
             content_format,
             lang: Some(lang.to_string()),
@@ -912,8 +912,8 @@ pub async fn admin_batch_publish(
             invites: vec![],
         };
 
-        let resolved_desc = create.description.as_deref().unwrap_or("").to_string();
-        let desc_html = crate::description::render_description_inline(
+        let resolved_desc = create.summary.as_deref().unwrap_or("").to_string();
+        let desc_html = crate::summary::render_summary_inline(
             create.content_format.as_str(), &resolved_desc,
             &state.pijul.repo_path(&node_id),
         ).unwrap_or_default();

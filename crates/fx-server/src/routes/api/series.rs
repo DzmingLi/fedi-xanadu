@@ -17,7 +17,7 @@ use super::UriQuery;
 #[derive(serde::Deserialize)]
 pub(crate) struct CreateSeriesInput {
     title: String,
-    description: Option<String>,
+    summary: Option<String>,
     long_description: Option<String>,
     topics: Option<Vec<String>>,
     lang: Option<String>,
@@ -65,12 +65,12 @@ pub async fn create_series(
     }
     let pijul_node_id = Some(node_id);
 
-    let desc_html = match input.description.as_deref() {
+    let desc_html = match input.summary.as_deref() {
         Some(desc) if !desc.is_empty() => {
             let repo_path = pijul_node_id.as_deref()
                 .map(|n| state.pijul.series_repo_path(n))
                 .unwrap_or_else(|| std::path::PathBuf::from("."));
-            crate::description::render_description_inline("markdown", desc, &repo_path)
+            crate::summary::render_summary_inline("markdown", desc, &repo_path)
                 .unwrap_or_default()
         }
         _ => String::new(),
@@ -80,7 +80,7 @@ pub async fn create_series(
         &state.pool,
         &id,
         &input.title,
-        input.description.as_deref(),
+        input.summary.as_deref(),
         &desc_html,
         input.long_description.as_deref(),
         &topics,
@@ -96,7 +96,7 @@ pub async fn create_series(
     if let Some(ref node) = pijul_node_id {
         let meta = fx_core::meta::SeriesMeta {
             title: input.title.clone(),
-            description: input.description.clone(),
+            description: input.summary.clone(),
             long_description: input.long_description.clone(),
             lang: Some(lang.to_string()),
             category: Some(category.to_string()),
@@ -467,8 +467,8 @@ pub async fn fork_series(
         &state.pool,
         &fork_id,
         &fork_title,
-        original.series.description.as_deref(),
-        &original.series.description_html,
+        original.series.summary.as_deref(),
+        &original.series.summary_html,
         original.series.long_description.as_deref(),
         &[],
         &user.did,
@@ -637,7 +637,7 @@ pub async fn compile_series(
             let hash = fx_core::util::content_hash(&slice.html);
             let input = CreateArticle {
                 title: slice.heading_title.clone(),
-                description: None,
+                summary: None,
                 content: String::new(), // content is in cache
                 content_format: ContentFormat::Html,
                 lang: Some(series.series.lang.clone()),

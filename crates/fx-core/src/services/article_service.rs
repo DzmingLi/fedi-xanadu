@@ -7,7 +7,7 @@ use crate::region::{InstanceMode, visibility_filter};
 /// Base SELECT for article queries (no WHERE clause).
 const ARTICLE_BASE: &str = "\
     SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation, \
-    a.kind, a.title, a.description, a.description_html, a.cover_url, \
+    a.kind, a.title, a.summary, a.summary_html, a.cover_url, \
     pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
     a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
     a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
@@ -406,8 +406,8 @@ pub async fn get_all_article_prereqs(pool: &PgPool, limit: i64) -> crate::Result
 // ---- Mutations ----
 
 /// Create a new article/question/answer with tags and prereqs.
-/// `resolved_description` is the final description source (may be auto-extracted
-/// from content, see `DescriptionInput` in the server layer); `description_html`
+/// `resolved_summary` is the final description source (may be auto-extracted
+/// from content, see `SummaryInput` in the server layer); `summary_html`
 /// is the inline-rendered HTML cache for list views.
 pub async fn create_article(
     pool: &PgPool,
@@ -419,8 +419,8 @@ pub async fn create_article(
     visibility: &str,
     kind: ContentKind,
     question_uri: Option<&str>,
-    resolved_description: &str,
-    description_html: &str,
+    resolved_summary: &str,
+    summary_html: &str,
 ) -> crate::Result<Article> {
     let lang = input.lang.as_deref().unwrap_or("zh");
     let restricted = input.restricted.unwrap_or(false);
@@ -433,14 +433,14 @@ pub async fn create_article(
     let category = input.category.as_deref().unwrap_or("general");
 
     sqlx::query(
-        "INSERT INTO articles (at_uri, did, title, description, description_html, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id, edition_id) \
+        "INSERT INTO articles (at_uri, did, title, summary, summary_html, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id, edition_id) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0.8, $11, $12, $13, $14, $15, $16, $17)",
     )
     .bind(at_uri)
     .bind(did)
     .bind(&input.title)
-    .bind(resolved_description)
-    .bind(description_html)
+    .bind(resolved_summary)
+    .bind(summary_html)
     .bind(content_hash)
     .bind(input.content_format)
     .bind(lang)
@@ -541,11 +541,11 @@ pub async fn update_article_title(pool: &PgPool, uri: &str, title: &str) -> crat
     Ok(())
 }
 
-pub async fn update_article_description(
+pub async fn update_article_summary(
     pool: &PgPool, uri: &str, desc: &str, desc_html: &str,
 ) -> crate::Result<()> {
     sqlx::query(
-        "UPDATE articles SET description = $1, description_html = $2, updated_at = NOW() WHERE at_uri = $3",
+        "UPDATE articles SET summary = $1, summary_html = $2, updated_at = NOW() WHERE at_uri = $3",
     )
     .bind(desc).bind(desc_html).bind(uri).execute(pool).await?;
     Ok(())
@@ -591,8 +591,8 @@ pub async fn update_article_batch(
     uri: &str,
     input: &CreateArticle,
     content_hash: &str,
-    resolved_description: &str,
-    description_html: &str,
+    resolved_summary: &str,
+    summary_html: &str,
 ) -> crate::Result<Article> {
     let lang = input.lang.as_deref().unwrap_or("zh");
     let license = input.license.as_deref().unwrap_or("CC-BY-SA-4.0");
@@ -601,19 +601,19 @@ pub async fn update_article_batch(
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "UPDATE articles SET title = $2, description = $3, description_html = $9, content_hash = $4, \
+        "UPDATE articles SET title = $2, summary = $3, summary_html = $9, content_hash = $4, \
          content_format = $5, lang = $6, license = $7, category = $8, updated_at = NOW() \
          WHERE at_uri = $1",
     )
     .bind(uri)
     .bind(&input.title)
-    .bind(resolved_description)
+    .bind(resolved_summary)
     .bind(content_hash)
     .bind(input.content_format)
     .bind(lang)
     .bind(license)
     .bind(category)
-    .bind(description_html)
+    .bind(summary_html)
     .execute(&mut *tx)
     .await?;
 

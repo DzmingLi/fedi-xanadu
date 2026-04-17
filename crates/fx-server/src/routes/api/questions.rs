@@ -84,8 +84,8 @@ pub async fn create_question(
 
     let hash = content_hash(&input.content);
 
-    let resolved_desc = input.description.as_deref().unwrap_or("").to_string();
-    let desc_html = crate::description::render_description_inline(
+    let resolved_desc = input.summary.as_deref().unwrap_or("").to_string();
+    let desc_html = crate::summary::render_summary_inline(
         input.content_format.as_str(), &resolved_desc, &repo_path,
     ).unwrap_or_default();
 
@@ -160,8 +160,8 @@ pub async fn post_answer(
 
     let hash = content_hash(&input.content);
 
-    let resolved_desc = input.description.as_deref().unwrap_or("").to_string();
-    let desc_html = crate::description::render_description_inline(
+    let resolved_desc = input.summary.as_deref().unwrap_or("").to_string();
+    let desc_html = crate::summary::render_summary_inline(
         input.content_format.as_str(), &resolved_desc, &repo_path,
     ).unwrap_or_default();
 

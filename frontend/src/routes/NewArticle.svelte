@@ -20,7 +20,7 @@
   // Auto-save draft 2 s after any content change (new articles only, not edits of published ones)
   $effect(() => {
     // Touch reactive state to subscribe
-    const _t = title, _d = description, _c = content, _f = contentFormat, _l = lang;
+    const _t = title, _d = summary, _c = content, _f = contentFormat, _l = lang;
     if (isEditing || forkSource || !_t.trim()) return;
     clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(() => {
@@ -32,7 +32,7 @@
   let tags = $state<Tag[]>([]);
   let allArticles = $state<Article[]>([]);
   let title = $state('');
-  let description = $state('');
+  let summary = $state('');
   let content = $state('');
   let contentFormat = $state<ContentFormat>(getLangPrefs()?.default_format || 'markdown');
   let lang = $state(getLangPrefs()?.native_lang || getLocale());
@@ -113,7 +113,7 @@
         // New article: publish first, which auto-records the initial change
         const article = await createArticle({
           title: title.trim(),
-          description: description.trim() || undefined,
+          summary: summary.trim() || undefined,
           content: content.trim(),
           content_format: contentFormat,
           lang: lang || getLocale(),
@@ -135,7 +135,7 @@
         if (content !== lastSavedContent) {
           await saveArticle(savedArticleUri, {
             title: title.trim(),
-            description: description.trim(),
+            summary: summary.trim(),
             content: content.trim(),
           });
           lastSavedContent = content;
@@ -156,7 +156,7 @@
     try {
       await saveArticle(savedArticleUri, {
         title: title.trim(),
-        description: description.trim(),
+        summary: summary.trim(),
         content: content.trim(),
       });
       lastSavedContent = content;
@@ -296,7 +296,7 @@
       savedArticleUri = editUri;
       Promise.all([getArticle(editUri), getArticleContent(editUri)]).then(([a, c]) => {
         title = a.title;
-        description = a.description || '';
+        summary = a.summary || '';
         content = c.source;
         lastSavedContent = c.source;
         contentFormat = a.content_format;
@@ -311,7 +311,7 @@
         const d = drafts.find(d => d.id === initialDraftId);
         if (!d) return;
         title = d.title;
-        description = d.description || '';
+        summary = d.summary || '';
         content = d.content;
         contentFormat = d.content_format;
         lang = d.lang || 'zh';
@@ -322,7 +322,7 @@
     } else if (forkOf) {
       Promise.all([getArticle(forkOf), getArticleContent(forkOf)]).then(([a, c]) => {
         title = `Fork: ${a.title}`;
-        description = a.description || '';
+        summary = a.summary || '';
         content = c.source;
         originalContent = c.source;
         contentFormat = a.content_format;
@@ -372,7 +372,7 @@
       try {
         const article = await createArticle({
           title: title.trim(),
-          description: description.trim() || undefined,
+          summary: summary.trim() || undefined,
           content: content.trim(),
           content_format: contentFormat,
           lang: lang || getLocale(),
@@ -418,7 +418,7 @@
       if (!title.trim() || !content.trim()) throw new Error(t('newArticle.fillTitleContent'));
       const article = await createArticle({
         title: title.trim(),
-        description: description.trim() || undefined,
+        summary: summary.trim() || undefined,
         content: content.trim(),
         content_format: contentFormat,
         lang: lang || getLocale(),
@@ -521,7 +521,7 @@
     try {
       const data = {
         title: title.trim() || t('newArticle.untitledDraft'),
-        description: description.trim() || undefined,
+        summary: summary.trim() || undefined,
         content: content,
         content_format: contentFormat,
         lang: lang || getLocale(),
@@ -552,7 +552,7 @@
       if (isEditing && editUri) {
         const article = await updateArticle(editUri, {
           title: title.trim(),
-          description: description.trim(),
+          summary: summary.trim(),
           content: content.trim(),
           commit_message: commitMessage.trim() || undefined,
         });
@@ -564,7 +564,7 @@
         if (hasForkChanges) {
           await updateArticle(forked.at_uri, {
             title: title.trim(),
-            description: description.trim() || undefined,
+            summary: summary.trim() || undefined,
             content: content.trim(),
             commit_message: 'Initial fork edits',
           });
@@ -573,7 +573,7 @@
       } else {
         const article = await createArticle({
           title: title.trim(),
-          description: description.trim() || undefined,
+          summary: summary.trim() || undefined,
           content: content.trim(),
           content_format: contentFormat,
           lang: lang || getLocale(),
@@ -592,7 +592,7 @@
           try {
             await createArticle({
               title: title.trim(),
-              description: description.trim() || undefined,
+              summary: summary.trim() || undefined,
               content: lv.content.trim(),
               content_format: lv.contentFormat,
               lang: lv.lang,
@@ -664,8 +664,8 @@
       />
       <input
         class="desc-input"
-        bind:value={description}
-        placeholder={t('newArticle.descPlaceholder')}
+        bind:value={summary}
+        placeholder={t('newArticle.summaryPlaceholder')}
       />
     </div>
 

@@ -153,11 +153,11 @@
       </div>
     {/if}
 
-    {#if article.description_html}
+    {#if article.summary_html}
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-      <p class="post-desc">{@html article.description_html}</p>
-    {:else if article.description}
-      <p class="post-desc">{article.description}</p>
+      <p class="post-desc">{@html article.summary_html}</p>
+    {:else if article.summary}
+      <p class="post-desc">{article.summary}</p>
     {/if}
 
     <div class="card-bottom">
@@ -231,11 +231,11 @@
       <span class="series-badge">{t('home.series')}</span>
     </div>
 
-    {#if series.description_html}
+    {#if series.summary_html}
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-      <p class="post-desc">{@html series.description_html}</p>
-    {:else if series.description}
-      <p class="post-desc">{series.description}</p>
+      <p class="post-desc">{@html series.summary_html}</p>
+    {:else if series.summary}
+      <p class="post-desc">{series.summary}</p>
     {/if}
 
     <div class="card-bottom">

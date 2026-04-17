@@ -703,6 +703,10 @@ try {
           <p>{t('article.restricted')}</p>
         </div>
       {:else if content}
+        {#if article?.summary_html}
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+          <aside class="article-summary">{@html article.summary_html}</aside>
+        {/if}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="content" bind:this={contentEl} onmouseup={onContentMouseUp}>{@html content.html}</div>
       {/if}
@@ -962,6 +966,19 @@ try {
 {/if}
 
 <style>
+  .article-summary {
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 8px 0 8px 16px;
+    margin: 0 0 24px;
+    border-left: 3px solid var(--border-strong);
+  }
+  .article-summary :global(p) { margin: 0; }
+  .article-summary :global(p + p) { margin-top: 6px; }
+  .article-summary :global(a) { color: var(--accent); text-decoration: none; }
+  .article-summary :global(a:hover) { text-decoration: underline; }
 
   .article-sidebar {
     position: absolute;

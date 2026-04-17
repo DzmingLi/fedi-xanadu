@@ -197,7 +197,7 @@ async fn resolve_meta(pool: &PgPool, path: &str, query: &str) -> PageMeta {
 
 async fn resolve_article(pool: &PgPool, uri: &str, path: &str, raw_query: &str) -> Option<PageMeta> {
     let row: (String, String, String, chrono::DateTime<chrono::Utc>) = sqlx::query_as(
-        "SELECT a.title, a.description, \
+        "SELECT a.title, a.summary, \
          COALESCE(p.display_name, p.handle, a.did), a.created_at \
          FROM articles a LEFT JOIN profiles p ON a.did = p.did \
          WHERE a.at_uri = $1 AND a.removed_at IS NULL",
@@ -229,7 +229,7 @@ async fn resolve_article(pool: &PgPool, uri: &str, path: &str, raw_query: &str) 
 
 async fn resolve_series(pool: &PgPool, id: &str, raw_query: &str) -> Option<PageMeta> {
     let row: (String, Option<String>, String) = sqlx::query_as(
-        "SELECT s.title, s.description, \
+        "SELECT s.title, s.summary, \
          COALESCE(p.display_name, p.handle, s.created_by) \
          FROM series s LEFT JOIN profiles p ON s.created_by = p.did \
          WHERE s.id = $1",
@@ -346,7 +346,7 @@ async fn render_bot_body(pool: &PgPool, path: &str, query: &str) -> Option<Strin
 
 async fn render_bot_article(pool: &PgPool, uri: &str) -> Option<String> {
     let row: (String, String, String) = sqlx::query_as(
-        "SELECT a.title, a.description, \
+        "SELECT a.title, a.summary, \
          COALESCE(p.display_name, p.handle, a.did) \
          FROM articles a LEFT JOIN profiles p ON a.did = p.did \
          WHERE a.at_uri = $1 AND a.removed_at IS NULL",
@@ -389,7 +389,7 @@ async fn render_bot_article(pool: &PgPool, uri: &str) -> Option<String> {
 
 async fn render_bot_series(pool: &PgPool, id: &str) -> Option<String> {
     let row: (String, Option<String>, String) = sqlx::query_as(
-        "SELECT s.title, s.description, \
+        "SELECT s.title, s.summary, \
          COALESCE(p.display_name, p.handle, s.created_by) \
          FROM series s LEFT JOIN profiles p ON s.created_by = p.did \
          WHERE s.id = $1",

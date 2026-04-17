@@ -64,8 +64,8 @@
         </div>
       {/if}
 
-      {#if q.description}
-        <p class="q-desc">{q.description}</p>
+      {#if q.summary}
+        <p class="q-desc">{q.summary}</p>
       {/if}
 
       <div class="q-bottom">

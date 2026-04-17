@@ -568,19 +568,21 @@ pub struct ForkAheadQuery {
     pub original_uri: String,
 }
 
-/// Result of publishing article content: repo path + resolved description.
+/// Result of publishing article content: repo path + resolved summary.
 pub(super) struct PublishResult {
     pub repo_path: std::path::PathBuf,
-    /// Final description source (author-supplied or auto-extracted from content).
-    pub description_source: String,
-    /// Description rendered to inline-only HTML, cached in DB for list views.
-    pub description_html: String,
+    /// Final summary source (author-supplied — auto extraction is roadmapped
+    /// via LLM, not simple truncation).
+    pub summary_source: String,
+    /// Summary rendered to inline-only HTML, cached in DB for list views and
+    /// the lead block at the top of the article body.
+    pub summary_html: String,
 }
 
-/// Author-supplied description source (markdown/typst, same format as content).
-/// Used verbatim when present; when empty, description is left empty until the
+/// Author-supplied summary source (markdown/typst, same format as content).
+/// Used verbatim when present; when empty, summary stays empty until the
 /// author fills it in (no auto-extraction — tracked on the roadmap as AI summary).
-pub(super) struct DescriptionInput<'a> {
+pub(super) struct SummaryInput<'a> {
     pub user_source: Option<&'a str>,
 }
 
@@ -596,7 +598,7 @@ pub(super) async fn publish_article_content(
     format: ContentFormat,
     series_id: Option<&str>,
     message: &str,
-    description: DescriptionInput<'_>,
+    description: SummaryInput<'_>,
 ) -> Result<PublishResult, AppError> {
     let fmt = format.as_str();
     let loc = if let Some(sid) = series_id {
@@ -665,11 +667,11 @@ pub(super) async fn publish_article_content(
         }
     }
 
-    let description_source = description.user_source.unwrap_or("").to_string();
+    let summary_source = description.user_source.unwrap_or("").to_string();
 
     // Render description to inline-only HTML (cached in DB for list views).
-    let description_html = crate::description::render_description_inline(
-        fmt, &description_source, &loc.repo_path,
+    let summary_html = crate::summary::render_summary_inline(
+        fmt, &summary_source, &loc.repo_path,
     ).unwrap_or_else(|e| {
         tracing::warn!("description render failed: {e}");
         String::new()
@@ -677,18 +679,18 @@ pub(super) async fn publish_article_content(
 
     // Write description source file alongside content — same pijul patch as content.
     let src_ext = fx_renderer::format_extension(fmt);
-    let description_path = loc.repo_path.join(format!("description.{src_ext}"));
+    let description_path = loc.repo_path.join(format!("summary.{src_ext}"));
     if let Some(parent) = description_path.parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-    if let Err(e) = tokio::fs::write(&description_path, &description_source).await {
+    if let Err(e) = tokio::fs::write(&description_path, &summary_source).await {
         tracing::warn!("failed to write description file: {e}");
     }
     if let Some(ref knot) = knot_url {
         let client = pijul_knot::KnotClient::new(knot);
         let rel_path = description_path.strip_prefix(&loc.repo_path)
             .unwrap_or(&description_path).to_string_lossy().to_string();
-        if let Err(e) = client.write_file(&loc.node_id, &rel_path, description_source.as_bytes()).await {
+        if let Err(e) = client.write_file(&loc.node_id, &rel_path, summary_source.as_bytes()).await {
             tracing::warn!("knot write description failed: {e}");
         }
     }
@@ -716,8 +718,8 @@ pub(super) async fn publish_article_content(
 
     Ok(PublishResult {
         repo_path: loc.repo_path,
-        description_source,
-        description_html,
+        summary_source,
+        summary_html,
     })
 }
 
@@ -880,8 +882,8 @@ pub async fn create_article(
     let publish = publish_article_content(
         &state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
         input.series_id.as_deref(), "Initial publish",
-        DescriptionInput {
-            user_source: input.description.as_deref(),
+        SummaryInput {
+            user_source: input.summary.as_deref(),
         },
     ).await?;
 
@@ -889,7 +891,7 @@ pub async fn create_article(
     if input.series_id.is_none() {
         let meta = fx_core::meta::article_meta_from_create(
             &input.title,
-            Some(&publish.description_source),
+            Some(&publish.summary_source),
             &input.tags,
             &input.prereqs,
             input.license.as_deref(),
@@ -915,7 +917,7 @@ pub async fn create_article(
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, translation_group,
         default_visibility(user.phone_verified), ContentKind::Article, None,
-        &publish.description_source, &publish.description_html,
+        &publish.summary_source, &publish.summary_html,
     ).await?;
 
     // Add to series if specified
@@ -928,7 +930,7 @@ pub async fn create_article(
         let record = serde_json::json!({
             "$type": fx_atproto::lexicon::ARTICLE,
             "title": input.title,
-            "description": input.description.as_deref().unwrap_or(""),
+            "description": input.summary.as_deref().unwrap_or(""),
             "contentFormat": input.content_format,
             "tags": input.tags,
             "createdAt": now_rfc3339(),
@@ -1053,15 +1055,15 @@ pub async fn create_article_multipart(
     let publish = publish_article_content(
         &state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
         input.series_id.as_deref(), "Initial publish",
-        DescriptionInput {
-            user_source: input.description.as_deref(),
+        SummaryInput {
+            user_source: input.summary.as_deref(),
         },
     ).await?;
 
     if input.series_id.is_none() {
         let meta = fx_core::meta::article_meta_from_create(
             &input.title,
-            Some(&publish.description_source),
+            Some(&publish.summary_source),
             &input.tags,
             &input.prereqs,
             input.license.as_deref(),
@@ -1087,7 +1089,7 @@ pub async fn create_article_multipart(
     let article = article_service::create_article(
         &state.pool, &user.did, &at_uri, &input, &hash, translation_group,
         default_visibility(user.phone_verified), ContentKind::Article, None,
-        &publish.description_source, &publish.description_html,
+        &publish.summary_source, &publish.summary_html,
     ).await?;
 
     if let Some(ref sid) = input.series_id {
@@ -1098,7 +1100,7 @@ pub async fn create_article_multipart(
         let record = serde_json::json!({
             "$type": fx_atproto::lexicon::ARTICLE,
             "title": input.title,
-            "description": input.description.as_deref().unwrap_or(""),
+            "description": input.summary.as_deref().unwrap_or(""),
             "contentFormat": input.content_format,
             "tags": input.tags,
             "createdAt": now_rfc3339(),
@@ -1589,7 +1591,7 @@ pub async fn get_image(
 pub struct UpdateArticleInput {
     pub uri: String,
     pub title: Option<String>,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub content: Option<String>,
     pub commit_message: Option<String>,
     /// Category-specific metadata to update.
@@ -1634,16 +1636,16 @@ pub async fn update_article(
     let node_id = uri_to_node_id(&input.uri);
     let repo_path = state.pijul.repo_path(&node_id);
 
-    let desc_html = if let Some(ref desc) = input.description {
-        let html = crate::description::render_description_inline(format.as_str(), desc, &repo_path)
+    let summary_html = if let Some(ref summary) = input.summary {
+        let html = crate::summary::render_summary_inline(format.as_str(), summary, &repo_path)
             .unwrap_or_default();
         let src_ext = fx_renderer::format_extension(format.as_str());
-        let desc_path = repo_path.join(format!("description.{src_ext}"));
-        if let Some(parent) = desc_path.parent() {
+        let summary_path = repo_path.join(format!("summary.{src_ext}"));
+        if let Some(parent) = summary_path.parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
         }
-        if let Err(e) = tokio::fs::write(&desc_path, desc).await {
-            tracing::warn!("write description file failed: {e}");
+        if let Err(e) = tokio::fs::write(&summary_path, summary).await {
+            tracing::warn!("write summary file failed: {e}");
         }
         Some(html)
     } else { None };
@@ -1657,8 +1659,8 @@ pub async fn update_article(
         }
     }
 
-    if let (Some(desc), Some(html)) = (&input.description, &desc_html) {
-        article_service::update_article_description(&state.pool, &input.uri, desc, html).await?;
+    if let (Some(summary), Some(html)) = (&input.summary, &summary_html) {
+        article_service::update_article_summary(&state.pool, &input.uri, summary, html).await?;
     }
 
     // Update category-specific metadata
@@ -1678,15 +1680,15 @@ pub async fn update_article(
         }
     }
 
-    // Update meta.json if title or description changed
-    if input.title.is_some() || input.description.is_some() {
+    // Update meta.json if title or summary changed
+    if input.title.is_some() || input.summary.is_some() {
         let article_for_meta = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
         let node_id = uri_to_node_id(&input.uri);
         let repo_path = state.pijul.repo_path(&node_id);
         if repo_path.exists() {
             let mut meta = fx_core::meta::read_meta_file(&repo_path).unwrap_or_default();
             meta.title = article_for_meta.title.clone();
-            meta.description = if article_for_meta.description.is_empty() { None } else { Some(article_for_meta.description.clone()) };
+            meta.description = if article_for_meta.summary.is_empty() { None } else { Some(article_for_meta.summary.clone()) };
             let _ = fx_core::meta::write_meta_file(&repo_path, &meta);
             // Don't record separately — it'll be included in the next content record
         }
@@ -2043,9 +2045,9 @@ pub(super) async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_pa
     if let Some(ref desc) = meta.description {
         let format = article_service::get_content_format(&state.pool, article_uri).await
             .unwrap_or_else(|_| "markdown".to_string());
-        let html = crate::description::render_description_inline(&format, desc, repo_path)
+        let html = crate::summary::render_summary_inline(&format, desc, repo_path)
             .unwrap_or_default();
-        let _ = article_service::update_article_description(&state.pool, article_uri, desc, &html).await;
+        let _ = article_service::update_article_summary(&state.pool, article_uri, desc, &html).await;
     }
     // Sync tags: clear old, insert new
     if !meta.tags.is_empty() {

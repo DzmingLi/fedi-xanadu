@@ -38,7 +38,7 @@ pub async fn save_draft(
     let record = serde_json::json!({
         "$type": fx_atproto::lexicon::DRAFT,
         "title": input.title,
-        "description": input.description.as_deref().unwrap_or(""),
+        "description": input.summary.as_deref().unwrap_or(""),
         "contentFormat": input.content_format,
         "tags": input.tags,
         "createdAt": now_rfc3339(),
@@ -163,7 +163,7 @@ pub async fn publish_draft(
     let record = serde_json::json!({
         "$type": fx_atproto::lexicon::ARTICLE,
         "title": draft.title,
-        "description": draft.description,
+        "description": draft.summary,
         "contentFormat": draft.content_format,
         "tags": tags,
         "createdAt": now_rfc3339(),

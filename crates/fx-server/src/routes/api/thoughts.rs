@@ -40,8 +40,8 @@ pub async fn create_thought(
     let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
     let hash = content_hash(&input.content);
 
-    let resolved_desc = input.description.as_deref().unwrap_or("").to_string();
-    let desc_html = crate::description::render_description_inline(
+    let resolved_desc = input.summary.as_deref().unwrap_or("").to_string();
+    let desc_html = crate::summary::render_summary_inline(
         input.content_format.as_str(), &resolved_desc, std::path::Path::new("."),
     ).unwrap_or_default();
 
@@ -73,7 +73,7 @@ pub async fn create_thought(
         let record = serde_json::json!({
             "$type": fx_atproto::lexicon::ARTICLE,
             "title": input.title,
-            "description": input.description.as_deref().unwrap_or(""),
+            "description": input.summary.as_deref().unwrap_or(""),
             "contentFormat": input.content_format,
             "contentSource": input.content,
             "tags": input.tags,
