@@ -122,6 +122,27 @@ pub struct WorkExperienceEntry {
     pub current: bool,
     #[serde(default)]
     pub description: Option<String>,
+    /// Locale → translated text fields (company, department, title,
+    /// location, description).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[ts(type = "Record<string, WorkExperienceTranslation>")]
+    pub translations: std::collections::HashMap<String, WorkExperienceTranslation>,
+}
+
+/// Translated text fields for a work-experience entry.
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct WorkExperienceTranslation {
+    #[serde(default)]
+    pub company: Option<String>,
+    #[serde(default)]
+    pub department: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// Locale -> text map. E.g. `{"en": "NightBoat", "zh": "夜舟"}`.

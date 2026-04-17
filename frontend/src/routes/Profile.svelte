@@ -7,7 +7,7 @@
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { ProfileData, Article, Series, ContentTeachRow, Contacts, ContactKind, CustomLink, LinkedHandle, BookmarkWithTitle, EducationEntry, EducationTranslation, WorkExperienceEntry, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
+  import type { ProfileData, Article, Series, ContentTeachRow, Contacts, ContactKind, CustomLink, LinkedHandle, BookmarkWithTitle, EducationEntry, EducationTranslation, WorkExperienceEntry, WorkExperienceTranslation, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
   import { CONTACT_KINDS } from '../lib/types';
 
   /** Contact kinds that store {url, username} rather than a bare string. */
@@ -31,6 +31,16 @@
       if (val) return val;
     }
     return edu[field];
+  }
+
+  /** Resolve a work-experience field by locale, falling back to the default value. */
+  function expField(exp: WorkExperienceEntry, field: keyof WorkExperienceTranslation, loc: string): string | null | undefined {
+    const tr = exp.translations?.[loc];
+    if (tr) {
+      const val = tr[field];
+      if (val) return val;
+    }
+    return exp[field];
   }
 
   // All series (including sub-series) for building tree
@@ -659,14 +669,19 @@
           {#if profile.experience.length > 0 || isOwnProfile}
             <div class="experience-list">
               {#each profile.experience as exp}
+                {@const company = expField(exp, 'company', locale) || exp.company}
+                {@const dept = expField(exp, 'department', locale)}
+                {@const title = expField(exp, 'title', locale)}
+                {@const location = expField(exp, 'location', locale)}
+                {@const desc = expField(exp, 'description', locale)}
                 <div class="experience-entry">
-                  <span class="exp-company">{exp.company}{#if exp.department}, {exp.department}{/if}</span>
-                  {#if exp.title}<span class="exp-title">{exp.title}</span>{/if}
-                  {#if exp.location}<span class="exp-location">{exp.location}</span>{/if}
+                  <span class="exp-company">{company}{#if dept}, {dept}{/if}</span>
+                  {#if title}<span class="exp-title">{title}</span>{/if}
+                  {#if location}<span class="exp-location">{location}</span>{/if}
                   <span class="edu-dates">
                     {exp.start_date || ''}{#if exp.start_date} – {/if}{#if exp.current}{t('profile.present')}{:else}{exp.end_date || ''}{/if}
                   </span>
-                  {#if exp.description}<p class="exp-desc">{exp.description}</p>{/if}
+                  {#if desc}<p class="exp-desc">{desc}</p>{/if}
                 </div>
               {/each}
               {#if isOwnProfile}
@@ -1246,10 +1261,38 @@
             </label>
           </div>
           <textarea bind:value={exp.description} placeholder={t('profile.description')} rows="2"></textarea>
+          <!-- Translations -->
+          <details class="edu-translations">
+            <summary class="edu-trans-summary">
+              {t('profile.translations')} ({Object.keys(exp.translations || {}).length})
+            </summary>
+            {#each Object.keys(exp.translations || {}) as lang}
+              {@const tr = (exp.translations || {})[lang]}
+              <div class="edu-trans-block">
+                <div class="edu-trans-header">
+                  <span class="edu-trans-lang">{lang.toUpperCase()}</span>
+                  <button class="remove-entry" onclick={() => { const copy = { ...(exp.translations || {}) }; delete copy[lang]; exp.translations = copy; editExp = [...editExp]; }}>×</button>
+                </div>
+                <input type="text" value={tr?.company || ''} placeholder={t('profile.company')} oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].company = (e.target as HTMLInputElement).value || null; }} />
+                <div class="modal-row">
+                  <input type="text" value={tr?.department || ''} placeholder={t('profile.department')} oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].department = (e.target as HTMLInputElement).value || null; }} />
+                  <input type="text" value={tr?.title || ''} placeholder={t('profile.jobTitle')} oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].title = (e.target as HTMLInputElement).value || null; }} />
+                  <input type="text" value={tr?.location || ''} placeholder={t('profile.location')} oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].location = (e.target as HTMLInputElement).value || null; }} />
+                </div>
+                <textarea value={tr?.description || ''} placeholder={t('profile.description')} rows="2" oninput={(e) => { if (!exp.translations) exp.translations = {}; if (!exp.translations[lang]) exp.translations[lang] = {}; exp.translations[lang].description = (e.target as HTMLTextAreaElement).value || null; }}></textarea>
+              </div>
+            {/each}
+            <select class="edu-add-lang" onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (!v) return; if (!exp.translations) exp.translations = {}; exp.translations[v] = {}; editExp = [...editExp]; (e.target as HTMLSelectElement).value = ''; }}>
+              <option value="">{t('profile.addLanguage')}</option>
+              {#each ['en', 'zh', 'ja', 'ko', 'fr', 'de'].filter(l => !Object.keys(exp.translations || {}).includes(l)) as l}
+                <option value={l}>{l.toUpperCase()}</option>
+              {/each}
+            </select>
+          </details>
           <button class="remove-entry" onclick={() => { editExp = editExp.filter((_, j) => j !== i); }}>{t('profile.remove')}</button>
         </div>
       {/each}
-      <button class="add-entry" onclick={() => { editExp = [...editExp, { company: '', department: '', title: '', location: '', start_date: '', end_date: '', current: true, description: '' }]; }}>+ {t('profile.addExperience')}</button>
+      <button class="add-entry" onclick={() => { editExp = [...editExp, { company: '', department: '', title: '', location: '', start_date: '', end_date: '', current: true, description: '', translations: {} }]; }}>+ {t('profile.addExperience')}</button>
       <div class="modal-actions">
         <button class="btn-cancel" onclick={() => editingExp = false}>{t('common.cancel')}</button>
         <button class="btn-save" onclick={async () => { await updateExperience(editExp); profile!.experience = editExp; editingExp = false; }}>{t('common.save')}</button>

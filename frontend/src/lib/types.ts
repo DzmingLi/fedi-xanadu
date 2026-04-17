@@ -414,6 +414,15 @@ export interface WorkExperienceEntry {
   end_date?: string | null;
   current?: boolean;
   description?: string | null;
+  translations?: Record<string, WorkExperienceTranslation>;
+}
+
+export interface WorkExperienceTranslation {
+  company?: string | null;
+  department?: string | null;
+  title?: string | null;
+  location?: string | null;
+  description?: string | null;
 }
 
 /** Locale -> text map, e.g. {"en": "NightBoat", "zh": "夜舟"} */
