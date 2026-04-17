@@ -581,8 +581,23 @@ try {
 
       <div class="article-meta">
         <a href="/profile?did={encodeURIComponent(article.did)}" class="author-link">{article.author_handle ? `@${article.author_handle}` : article.did}</a>
+        <span class="meta-sep">&middot;</span>
         <span>{timeAgo(article.created_at)}</span>
-        <span>{article.content_format}</span>
+        {#if paperMeta}
+          {#if paperMeta.venue}
+            <span class="meta-sep">&middot;</span>
+            <span class="meta-badge venue">{paperMeta.venue}{#if paperMeta.year} {paperMeta.year}{/if}</span>
+          {/if}
+          {#if paperMeta.accepted}<span class="meta-badge accepted">{t('article.accepted') || 'Accepted'}</span>{/if}
+          {#if paperMeta.doi}<a href="https://doi.org/{paperMeta.doi}" target="_blank" rel="noopener" class="meta-link">DOI</a>{/if}
+          {#if paperMeta.arxiv_id}<a href="https://arxiv.org/abs/{paperMeta.arxiv_id}" target="_blank" rel="noopener" class="meta-link">arXiv</a>{/if}
+        {/if}
+        {#if experienceMeta}
+          {#if experienceMeta.kind}<span class="meta-sep">&middot;</span><span class="meta-badge">{experienceMeta.kind}</span>{/if}
+          {#if experienceMeta.target}<span class="meta-label">{experienceMeta.target}</span>{/if}
+          {#if experienceMeta.result}<span class="meta-badge {experienceMeta.result}">{experienceMeta.result}</span>{/if}
+        {/if}
+        <span class="meta-sep">&middot;</span>
         <span>{article.license}</span>
         {#if prereqs.length > 0}
           <span class="prereq-sep">|</span>
@@ -591,25 +606,6 @@ try {
           {/each}
         {/if}
       </div>
-
-      {#if paperMeta}
-        <div class="category-meta paper-meta">
-          {#if paperMeta.venue}<span class="meta-badge venue">{paperMeta.venue}{#if paperMeta.year} {paperMeta.year}{/if}</span>{/if}
-          {#if paperMeta.venue_type}<span class="meta-label">{paperMeta.venue_type}</span>{/if}
-          {#if paperMeta.accepted}<span class="meta-badge accepted">Accepted</span>{/if}
-          {#if paperMeta.doi}<a href="https://doi.org/{paperMeta.doi}" target="_blank" rel="noopener" class="meta-link">DOI: {paperMeta.doi}</a>{/if}
-          {#if paperMeta.arxiv_id}<a href="https://arxiv.org/abs/{paperMeta.arxiv_id}" target="_blank" rel="noopener" class="meta-link">arXiv: {paperMeta.arxiv_id}</a>{/if}
-        </div>
-      {/if}
-
-      {#if experienceMeta}
-        <div class="category-meta experience-meta">
-          {#if experienceMeta.kind}<span class="meta-badge">{experienceMeta.kind}</span>{/if}
-          {#if experienceMeta.target}<span class="meta-label">{experienceMeta.target}</span>{/if}
-          {#if experienceMeta.year}<span class="meta-label">{experienceMeta.year}</span>{/if}
-          {#if experienceMeta.result}<span class="meta-badge {experienceMeta.result}">{experienceMeta.result}</span>{/if}
-        </div>
-      {/if}
 
       {#if accessDenied}
         <div class="paywall-notice">
@@ -1022,6 +1018,7 @@ try {
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--border);
   }
+  .meta-sep { color: var(--text-hint); }
   .author-link {
     color: var(--text-secondary);
     text-decoration: none;

@@ -119,6 +119,7 @@ export default {
   'article.edit': 'Edit',
   'article.delete': 'Delete',
   'article.deleteConfirm': 'Are you sure you want to delete this article? This cannot be undone.',
+  'article.accepted': 'Accepted',
   'article.restricted': 'This article has restricted access. Contact the author for access.',
   'article.restrictedToggle': 'Restrict access (authorized users only)',
   'article.accessList': 'Authorized users',

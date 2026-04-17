@@ -119,6 +119,7 @@ export default {
   'article.edit': '编辑',
   'article.delete': '删除',
   'article.deleteConfirm': '确定要删除这篇文章吗？此操作不可撤销。',
+  'article.accepted': '已录用',
   'article.restricted': '此文章为付费内容，仅授权用户可阅读。',
   'article.restrictedToggle': '限制访问（仅授权用户可阅读）',
   'article.accessList': '授权用户',
