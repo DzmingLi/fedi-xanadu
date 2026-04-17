@@ -35,6 +35,7 @@ mod events;
 mod authors;
 mod authorship;
 mod orcid;
+mod publication;
 
 use axum::{Json, Router, extract::State, routing::{delete, get, patch, post, put}};
 
@@ -116,6 +117,22 @@ pub fn routes() -> Router<AppState> {
         .merge(author_routes())
         .merge(authorship_routes())
         .merge(orcid_routes())
+        .merge(publication_routes())
+}
+
+fn publication_routes() -> Router<AppState> {
+    Router::new()
+        .route("/publications", get(publication::list_publications).post(publication::create_publication))
+        .route("/publications/mine", get(publication::my_writable_publications))
+        .route("/publications/for-content", get(publication::publications_for_content_handler))
+        .route("/publications/{slug}", get(publication::get_publication).put(publication::update_publication).delete(publication::delete_publication))
+        .route("/publications/{slug}/content", get(publication::list_content).post(publication::add_content).delete(publication::remove_content))
+        .route("/publications/{slug}/members", get(publication::list_members).post(publication::add_member))
+        .route("/publications/{slug}/members/{did}", delete(publication::remove_member))
+        .route("/publications/{slug}/accept", post(publication::accept_membership))
+        .route("/publications/{slug}/leave", post(publication::leave_publication))
+        .route("/publications/{slug}/follow", post(publication::follow_publication).delete(publication::unfollow_publication))
+        .route("/publications/{slug}/viewer", get(publication::viewer_state))
 }
 
 // --- Grouped sub-routers ---

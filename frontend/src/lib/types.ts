@@ -810,3 +810,75 @@ export interface CourseDetail {
   rating: CourseRatingStats;
   reviews: CourseReview[];
 }
+
+// ---- Publications (专栏) ----
+
+export interface Publication {
+  id: string;
+  title_i18n: L;
+  description_i18n: L;
+  cover_url: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  at_uri: string | null;
+}
+
+export interface PublicationSummary {
+  id: string;
+  title_i18n: L;
+  description_i18n: L;
+  cover_url: string | null;
+  created_by: string;
+  created_at: string;
+  member_count: number;
+  content_count: number;
+  follower_count: number;
+}
+
+export interface PublicationMember {
+  publication_id: string;
+  did: string;
+  role: 'owner' | 'editor' | 'writer';
+  added_at: string;
+  added_by: string;
+  membership_at_uri: string | null;
+  handle: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+/** Mixed feed entry — either an article or a series. Exactly one of
+ * `article` / `series` is non-null. */
+export interface PublicationContentItem {
+  kind: 'article' | 'series';
+  added_at: string;
+  article: Article | null;
+  series: SeriesListRow | null;
+}
+
+export interface SeriesListRow {
+  id: string;
+  title: string;
+  description: string | null;
+  long_description: string | null;
+  order_index: number;
+  created_by: string;
+  author_handle: string | null;
+  author_display_name: string | null;
+  author_avatar: string | null;
+  created_at: string;
+  lang: string;
+  translation_group: string | null;
+  category: string;
+  split_level: number;
+  is_published: boolean;
+  vote_score: number;
+  bookmark_count: number;
+}
+
+export interface PublicationViewerState {
+  role: 'owner' | 'editor' | 'writer' | null;
+  is_following: boolean;
+  membership_confirmed: boolean;
+}

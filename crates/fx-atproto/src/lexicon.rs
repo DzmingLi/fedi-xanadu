@@ -12,3 +12,7 @@ pub const DEFS: &str = "li.dzming.nightboat.defs";
 pub const AUTHORSHIP: &str = "li.dzming.nightboat.authorship";
 pub const ORCID: &str = "li.dzming.nightboat.orcid";
 pub const PIJUL_REF_UPDATE: &str = "sh.tangled.pijul.refUpdate";
+pub const PUBLICATION: &str = "li.dzming.nightboat.publication";
+pub const PUBLICATION_MEMBERSHIP: &str = "li.dzming.nightboat.publication.membership";
+pub const PUBLICATION_ENTRY: &str = "li.dzming.nightboat.publication.entry";
+pub const PUBLICATION_FOLLOW: &str = "li.dzming.nightboat.publication.follow";

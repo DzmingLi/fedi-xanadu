@@ -76,9 +76,18 @@ pub async fn get_questions_by_book(pool: &PgPool, mode: InstanceMode, book_id: &
     Ok(rows)
 }
 
+/// Articles in the user's "Following" feed — authored by someone they follow,
+/// OR cross-posted to a publication they follow. Deduplicated by at_uri.
 pub async fn list_following_feed(pool: &PgPool, mode: InstanceMode, did: &str, limit: i64, offset: i64) -> crate::Result<Vec<Article>> {
     let rows = sqlx::query_as::<_, Article>(&format!(
-        "{} AND a.did IN (SELECT follows_did FROM user_follows WHERE did = $1) \
+        "{} AND ( \
+            a.did IN (SELECT follows_did FROM user_follows WHERE did = $1) \
+            OR a.at_uri IN ( \
+                SELECT pc.content_uri FROM publication_content pc \
+                JOIN publication_followers pf ON pf.publication_id = pc.publication_id \
+                WHERE pc.content_kind = 'article' AND pf.did = $1 \
+            ) \
+         ) \
          ORDER BY a.created_at DESC LIMIT $2 OFFSET $3", visible(mode)
     ))
     .bind(did)

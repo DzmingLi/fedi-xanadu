@@ -794,3 +794,45 @@ export const removeCourseStaff = (id: string, user_did: string) =>
   del<void>(`/courses/${encodeURIComponent(id)}/staff?user_did=${encodeURIComponent(user_did)}`);
 export const addCourseSkillTree = (id: string, tree_uri: string, role?: string) =>
   post<void>(`/courses/${encodeURIComponent(id)}/skill-trees`, { tree_uri, role });
+
+// ---- Publications ----
+export const listPublications = (limit = 50, offset = 0) =>
+  get<import('./types').PublicationSummary[]>(`/publications?limit=${limit}&offset=${offset}`);
+export const getPublication = (slug: string) =>
+  get<import('./types').Publication>(`/publications/${encodeURIComponent(slug)}`);
+export const createPublication = (input: { id: string; title_i18n: import('./types').L; description_i18n: import('./types').L; cover_url?: string | null }) =>
+  post<import('./types').Publication>('/publications', input);
+export const updatePublication = (slug: string, input: { title_i18n: import('./types').L; description_i18n: import('./types').L; cover_url?: string | null }) =>
+  put<void>(`/publications/${encodeURIComponent(slug)}`, input);
+export const deletePublication = (slug: string) =>
+  del<void>(`/publications/${encodeURIComponent(slug)}`);
+
+export const listPublicationContent = (slug: string, limit = 50, offset = 0) =>
+  get<import('./types').PublicationContentItem[]>(`/publications/${encodeURIComponent(slug)}/content?limit=${limit}&offset=${offset}`);
+export const addPublicationContent = (slug: string, content_uri: string, content_kind: 'article' | 'series') =>
+  post<void>(`/publications/${encodeURIComponent(slug)}/content`, { content_uri, content_kind });
+export const removePublicationContent = (slug: string, content_uri: string) =>
+  del<void>(`/publications/${encodeURIComponent(slug)}/content`, { content_uri });
+
+export const listPublicationMembers = (slug: string) =>
+  get<import('./types').PublicationMember[]>(`/publications/${encodeURIComponent(slug)}/members`);
+export const addPublicationMember = (slug: string, did: string, role: 'editor' | 'writer') =>
+  post<void>(`/publications/${encodeURIComponent(slug)}/members`, { did, role });
+export const removePublicationMember = (slug: string, did: string) =>
+  del<void>(`/publications/${encodeURIComponent(slug)}/members/${encodeURIComponent(did)}`);
+export const acceptPublicationInvite = (slug: string) =>
+  post<void>(`/publications/${encodeURIComponent(slug)}/accept`);
+export const leavePublication = (slug: string) =>
+  post<void>(`/publications/${encodeURIComponent(slug)}/leave`);
+
+export const followPublication = (slug: string) =>
+  post<void>(`/publications/${encodeURIComponent(slug)}/follow`);
+export const unfollowPublication = (slug: string) =>
+  del<void>(`/publications/${encodeURIComponent(slug)}/follow`);
+export const getPublicationViewerState = (slug: string) =>
+  get<import('./types').PublicationViewerState>(`/publications/${encodeURIComponent(slug)}/viewer`);
+
+export const myWritablePublications = () =>
+  get<import('./types').Publication[]>('/publications/mine');
+export const publicationsForContent = (uri: string) =>
+  get<import('./types').Publication[]>(`/publications/for-content?uri=${encodeURIComponent(uri)}`);

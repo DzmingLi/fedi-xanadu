@@ -1,0 +1,29 @@
+{
+  "lexicon": 1,
+  "id": "li.dzming.nightboat.publication.membership",
+  "description": "Member's half of the bilateral handshake — written under the MEMBER's DID to confirm they accept the invitation listed in the publication record.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:{slug}",
+      "record": {
+        "type": "object",
+        "required": ["publicationSlug", "role", "acceptedAt"],
+        "properties": {
+          "publicationUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the publication record (owner's DID). Optional — some publications may not yet have a persisted PDS record at time of acceptance."
+          },
+          "publicationSlug": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Publication slug, duplicated here for server-side lookup convenience."
+          },
+          "role": { "type": "string", "enum": ["owner", "editor", "writer"] },
+          "acceptedAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

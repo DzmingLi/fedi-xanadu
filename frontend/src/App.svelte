@@ -80,6 +80,8 @@
   const lazyCourses = () => import('./routes/Courses.svelte');
   const lazyCourseDetail = () => import('./routes/CourseDetail.svelte');
   const lazyNewCourse = () => import('./routes/NewCourse.svelte');
+  const lazyPublications = () => import('./routes/Publications.svelte');
+  const lazyPublicationDetail = () => import('./routes/PublicationDetail.svelte');
 </script>
 
 <Toast />
@@ -320,6 +322,24 @@
   <div class="container-wide">
     {#await lazyAuthor() then mod}
       <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{:else if route.page === 'publications'}
+  <div class="top-nav-wide">
+    <NavBar />
+  </div>
+  <div class="container-wide">
+    {#await lazyPublications() then mod}
+      <mod.default />
+    {/await}
+  </div>
+{:else if route.page === 'publication-detail'}
+  <div class="top-nav-wide">
+    <NavBar />
+  </div>
+  <div class="container-wide">
+    {#await lazyPublicationDetail() then mod}
+      <mod.default slug={route.params.id || ''} />
     {/await}
   </div>
 {/if}
