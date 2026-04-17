@@ -127,8 +127,7 @@ a.tag:hover {
   color: var(--text-primary);
   counter-reset: sidenote-counter;
   overflow: visible;
-  text-align: justify;
-  hyphens: auto;
+  text-align: left;
 }
 
 .content p { margin: 1em 0; }
