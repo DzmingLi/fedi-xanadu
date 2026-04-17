@@ -91,8 +91,9 @@
   }
 
   // Edit history
-  interface EditLog { id: string; editor_did: string; editor_handle: string | null; summary: string; created_at: string; }
+  interface EditLog { id: string; editor_did: string; editor_handle: string | null; old_data: Record<string, any>; new_data: Record<string, any>; summary: string; created_at: string; }
   let editHistory = $state<EditLog[]>([]);
+  let expandedLogId = $state('');
 
   $effect(() => {
     load();
@@ -1032,11 +1033,26 @@
           <p class="empty-hint">{t('books.noEditHistory')}</p>
         {:else}
           {#each editHistory.slice(0, 10) as log}
-            <div class="edit-log">
+            <button class="edit-log" onclick={() => expandedLogId = expandedLogId === log.id ? '' : log.id}>
               <span class="edit-log-who">{log.editor_handle ? `@${log.editor_handle}` : log.editor_did.slice(0, 20)}</span>
               <span class="edit-log-summary">{log.summary || '—'}</span>
               <span class="edit-log-time">{new Date(log.created_at).toLocaleDateString()}</span>
-            </div>
+            </button>
+            {#if expandedLogId === log.id}
+              <div class="edit-diff">
+                {#each Object.keys({ ...log.old_data, ...log.new_data }) as key}
+                  {@const oldVal = typeof log.old_data[key] === 'object' ? JSON.stringify(log.old_data[key]) : String(log.old_data[key] ?? '')}
+                  {@const newVal = typeof log.new_data[key] === 'object' ? JSON.stringify(log.new_data[key]) : String(log.new_data[key] ?? '')}
+                  {#if oldVal !== newVal}
+                    <div class="diff-field">
+                      <span class="diff-key">{key}</span>
+                      {#if oldVal}<div class="diff-old">- {oldVal}</div>{/if}
+                      {#if newVal}<div class="diff-new">+ {newVal}</div>{/if}
+                    </div>
+                  {/if}
+                {/each}
+              </div>
+            {/if}
           {/each}
         {/if}
         {#if getAuth()}
@@ -1445,11 +1461,21 @@
   .edit-log {
     display: flex; flex-direction: column; gap: 1px;
     padding: 6px 0; border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: 12px; cursor: pointer; background: none; border-left: none; border-right: none; border-top: none;
+    width: 100%; text-align: left;
   }
+  .edit-log:hover { background: var(--bg-secondary); }
   .edit-log-who { color: var(--accent); font-weight: 500; }
   .edit-log-summary { color: var(--text-secondary); }
   .edit-log-time { color: var(--text-hint); font-size: 11px; }
+  .edit-diff {
+    padding: 6px 8px; margin-bottom: 6px; background: var(--bg-secondary);
+    border-radius: 4px; font-size: 12px; font-family: monospace;
+  }
+  .diff-field { margin-bottom: 6px; }
+  .diff-key { font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 2px; }
+  .diff-old { color: #c62828; white-space: pre-wrap; word-break: break-all; }
+  .diff-new { color: #2e7d32; white-space: pre-wrap; word-break: break-all; }
   .report-dispute-btn {
     margin-top: 12px; padding: 4px 10px;
     font-size: 12px; color: var(--text-hint);
