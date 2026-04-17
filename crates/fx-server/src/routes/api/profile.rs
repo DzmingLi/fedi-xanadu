@@ -99,6 +99,12 @@ pub async fn update_display_name(
         .bind(&user.did)
         .execute(&state.pool)
         .await?;
+
+    // Sync to PDS (best-effort)
+    let _ = crate::auth::pds_update_profile(
+        &state, &user.token, Some(&input.display_name), None, None,
+    ).await;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -191,9 +197,20 @@ pub async fn upload_avatar(
     let _ = tokio::fs::create_dir_all(&avatars_dir).await;
     tokio::fs::write(avatars_dir.join(format!("{safe_did}.{ext}")), &data).await?;
 
+    let content_type = match ext.as_str() {
+        "png" => "image/png",
+        "webp" => "image/webp",
+        _ => "image/jpeg",
+    };
+
     let avatar_url = format!("/api/avatars/{safe_did}");
     sqlx::query("UPDATE profiles SET avatar_url = $1 WHERE did = $2")
         .bind(&avatar_url).bind(&user.did).execute(&state.pool).await?;
+
+    // Sync avatar to PDS (best-effort)
+    if let Some(blob) = crate::auth::pds_upload_blob(&state, &user.token, data, content_type).await {
+        let _ = crate::auth::pds_update_profile(&state, &user.token, None, Some(blob), None).await;
+    }
 
     Ok(Json(serde_json::json!({ "avatar_url": avatar_url })))
 }
@@ -241,9 +258,20 @@ pub async fn upload_banner(
     let _ = tokio::fs::create_dir_all(&banners_dir).await;
     tokio::fs::write(banners_dir.join(format!("{safe_did}.{ext}")), &data).await?;
 
+    let content_type = match ext.as_str() {
+        "png" => "image/png",
+        "webp" => "image/webp",
+        _ => "image/jpeg",
+    };
+
     let banner_url = format!("/api/banners/{safe_did}");
     sqlx::query("UPDATE profiles SET banner_url = $1 WHERE did = $2")
         .bind(&banner_url).bind(&user.did).execute(&state.pool).await?;
+
+    // Sync banner to PDS (best-effort)
+    if let Some(blob) = crate::auth::pds_upload_blob(&state, &user.token, data, content_type).await {
+        let _ = crate::auth::pds_update_profile(&state, &user.token, None, None, Some(blob)).await;
+    }
 
     Ok(Json(serde_json::json!({ "banner_url": banner_url })))
 }

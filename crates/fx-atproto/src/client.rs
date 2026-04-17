@@ -234,6 +234,37 @@ impl AtClient {
         Ok(resp.json().await?)
     }
 
+    /// Get a record from the user's PDS repository.
+    pub async fn get_record(
+        &self,
+        pds_url: &str,
+        token: &str,
+        repo: &str,
+        collection: &str,
+        rkey: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let url = format!(
+            "{}/xrpc/com.atproto.repo.getRecord?repo={}&collection={}&rkey={}",
+            pds_url.trim_end_matches('/'),
+            urlencoding::encode(repo),
+            urlencoding::encode(collection),
+            urlencoding::encode(rkey),
+        );
+        let resp = self
+            .http
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("getRecord failed: {}", body);
+        }
+
+        Ok(resp.json().await?)
+    }
+
     /// Create a record in the user's PDS repository.
     pub async fn create_record(
         &self,

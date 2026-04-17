@@ -209,6 +209,74 @@ pub async fn pds_delete_record(
 }
 
 
+/// Update the AT Protocol profile on the user's PDS.
+/// Reads the existing profile record, merges changes, and writes it back.
+/// Only works for AT Protocol users with a valid PDS session.
+pub async fn pds_update_profile(
+    state: &crate::state::AppState,
+    token: &str,
+    display_name: Option<&str>,
+    avatar_blob: Option<serde_json::Value>,
+    banner_blob: Option<serde_json::Value>,
+) -> Option<()> {
+    let pds = pds_session(&state.pool, token).await?;
+    if pds.pds_url.is_empty() || pds.access_jwt.is_empty() {
+        return None;
+    }
+
+    // Read existing profile record
+    let existing = state.at_client.get_record(
+        &pds.pds_url, &pds.access_jwt, &pds.did,
+        "app.bsky.actor.profile", "self",
+    ).await.ok();
+
+    let mut record = existing
+        .and_then(|r| r.get("value").cloned())
+        .unwrap_or_else(|| serde_json::json!({
+            "$type": "app.bsky.actor.profile",
+        }));
+
+    if let Some(name) = display_name {
+        record["displayName"] = serde_json::Value::String(name.to_string());
+    }
+    if let Some(blob) = avatar_blob {
+        record["avatar"] = blob;
+    }
+    if let Some(blob) = banner_blob {
+        record["banner"] = blob;
+    }
+
+    match state.at_client.put_record(
+        &pds.pds_url, &pds.access_jwt,
+        &fx_atproto::client::PutRecordInput {
+            repo: pds.did,
+            collection: "app.bsky.actor.profile".to_string(),
+            rkey: "self".to_string(),
+            record,
+        },
+    ).await {
+        Ok(_) => Some(()),
+        Err(e) => { log_pds_error("update profile", e); None }
+    }
+}
+
+/// Upload a blob to the user's PDS and return the blob ref as JSON value.
+pub async fn pds_upload_blob(
+    state: &crate::state::AppState,
+    token: &str,
+    data: Vec<u8>,
+    content_type: &str,
+) -> Option<serde_json::Value> {
+    let pds = pds_session(&state.pool, token).await?;
+    if pds.pds_url.is_empty() || pds.access_jwt.is_empty() {
+        return None;
+    }
+    match state.at_client.upload_blob(&pds.pds_url, &pds.access_jwt, data, content_type).await {
+        Ok(blob_ref) => serde_json::to_value(blob_ref).ok(),
+        Err(e) => { log_pds_error("upload blob", e); None }
+    }
+}
+
 /// Requires admin secret header. Returns 401/403 if invalid.
 pub struct AdminAuth;
 

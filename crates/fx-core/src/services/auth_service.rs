@@ -100,18 +100,34 @@ pub async fn get_session_by_token(
 }
 
 /// Look up PDS connection details (did, pds_url, access_jwt) by bearer token.
+/// Checks both legacy sessions and OAuth sessions.
 /// Returns `None` if the token is missing or expired.
 pub async fn get_session_for_pds(
     pool: &PgPool,
     token: &str,
 ) -> Result<Option<PdsSession>> {
+    // Try legacy sessions first
     let row = sqlx::query_as::<_, PdsSession>(
         "SELECT did, pds_url, access_jwt FROM sessions WHERE token = $1 AND expires_at > NOW()",
     )
     .bind(token)
     .fetch_optional(pool)
     .await?;
-    Ok(row)
+
+    if row.is_some() {
+        return Ok(row);
+    }
+
+    // Try OAuth sessions (access_token is the PDS access token)
+    let oauth_row = sqlx::query_as::<_, PdsSession>(
+        "SELECT did, COALESCE(pds_url, '') AS pds_url, COALESCE(access_token, '') AS access_jwt \
+         FROM oauth_sessions WHERE token = $1 AND expires_at > NOW()",
+    )
+    .bind(token)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(oauth_row)
 }
 
 /// Delete sessions that have expired. Call periodically (e.g. once per hour).
