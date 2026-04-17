@@ -223,8 +223,13 @@
     <div class="card-bottom">
       <span class="post-meta">
         <span class="author-link" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(series.created_by)}`; }}>
-          <img src="/api/avatars/{encodeURIComponent(series.created_by)}" alt="" class="post-avatar" onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-          {seriesAuthor(series)}
+          {#if series.author_avatar}
+            <img src={series.author_avatar} alt="" class="post-avatar" />
+          {:else}
+            <img src="/api/avatars/{encodeURIComponent(series.created_by)}" alt="" class="post-avatar" onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          {/if}
+          {series.author_display_name || seriesAuthor(series)}
+          {#if series.author_handle && series.author_display_name}<span class="post-handle">@{series.author_handle}</span>{/if}
         </span>
         &middot; {fmtTime(series.created_at)}
       </span>

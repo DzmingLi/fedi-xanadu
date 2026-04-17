@@ -31,6 +31,8 @@ pub struct SeriesListRow {
     pub order_index: i32,
     pub created_by: String,
     pub author_handle: Option<String>,
+    pub author_display_name: Option<String>,
+    pub author_avatar: Option<String>,
     pub created_at: DateTime<Utc>,
     pub lang: String,
     pub translation_group: Option<String>,
@@ -117,7 +119,7 @@ pub struct SeriesHeadingRow {
 pub async fn list_series(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, s.long_description, \
-                s.order_index, s.created_by, p.handle AS author_handle, s.created_at, \
+                s.order_index, s.created_by, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, s.created_at, \
                 s.lang, s.translation_group, s.category, s.split_level, s.is_published, \
                 COALESCE(v.score, 0) AS vote_score, \
                 COALESCE(bk.cnt, 0) AS bookmark_count \
@@ -208,7 +210,7 @@ pub async fn unpublish_series(pool: &PgPool, id: &str) -> crate::Result<()> {
 pub async fn list_series_by_creator(pool: &PgPool, did: &str) -> crate::Result<Vec<SeriesListRow>> {
     let rows = sqlx::query_as::<_, SeriesListRow>(
         "SELECT s.id, s.title, s.description, s.long_description, \
-                s.order_index, s.created_by, p.handle AS author_handle, s.created_at, \
+                s.order_index, s.created_by, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, s.created_at, \
                 s.lang, s.translation_group, s.category, s.split_level, s.is_published, \
                 COALESCE(v.score, 0) AS vote_score, \
                 COALESCE(bk.cnt, 0) AS bookmark_count \

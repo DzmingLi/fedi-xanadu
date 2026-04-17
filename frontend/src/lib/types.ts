@@ -140,6 +140,8 @@ export interface Series {
   order_index: number;
   created_by: string;
   author_handle?: string | null;
+  author_display_name?: string | null;
+  author_avatar?: string | null;
   created_at: string;
   lang: string;
   translation_group: string | null;
