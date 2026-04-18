@@ -342,8 +342,8 @@
     background: var(--bg-white);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 16px 40px 16px 20px;
-    margin-bottom: 12px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
     transition: border-color 0.15s, box-shadow 0.15s;
     text-decoration: none;
     color: inherit;
@@ -360,14 +360,13 @@
   .post-cover {
     width: auto;
     height: auto;
-    max-width: 160px;
-    max-height: 120px;
+    max-width: 180px;
+    max-height: 140px;
     border-radius: 3px;
     flex-shrink: 0;
     align-self: flex-start;
     background: var(--bg-hover, #f5f5f5);
   }
-  .post-card.has-cover { min-height: 184px; }
   .card-top {
     display: flex;
     align-items: flex-start;
@@ -401,7 +400,6 @@
     margin-top: 10px;
     display: flex;
     align-items: center;
-    padding-right: 80px;
   }
   .post-meta {
     font-size: 13px;
@@ -477,20 +475,22 @@
     background: rgba(99, 102, 241, 0.2);
     text-decoration: none;
   }
-  /* Expand button */
+  /* Expand button — protruding pill anchored to the card's bottom-right corner */
   .expand-btn {
     position: absolute;
-    right: 12px;
-    bottom: 12px;
-    background: none;
+    right: 20px;
+    bottom: -14px;
+    background: var(--bg-white);
     border: 1px solid var(--accent);
     font-size: 12px;
     color: var(--accent);
     cursor: pointer;
-    padding: 4px 12px;
-    border-radius: 4px;
+    padding: 5px 14px;
+    border-radius: 999px;
     transition: all 0.15s;
     line-height: 1;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    z-index: 1;
   }
   .expand-btn:hover { background: var(--accent); color: white; }
 
