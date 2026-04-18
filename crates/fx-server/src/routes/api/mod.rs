@@ -126,7 +126,9 @@ fn cover_routes() -> Router<AppState> {
     Router::new()
         .route("/covers/{id}", get(covers::get_cover))
         .route("/articles/cover", post(covers::upload_article_cover).delete(covers::remove_article_cover))
+        .route("/articles/cover/reference", post(covers::set_article_cover_reference))
         .route("/series/cover", post(covers::upload_series_cover).delete(covers::remove_series_cover))
+        .route("/series/cover/reference", post(covers::set_series_cover_reference))
 }
 
 fn publication_routes() -> Router<AppState> {
@@ -424,6 +426,8 @@ fn admin_routes() -> Router<AppState> {
         .route("/admin/series/articles", post(admin::admin_add_series_article))
         .route("/admin/series/batch-publish", post(admin::admin_batch_publish))
         .route("/admin/series/cover", post(covers::admin_upload_series_cover).delete(covers::admin_remove_series_cover))
+        .route("/admin/series/cover/reference", post(covers::admin_set_series_cover_reference))
+        .route("/admin/articles/cover/reference", post(covers::admin_set_article_cover_reference))
         .route("/admin/tags/merge", post(admin::admin_merge_tag))
         .route("/admin/tags/alias", post(admin::admin_add_tag_alias).delete(admin::admin_remove_tag_alias))
         .route("/admin/questions", post(admin::admin_create_question))

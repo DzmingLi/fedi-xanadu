@@ -254,6 +254,16 @@ enum AdminCommand {
         #[arg(short, long)]
         file: PathBuf,
     },
+    /// Reference an existing file in the series' pijul repo as its cover
+    #[command(name = "set-series-cover-ref")]
+    SetSeriesCoverRef {
+        /// Series ID (e.g. s-223mjladc6xr7)
+        #[arg(long)]
+        id: String,
+        /// Relative path inside the repo (e.g. figures/logo.png)
+        #[arg(short, long)]
+        file: String,
+    },
     /// Add an article to a series
     #[command(name = "add-to-series")]
     AddToSeries {
@@ -2801,6 +2811,22 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
 
             let url = resp["cover_url"].as_str().unwrap_or("?");
             println!("Uploaded cover for series {id}");
+            println!("URL: {url}");
+        }
+
+        AdminCommand::SetSeriesCoverRef { id, file } => {
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/series/cover/reference"))
+                .query(&[("id", &id)])
+                .header("x-admin-secret", &secret)
+                .json(&serde_json::json!({ "file": file }))
+                .send().await?
+                .error_for_status().context("Set series cover reference failed")?
+                .json().await?;
+
+            let url = resp["cover_url"].as_str().unwrap_or("?");
+            let f = resp["cover_file"].as_str().unwrap_or("?");
+            println!("Set cover for series {id} → {f}");
             println!("URL: {url}");
         }
 

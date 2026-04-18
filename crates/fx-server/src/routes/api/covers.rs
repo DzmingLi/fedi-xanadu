@@ -1,13 +1,16 @@
 //! Article / series cover images.
 //!
-//! Stored inside the pijul repo as `cover.{ext}` at the repo root so they
-//! ride along with content: versioned, forkable, and transported via pijul
-//! patches like `content.{ext}` and `description.{ext}`.
+//! Two ways to have a cover:
+//! * **Upload** — bytes are written to the pijul repo as `cover.{ext}` at the
+//!   repo root and a patch is recorded. Default file name, always overwrites.
+//! * **Reference** — `cover_file` in the DB names an arbitrary file already in
+//!   the repo (typically a body image the author already uploaded). No new
+//!   bytes, no duplicate patch.
 //!
-//! URL scheme: `/api/covers/{kind}-{node_id}` where kind is `a` (article)
-//! or `s` (series). `node_id` is `uri_to_node_id(at_uri)` for articles and
-//! `series_{series_id}` for series — identical to the pijul repo folder
-//! name, so resolution is a direct lookup with no DB round-trip.
+//! URL scheme: `/api/covers/{kind}-{node_id}` where kind is `a` (article) or
+//! `s` (series). `get_cover` reads the DB row to find `cover_file`, and falls
+//! back to scanning `cover.{ext}` if the column is NULL (legacy rows + the
+//! case where the repo has a `cover.png` but the DB wasn't updated).
 use axum::{
     Json,
     body::Body,
@@ -20,16 +23,41 @@ use crate::auth::{AdminAuth, WriteAuth};
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
 
-const COVER_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const UPLOAD_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+/// Broader allow-list for the reference path: body images in the repo may be
+/// any of these. Kept in sync with `articles::get_image`'s content-type map.
+const REFERENCE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "svg"];
 const MAX_COVER_SIZE: usize = 5 * 1024 * 1024; // 5 MB
 const COVER_STEM: &str = "cover";
 
-fn content_type_for(ext: &str) -> &'static str {
+fn content_type_for_ext(ext: &str) -> &'static str {
     match ext {
         "png" => "image/png",
         "webp" => "image/webp",
+        "gif" => "image/gif",
+        "svg" => "image/svg+xml",
         _ => "image/jpeg",
     }
+}
+
+fn ext_of(path: &str) -> String {
+    std::path::Path::new(path)
+        .extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase())
+        .unwrap_or_default()
+}
+
+/// Reject traversal, absolute paths, and disallowed extensions.
+fn validate_reference_path(file: &str) -> Result<String, AppError> {
+    if file.is_empty() || file.starts_with('/') || file.contains("..") {
+        return Err(AppError(fx_core::Error::BadRequest("invalid cover path".into())));
+    }
+    let ext = ext_of(file);
+    if !REFERENCE_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(AppError(fx_core::Error::BadRequest(
+            "cover extension must be jpg, png, webp, gif, or svg".into(),
+        )));
+    }
+    Ok(ext)
 }
 
 /// Resolve the key prefix + node_id to a pijul repo path.
@@ -37,6 +65,42 @@ fn repo_for(state: &AppState, kind: &str, node_id: &str) -> Option<std::path::Pa
     match kind {
         "a" => Some(state.pijul.repo_path(node_id)),
         "s" => Some(state.pijul.series_repo_path(node_id)),
+        _ => None,
+    }
+}
+
+/// Look up `cover_file` in the DB for a given kind + node_id.
+///
+/// Series: `node_id` is `series_{id}`, strip the prefix and `WHERE id = $1`.
+/// Articles: `node_id` is `translate(at_uri, '/:', '__')`, recover by matching.
+async fn lookup_cover_file(
+    pool: &sqlx::PgPool,
+    kind: &str,
+    node_id: &str,
+) -> Option<String> {
+    match kind {
+        "s" => {
+            let series_id = node_id.strip_prefix("series_")?;
+            sqlx::query_scalar::<_, Option<String>>(
+                "SELECT cover_file FROM series WHERE id = $1",
+            )
+            .bind(series_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .flatten()
+        }
+        "a" => sqlx::query_scalar::<_, Option<String>>(
+            "SELECT cover_file FROM articles \
+             WHERE translate(at_uri, '/:', '__') = $1",
+        )
+        .bind(node_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten(),
         _ => None,
     }
 }
@@ -52,12 +116,29 @@ pub async fn get_cover(
     let Some(repo) = repo_for(&state, kind, node_id) else {
         return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
     };
-    for ext in COVER_EXTENSIONS {
+
+    // Preferred path: DB cover_file points to an arbitrary file in the repo.
+    if let Some(rel) = lookup_cover_file(&state.pool, kind, node_id).await {
+        if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
+            let ext = ext_of(&rel);
+            if let Ok(data) = tokio::fs::read(repo.join(&rel)).await {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, content_type_for_ext(&ext))
+                    .header(header::CACHE_CONTROL, "public, max-age=300")
+                    .body(Body::from(data))
+                    .unwrap();
+            }
+        }
+    }
+
+    // Fallback: legacy rows / uploaded covers at the default name.
+    for ext in UPLOAD_EXTENSIONS {
         let path = repo.join(format!("{COVER_STEM}.{ext}"));
         if let Ok(data) = tokio::fs::read(&path).await {
             return Response::builder()
                 .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, content_type_for(ext))
+                .header(header::CONTENT_TYPE, content_type_for_ext(ext))
                 .header(header::CACHE_CONTROL, "public, max-age=300")
                 .body(Body::from(data))
                 .unwrap();
@@ -85,10 +166,9 @@ async fn read_multipart(mut multipart: Multipart) -> Result<(Vec<u8>, String), A
     if data.len() > MAX_COVER_SIZE {
         return Err(AppError(fx_core::Error::BadRequest("Cover too large (max 5MB)".into())));
     }
-    let ext = std::path::Path::new(file_name.as_deref().unwrap_or(""))
-        .extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase())
-        .unwrap_or_else(|| "jpg".into());
-    if !COVER_EXTENSIONS.contains(&ext.as_str()) {
+    let ext = ext_of(file_name.as_deref().unwrap_or(""));
+    let ext = if ext.is_empty() { "jpg".to_string() } else { ext };
+    if !UPLOAD_EXTENSIONS.contains(&ext.as_str()) {
         return Err(AppError(fx_core::Error::BadRequest("Use jpg, png, or webp".into())));
     }
     Ok((data, ext))
@@ -97,7 +177,7 @@ async fn read_multipart(mut multipart: Multipart) -> Result<(Vec<u8>, String), A
 /// Remove stale cover files with other extensions so a later reader doesn't
 /// pick up an outdated image when the author swaps formats.
 async fn purge_other_exts(dir: &std::path::Path, keep: &str) {
-    for ext in COVER_EXTENSIONS {
+    for ext in UPLOAD_EXTENSIONS {
         if *ext == keep { continue; }
         let _ = tokio::fs::remove_file(dir.join(format!("{COVER_STEM}.{ext}"))).await;
     }
@@ -153,7 +233,7 @@ async fn remove_cover_from_repo(
     is_series: bool,
 ) {
     let mut removed_any = false;
-    for ext in COVER_EXTENSIONS {
+    for ext in UPLOAD_EXTENSIONS {
         if tokio::fs::remove_file(repo_path.join(format!("{COVER_STEM}.{ext}"))).await.is_ok() {
             removed_any = true;
         }
@@ -171,6 +251,12 @@ async fn remove_cover_from_repo(
 
 #[derive(serde::Deserialize)]
 pub struct UriQuery { pub uri: String }
+
+#[derive(serde::Deserialize)]
+pub struct IdQuery { pub id: String }
+
+#[derive(serde::Deserialize)]
+pub struct CoverReference { pub file: String }
 
 pub async fn upload_article_cover(
     State(state): State<AppState>,
@@ -194,9 +280,10 @@ pub async fn upload_article_cover(
     write_cover_to_repo(&state, &repo_path, &node_id, &user.did, &data, &ext, false).await?;
 
     let cover_url = format!("/api/covers/a-{node_id}");
-    sqlx::query("UPDATE articles SET cover_url = $1 WHERE at_uri = $2")
-        .bind(&cover_url).bind(&q.uri).execute(&state.pool).await?;
-    Ok(Json(serde_json::json!({ "cover_url": cover_url })))
+    let cover_file = format!("{COVER_STEM}.{ext}");
+    sqlx::query("UPDATE articles SET cover_url = $1, cover_file = $2 WHERE at_uri = $3")
+        .bind(&cover_url).bind(&cover_file).bind(&q.uri).execute(&state.pool).await?;
+    Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": cover_file })))
 }
 
 pub async fn remove_article_cover(
@@ -215,13 +302,63 @@ pub async fn remove_article_cover(
     let node_id = uri_to_node_id(&q.uri);
     let repo_path = state.pijul.repo_path(&node_id);
     remove_cover_from_repo(&state, &repo_path, &node_id, &user.did, false).await;
-    sqlx::query("UPDATE articles SET cover_url = NULL WHERE at_uri = $1")
+    sqlx::query("UPDATE articles SET cover_url = NULL, cover_file = NULL WHERE at_uri = $1")
         .bind(&q.uri).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(serde::Deserialize)]
-pub struct IdQuery { pub id: String }
+/// Point the article's cover at an existing file in its pijul repo (e.g. a
+/// body image the author already uploaded). Does not touch the filesystem.
+pub async fn set_article_cover_reference(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    axum::extract::Query(q): axum::extract::Query<UriQuery>,
+    Json(body): Json<CoverReference>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let owner: Option<String> = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
+        .bind(&q.uri).fetch_optional(&state.pool).await?;
+    let Some(owner_did) = owner else {
+        return Err(AppError(fx_core::Error::NotFound { entity: "article", id: q.uri.clone() }));
+    };
+    if owner_did != user.did {
+        return Err(AppError(fx_core::Error::BadRequest("only the author can set a cover".into())));
+    }
+    set_article_cover_reference_inner(&state, &q.uri, &body.file).await
+}
+
+async fn set_article_cover_reference_inner(
+    state: &AppState,
+    uri: &str,
+    file: &str,
+) -> ApiResult<Json<serde_json::Value>> {
+    let _ = validate_reference_path(file)?;
+    let node_id = uri_to_node_id(uri);
+    let repo_path = state.pijul.repo_path(&node_id);
+    if !tokio::fs::try_exists(repo_path.join(file)).await.unwrap_or(false) {
+        return Err(AppError(fx_core::Error::BadRequest(
+            format!("cover file not found in repo: {file}"),
+        )));
+    }
+    let cover_url = format!("/api/covers/a-{node_id}");
+    sqlx::query("UPDATE articles SET cover_url = $1, cover_file = $2 WHERE at_uri = $3")
+        .bind(&cover_url).bind(file).bind(uri).execute(&state.pool).await?;
+    Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": file })))
+}
+
+pub async fn admin_set_article_cover_reference(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    axum::extract::Query(q): axum::extract::Query<UriQuery>,
+    Json(body): Json<CoverReference>,
+) -> ApiResult<Json<serde_json::Value>> {
+    // Still confirm the article exists.
+    let owner: Option<String> = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
+        .bind(&q.uri).fetch_optional(&state.pool).await?;
+    if owner.is_none() {
+        return Err(AppError(fx_core::Error::NotFound { entity: "article", id: q.uri.clone() }));
+    }
+    set_article_cover_reference_inner(&state, &q.uri, &body.file).await
+}
 
 pub async fn upload_series_cover(
     State(state): State<AppState>,
@@ -245,9 +382,10 @@ pub async fn upload_series_cover(
     write_cover_to_repo(&state, &repo_path, &node_id, &user.did, &data, &ext, true).await?;
 
     let cover_url = format!("/api/covers/s-{node_id}");
-    sqlx::query("UPDATE series SET cover_url = $1 WHERE id = $2")
-        .bind(&cover_url).bind(&q.id).execute(&state.pool).await?;
-    Ok(Json(serde_json::json!({ "cover_url": cover_url })))
+    let cover_file = format!("{COVER_STEM}.{ext}");
+    sqlx::query("UPDATE series SET cover_url = $1, cover_file = $2 WHERE id = $3")
+        .bind(&cover_url).bind(&cover_file).bind(&q.id).execute(&state.pool).await?;
+    Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": cover_file })))
 }
 
 pub async fn remove_series_cover(
@@ -266,9 +404,45 @@ pub async fn remove_series_cover(
     let node_id = format!("series_{}", q.id);
     let repo_path = state.pijul.series_repo_path(&node_id);
     remove_cover_from_repo(&state, &repo_path, &node_id, &user.did, true).await;
-    sqlx::query("UPDATE series SET cover_url = NULL WHERE id = $1")
+    sqlx::query("UPDATE series SET cover_url = NULL, cover_file = NULL WHERE id = $1")
         .bind(&q.id).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn set_series_cover_reference(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    axum::extract::Query(q): axum::extract::Query<IdQuery>,
+    Json(body): Json<CoverReference>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let owner: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
+        .bind(&q.id).fetch_optional(&state.pool).await?;
+    let Some(owner_did) = owner else {
+        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
+    };
+    if owner_did != user.did {
+        return Err(AppError(fx_core::Error::BadRequest("only the creator can set a cover".into())));
+    }
+    set_series_cover_reference_inner(&state, &q.id, &body.file).await
+}
+
+async fn set_series_cover_reference_inner(
+    state: &AppState,
+    series_id: &str,
+    file: &str,
+) -> ApiResult<Json<serde_json::Value>> {
+    let _ = validate_reference_path(file)?;
+    let node_id = format!("series_{series_id}");
+    let repo_path = state.pijul.series_repo_path(&node_id);
+    if !tokio::fs::try_exists(repo_path.join(file)).await.unwrap_or(false) {
+        return Err(AppError(fx_core::Error::BadRequest(
+            format!("cover file not found in repo: {file}"),
+        )));
+    }
+    let cover_url = format!("/api/covers/s-{node_id}");
+    sqlx::query("UPDATE series SET cover_url = $1, cover_file = $2 WHERE id = $3")
+        .bind(&cover_url).bind(file).bind(series_id).execute(&state.pool).await?;
+    Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": file })))
 }
 
 /// Admin override: set a series cover regardless of who created the series.
@@ -293,9 +467,10 @@ pub async fn admin_upload_series_cover(
     write_cover_to_repo(&state, &repo_path, &node_id, &owner_did, &data, &ext, true).await?;
 
     let cover_url = format!("/api/covers/s-{node_id}");
-    sqlx::query("UPDATE series SET cover_url = $1 WHERE id = $2")
-        .bind(&cover_url).bind(&q.id).execute(&state.pool).await?;
-    Ok(Json(serde_json::json!({ "cover_url": cover_url })))
+    let cover_file = format!("{COVER_STEM}.{ext}");
+    sqlx::query("UPDATE series SET cover_url = $1, cover_file = $2 WHERE id = $3")
+        .bind(&cover_url).bind(&cover_file).bind(&q.id).execute(&state.pool).await?;
+    Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": cover_file })))
 }
 
 pub async fn admin_remove_series_cover(
@@ -311,7 +486,21 @@ pub async fn admin_remove_series_cover(
     let node_id = format!("series_{}", q.id);
     let repo_path = state.pijul.series_repo_path(&node_id);
     remove_cover_from_repo(&state, &repo_path, &node_id, &owner_did, true).await;
-    sqlx::query("UPDATE series SET cover_url = NULL WHERE id = $1")
+    sqlx::query("UPDATE series SET cover_url = NULL, cover_file = NULL WHERE id = $1")
         .bind(&q.id).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn admin_set_series_cover_reference(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    axum::extract::Query(q): axum::extract::Query<IdQuery>,
+    Json(body): Json<CoverReference>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let exists: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
+        .bind(&q.id).fetch_optional(&state.pool).await?;
+    if exists.is_none() {
+        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
+    }
+    set_series_cover_reference_inner(&state, &q.id, &body.file).await
 }

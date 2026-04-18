@@ -333,9 +333,12 @@ pub async fn update_edition(
     input: &CreateEdition,
 ) -> crate::Result<BookEdition> {
     let links_json = sqlx::types::Json(&input.purchase_links);
+    // cover_url is managed by POST /books/{id}/editions/{eid}/cover, not by
+    // this metadata-update path. Preserve it when the request omits it so
+    // an unrelated edit can't silently orphan the file on disk.
     sqlx::query(
         "UPDATE book_editions SET edition_name = $1, title = $2, subtitle = $3, lang = $4, isbn = $5, publisher = $6, \
-         year = $7, translators = $8, purchase_links = $9, cover_url = $10 \
+         year = $7, translators = $8, purchase_links = $9, cover_url = COALESCE($10, cover_url) \
          WHERE id = $11",
     )
     .bind(&input.edition_name)
