@@ -28,6 +28,7 @@ pub async fn get_author(
 ) -> ApiResult<Json<author_service::AuthorDetail>> {
     let author = author_service::get_author(&state.pool, &id).await?;
     let books = author_service::list_books_by_author(&state.pool, &id).await?;
+    let courses = author_service::list_courses_by_author(&state.pool, &id).await?;
 
     // Count articles by this author (via article_authors if DID is linked)
     let article_count: i64 = if let Some(ref did) = author.did {
@@ -45,6 +46,7 @@ pub async fn get_author(
     Ok(Json(author_service::AuthorDetail {
         author,
         books,
+        courses,
         article_count,
     }))
 }

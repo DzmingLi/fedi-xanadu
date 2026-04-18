@@ -17,9 +17,17 @@
     title: Record<string, string>;
     cover_url: string | null;
   }
+  interface AuthorCourse {
+    course_id: string;
+    title: string;
+    code: string | null;
+    institution: string | null;
+    semester: string | null;
+  }
   interface AuthorDetail {
     author: Author;
     books: AuthorBook[];
+    courses: AuthorCourse[];
     article_count: number;
   }
 
@@ -90,6 +98,27 @@
       </section>
     {/if}
 
+    {#if detail.courses.length > 0}
+      <section class="author-section">
+        <h2>Courses ({detail.courses.length})</h2>
+        <ul class="course-list">
+          {#each detail.courses as course}
+            <li class="course-item">
+              <a href="/course?id={encodeURIComponent(course.course_id)}" class="course-link">
+                {#if course.code}<span class="course-code">{course.code}</span>{/if}
+                <span class="course-title">{course.title}</span>
+              </a>
+              {#if course.institution || course.semester}
+                <span class="course-meta">
+                  {course.institution ?? ''}{#if course.institution && course.semester} · {/if}{course.semester ?? ''}
+                </span>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
+
     {#if detail.article_count > 0 && detail.author.did}
       <section class="author-section">
         <h2>Articles ({detail.article_count})</h2>
@@ -128,4 +157,12 @@
     border: 1px solid var(--border);
   }
   .book-title { font-size: 13px; line-height: 1.3; }
+
+  .course-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+  .course-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-white); }
+  .course-link { display: flex; gap: 8px; align-items: baseline; color: var(--text-primary); text-decoration: none; }
+  .course-link:hover .course-title { color: var(--accent); }
+  .course-code { font-family: monospace; font-size: 12px; color: var(--text-hint); }
+  .course-title { font-family: var(--font-serif); font-size: 15px; }
+  .course-meta { font-size: 12px; color: var(--text-hint); }
 </style>

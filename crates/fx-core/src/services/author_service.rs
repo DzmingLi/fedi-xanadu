@@ -16,6 +16,7 @@ pub struct Author {
 pub struct AuthorDetail {
     pub author: Author,
     pub books: Vec<AuthorBookEntry>,
+    pub courses: Vec<AuthorCourseEntry>,
     pub article_count: i64,
 }
 
@@ -24,6 +25,30 @@ pub struct AuthorBookEntry {
     pub book_id: String,
     pub title: sqlx::types::Json<std::collections::HashMap<String, String>>,
     pub cover_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AuthorCourseEntry {
+    pub course_id: String,
+    pub title: String,
+    pub code: Option<String>,
+    pub institution: Option<String>,
+    pub semester: Option<String>,
+}
+
+pub async fn list_courses_by_author(
+    pool: &PgPool,
+    author_id: &str,
+) -> crate::Result<Vec<AuthorCourseEntry>> {
+    let rows = sqlx::query_as::<_, AuthorCourseEntry>(
+        "SELECT c.id AS course_id, c.title, c.code, c.institution, c.semester \
+         FROM course_authors ca JOIN courses c ON c.id = ca.course_id \
+         WHERE ca.author_id = $1 ORDER BY ca.position, c.created_at DESC",
+    )
+    .bind(author_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }
 
 /// Get author by ID.
