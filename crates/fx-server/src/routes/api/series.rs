@@ -569,7 +569,7 @@ pub async fn compile_series(
             fx_renderer::typst_render::render_series_full_html_with_config(&repo, &config)
         }).await.map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))??
     } else if has_markdown {
-        // Read .md chapters in meta.json order (or sorted fallback)
+        // Read .md chapters in meta.yaml order (or sorted fallback)
         let md_order = fx_renderer::read_chapter_order(&series_repo, ".md");
         let mut md_chapters = Vec::new();
         for name in &md_order {
@@ -742,11 +742,97 @@ pub async fn compile_series(
     // Touch series cache marker
     let _ = tokio::fs::write(series_repo.join("cache").join("series.cache"), "").await;
 
+    // Typst-only: query <nbt-chapter> and <nbt-summary> labels, pair them
+    // with the split slices in document order, and sync the teaches /
+    // prereqs / summary back to DB. Failures here are non-fatal — the
+    // compile itself already succeeded.
+    if has_typst || series_repo.join("main.typ").exists() {
+        let repo = series_repo.clone();
+        let metadata = tokio::task::spawn_blocking(move || {
+            let config = fx_renderer::fx_render_config();
+            fx_renderer::extract_series_metadata(&repo, &config)
+        }).await.ok().and_then(|r| r.ok());
+        if let Some(meta) = metadata {
+            sync_typst_chapter_metadata(&state, &series_id, &slices, &meta).await;
+        }
+    }
+
     Ok(Json(CompileResult {
         articles_created: created,
         articles_updated: updated,
         total_headings: headings.len(),
     }))
+}
+
+/// Pair the ordered `<nbt-chapter>` / `<nbt-summary>` extractor results
+/// with the split-output slices and write the teaches / prereqs / summary
+/// fields back to DB.
+///
+/// Convention: metadata entries appear in the Typst source in the same order
+/// as the headings they annotate, so `metadata[i]` belongs to `slice[i]` for
+/// whichever slices have at least one metadata entry preceding them.
+async fn sync_typst_chapter_metadata(
+    state: &AppState,
+    series_id: &str,
+    slices: &[fx_renderer::heading_extract::HtmlSlice],
+    meta: &fx_renderer::SeriesMetadata,
+) {
+    // Load the chapter article URIs in slice order.
+    let chapter_uris: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+        "SELECT heading_anchor, article_uri FROM series_articles \
+         WHERE series_id = $1 AND heading_anchor IS NOT NULL",
+    )
+    .bind(series_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+    let anchor_to_uri: std::collections::HashMap<_, _> = chapter_uris.into_iter().collect();
+
+    for (i, slice) in slices.iter().enumerate() {
+        let Some(uri) = anchor_to_uri.get(&slice.heading_anchor) else { continue };
+
+        if let Some(value) = meta.chapter_metadata.get(i) {
+            // teaches: array of tag ids
+            if let Some(arr) = value.get("teaches").and_then(|v| v.as_array()) {
+                let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
+                    .bind(uri).execute(&state.pool).await;
+                for tag in arr.iter().filter_map(|v| v.as_str()) {
+                    let _ = sqlx::query(
+                        "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                    ).bind(uri).bind(tag).execute(&state.pool).await;
+                }
+            }
+            // prereqs: array of (tag, type) tuples — also accepts { tag, type } dict
+            if let Some(arr) = value.get("prereqs").and_then(|v| v.as_array()) {
+                let _ = sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
+                    .bind(uri).execute(&state.pool).await;
+                for entry in arr {
+                    let (tag, kind) = match entry {
+                        serde_json::Value::String(s) => (Some(s.as_str()), "required"),
+                        serde_json::Value::Array(t) => (
+                            t.first().and_then(|v| v.as_str()),
+                            t.get(1).and_then(|v| v.as_str()).unwrap_or("required"),
+                        ),
+                        serde_json::Value::Object(m) => (
+                            m.get("tag").and_then(|v| v.as_str()),
+                            m.get("type").and_then(|v| v.as_str()).unwrap_or("required"),
+                        ),
+                        _ => (None, "required"),
+                    };
+                    if let Some(tag) = tag {
+                        let _ = sqlx::query(
+                            "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                        ).bind(uri).bind(tag).bind(kind).execute(&state.pool).await;
+                    }
+                }
+            }
+        }
+
+        if let Some(summary) = meta.summaries.get(i).filter(|s| !s.is_empty()) {
+            let html = crate::summary::render_summary_inline("typst", summary, std::path::Path::new("")).unwrap_or_default();
+            let _ = article_service::update_article_summary(&state.pool, uri, summary, &html).await;
+        }
+    }
 }
 
 // ---- Get headings (TOC) ----
