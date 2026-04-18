@@ -158,6 +158,10 @@ fn tag_routes() -> Router<AppState> {
         .route("/tags", get(tags::list_tags).post(tags::create_tag))
         .route("/tags/{id}", get(tags::get_tag))
         .route("/tags/{id}/names", put(tags::update_tag_names))
+        .route("/tags/{id}/aliases",
+            get(tags::list_aliases)
+            .post(tags::add_alias)
+            .delete(tags::remove_alias))
         .route("/tags/search", get(tags::search_tags))
         .route("/tags/teach", post(tags::set_teach))
         .route("/tag-parents", get(tag_hierarchy::list_tag_parents)
@@ -432,7 +436,6 @@ fn admin_routes() -> Router<AppState> {
         .route("/admin/series/cover/reference", post(covers::admin_set_series_cover_reference))
         .route("/admin/articles/cover/reference", post(covers::admin_set_article_cover_reference))
         .route("/admin/tags/merge", post(admin::admin_merge_tag))
-        .route("/admin/tags/alias", post(admin::admin_add_tag_alias).delete(admin::admin_remove_tag_alias))
         .route("/admin/questions", post(admin::admin_create_question))
         .route("/admin/questions/answer", post(admin::admin_post_answer))
         .route("/admin/questions/merge", post(admin::admin_merge_questions))

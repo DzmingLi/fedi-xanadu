@@ -1,6 +1,8 @@
 export default {
   // Common
   'common.save': '保存',
+  'common.saving': '保存中…',
+  'common.close': '关闭',
   'common.cancel': '取消',
   'common.delete': '删除',
   'common.edit': '编辑',
@@ -516,6 +518,12 @@ export default {
   'tags.empty': '该标签下暂无文章',
   'tags.mastered': '已掌握',
   'tags.light': '点亮',
+  'tags.edit': '编辑标签',
+  'tags.editTitle': '编辑标签',
+  'tags.translationsLabel': '翻译',
+  'tags.aliasesLabel': '别名',
+  'tags.addAlias': '添加别名',
+  'tags.aliasPlaceholder': '如 compsci',
 
   // Auth / Login
   'auth.loginHint': '使用你的 Bluesky handle 和 App Password 登录',

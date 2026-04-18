@@ -1,6 +1,8 @@
 export default {
   // Common
   'common.save': 'Speichern',
+  'common.saving': 'Wird gespeichert…',
+  'common.close': 'Schließen',
   'common.cancel': 'Abbrechen',
   'common.delete': 'Löschen',
   'common.edit': 'Bearbeiten',
@@ -516,6 +518,12 @@ export default {
   'tags.empty': 'Noch keine Artikel mit diesem Tag',
   'tags.mastered': 'Beherrscht',
   'tags.light': 'Freischalten',
+  'tags.edit': 'Tag bearbeiten',
+  'tags.editTitle': 'Tag bearbeiten',
+  'tags.translationsLabel': 'Übersetzungen',
+  'tags.aliasesLabel': 'Aliasse',
+  'tags.addAlias': 'Alias hinzufügen',
+  'tags.aliasPlaceholder': 'z. B. compsci',
 
   // Auth / Login
   'auth.loginHint': 'Melde dich mit deinem Bluesky-Handle und App-Passwort an',

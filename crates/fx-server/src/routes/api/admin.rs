@@ -1238,33 +1238,3 @@ async fn write_series_meta_from_db(
     }
 }
 
-// ── Tag aliases ─────────────────────────────────────────────────────────
-
-#[derive(serde::Deserialize)]
-pub struct AddAliasInput {
-    pub tag_id: String,
-    pub alias: String,
-}
-
-pub async fn admin_add_tag_alias(
-    State(state): State<AppState>,
-    _admin: AdminAuth,
-    Json(input): Json<AddAliasInput>,
-) -> ApiResult<StatusCode> {
-    tag_service::add_alias(&state.pool, &input.alias, &input.tag_id).await?;
-    Ok(StatusCode::OK)
-}
-
-#[derive(serde::Deserialize)]
-pub struct RemoveAliasInput {
-    pub alias: String,
-}
-
-pub async fn admin_remove_tag_alias(
-    State(state): State<AppState>,
-    _admin: AdminAuth,
-    Json(input): Json<RemoveAliasInput>,
-) -> ApiResult<StatusCode> {
-    tag_service::remove_alias(&state.pool, &input.alias).await?;
-    Ok(StatusCode::OK)
-}

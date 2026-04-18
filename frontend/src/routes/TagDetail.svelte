@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes } from '../lib/api';
+  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias } from '../lib/api';
   import { authorName, tagName } from '../lib/display';
-  import { t } from '../lib/i18n/index.svelte';
+  import { t, LOCALES } from '../lib/i18n/index.svelte';
+  import { getAuth } from '../lib/auth.svelte';
   import type { Tag, Article, UserSkill, VoteSummary } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
@@ -13,6 +14,62 @@
   let loading = $state(true);
 
   let isLit = $derived(skills.some(s => s.tag_id === id));
+  let isLoggedIn = $derived(!!getAuth());
+
+  // Edit state
+  let showEdit = $state(false);
+  let editNames = $state<Record<string, string>>({});
+  let aliases = $state<string[]>([]);
+  let newAlias = $state('');
+  let editSaving = $state(false);
+  let editError = $state('');
+
+  function openEdit() {
+    if (!tag) return;
+    editNames = { ...tag.names };
+    for (const loc of LOCALES) {
+      if (!(loc.code in editNames)) editNames[loc.code] = '';
+    }
+    newAlias = '';
+    editError = '';
+    showEdit = true;
+    listTagAliases(id).then(a => aliases = a).catch(() => {});
+  }
+
+  async function saveNames() {
+    editSaving = true;
+    editError = '';
+    try {
+      const cleaned = Object.fromEntries(Object.entries(editNames).filter(([_, v]) => v.trim()));
+      const updated = await updateTagNames(id, cleaned);
+      tag = updated;
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    } finally {
+      editSaving = false;
+    }
+  }
+
+  async function submitAddAlias() {
+    const a = newAlias.trim();
+    if (!a) return;
+    try {
+      await addTagAlias(id, a);
+      newAlias = '';
+      aliases = await listTagAliases(id);
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    }
+  }
+
+  async function removeAlias(alias: string) {
+    try {
+      await removeTagAlias(id, alias);
+      aliases = await listTagAliases(id);
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    }
+  }
 
   // Top = sorted by vote score descending
   let topArticles = $derived(
@@ -61,6 +118,9 @@
       <button class="skill-btn" class:lit={isLit} onclick={toggleSkill}>
         {isLit ? t('tags.mastered') : t('tags.light')}
       </button>
+      {#if isLoggedIn}
+        <button class="edit-btn" onclick={openEdit}>{t('tags.edit')}</button>
+      {/if}
     </div>
     {#if tag.description}
       <p class="tag-desc">{tag.description}</p>
@@ -105,6 +165,42 @@
       </div>
     </div>
   {/if}
+{/if}
+
+{#if showEdit && tag}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={() => showEdit = false}>
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div class="modal" onclick={(e) => e.stopPropagation()}>
+      <h3>{t('tags.editTitle')} — {tag.id}</h3>
+      {#if editError}<p class="error-msg">{editError}</p>{/if}
+
+      <h4>{t('tags.translationsLabel')}</h4>
+      {#each LOCALES as loc}
+        <label class="inline-label">{loc.label}</label>
+        <input bind:value={editNames[loc.code]} placeholder={loc.code === 'en' ? 'English name' : ''} />
+      {/each}
+      <button class="btn btn-primary" onclick={saveNames} disabled={editSaving}>
+        {editSaving ? t('common.saving') : t('common.save')}
+      </button>
+
+      <h4 style="margin-top:18px">{t('tags.aliasesLabel')}</h4>
+      <div class="alias-chips">
+        {#each aliases as a}
+          <span class="alias-chip">{a} <button onclick={() => removeAlias(a)}>×</button></span>
+        {/each}
+      </div>
+      <div class="alias-add">
+        <input bind:value={newAlias} placeholder={t('tags.aliasPlaceholder')}
+          onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitAddAlias(); } }} />
+        <button class="btn" onclick={submitAddAlias}>{t('tags.addAlias')}</button>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn" onclick={() => showEdit = false}>{t('common.close')}</button>
+      </div>
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -225,4 +321,24 @@
     color: var(--text-hint);
     margin-top: 4px;
   }
+
+  .edit-btn { padding: 4px 10px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-white); cursor: pointer; color: var(--text-secondary); }
+  .edit-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 999; }
+  .modal { background: var(--bg-white); border-radius: 8px; padding: 20px 24px; min-width: 400px; max-width: 560px; max-height: 85vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+  .modal h3 { margin: 0 0 12px; font-family: var(--font-serif); }
+  .modal h4 { margin: 14px 0 6px; font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+  .modal input { width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-white); color: var(--text-primary); font-size: 14px; box-sizing: border-box; margin-bottom: 6px; }
+  .inline-label { font-size: 12px; color: var(--text-hint); display: block; margin-top: 8px; }
+  .btn { padding: 6px 14px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-white); cursor: pointer; font-size: 14px; }
+  .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .modal-actions { margin-top: 16px; text-align: right; }
+  .alias-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .alias-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 12px; background: var(--bg-hover, #f5f5f5); border: 1px solid var(--border); font-size: 12px; }
+  .alias-chip button { background: none; border: none; cursor: pointer; color: var(--text-hint); padding: 0; line-height: 1; font-size: 14px; }
+  .alias-chip button:hover { color: #c00; }
+  .alias-add { display: flex; gap: 6px; }
+  .alias-add input { margin-bottom: 0; flex: 1; }
+  .error-msg { background: #fee; color: #c00; padding: 6px 10px; border-radius: 4px; font-size: 13px; }
 </style>
