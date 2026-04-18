@@ -7,6 +7,7 @@ export interface Route {
 export const routes: Route[] = [
   { pattern: '/', page: 'home' },
   { pattern: '/search', page: 'search' },
+  { pattern: '/hierarchy', page: 'hierarchy' },
   { pattern: '/article', page: 'article' },
   { pattern: '/new', page: 'new' },
   { pattern: '/skills', page: 'skills' },

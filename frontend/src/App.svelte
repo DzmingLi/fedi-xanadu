@@ -80,6 +80,7 @@
   const lazyPublications = () => import('./routes/Publications.svelte');
   const lazyPublicationDetail = () => import('./routes/PublicationDetail.svelte');
   const lazySearch = () => import('./routes/Search.svelte');
+  const lazyHierarchy = () => import('./routes/Hierarchy.svelte');
 </script>
 
 <Toast />
@@ -266,6 +267,10 @@
     {:else if route.page === 'search'}
       {#await lazySearch() then mod}
         <mod.default q={route.params.q || ''} />
+      {/await}
+    {:else if route.page === 'hierarchy'}
+      {#await lazyHierarchy() then mod}
+        <mod.default />
       {/await}
     {:else if route.page === 'feedback'}
       {#await lazyFeedback() then mod}

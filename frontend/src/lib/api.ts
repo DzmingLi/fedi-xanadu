@@ -518,6 +518,11 @@ export const searchArticles = (q: string, limit = 20) =>
 
 // Tag search
 export const searchTags = (q: string) => get<Tag[]>(`/tags/search?q=${encodeURIComponent(q)}`);
+export const listTagParents = () => get<{ parent_tag: string; child_tag: string }[]>('/tag-parents');
+export const addTagParent = (parent_tag: string, child_tag: string) =>
+  post<{ ok: true }>('/tag-parents', { parent_tag, child_tag });
+export const removeTagParent = (parent_tag: string, child_tag: string) =>
+  del<{ ok: true }>('/tag-parents', { parent_tag, child_tag });
 
 // Notifications
 export const listNotifications = (limit = 50, offset = 0) =>

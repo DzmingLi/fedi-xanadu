@@ -94,6 +94,7 @@
   <div class="nav-links">
     <a href="/questions">{t('nav.questions')}</a>
     <a href="/skills">{t('nav.skills')}</a>
+    <a href="/hierarchy">{t('nav.hierarchy')}</a>
     <a href="/library">{t('nav.library')}</a>
     <a href="/publications">{t('nav.publications')}</a>
     <a href="/books">{t('nav.books')}</a>
