@@ -497,6 +497,7 @@
     z-index: 1;
   }
   .expand-btn::before {
+    /* Bottom half (below card): the visible tab body + accent border. */
     content: '';
     position: absolute;
     top: 10px;                     /* start at card's bottom border line */
@@ -508,6 +509,21 @@
     border-top: none;              /* no line across card's bottom edge */
     border-radius: 0 0 3px 3px;
     transition: background 0.15s;
+    z-index: -1;
+  }
+  .expand-btn::after {
+    /* Top half (inside card's bottom padding): grey side rails only —
+       same colour as the card's border so they read as a continuation of
+       the card's skeleton, not an intrusive accent. */
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 10px;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    pointer-events: none;
     z-index: -1;
   }
   .expand-btn:hover { color: white; }
