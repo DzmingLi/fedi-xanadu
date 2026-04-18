@@ -475,21 +475,20 @@
     background: rgba(99, 102, 241, 0.2);
     text-decoration: none;
   }
-  /* Expand button — protruding pill anchored to the card's bottom-right corner */
+  /* Expand button — bookmark tab flush against the card's bottom-right corner */
   .expand-btn {
     position: absolute;
-    right: 20px;
-    bottom: -14px;
+    right: -1px;                  /* align with card's outer right edge */
+    top: 100%;                    /* top edge at card's bottom border line */
     background: var(--bg-white);
     border: 1px solid var(--accent);
     font-size: 12px;
     color: var(--accent);
     cursor: pointer;
-    padding: 5px 14px;
-    border-radius: 999px;
+    padding: 5px 14px 6px;
+    border-radius: 0 0 3px 3px;   /* flat top, rounded bottom corners */
     transition: all 0.15s;
     line-height: 1;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     z-index: 1;
   }
   .expand-btn:hover { background: var(--accent); color: white; }
