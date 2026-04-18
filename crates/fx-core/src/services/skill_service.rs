@@ -67,41 +67,14 @@ pub async fn delete_skill(pool: &PgPool, did: &str, tag_id: &str) -> crate::Resu
     Ok(())
 }
 
-pub async fn get_user_tag_tree(pool: &PgPool, did: &str) -> crate::Result<Vec<TagTreeEntry>> {
-    // First try the user's personal tag tree
+pub async fn get_user_tag_tree(pool: &PgPool, _did: &str) -> crate::Result<Vec<TagTreeEntry>> {
+    // Belongs-to hierarchy is now a single global source of truth. The
+    // `did` parameter is retained for API-signature stability.
     let tree = sqlx::query_as::<_, TagTreeEntry>(
-        "SELECT parent_tag, child_tag FROM user_tag_tree WHERE did = $1",
-    )
-    .bind(did)
-    .fetch_all(pool)
-    .await?;
-
-    if !tree.is_empty() {
-        return Ok(tree);
-    }
-
-    // Fall back to the user's active skill tree edges
-    let tree = sqlx::query_as::<_, TagTreeEntry>(
-        "SELECT e.parent_tag, e.child_tag \
-         FROM skill_tree_edges e \
-         JOIN user_active_tree ua ON ua.tree_uri = e.tree_uri \
-         WHERE ua.did = $1",
-    )
-    .bind(did)
-    .fetch_all(pool)
-    .await?;
-
-    if !tree.is_empty() {
-        return Ok(tree);
-    }
-
-    // Fall back to the default public tree (did:plc:anonymous)
-    let tree = sqlx::query_as::<_, TagTreeEntry>(
-        "SELECT parent_tag, child_tag FROM user_tag_tree WHERE did = 'did:plc:anonymous'",
+        "SELECT parent_tag, child_tag FROM tag_parents ORDER BY parent_tag, child_tag",
     )
     .fetch_all(pool)
     .await?;
-
     Ok(tree)
 }
 
@@ -132,28 +105,21 @@ pub async fn add_tag_child(
     parent_tag: &str,
     child_tag: &str,
 ) -> crate::Result<()> {
-    sqlx::query(
-        "INSERT INTO user_tag_tree (did, parent_tag, child_tag) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-    )
-    .bind(did)
-    .bind(parent_tag)
-    .bind(child_tag)
-    .execute(pool)
-    .await?;
-    Ok(())
+    // Hierarchy is global — delegate to tag_hierarchy_service so the edit
+    // gets recorded in the audit log.
+    crate::services::tag_hierarchy_service::add_edge(pool, parent_tag, child_tag, did).await
 }
 
-async fn get_all_children(pool: &PgPool, did: &str, parent_tag: &str) -> Vec<String> {
+async fn get_all_children(pool: &PgPool, _did: &str, parent_tag: &str) -> Vec<String> {
     sqlx::query_scalar(
         "WITH RECURSIVE descendants(tag) AS ( \
-           SELECT child_tag FROM user_tag_tree WHERE did = $1 AND parent_tag = $2 \
+           SELECT child_tag FROM tag_parents WHERE parent_tag = $1 \
            UNION \
-           SELECT ut.child_tag FROM user_tag_tree ut \
-           JOIN descendants d ON ut.parent_tag = d.tag AND ut.did = $1 \
+           SELECT tp.child_tag FROM tag_parents tp \
+           JOIN descendants d ON tp.parent_tag = d.tag \
          ) \
          SELECT tag FROM descendants",
     )
-    .bind(did)
     .bind(parent_tag)
     .fetch_all(pool)
     .await

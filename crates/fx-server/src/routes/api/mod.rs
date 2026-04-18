@@ -28,6 +28,7 @@ mod settings;
 mod skill_trees;
 mod skills;
 mod tags;
+mod tag_hierarchy;
 mod thoughts;
 mod votes;
 mod ads;
@@ -159,6 +160,9 @@ fn tag_routes() -> Router<AppState> {
         .route("/tags/{id}/names", put(tags::update_tag_names))
         .route("/tags/search", get(tags::search_tags))
         .route("/tags/teach", post(tags::set_teach))
+        .route("/tag-parents", get(tag_hierarchy::list_tag_parents)
+            .post(tag_hierarchy::add_tag_parent)
+            .delete(tag_hierarchy::remove_tag_parent))
 }
 
 fn article_routes() -> Router<AppState> {

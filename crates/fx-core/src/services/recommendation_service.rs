@@ -61,9 +61,8 @@ user_interest_descendants AS (
     WITH RECURSIVE desc_tags(tag) AS (
         SELECT tag_id FROM user_interests WHERE did = $1
         UNION
-        SELECT e.child_tag FROM user_tag_tree e
-        JOIN desc_tags d ON e.parent_tag = d.tag
-        WHERE e.did = $1
+        SELECT tp.child_tag FROM tag_parents tp
+        JOIN desc_tags d ON tp.parent_tag = d.tag
     )
     SELECT tag FROM desc_tags
 ),

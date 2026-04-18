@@ -296,21 +296,8 @@ pub async fn adopt_skill_tree(pool: &PgPool, did: &str, tree_uri: &str) -> Resul
         .execute(&mut *tx)
         .await?;
 
-    // Sync hierarchy edges
-    sqlx::query("DELETE FROM user_tag_tree WHERE did = $1")
-        .bind(did)
-        .execute(&mut *tx)
-        .await?;
-
-    sqlx::query(
-        "INSERT INTO user_tag_tree (did, parent_tag, child_tag) \
-         SELECT $1, parent_tag, child_tag FROM skill_tree_edges WHERE tree_uri = $2 \
-         ON CONFLICT DO NOTHING",
-    )
-    .bind(did)
-    .bind(tree_uri)
-    .execute(&mut *tx)
-    .await?;
+    // Hierarchy edges live in the global tag_parents table now — adopting
+    // a skill tree only copies its subjective prereq definitions below.
 
     // Sync prereq edges
     sqlx::query("DELETE FROM user_tag_prereqs WHERE did = $1")

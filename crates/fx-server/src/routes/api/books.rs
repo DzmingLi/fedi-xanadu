@@ -90,11 +90,9 @@ pub async fn get_book(
     .bind(&content_uri)
     .fetch_all(&state.pool)
     .await?;
-    let topics = tag_service::derive_topics(
-        &state.pool,
-        &content_uri,
-        user.as_ref().map(|u| u.did.as_str()),
-    ).await.unwrap_or_default();
+    let topics = tag_service::derive_topics(&state.pool, &content_uri)
+        .await
+        .unwrap_or_default();
     Ok(Json(BookDetail { book, linked_authors, editions, chapters, reviews, review_count, rating, my_rating, my_reading_status, my_chapter_progress, tags, prereqs, topics }))
 }
 

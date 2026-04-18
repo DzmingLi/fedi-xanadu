@@ -185,15 +185,33 @@ pub async fn merge_tag(pool: &PgPool, from_id: &str, into_id: &str) -> Result<()
         .execute(&mut *tx)
         .await?;
 
-    // user_tag_tree
-    sqlx::query("UPDATE user_tag_tree SET parent_tag = $2 WHERE parent_tag = $1")
+    // tag_parents (global hierarchy) — rewrite both sides and drop self-loops
+    sqlx::query("DELETE FROM tag_parents WHERE parent_tag = $1 AND child_tag = $1")
         .bind(from_id)
-        .bind(into_id)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE user_tag_tree SET child_tag = $2 WHERE child_tag = $1")
+    sqlx::query(
+        "UPDATE tag_parents SET parent_tag = $2 WHERE parent_tag = $1 \
+         AND NOT EXISTS (SELECT 1 FROM tag_parents WHERE parent_tag = $2 AND child_tag = tag_parents.child_tag)",
+    )
+    .bind(from_id)
+    .bind(into_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM tag_parents WHERE parent_tag = $1")
         .bind(from_id)
-        .bind(into_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "UPDATE tag_parents SET child_tag = $2 WHERE child_tag = $1 \
+         AND NOT EXISTS (SELECT 1 FROM tag_parents WHERE child_tag = $2 AND parent_tag = tag_parents.parent_tag)",
+    )
+    .bind(from_id)
+    .bind(into_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM tag_parents WHERE child_tag = $1")
+        .bind(from_id)
         .execute(&mut *tx)
         .await?;
 
@@ -287,33 +305,20 @@ pub async fn list_aliases(pool: &PgPool, tag_id: &str) -> crate::Result<Vec<Stri
 }
 
 /// Derive the set of "topic" tags for a content — the transitive closure of
-/// parents (in the viewer's user_tag_tree, falling back to the anonymous
-/// default) of the content's teach tags. Result excludes the teach tags
-/// themselves. `viewer_did` = None means anonymous/logged-out.
-pub async fn derive_topics(
-    pool: &PgPool,
-    content_uri: &str,
-    viewer_did: Option<&str>,
-) -> Result<Vec<String>> {
-    let did = viewer_did.unwrap_or("did:plc:anonymous");
+/// parents (in the global tag_parents hierarchy) of the content's teach
+/// tags. Result excludes the teach tags themselves.
+pub async fn derive_topics(pool: &PgPool, content_uri: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"
         WITH RECURSIVE teach AS (
             SELECT tag_id FROM content_teaches WHERE content_uri = $1
         ),
-        tree AS (
-            -- Viewer's tree, with anonymous fallback if they have none
-            SELECT parent_tag, child_tag FROM user_tag_tree
-            WHERE did = $2
-               OR (did = 'did:plc:anonymous'
-                   AND NOT EXISTS (SELECT 1 FROM user_tag_tree WHERE did = $2))
-        ),
         ancestors AS (
-            SELECT t.parent_tag AS tag_id, 1 AS depth
-            FROM tree t WHERE t.child_tag IN (SELECT tag_id FROM teach)
+            SELECT tp.parent_tag AS tag_id, 1 AS depth
+            FROM tag_parents tp WHERE tp.child_tag IN (SELECT tag_id FROM teach)
             UNION
-            SELECT t.parent_tag, a.depth + 1
-            FROM tree t JOIN ancestors a ON t.child_tag = a.tag_id
+            SELECT tp.parent_tag, a.depth + 1
+            FROM tag_parents tp JOIN ancestors a ON tp.child_tag = a.tag_id
             WHERE a.depth < 10
         )
         SELECT DISTINCT tag_id FROM ancestors
@@ -322,7 +327,6 @@ pub async fn derive_topics(
         "#,
     )
     .bind(content_uri)
-    .bind(did)
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())
