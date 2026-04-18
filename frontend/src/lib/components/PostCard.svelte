@@ -476,25 +476,42 @@
     text-decoration: none;
   }
   /* Expand button — bookmark tab that emerges from the card's bottom-right.
-     Sits fully below the card (no overlap, so no side borders leak inside);
-     tight top padding keeps the text visually riding against the card edge. */
+     The button body is transparent and overlaps into the card's bottom
+     padding so the text rides high. A ::before pseudo-element draws the
+     background + side borders + rounded bottom, but only from the card's
+     bottom edge downward — the upper portion leaves no border trail inside
+     the card. */
   .expand-btn {
     position: absolute;
-    right: -1px;                  /* flush with card's outer right edge */
-    top: 100%;                    /* top edge at card's bottom border line */
-    background: var(--bg-white);
-    border: 1px solid var(--accent);
-    border-top: none;             /* no upper line — reads as continuous */
+    right: -1px;                   /* flush with card's outer right edge */
+    top: 100%;
+    margin-top: -10px;             /* text area reaches 10px into card */
+    background: transparent;
+    border: none;
     font-size: 12px;
     color: var(--accent);
     cursor: pointer;
-    padding: 3px 14px 6px;        /* tight top padding — text sits high */
-    border-radius: 0 0 3px 3px;
-    transition: all 0.15s;
+    padding: 3px 14px 6px;
     line-height: 1;
+    transition: color 0.15s;
     z-index: 1;
   }
-  .expand-btn:hover { background: var(--accent); color: white; }
+  .expand-btn::before {
+    content: '';
+    position: absolute;
+    top: 10px;                     /* start at card's bottom border line */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg-white);
+    border: 1px solid var(--accent);
+    border-top: none;              /* no line across card's bottom edge */
+    border-radius: 0 0 3px 3px;
+    transition: background 0.15s;
+    z-index: -1;
+  }
+  .expand-btn:hover { color: white; }
+  .expand-btn:hover::before { background: var(--accent); }
 
   /* Expanded actions — sticky bottom bar */
   .expanded-actions {
