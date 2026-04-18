@@ -370,8 +370,8 @@
   }
   .post-cover img {
     display: block;
-    max-width: 220px;
-    max-height: 180px;
+    max-width: 200px;
+    max-height: 130px;
     width: auto;
     height: auto;
   }
