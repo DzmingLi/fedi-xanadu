@@ -363,9 +363,10 @@
     object-fit: cover;
     border-radius: 3px;
     flex-shrink: 0;
-    align-self: center;
+    align-self: flex-start;
     background: var(--bg-hover, #f5f5f5);
   }
+  .post-card.has-cover { min-height: 144px; }
   .card-top {
     display: flex;
     align-items: flex-start;
@@ -490,7 +491,6 @@
     transition: all 0.15s;
     line-height: 1;
   }
-  .post-card.has-cover .expand-btn { right: 134px; }
   .expand-btn:hover { background: var(--accent); color: white; }
 
   /* Expanded actions — sticky bottom bar */
