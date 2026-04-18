@@ -797,9 +797,6 @@ export default {
 
   // Course
   'course.calendar': 'Kalender',
-  'course.lectures': 'Vorlesungen',
-  'course.labs': 'Übungen',
-  'course.assignments': 'Aufgaben',
   'course.topic': 'Thema',
   'course.readings': 'Lesestoff',
   'course.video': 'Video',
