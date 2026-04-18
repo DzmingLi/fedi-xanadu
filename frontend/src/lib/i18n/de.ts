@@ -198,7 +198,6 @@ export default {
   'newArticle.selectTag': 'Tag auswählen...',
   'newArticle.required': 'Erforderlich',
   'newArticle.recommended': 'Empfohlen',
-  'newArticle.suggested': 'Vorgeschlagen',
   'newArticle.addPrereq': 'Hinzufügen',
   'newArticle.commitPlaceholder': 'Änderungsbeschreibung (optional, z. B. "Tippfehler korrigiert", "Beispiele ergänzt")',
   'newArticle.converting': 'Format wird konvertiert...',

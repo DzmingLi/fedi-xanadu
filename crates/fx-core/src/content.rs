@@ -156,7 +156,6 @@ impl std::fmt::Display for Category {
 pub enum PrereqType {
     Required,
     Recommended,
-    Suggested,
 }
 
 impl PrereqType {
@@ -164,7 +163,6 @@ impl PrereqType {
         match self {
             Self::Required => "required",
             Self::Recommended => "recommended",
-            Self::Suggested => "suggested",
         }
     }
 }
@@ -213,7 +211,6 @@ mod tests {
     fn prereq_type_as_str() {
         assert_eq!(PrereqType::Required.as_str(), "required");
         assert_eq!(PrereqType::Recommended.as_str(), "recommended");
-        assert_eq!(PrereqType::Suggested.as_str(), "suggested");
     }
 
     #[test]

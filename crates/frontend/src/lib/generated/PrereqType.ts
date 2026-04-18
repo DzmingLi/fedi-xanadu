@@ -3,4 +3,4 @@
 /**
  * Prerequisite strength.
  */
-export type PrereqType = "required" | "recommended" | "suggested";
+export type PrereqType = "required" | "recommended";

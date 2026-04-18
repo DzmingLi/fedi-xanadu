@@ -36,11 +36,10 @@
     <p>你可以「采用」一棵技能树，它将成为你的活跃知识图谱，帮助你追踪学习进度。</p>
 
     <h3>前置知识（Prerequisites）</h3>
-    <p>文章可以声明三种级别的前置知识：</p>
+    <p>文章可以声明两种级别的前置知识：</p>
     <ul>
       <li><strong class="required">必需</strong> — 不理解这些概念将无法阅读本文</li>
-      <li><strong class="recommended">推荐</strong> — 了解这些会有更好的阅读体验</li>
-      <li><strong class="suggested">建议</strong> — 有所了解即可，不是硬性要求</li>
+      <li><strong class="recommended">推荐</strong> — 了解这些会有更好的阅读体验，但可边学边补</li>
     </ul>
 
     <h3>系列讲义（Series）</h3>

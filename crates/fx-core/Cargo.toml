@@ -17,3 +17,4 @@ blake3.workspace = true
 rand.workspace = true
 ts-rs.workspace = true
 imara-diff = "0.1"
+serde_yml = "0.0.12"

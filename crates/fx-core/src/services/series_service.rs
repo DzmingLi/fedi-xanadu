@@ -332,15 +332,12 @@ pub async fn get_series_translations(pool: &PgPool, id: &str) -> crate::Result<V
     Ok(rows)
 }
 
+/// Link an article to a series.
+///
+/// `repo_path` is `Some("ch1/intro.md")` when the article's source lives in
+/// the series pijul repo at that path, or `None` when it's a standalone
+/// article whose content is stored in its own per-article repo.
 pub async fn add_series_article(
-    pool: &PgPool,
-    series_id: &str,
-    article_uri: &str,
-) -> crate::Result<()> {
-    add_series_article_with_path(pool, series_id, article_uri, None).await
-}
-
-pub async fn add_series_article_with_path(
     pool: &PgPool,
     series_id: &str,
     article_uri: &str,
@@ -580,6 +577,7 @@ pub struct SeriesChapterInfo {
     pub article_uri: String,
     pub order_index: i32,
     pub content_format: String,
+    pub repo_path: Option<String>,
 }
 
 /// Get all chapters in the same series as the given article, ordered by position.
@@ -602,7 +600,7 @@ pub async fn get_series_chapters_for_render(
     };
 
     let chapters = sqlx::query_as::<_, SeriesChapterInfo>(
-        "SELECT sa.article_uri, sa.order_index, a.content_format::text \
+        "SELECT sa.article_uri, sa.order_index, a.content_format::text, sa.repo_path \
          FROM series_articles sa \
          JOIN articles a ON a.at_uri = sa.article_uri \
          WHERE sa.series_id = $1 \

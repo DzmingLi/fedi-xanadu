@@ -198,7 +198,6 @@ export default {
   'newArticle.selectTag': '选择标签...',
   'newArticle.required': '必须',
   'newArticle.recommended': '推荐',
-  'newArticle.suggested': '建议',
   'newArticle.addPrereq': '添加',
   'newArticle.commitPlaceholder': '变更说明（可选，如「修正错别字」「补充例题」）',
   'newArticle.converting': '格式转换中...',

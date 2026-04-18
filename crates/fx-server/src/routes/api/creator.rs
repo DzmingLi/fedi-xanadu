@@ -4,7 +4,7 @@ use serde::Serialize;
 use crate::auth::Auth;
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use fx_core::services::{article_service, series_service};
+use fx_core::services::series_service;
 
 #[derive(Serialize)]
 pub struct CreatorStats {

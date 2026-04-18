@@ -82,7 +82,7 @@ async fn resolve_article_content(
     uri: &str,
     format: &str,
 ) -> Result<ArticleContent, AppError> {
-    let src_ext = fx_renderer::format_extension(format);
+    let _src_ext = fx_renderer::format_extension(format);
 
     // Check if this is a compile-generated heading slice
     let heading_info: Option<(String, String)> = sqlx::query_as(
@@ -199,7 +199,10 @@ pub(super) struct ArticleLocation {
     pub cache_path: std::path::PathBuf,
     /// Series ID, if this article belongs to a series.
     pub series_id: Option<String>,
-    /// Chapter ID within the series (TID from the article URI).
+    /// Chapter ID within the series (TID from the article URI). Carried so
+    /// future callers that need the split-output anchor can recover it from
+    /// the location struct without re-parsing the URI.
+    #[allow(dead_code)]
     pub chapter_id: Option<String>,
 }
 
@@ -253,24 +256,16 @@ pub(super) async fn resolve_location(
     .await
     .ok()?;
 
-    if let Some((pijul_node_id, series_id, db_repo_path)) = series_row {
+    // A series row with a non-empty repo_path → file lives in the series
+    // repo at that path. A row with NULL/empty path → article is linked to
+    // the series but its content is in its own per-article repo (standalone
+    // article added to a series after the fact).
+    if let Some((pijul_node_id, series_id, rel)) = series_row
+        .and_then(|(node, sid, path)| path.filter(|p| !p.is_empty()).map(|p| (node, sid, p)))
+    {
         let repo_path = state.pijul.repo_path(&pijul_node_id);
-        // Prefer the path recorded on series_articles (authoritative since
-        // batch-publish stores it there); fall back to meta.json / legacy.
-        let content_path = match db_repo_path.as_deref().filter(|p| !p.is_empty()) {
-            Some(p) => repo_path.join(p),
-            None => fx_core::meta::resolve_chapter_path(&repo_path, chapter_id, src_ext),
-        };
-
-        // Verify chapter exists
-        if !content_path.exists() {
-            // Try other extensions as fallback
-            let found = ["md", "typ", "html"].iter().any(|ext| {
-                fx_core::meta::resolve_chapter_path(&repo_path, chapter_id, ext).exists()
-            });
-            if !found { return None; }
-        }
-
+        let content_path = repo_path.join(&rel);
+        if !content_path.exists() { return None; }
         let cache_path = repo_path.join("cache").join(format!("{chapter_id}.html"));
         Some(ArticleLocation {
             node_id: pijul_node_id,
@@ -281,7 +276,8 @@ pub(super) async fn resolve_location(
             chapter_id: Some(chapter_id.to_string()),
         })
     } else {
-        // Standalone article
+        // Standalone article (either not in a series, or linked to a series
+        // without an in-series source file).
         let node_id = uri_to_node_id(article_uri);
         let repo_path = state.pijul.repo_path(&node_id);
         let content_path = repo_path.join(format!("content.{src_ext}"));
@@ -382,9 +378,10 @@ async fn is_series_cache_fresh(
     let Ok(cache_meta) = tokio::fs::metadata(series_cache).await else { return false };
     let Ok(cache_time) = cache_meta.modified() else { return false };
     for ch in chapters {
-        let chapter_id = ch.article_uri.rsplit('/').next().unwrap_or("");
-        let ext = fx_renderer::format_extension(&ch.content_format);
-        let src = fx_core::meta::resolve_chapter_path(series_repo, chapter_id, ext);
+        let Some(rel) = ch.repo_path.as_deref().filter(|p| !p.is_empty()) else {
+            continue;
+        };
+        let src = series_repo.join(rel);
         if let Ok(src_meta) = tokio::fs::metadata(&src).await {
             if let Ok(st) = src_meta.modified() {
                 if st > cache_time { return false; }
@@ -575,6 +572,9 @@ pub struct ForkAheadQuery {
 
 /// Result of publishing article content: repo path + resolved summary.
 pub(super) struct PublishResult {
+    /// Repo root where this article was written. Currently only read by
+    /// pijul-record callsites; kept public to avoid churn at those sites.
+    #[allow(dead_code)]
     pub repo_path: std::path::PathBuf,
     /// Final summary source (author-supplied — auto extraction is roadmapped
     /// via LLM, not simple truncation).
@@ -620,7 +620,19 @@ pub(super) async fn publish_article_content(
         let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
         let repo_path = state.pijul.repo_path(&pijul_node_id);
         let src_ext = fx_renderer::format_extension(fmt);
-        let content_path = fx_core::meta::resolve_chapter_path(&repo_path, chapter_id, src_ext);
+
+        // Look up the stored chapter path on series_articles. If this is a
+        // brand-new article we fall back to chapters/<tid>.<ext>; the caller
+        // will persist that same path via add_series_article shortly after.
+        let stored: Option<String> = sqlx::query_scalar(
+            "SELECT repo_path FROM series_articles WHERE series_id = $1 AND article_uri = $2",
+        )
+        .bind(sid).bind(at_uri)
+        .fetch_optional(&state.pool).await?.flatten();
+        let rel = stored
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| fx_core::meta::default_chapter_path(chapter_id, src_ext));
+        let content_path = repo_path.join(&rel);
         let cache_path = repo_path.join("cache").join(format!("{chapter_id}.html"));
         ArticleLocation {
             node_id: pijul_node_id,
@@ -892,25 +904,6 @@ pub async fn create_article(
         },
     ).await?;
 
-    // Write meta.json to pijul repo (for standalone articles)
-    if input.series_id.is_none() {
-        let meta = fx_core::meta::article_meta_from_create(
-            &input.title,
-            Some(&publish.summary_source),
-            &input.tags,
-            &input.prereqs,
-            input.license.as_deref(),
-            input.lang.as_deref(),
-            input.category.as_deref(),
-            input.content_format.as_str(),
-        );
-        if let Err(e) = fx_core::meta::write_meta_file(&publish.repo_path, &meta) {
-            tracing::warn!("failed to write meta.json: {e}");
-        }
-        let node_id = uri_to_node_id(&at_uri);
-        let _ = state.pijul_record(node_id.clone(), "Add metadata".into(), Some(user.did.clone())).await;
-    }
-
     let hash = content_hash(&input.content);
 
     let translation_group = if let Some(ref source_uri) = input.translation_of {
@@ -925,9 +918,14 @@ pub async fn create_article(
         &publish.summary_source, &publish.summary_html,
     ).await?;
 
-    // Add to series if specified
+    // Add to series if specified. For content authored through this route
+    // the source lives in the series repo at the default `chapters/<tid>.<ext>`
+    // path (matching what publish_article_content wrote).
     if let Some(ref sid) = input.series_id {
-        series_service::add_series_article(&state.pool, sid, &at_uri).await?;
+        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
+        let src_ext = fx_renderer::format_extension(input.content_format.as_str());
+        let default_path = fx_core::meta::default_chapter_path(chapter_id, src_ext);
+        series_service::add_series_article(&state.pool, sid, &at_uri, Some(&default_path)).await?;
     }
 
     // Skip PDS sync for restricted articles — content stays server-local only
@@ -1065,24 +1063,6 @@ pub async fn create_article_multipart(
         },
     ).await?;
 
-    if input.series_id.is_none() {
-        let meta = fx_core::meta::article_meta_from_create(
-            &input.title,
-            Some(&publish.summary_source),
-            &input.tags,
-            &input.prereqs,
-            input.license.as_deref(),
-            input.lang.as_deref(),
-            input.category.as_deref(),
-            input.content_format.as_str(),
-        );
-        if let Err(e) = fx_core::meta::write_meta_file(&publish.repo_path, &meta) {
-            tracing::warn!("failed to write meta.json: {e}");
-        }
-        let node_id = uri_to_node_id(&at_uri);
-        let _ = state.pijul_record(node_id.clone(), "Add metadata".into(), Some(user.did.clone())).await;
-    }
-
     let hash = content_hash(&input.content);
 
     let translation_group = if let Some(ref source_uri) = input.translation_of {
@@ -1098,7 +1078,10 @@ pub async fn create_article_multipart(
     ).await?;
 
     if let Some(ref sid) = input.series_id {
-        series_service::add_series_article(&state.pool, sid, &at_uri).await?;
+        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
+        let src_ext = fx_renderer::format_extension(input.content_format.as_str());
+        let default_path = fx_core::meta::default_chapter_path(chapter_id, src_ext);
+        series_service::add_series_article(&state.pool, sid, &at_uri, Some(&default_path)).await?;
     }
 
     if !input.restricted.unwrap_or(false) {
@@ -1685,19 +1668,9 @@ pub async fn update_article(
         }
     }
 
-    // Update meta.json if title or summary changed
-    if input.title.is_some() || input.summary.is_some() {
-        let article_for_meta = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
-        let node_id = uri_to_node_id(&input.uri);
-        let repo_path = state.pijul.repo_path(&node_id);
-        if repo_path.exists() {
-            let mut meta = fx_core::meta::read_meta_file(&repo_path).unwrap_or_default();
-            meta.title = article_for_meta.title.clone();
-            meta.description = if article_for_meta.summary.is_empty() { None } else { Some(article_for_meta.summary.clone()) };
-            let _ = fx_core::meta::write_meta_file(&repo_path, &meta);
-            // Don't record separately — it'll be included in the next content record
-        }
-    }
+    // Standalone article metadata (title, summary, teaches, prereqs) lives in
+    // the markdown content's YAML frontmatter — the next record operation
+    // picks it up, so nothing to do here.
 
     let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
     Ok(Json(article))
@@ -2035,56 +2008,44 @@ pub async fn apply_change(
     Ok(Json(ApplyChangeOutput { has_conflicts, content }))
 }
 
-/// Sync meta.json from pijul repo to DB after applying changes.
+/// Sync a standalone markdown article's YAML frontmatter to DB after a
+/// pijul change. Only applies to markdown articles — typst/html articles
+/// don't have frontmatter, their metadata is DB-only.
 pub(super) async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_path: &std::path::Path) {
-    let meta = match fx_core::meta::read_meta_file(repo_path) {
-        Some(m) => m,
-        None => return,
+    let content_path = repo_path.join("content.md");
+    let Ok(source) = tokio::fs::read_to_string(&content_path).await else {
+        return;
     };
+    let (fm, _body) = fx_core::meta::split_frontmatter(&source);
 
-    // Sync title
-    if !meta.title.is_empty() {
-        let _ = article_service::update_article_title(&state.pool, article_uri, &meta.title).await;
+    if let Some(ref title) = fm.title {
+        if !title.is_empty() {
+            let _ = article_service::update_article_title(&state.pool, article_uri, title).await;
+        }
     }
-    // Sync description
-    if let Some(ref desc) = meta.description {
-        let format = article_service::get_content_format(&state.pool, article_uri).await
-            .unwrap_or_else(|_| "markdown".to_string());
-        let html = crate::summary::render_summary_inline(&format, desc, repo_path)
+    if let Some(ref desc) = fm.description {
+        let html = crate::summary::render_summary_inline("markdown", desc, repo_path)
             .unwrap_or_default();
         let _ = article_service::update_article_summary(&state.pool, article_uri, desc, &html).await;
     }
-    // Sync tags: clear old, insert new
-    if !meta.tags.is_empty() {
+    if !fm.teaches.is_empty() {
         let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
-            .bind(article_uri)
-            .execute(&state.pool)
-            .await;
-        for tag_id in &meta.tags {
+            .bind(article_uri).execute(&state.pool).await;
+        for tag_id in &fm.teaches {
             let _ = sqlx::query(
                 "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            )
-            .bind(article_uri)
-            .bind(tag_id)
-            .execute(&state.pool)
-            .await;
+            ).bind(article_uri).bind(tag_id).execute(&state.pool).await;
         }
     }
-    // Sync prereqs: clear old, insert new
-    if !meta.prereqs.is_empty() {
+    if !fm.prereqs.is_empty() {
         let _ = sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
-            .bind(article_uri)
-            .execute(&state.pool)
-            .await;
-        for p in &meta.prereqs {
+            .bind(article_uri).execute(&state.pool).await;
+        for p in &fm.prereqs {
             let _ = sqlx::query(
                 "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
             )
-            .bind(article_uri)
-            .bind(&p.tag_id)
-            .bind(&p.prereq_type)
-            .execute(&state.pool)
-            .await;
+            .bind(article_uri).bind(&p.tag).bind(p.kind())
+            .execute(&state.pool).await;
         }
     }
 }

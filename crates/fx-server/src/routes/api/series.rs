@@ -92,7 +92,7 @@ pub async fn create_series(
     )
     .await?;
 
-    // Write series meta.json
+    // Write series meta.yaml
     if let Some(ref node) = pijul_node_id {
         let meta = fx_core::meta::SeriesMeta {
             title: input.title.clone(),
@@ -101,11 +101,12 @@ pub async fn create_series(
             lang: Some(lang.to_string()),
             category: Some(category.to_string()),
             topics: topics.clone(),
-            chapters: vec![],
+            split_level: None,
+            chapters: Vec::new(),
         };
         let repo_path = state.pijul.series_repo_path(node);
-        if let Err(e) = fx_core::meta::write_series_meta_file(&repo_path, &meta) {
-            tracing::warn!("failed to write series meta.json: {e}");
+        if let Err(e) = fx_core::meta::write_series_meta(&repo_path, &meta) {
+            tracing::warn!("failed to write series meta.yaml: {e}");
         }
         let _ = state.pijul_record_series(node.clone(), "Add metadata".into(), Some(user.did.clone())).await;
     }
@@ -142,7 +143,9 @@ pub async fn add_series_article(
     let owner = series_service::get_series_owner(&state.pool, &id).await?;
     require_owner(Some(&owner), &user.did)?;
 
-    series_service::add_series_article(&state.pool, &id, &input.article_uri).await?;
+    // Linking an existing standalone article to a series: its content lives
+    // in its own per-article pijul repo, so repo_path is None.
+    series_service::add_series_article(&state.pool, &id, &input.article_uri, None).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -515,10 +518,10 @@ pub async fn compile_series(
     .await?
     .flatten();
 
-    // Sync series meta.json → DB if it exists
+    // Sync series meta.yaml → DB if it exists
     if let Some(ref node) = pijul_node_id {
         let repo_path = state.pijul.series_repo_path(node);
-        if let Some(meta) = fx_core::meta::read_series_meta_file(&repo_path) {
+        if let Some(meta) = fx_core::meta::read_series_meta(&repo_path) {
             if !meta.title.is_empty() {
                 let _ = sqlx::query("UPDATE series SET title = $1 WHERE id = $2")
                     .bind(&meta.title).bind(&series_id).execute(&state.pool).await;
@@ -530,6 +533,12 @@ pub async fn compile_series(
             if let Some(ref long_desc) = meta.long_description {
                 let _ = sqlx::query("UPDATE series SET long_description = $1 WHERE id = $2")
                     .bind(long_desc).bind(&series_id).execute(&state.pool).await;
+            }
+            if let Some(level) = meta.split_level {
+                if (1..=6).contains(&level) {
+                    let _ = sqlx::query("UPDATE series SET split_level = $1 WHERE id = $2")
+                        .bind(level as i32).bind(&series_id).execute(&state.pool).await;
+                }
             }
         }
     }

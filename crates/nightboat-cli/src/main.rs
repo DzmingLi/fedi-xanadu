@@ -2321,8 +2321,7 @@ fn parse_prereqs(raw: &[String]) -> Result<Vec<fx_core::models::ArticlePrereq>> 
             let pt = match p {
                 "required" | "r" => PrereqType::Required,
                 "recommended" | "rec" => PrereqType::Recommended,
-                "suggested" | "s" => PrereqType::Suggested,
-                _ => bail!("Invalid prereq type '{p}' (use required/recommended/suggested)"),
+                _ => bail!("Invalid prereq type '{p}' (use required/recommended)"),
             };
             (t.to_string(), pt)
         } else {

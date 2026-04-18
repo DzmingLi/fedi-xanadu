@@ -93,7 +93,10 @@ pub async fn admin_create_article(
     ).await?;
 
     if let Some(ref sid) = input.article.series_id {
-        series_service::add_series_article(&state.pool, sid, &at_uri).await?;
+        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
+        let src_ext = fx_renderer::format_extension(input.article.content_format.as_str());
+        let default_path = fx_core::meta::default_chapter_path(chapter_id, src_ext);
+        series_service::add_series_article(&state.pool, sid, &at_uri, Some(&default_path)).await?;
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
@@ -183,7 +186,9 @@ pub async fn admin_add_series_article(
 ) -> ApiResult<StatusCode> {
 
 
-    series_service::add_series_article(&state.pool, &input.series_id, &input.article_uri).await?;
+    // Admin-linking an existing article into a series: article's source lives
+    // in its own standalone pijul repo, so repo_path is None.
+    series_service::add_series_article(&state.pool, &input.series_id, &input.article_uri, None).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -777,8 +782,9 @@ pub struct BatchArticle {
     pub content_format: Option<String>,
     pub tags: Option<Vec<String>>,
     pub license: Option<String>,
-    /// Path in the repo (e.g. "ch1/34DataFlowAnalysis.md"). If omitted, uses chapters/{tid}.{ext}.
-    pub path: Option<String>,
+    /// Path in the repo (e.g. "ch1/34DataFlowAnalysis.md"). Required — the
+    /// path is the authoritative identifier of a chapter within a series.
+    pub path: String,
 }
 
 /// A binary file to write into the repo (e.g. images).
@@ -852,19 +858,17 @@ pub async fn admin_batch_publish(
     for item in &input.articles {
         let format = item.content_format.as_deref().unwrap_or("markdown");
         let content_format: ContentFormat = format.parse().unwrap_or(ContentFormat::Markdown);
-        let src_ext = fx_renderer::format_extension(format);
+        let _ = fx_renderer::format_extension(format);
         let hash = content_hash(&item.content);
         let license = item.license.as_deref().unwrap_or("CC-BY-SA-4.0");
 
-        // Determine repo_path for this article (used as the stable matching key)
-        let repo_path = item.path.clone();
+        // repo_path is the authoritative identifier for a chapter in a series.
+        let repo_path = item.path.as_str();
 
         // Check if an article with this path already exists in the series
-        let existing_uri = if let Some(ref path) = repo_path {
-            series_service::find_article_by_repo_path(&state.pool, &input.series_id, path).await?
-        } else {
-            None
-        };
+        let existing_uri = series_service::find_article_by_repo_path(
+            &state.pool, &input.series_id, repo_path,
+        ).await?;
 
         let (at_uri, is_update) = if let Some(uri) = existing_uri {
             (uri, true)
@@ -874,12 +878,7 @@ pub async fn admin_batch_publish(
 
         let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
 
-        // Write file to series repo — use custom path or default
-        let chapter_path = if let Some(ref p) = repo_path {
-            series_repo.join(p)
-        } else {
-            fx_core::meta::resolve_chapter_path(&series_repo, chapter_id, src_ext)
-        };
+        let chapter_path = series_repo.join(repo_path);
         if let Some(parent) = chapter_path.parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
         }
@@ -927,8 +926,8 @@ pub async fn admin_batch_publish(
                 default_visibility(true), ContentKind::Article, None,
                 &resolved_desc, &desc_html,
             ).await?;
-            series_service::add_series_article_with_path(
-                &state.pool, &input.series_id, &at_uri, repo_path.as_deref(),
+            series_service::add_series_article(
+                &state.pool, &input.series_id, &at_uri, Some(repo_path),
             ).await?;
             article
         };
@@ -940,7 +939,12 @@ pub async fn admin_batch_publish(
         }));
     }
 
-    // Phase 2: Single pijul record for all files
+    // Phase 2a: Sync meta.yaml to reflect the current chapter list (in DB
+    // order, which mirrors how files were just written). Pijul is the source
+    // of truth for series structure; DB is the indexed cache.
+    write_series_meta_from_db(&state, &input.series_id, &series_repo).await;
+
+    // Phase 2b: Single pijul record for all files
     match state.pijul_record_series(node_id.clone(), "Batch publish".into(), Some(did.clone())).await {
         Ok(Some((hash, _new_state))) => {
             tracing::info!("batch recorded change {hash} for series {}", input.series_id);
@@ -950,6 +954,66 @@ pub async fn admin_batch_publish(
     }
 
     Ok(Json(results))
+}
+
+/// Rebuild meta.yaml from the authoritative DB state of a series. Called
+/// after any write operation that touches chapters (batch-publish, compile,
+/// reorder…) so the repo-side metadata stays in sync.
+async fn write_series_meta_from_db(
+    state: &AppState,
+    series_id: &str,
+    series_repo: &std::path::Path,
+) {
+    // Series-level fields
+    let row: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>, i32)> =
+        sqlx::query_as(
+            "SELECT title, summary, long_description, lang, category, split_level \
+             FROM series WHERE id = $1",
+        )
+        .bind(series_id)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten();
+    let Some((title, summary, long_description, lang, category, split_level)) = row else {
+        return;
+    };
+
+    // Topics (content_topics join)
+    let topics: Vec<String> = sqlx::query_scalar(
+        "SELECT tag_id FROM content_topics WHERE content_uri = $1 ORDER BY tag_id",
+    )
+    .bind(format!("series:{series_id}"))
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    // Chapter paths in order — only for file-based chapters (markdown etc.),
+    // typst series derive chapters from main.typ so leave the list empty.
+    let chapters: Vec<String> = sqlx::query_scalar(
+        "SELECT repo_path FROM series_articles \
+         WHERE series_id = $1 AND repo_path IS NOT NULL AND repo_path <> '' \
+         ORDER BY order_index",
+    )
+    .bind(series_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let meta = fx_core::meta::SeriesMeta {
+        title,
+        description: summary,
+        long_description,
+        lang,
+        category,
+        topics,
+        split_level: Some(split_level as u32),
+        chapters,
+    };
+
+    if let Err(e) = fx_core::meta::write_series_meta(series_repo, &meta) {
+        tracing::warn!("failed to write meta.yaml for {series_id}: {e}");
+    }
 }
 
 // ── Tag aliases ─────────────────────────────────────────────────────────

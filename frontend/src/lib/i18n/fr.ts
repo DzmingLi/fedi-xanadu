@@ -198,7 +198,6 @@ export default {
   'newArticle.selectTag': 'Sélectionner un tag...',
   'newArticle.required': 'Requis',
   'newArticle.recommended': 'Recommandé',
-  'newArticle.suggested': 'Suggéré',
   'newArticle.addPrereq': 'Ajouter',
   'newArticle.commitPlaceholder': 'Description du changement (optionnel, ex. « corriger une coquille », « ajouter des exemples »)',
   'newArticle.converting': 'Conversion en cours...',

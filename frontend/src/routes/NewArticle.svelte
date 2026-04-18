@@ -912,7 +912,6 @@
               <select bind:value={prereqType}>
                 <option value="required">{t('newArticle.required')}</option>
                 <option value="recommended">{t('newArticle.recommended')}</option>
-                <option value="suggested">{t('newArticle.suggested')}</option>
               </select>
               <button class="prereq-add-btn" onclick={addPrereq} disabled={!prereqTagId}>{t('newArticle.addPrereq')}</button>
             </div>
