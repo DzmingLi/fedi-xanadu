@@ -476,17 +476,15 @@
     text-decoration: none;
   }
   /* Expand button — bookmark tab that emerges from the card's bottom-right.
-     No top border so it reads as continuous with the card; the top portion
-     overlaps the card's bottom padding zone so the text lifts up and uses
-     the card's own breathing room instead of needing its own top padding. */
+     Sits fully below the card (no overlap, so no side borders leak inside);
+     tight top padding keeps the text visually riding against the card edge. */
   .expand-btn {
     position: absolute;
     right: -1px;                  /* flush with card's outer right edge */
-    top: 100%;
-    margin-top: -10px;            /* overlap 10px into card's bottom padding */
+    top: 100%;                    /* top edge at card's bottom border line */
     background: var(--bg-white);
     border: 1px solid var(--accent);
-    border-top: none;
+    border-top: none;             /* no upper line — reads as continuous */
     font-size: 12px;
     color: var(--accent);
     cursor: pointer;
