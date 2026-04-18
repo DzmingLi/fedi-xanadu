@@ -185,6 +185,48 @@
   let editSaving = $state(false);
   let editError = $state('');
   let editLang = $state('en');
+  let editAuthorsInput = $state('');
+  let editBookTeaches = $state<string[]>([]);
+  let editBookPrereqs = $state<string[]>([]);
+  let editBookTagInput = $state('');
+  let editBookTagSuggestions = $state<{id:string,name:string}[]>([]);
+  let editBookPrereqInput = $state('');
+  let editBookPrereqSuggestions = $state<{id:string,name:string}[]>([]);
+
+  let editBookTagTimeout: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    clearTimeout(editBookTagTimeout);
+    const q = editBookTagInput.trim();
+    if (!q) { editBookTagSuggestions = []; return; }
+    editBookTagTimeout = setTimeout(async () => {
+      editBookTagSuggestions = await searchTags(q).catch(() => []);
+    }, 150);
+  });
+  let editBookPrereqTimeout: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    clearTimeout(editBookPrereqTimeout);
+    const q = editBookPrereqInput.trim();
+    if (!q) { editBookPrereqSuggestions = []; return; }
+    editBookPrereqTimeout = setTimeout(async () => {
+      editBookPrereqSuggestions = await searchTags(q).catch(() => []);
+    }, 150);
+  });
+  function addBookTag(tagId: string) {
+    if (!editBookTeaches.includes(tagId)) editBookTeaches = [...editBookTeaches, tagId];
+    editBookTagInput = '';
+    editBookTagSuggestions = [];
+  }
+  function removeBookTag(tagId: string) {
+    editBookTeaches = editBookTeaches.filter(t => t !== tagId);
+  }
+  function addBookPrereq(tagId: string) {
+    if (!editBookPrereqs.includes(tagId)) editBookPrereqs = [...editBookPrereqs, tagId];
+    editBookPrereqInput = '';
+    editBookPrereqSuggestions = [];
+  }
+  function removeBookPrereq(tagId: string) {
+    editBookPrereqs = editBookPrereqs.filter(t => t !== tagId);
+  }
 
   // Edition edit modal state
   let showEditionEdit = $state(false);
@@ -294,6 +336,13 @@
     editLang = getLocale();
     editSummary = '';
     editError = '';
+    editAuthorsInput = (detail.linked_authors.length > 0
+      ? detail.linked_authors.map(a => a.name)
+      : detail.book.authors).join(', ');
+    editBookTeaches = [...detail.tags];
+    editBookPrereqs = [...detail.prereqs];
+    editBookTagInput = '';
+    editBookPrereqInput = '';
     showEdit = true;
   }
 
@@ -308,11 +357,15 @@
       const title = Object.fromEntries(Object.entries(editTitles).filter(([_, v]) => v.trim()));
       const subtitle = Object.fromEntries(Object.entries(editSubtitles).filter(([_, v]) => v.trim()));
       const description = Object.fromEntries(Object.entries(editDescs).filter(([_, v]) => v.trim()));
+      const authors = editAuthorsInput.split(',').map(s => s.trim()).filter(Boolean);
       await updateBook(id, {
         title,
         subtitle,
         description,
         abbreviation: editAbbreviation.trim(),
+        authors,
+        tags: editBookTeaches,
+        prereqs: editBookPrereqs,
         edit_summary: editSummary.trim() || undefined,
       });
       showEdit = false;
@@ -1196,6 +1249,46 @@
           <label>{t('books.abbreviationLabel')}</label>
           <input bind:value={editAbbreviation} placeholder="e.g. CLRS, SICP, LADR" maxlength="50" />
         </div>
+
+        <div class="form-group">
+          <label>{t('books.authorsLabel')}</label>
+          <input bind:value={editAuthorsInput} placeholder={t('books.authorsPlaceholder')} />
+        </div>
+
+        <div class="form-group">
+          <label>{t('books.tagsLabel')}</label>
+          <div class="tag-chip-row">
+            {#each editBookTeaches as tag}
+              <span class="tag-chip">{tag} <button type="button" onclick={() => removeBookTag(tag)}>×</button></span>
+            {/each}
+          </div>
+          <input bind:value={editBookTagInput} placeholder={t('books.tagsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookTagInput.trim()) { e.preventDefault(); addBookTag(editBookTagInput.trim()); } }} />
+          {#if editBookTagSuggestions.length > 0}
+            <div class="tag-suggestions">
+              {#each editBookTagSuggestions as s}
+                <button type="button" class="tag-suggest" onclick={() => addBookTag(s.id)}>{s.name}</button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div class="form-group">
+          <label>{t('books.prereqsLabel')}</label>
+          <div class="tag-chip-row">
+            {#each editBookPrereqs as tag}
+              <span class="tag-chip prereq">{tag} <button type="button" onclick={() => removeBookPrereq(tag)}>×</button></span>
+            {/each}
+          </div>
+          <input bind:value={editBookPrereqInput} placeholder={t('books.prereqsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookPrereqInput.trim()) { e.preventDefault(); addBookPrereq(editBookPrereqInput.trim()); } }} />
+          {#if editBookPrereqSuggestions.length > 0}
+            <div class="tag-suggestions">
+              {#each editBookPrereqSuggestions as s}
+                <button type="button" class="tag-suggest" onclick={() => addBookPrereq(s.id)}>{s.name}</button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
         <div class="form-group">
           <label>{t('books.editSummary')}</label>
           <input bind:value={editSummary} placeholder={t('books.editSummaryPlaceholder')} />
@@ -1895,4 +1988,33 @@
   .answer-count { display: block; font-size: 18px; font-weight: 600; color: var(--text-hint); }
   .answer-count.has-answers { color: var(--accent); }
   .answer-label { display: block; font-size: 10px; color: var(--text-hint); }
+
+  .tag-chip-row {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-bottom: 6px;
+  }
+  .tag-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 12px;
+    background: var(--bg-hover, #f5f5f5);
+    border: 1px solid var(--border);
+    font-size: 12px; color: var(--text-primary);
+  }
+  .tag-chip.prereq { border-color: var(--warn, #d97706); color: var(--warn, #d97706); }
+  .tag-chip button {
+    background: none; border: none; cursor: pointer; color: inherit;
+    font-size: 14px; padding: 0; line-height: 1;
+  }
+  .tag-suggest {
+    display: inline-block;
+    margin: 2px 4px 0 0;
+    padding: 3px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-white);
+    cursor: pointer;
+    color: var(--text-primary);
+  }
+  .tag-suggest:hover { background: var(--bg-hover); }
 </style>

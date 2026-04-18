@@ -138,6 +138,15 @@ pub struct UpdateBookInput {
     /// Short citation form ("CLRS", "SICP", "LADR"). Not translated.
     /// Pass empty string to clear; omit to leave unchanged.
     pub abbreviation: Option<String>,
+    /// Ordered author names. When present, replaces both `books.authors`
+    /// and the `book_authors` join table.
+    pub authors: Option<Vec<String>>,
+    /// Tag ids that this book teaches. When present, replaces
+    /// content_teaches for this book.
+    pub tags: Option<Vec<String>>,
+    /// Tag ids that this book requires as prereqs. When present, replaces
+    /// content_prereqs for this book (all marked as 'required').
+    pub prereqs: Option<Vec<String>>,
     pub edit_summary: Option<String>,
 }
 
@@ -177,6 +186,50 @@ pub async fn update_book(
         let value: Option<&str> = if trimmed.is_empty() { None } else { Some(trimmed) };
         sqlx::query("UPDATE books SET abbreviation = $1 WHERE id = $2")
             .bind(value).bind(&input.id).execute(&state.pool).await?;
+    }
+    if let Some(ref authors) = input.authors {
+        let cleaned: Vec<String> = authors.iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        sqlx::query("UPDATE books SET authors = $1 WHERE id = $2")
+            .bind(&cleaned).bind(&input.id).execute(&state.pool).await?;
+        sqlx::query("DELETE FROM book_authors WHERE book_id = $1")
+            .bind(&input.id).execute(&state.pool).await?;
+        for (position, name) in cleaned.iter().enumerate() {
+            let author_id = author_service::get_or_create_author(&state.pool, name).await?;
+            author_service::link_author_to_book(&state.pool, &input.id, &author_id, position as i16).await?;
+        }
+    }
+    if let Some(ref tags) = input.tags {
+        let content_uri = format!("book:{}", input.id);
+        sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
+            .bind(&content_uri).execute(&state.pool).await?;
+        for tag_id in tags {
+            let t = tag_id.trim();
+            if t.is_empty() { continue; }
+            sqlx::query(
+                "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+            ).bind(t).bind(t).bind(&user.did).execute(&state.pool).await?;
+            sqlx::query(
+                "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
+        }
+    }
+    if let Some(ref prereqs) = input.prereqs {
+        let content_uri = format!("book:{}", input.id);
+        sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
+            .bind(&content_uri).execute(&state.pool).await?;
+        for tag_id in prereqs {
+            let t = tag_id.trim();
+            if t.is_empty() { continue; }
+            sqlx::query(
+                "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+            ).bind(t).bind(t).bind(&user.did).execute(&state.pool).await?;
+            sqlx::query(
+                "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, 'required') ON CONFLICT DO NOTHING",
+            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
+        }
     }
 
     // Save edit log
