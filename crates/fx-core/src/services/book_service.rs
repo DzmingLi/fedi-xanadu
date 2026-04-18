@@ -394,10 +394,10 @@ pub async fn delete_edition(pool: &PgPool, id: &str) -> crate::Result<()> {
     Ok(())
 }
 
-/// Get reviews (articles with category='review' and book_id) for a book.
-pub async fn get_book_reviews(
+async fn get_book_articles_by_category(
     pool: &PgPool,
     book_id: &str,
+    category: &str,
     limit: i64,
     offset: i64,
 ) -> crate::Result<Vec<crate::models::Article>> {
@@ -406,6 +406,7 @@ pub async fn get_book_reviews(
          a.kind, a.title, a.summary, \
          a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
          a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
+         a.book_chapter_id, a.course_session_id, \
          COALESCE(v.vote_score, 0) AS vote_score, \
          COALESCE(b.bookmark_count, 0) AS bookmark_count, \
          COALESCE(cm.comment_count, 0) AS comment_count, \
@@ -417,16 +418,32 @@ pub async fn get_book_reviews(
          LEFT JOIN (SELECT article_uri, COUNT(*) AS bookmark_count FROM user_bookmarks GROUP BY article_uri) b ON b.article_uri = a.at_uri \
          LEFT JOIN (SELECT content_uri, COUNT(*) AS comment_count FROM comments GROUP BY content_uri) cm ON cm.content_uri = a.at_uri \
          LEFT JOIN (SELECT source_uri, COUNT(*) AS fork_count FROM forks GROUP BY source_uri) fk ON fk.source_uri = a.at_uri \
-         WHERE a.book_id = $1 AND a.category = 'review' AND a.visibility = 'public' \
+         WHERE a.book_id = $1 AND a.category = $2 AND a.visibility = 'public' \
          ORDER BY vote_score DESC, a.created_at DESC \
-         LIMIT $2 OFFSET $3",
+         LIMIT $3 OFFSET $4",
     )
     .bind(book_id)
+    .bind(category)
     .bind(limit)
     .bind(offset)
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+/// Reviews — opinions on the book itself.
+pub async fn get_book_reviews(
+    pool: &PgPool, book_id: &str, limit: i64, offset: i64,
+) -> crate::Result<Vec<crate::models::Article>> {
+    get_book_articles_by_category(pool, book_id, "review", limit, offset).await
+}
+
+/// Notes — reader thoughts, supplementary derivations, knowledge
+/// contributions attached to the book or one of its chapters.
+pub async fn get_book_notes(
+    pool: &PgPool, book_id: &str, limit: i64, offset: i64,
+) -> crate::Result<Vec<crate::models::Article>> {
+    get_book_articles_by_category(pool, book_id, "note", limit, offset).await
 }
 
 // ---- Ratings ----

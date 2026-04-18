@@ -40,6 +40,7 @@ pub struct BookDetail {
     pub editions: Vec<book_service::BookEdition>,
     pub chapters: Vec<book_service::BookChapterWithTags>,
     pub reviews: Vec<fx_core::models::Article>,
+    pub notes: Vec<fx_core::models::Article>,
     pub review_count: usize,
     pub rating: book_service::BookRatingStats,
     pub my_rating: Option<i16>,
@@ -67,6 +68,7 @@ pub async fn get_book(
     let editions = book_service::list_editions(&state.pool, &id).await?;
     let chapters = book_service::list_chapters_with_tags(&state.pool, &id).await?;
     let reviews = book_service::get_book_reviews(&state.pool, &id, 100, 0).await?;
+    let notes = book_service::get_book_notes(&state.pool, &id, 100, 0).await?;
     let review_count = reviews.len();
     let rating = book_service::get_rating_stats(&state.pool, &id).await?;
     let (my_rating, my_reading_status, my_chapter_progress) = if let Some(ref u) = user {
@@ -93,7 +95,7 @@ pub async fn get_book(
     let topics = tag_service::derive_topics(&state.pool, &content_uri)
         .await
         .unwrap_or_default();
-    Ok(Json(BookDetail { book, linked_authors, editions, chapters, reviews, review_count, rating, my_rating, my_reading_status, my_chapter_progress, tags, prereqs, topics }))
+    Ok(Json(BookDetail { book, linked_authors, editions, chapters, reviews, notes, review_count, rating, my_rating, my_reading_status, my_chapter_progress, tags, prereqs, topics }))
 }
 
 // --- Create book ---

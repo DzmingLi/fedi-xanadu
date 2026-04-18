@@ -1001,7 +1001,7 @@
         {/if}
       </div>
 
-      <!-- Reviews -->
+      <!-- Reviews (opinions on the book) -->
       <div class="reviews-section">
         <h2>{t('books.reviews')}</h2>
         {#if detail.reviews.length === 0}
@@ -1009,13 +1009,32 @@
         {:else}
           {#each detail.reviews as review}
             <div class="review-wrapper">
-              {#if review.edition_id}
+              {#if review.book_chapter_id}
+                {@const ch = detail.chapters.find(c => c.id === review.book_chapter_id)}
+                {#if ch}<span class="review-edition">{t('books.onChapter') || 'Chapter'}: {ch.title}</span>{/if}
+              {:else if review.edition_id}
                 {@const ed = detail.editions.find(e => e.id === review.edition_id)}
-                {#if ed}
-                  <span class="review-edition">{editionFullTitle(ed)}</span>
-                {/if}
+                {#if ed}<span class="review-edition">{editionFullTitle(ed)}</span>{/if}
               {/if}
               <PostCard article={review} articleTeaches={[]} />
+            </div>
+          {/each}
+        {/if}
+      </div>
+
+      <!-- Notes (reader thoughts / knowledge supplements) -->
+      <div class="reviews-section">
+        <h2>{t('books.notes') || 'Notes'}</h2>
+        {#if detail.notes.length === 0}
+          <p class="empty">{t('books.noNotes') || 'No notes yet.'}</p>
+        {:else}
+          {#each detail.notes as note}
+            <div class="review-wrapper">
+              {#if note.book_chapter_id}
+                {@const ch = detail.chapters.find(c => c.id === note.book_chapter_id)}
+                {#if ch}<span class="review-edition">{t('books.onChapter') || 'Chapter'}: {ch.title}</span>{/if}
+              {/if}
+              <PostCard article={note} articleTeaches={[]} />
             </div>
           {/each}
         {/if}

@@ -42,6 +42,13 @@ pub struct Article {
     pub question_uri: Option<String>,
     pub book_id: Option<String>,
     pub edition_id: Option<String>,
+    /// When the article is a review (category='review'), scoping it to
+    /// a specific chapter or lecture. Null ⇒ review is about the whole
+    /// book/course.
+    #[sqlx(default)]
+    pub book_chapter_id: Option<String>,
+    #[sqlx(default)]
+    pub course_session_id: Option<String>,
     pub answer_count: i32,
     pub restricted: bool,
     pub vote_score: i64,
@@ -126,6 +133,27 @@ impl CreateArticle {
             _ => None,
         }
     }
+    /// Extract course_id from Review metadata.
+    pub fn review_course_id(&self) -> Option<&str> {
+        match &self.metadata {
+            Some(CategoryMetadata::Review { course_id, .. }) => course_id.as_deref(),
+            _ => None,
+        }
+    }
+    /// Extract book_chapter_id from Review metadata.
+    pub fn review_book_chapter_id(&self) -> Option<&str> {
+        match &self.metadata {
+            Some(CategoryMetadata::Review { book_chapter_id, .. }) => book_chapter_id.as_deref(),
+            _ => None,
+        }
+    }
+    /// Extract course_session_id from Review metadata.
+    pub fn review_course_session_id(&self) -> Option<&str> {
+        match &self.metadata {
+            Some(CategoryMetadata::Review { course_session_id, .. }) => course_session_id.as_deref(),
+            _ => None,
+        }
+    }
 }
 
 /// Category-specific metadata — tagged union, only one variant per article.
@@ -140,6 +168,10 @@ pub enum CategoryMetadata {
         book_id: Option<String>,
         edition_id: Option<String>,
         course_id: Option<String>,
+        /// Chapter-specific review. Only meaningful with book_id set.
+        book_chapter_id: Option<String>,
+        /// Lecture-specific review. Only meaningful with course_id set.
+        course_session_id: Option<String>,
     },
     #[serde(rename = "experience")]
     Experience(CreateExperienceMetadata),

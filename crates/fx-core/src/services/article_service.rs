@@ -11,6 +11,7 @@ const ARTICLE_BASE: &str = "\
     pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
     a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
     a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
+    a.book_chapter_id, a.course_session_id, \
     COALESCE(v.vote_score, 0) AS vote_score, \
     COALESCE(b.bookmark_count, 0) AS bookmark_count, \
     COALESCE(cm.comment_count, 0) AS comment_count, \
@@ -433,8 +434,8 @@ pub async fn create_article(
     let category = input.category.as_deref().unwrap_or("general");
 
     sqlx::query(
-        "INSERT INTO articles (at_uri, did, title, summary, summary_html, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id, edition_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0.8, $11, $12, $13, $14, $15, $16, $17)",
+        "INSERT INTO articles (at_uri, did, title, summary, summary_html, content_hash, content_format, lang, translation_group, license, prereq_threshold, visibility, kind, question_uri, restricted, category, book_id, edition_id, course_id, book_chapter_id, course_session_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0.8, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)",
     )
     .bind(at_uri)
     .bind(did)
@@ -453,6 +454,9 @@ pub async fn create_article(
     .bind(category)
     .bind(input.review_book_id())
     .bind(input.review_edition_id())
+    .bind(input.review_course_id())
+    .bind(input.review_book_chapter_id())
+    .bind(input.review_course_session_id())
     .execute(&mut *tx)
     .await?;
 

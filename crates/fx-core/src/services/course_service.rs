@@ -62,6 +62,7 @@ pub struct CourseDetailResponse {
     pub prerequisites: Vec<CoursePrereqRow>,
     pub rating: CourseRatingStats,
     pub reviews: Vec<CourseReviewRow>,
+    pub notes: Vec<CourseReviewRow>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -292,9 +293,10 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
 
     let rating = get_rating_stats(pool, id).await?;
     let reviews = get_course_reviews(pool, id).await?;
+    let notes = get_course_notes(pool, id).await?;
 
     let authors = list_course_authors(pool, id).await?;
-    Ok(CourseDetailResponse { course, syllabus, authors, sessions, textbooks, tags, series, skill_trees, prerequisites, rating, reviews })
+    Ok(CourseDetailResponse { course, syllabus, authors, sessions, textbooks, tags, series, skill_trees, prerequisites, rating, reviews, notes })
 }
 
 pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
@@ -646,21 +648,33 @@ pub struct CourseReviewRow {
     pub did: String,
     pub author_handle: Option<String>,
     pub author_display_name: Option<String>,
+    #[sqlx(default)]
+    pub course_session_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub vote_score: i64,
     pub comment_count: i64,
 }
 
-pub async fn get_course_reviews(pool: &PgPool, course_id: &str) -> crate::Result<Vec<CourseReviewRow>> {
+async fn get_course_articles_by_category(
+    pool: &PgPool, course_id: &str, category: &str,
+) -> crate::Result<Vec<CourseReviewRow>> {
     Ok(sqlx::query_as::<_, CourseReviewRow>(
         "SELECT a.at_uri, a.title, a.summary, a.did, \
          p.handle AS author_handle, p.display_name AS author_display_name, \
-         a.created_at, \
+         a.course_session_id, a.created_at, \
          COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
          (SELECT COUNT(*) FROM comments WHERE content_uri = a.at_uri) AS comment_count \
          FROM articles a \
          LEFT JOIN profiles p ON p.did = a.did \
-         WHERE a.course_id = $1 AND a.category = 'review' \
+         WHERE a.course_id = $1 AND a.category = $2 \
          ORDER BY vote_score DESC, a.created_at DESC"
-    ).bind(course_id).fetch_all(pool).await?)
+    ).bind(course_id).bind(category).fetch_all(pool).await?)
+}
+
+pub async fn get_course_reviews(pool: &PgPool, course_id: &str) -> crate::Result<Vec<CourseReviewRow>> {
+    get_course_articles_by_category(pool, course_id, "review").await
+}
+
+pub async fn get_course_notes(pool: &PgPool, course_id: &str) -> crate::Result<Vec<CourseReviewRow>> {
+    get_course_articles_by_category(pool, course_id, "note").await
 }

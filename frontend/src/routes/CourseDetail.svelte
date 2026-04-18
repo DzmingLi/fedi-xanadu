@@ -363,7 +363,7 @@
       </div>
     </div>
 
-    <!-- Reviews -->
+    <!-- Reviews (opinions on the course) -->
     <section class="reviews-section">
       <h2>{t('course.reviews')}</h2>
       {#if getAuth()}
@@ -377,6 +377,10 @@
             <div class="review-header">
               <span class="review-author">{review.author_display_name || review.author_handle || review.did.slice(0, 16)}</span>
               <span class="review-date">{new Date(review.created_at).toLocaleDateString()}</span>
+              {#if review.course_session_id}
+                {@const lec = detail.sessions.find(s => s.id === review.course_session_id)}
+                {#if lec}<span class="review-session">{t('course.onLecture') || 'Lecture'} {lec.sort_order}: {lec.topic}</span>{/if}
+              {/if}
             </div>
             <h3 class="review-title">{review.title}</h3>
             {#if review.summary}
@@ -385,6 +389,38 @@
             <div class="review-stats">
               <span>{review.vote_score} votes</span>
               <span>{review.comment_count} comments</span>
+            </div>
+          </a>
+        {/each}
+      {/if}
+    </section>
+
+    <!-- Notes (learner thoughts / knowledge supplements) -->
+    <section class="reviews-section">
+      <h2>{t('course.notes') || 'Notes'}</h2>
+      {#if getAuth()}
+        <a href="/new?category=note&course_id={encodeURIComponent(id)}" class="write-review-btn">{t('course.writeNote') || 'Write a note'}</a>
+      {/if}
+      {#if detail.notes.length === 0}
+        <p class="meta">{t('course.noNotes') || 'No notes yet.'}</p>
+      {:else}
+        {#each detail.notes as note}
+          <a href="/article?uri={encodeURIComponent(note.at_uri)}" class="review-card">
+            <div class="review-header">
+              <span class="review-author">{note.author_display_name || note.author_handle || note.did.slice(0, 16)}</span>
+              <span class="review-date">{new Date(note.created_at).toLocaleDateString()}</span>
+              {#if note.course_session_id}
+                {@const lec = detail.sessions.find(s => s.id === note.course_session_id)}
+                {#if lec}<span class="review-session">{t('course.onLecture') || 'Lecture'} {lec.sort_order}: {lec.topic}</span>{/if}
+              {/if}
+            </div>
+            <h3 class="review-title">{note.title}</h3>
+            {#if note.summary}
+              <p class="review-desc">{note.summary}</p>
+            {/if}
+            <div class="review-stats">
+              <span>{note.vote_score} votes</span>
+              <span>{note.comment_count} comments</span>
             </div>
           </a>
         {/each}

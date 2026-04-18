@@ -38,6 +38,8 @@ export interface Article {
   question_uri: string | null;
   book_id: string | null;
   edition_id: string | null;
+  book_chapter_id: string | null;
+  course_session_id: string | null;
   answer_count: number;
   vote_score: number;
   bookmark_count: number;
@@ -248,6 +250,7 @@ export interface BookDetail {
   editions: BookEdition[];
   chapters: BookChapter[];
   reviews: Article[];
+  notes: Article[];
   review_count: number;
   rating: BookRatingStats;
   my_rating: number | null;
@@ -775,6 +778,7 @@ export interface CourseReview {
   did: string;
   author_handle: string | null;
   author_display_name: string | null;
+  course_session_id: string | null;
   created_at: string;
   vote_score: number;
   comment_count: number;
@@ -792,6 +796,7 @@ export interface CourseDetail {
   prerequisites: CoursePrereq[];
   rating: CourseRatingStats;
   reviews: CourseReview[];
+  notes: CourseReview[];
 }
 
 // ---- Publications (专栏) ----
