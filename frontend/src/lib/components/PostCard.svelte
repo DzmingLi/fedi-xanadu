@@ -191,7 +191,9 @@
     </button>
     </div>
     {#if article.cover_url}
-      <img class="post-cover" src={article.cover_url} alt="" loading="lazy" />
+      <div class="post-cover">
+        <img src={article.cover_url} alt="" loading="lazy" />
+      </div>
     {/if}
   </a>
 
@@ -296,7 +298,9 @@
     </button>
     </div>
     {#if series.cover_url}
-      <img class="post-cover" src={series.cover_url} alt="" loading="lazy" />
+      <div class="post-cover">
+        <img src={series.cover_url} alt="" loading="lazy" />
+      </div>
     {/if}
   </a>
 
@@ -358,14 +362,21 @@
     min-width: 0;
   }
   .post-cover {
-    width: auto;
-    max-width: 320px;
-    max-height: 320px;
-    border-radius: 3px;
+    width: 220px;
+    max-height: 280px;
     flex-shrink: 0;
     align-self: stretch;
-    object-fit: cover;
+    position: relative;
+    overflow: hidden;
+    border-radius: 3px;
     background: var(--bg-hover, #f5f5f5);
+  }
+  .post-cover img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
   .card-top {
     display: flex;
