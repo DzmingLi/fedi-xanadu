@@ -490,6 +490,7 @@
     transition: all 0.15s;
     line-height: 1;
   }
+  .post-card.has-cover .expand-btn { right: 134px; }
   .expand-btn:hover { background: var(--accent); color: white; }
 
   /* Expanded actions — sticky bottom bar */
