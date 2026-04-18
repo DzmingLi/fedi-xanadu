@@ -512,17 +512,18 @@
     z-index: -1;
   }
   .expand-btn::after {
-    /* Top half (inside card's bottom padding): grey side rails only —
-       same colour as the card's border so they read as a continuation of
-       the card's skeleton, not an intrusive accent. */
+    /* Top half (inside card's bottom padding): grey outline — same colour
+       as the card's border so it reads as a continuation of the card's
+       skeleton, not an intrusive accent. */
     content: '';
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     height: 10px;
-    border-left: 1px solid var(--border);
-    border-right: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 3px 3px 0 0;
     pointer-events: none;
     z-index: -1;
   }
