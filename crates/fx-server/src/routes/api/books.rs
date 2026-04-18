@@ -147,6 +147,10 @@ pub struct UpdateBookInput {
     /// Tag ids that this book requires as prereqs. When present, replaces
     /// content_prereqs for this book (all marked as 'required').
     pub prereqs: Option<Vec<String>>,
+    /// Top-level domain tag ids this book belongs to (cs, math, linux, …).
+    /// Distinct from `tags` (what it teaches) — topics are the subject
+    /// area it lives in. When present, replaces content_topics.
+    pub topics: Option<Vec<String>>,
     pub edit_summary: Option<String>,
 }
 
@@ -228,6 +232,21 @@ pub async fn update_book(
             ).bind(t).bind(t).bind(&user.did).execute(&state.pool).await?;
             sqlx::query(
                 "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, 'required') ON CONFLICT DO NOTHING",
+            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
+        }
+    }
+    if let Some(ref topics) = input.topics {
+        let content_uri = format!("book:{}", input.id);
+        sqlx::query("DELETE FROM content_topics WHERE content_uri = $1")
+            .bind(&content_uri).execute(&state.pool).await?;
+        for tag_id in topics {
+            let t = tag_id.trim();
+            if t.is_empty() { continue; }
+            sqlx::query(
+                "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+            ).bind(t).bind(t).bind(&user.did).execute(&state.pool).await?;
+            sqlx::query(
+                "INSERT INTO content_topics (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
             ).bind(&content_uri).bind(t).execute(&state.pool).await?;
         }
     }
