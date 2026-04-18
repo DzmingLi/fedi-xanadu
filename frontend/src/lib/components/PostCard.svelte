@@ -358,15 +358,16 @@
     min-width: 0;
   }
   .post-cover {
-    width: 80px;
-    height: 80px;
-    object-fit: cover;
+    width: auto;
+    height: auto;
+    max-width: 140px;
+    max-height: 96px;
     border-radius: 3px;
     flex-shrink: 0;
     align-self: flex-start;
     background: var(--bg-hover, #f5f5f5);
   }
-  .post-card.has-cover { min-height: 144px; }
+  .post-card.has-cover { min-height: 160px; }
   .card-top {
     display: flex;
     align-items: flex-start;
