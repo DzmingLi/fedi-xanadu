@@ -149,6 +149,11 @@ pub async fn create_book(
 
     tx.commit().await?;
 
+    for (position, name) in input.authors.iter().enumerate() {
+        let author_id = crate::services::author_service::get_or_create_author(pool, name).await?;
+        crate::services::author_service::link_author_to_book(pool, id, &author_id, position as i16).await?;
+    }
+
     let book = sqlx::query_as::<_, Book>(
         &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
     )

@@ -506,7 +506,15 @@
           {#if loc(detail.book.subtitle)}
             <p class="book-subtitle">{loc(detail.book.subtitle)}</p>
           {/if}
-          <p class="authors">{detail.book.authors.join(', ')}</p>
+          <p class="authors">
+            {#if detail.linked_authors.length > 0}
+              {#each detail.linked_authors as a, i}
+                <a href="/author?id={encodeURIComponent(a.id)}">{a.name}</a>{#if i < detail.linked_authors.length - 1}, {/if}
+              {/each}
+            {:else}
+              {detail.book.authors.join(', ')}
+            {/if}
+          </p>
           {#if loc(detail.book.description)}
             <p class="description">{loc(detail.book.description)}</p>
           {/if}

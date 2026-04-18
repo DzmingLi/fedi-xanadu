@@ -233,8 +233,18 @@ export interface ChapterProgress {
   completed_at: string | null;
 }
 
+export interface LinkedAuthor {
+  id: string;
+  name: string;
+  did: string | null;
+  orcid: string | null;
+  affiliation: string | null;
+  homepage: string | null;
+}
+
 export interface BookDetail {
   book: Book;
+  linked_authors: LinkedAuthor[];
   editions: BookEdition[];
   chapters: BookChapter[];
   reviews: Article[];

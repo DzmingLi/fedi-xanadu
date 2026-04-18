@@ -4,7 +4,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::{StatusCode, Response, header},
 };
-use fx_core::services::{book_service, skill_service};
+use fx_core::services::{author_service, book_service, skill_service};
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
@@ -36,6 +36,7 @@ pub async fn list_books(
 #[derive(serde::Serialize)]
 pub struct BookDetail {
     pub book: book_service::Book,
+    pub linked_authors: Vec<fx_core::services::author_service::Author>,
     pub editions: Vec<book_service::BookEdition>,
     pub chapters: Vec<book_service::BookChapterWithTags>,
     pub reviews: Vec<fx_core::models::Article>,
@@ -58,6 +59,7 @@ pub async fn get_book(
     } else {
         book_service::get_book(&state.pool, &id).await?
     };
+    let linked_authors = author_service::list_book_authors(&state.pool, &id).await?;
     let editions = book_service::list_editions(&state.pool, &id).await?;
     let chapters = book_service::list_chapters_with_tags(&state.pool, &id).await?;
     let reviews = book_service::get_book_reviews(&state.pool, &id, 100, 0).await?;
@@ -84,7 +86,7 @@ pub async fn get_book(
     .bind(&content_uri)
     .fetch_all(&state.pool)
     .await?;
-    Ok(Json(BookDetail { book, editions, chapters, reviews, review_count, rating, my_rating, my_reading_status, my_chapter_progress, tags, prereqs }))
+    Ok(Json(BookDetail { book, linked_authors, editions, chapters, reviews, review_count, rating, my_rating, my_reading_status, my_chapter_progress, tags, prereqs }))
 }
 
 // --- Create book ---
