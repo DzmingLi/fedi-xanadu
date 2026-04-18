@@ -23,7 +23,7 @@ use crate::auth::{AdminAuth, WriteAuth};
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
 
-const UPLOAD_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const UPLOAD_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "svg"];
 /// Broader allow-list for the reference path: body images in the repo may be
 /// any of these. Kept in sync with `articles::get_image`'s content-type map.
 const REFERENCE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "svg"];
@@ -169,7 +169,7 @@ async fn read_multipart(mut multipart: Multipart) -> Result<(Vec<u8>, String), A
     let ext = ext_of(file_name.as_deref().unwrap_or(""));
     let ext = if ext.is_empty() { "jpg".to_string() } else { ext };
     if !UPLOAD_EXTENSIONS.contains(&ext.as_str()) {
-        return Err(AppError(fx_core::Error::BadRequest("Use jpg, png, or webp".into())));
+        return Err(AppError(fx_core::Error::BadRequest("Use jpg, png, webp, or svg".into())));
     }
     Ok((data, ext))
 }
