@@ -92,6 +92,9 @@
   let replies = $derived((parentId: string) => comments.filter(c => c.parent_id === parentId));
 
   // Detect which resource types exist across all sessions
+  let lectures = $derived(detail?.sessions.filter(s => (s.kind ?? 'lecture') === 'lecture') ?? []);
+  let labs = $derived(detail?.sessions.filter(s => s.kind === 'lab') ?? []);
+  let assignments = $derived(detail?.sessions.filter(s => s.kind === 'assignment') ?? []);
   let hasReadings = $derived(detail?.sessions.some(s => s.readings) ?? false);
   let hasVideo = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'video')) ?? false);
   let hasNotes = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'notes')) ?? false);
@@ -226,80 +229,95 @@
           </section>
         {/if}
 
-        {#if detail.sessions.length > 0}
-          <section class="schedule">
-            <h2>{t('course.calendar')}</h2>
-            <table class="schedule-table">
-              <thead>
+        {#snippet scheduleTable(items: typeof detail.sessions)}
+          <table class="schedule-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>{t('course.topic')}</th>
+                {#if hasReadings}<th>{t('course.readings')}</th>{/if}
+                {#if hasVideo}<th>{t('course.video')}</th>{/if}
+                {#if hasNotes}<th>{t('course.notes')}</th>{/if}
+                {#if hasHw}<th>{t('course.hw')}</th>{/if}
+              </tr>
+            </thead>
+            <tbody>
+              {#each items as s}
                 <tr>
-                  <th>#</th>
-                  <th>{t('course.topic')}</th>
-                  {#if hasReadings}<th>{t('course.readings')}</th>{/if}
-                  {#if hasVideo}<th>{t('course.video')}</th>{/if}
-                  {#if hasNotes}<th>{t('course.notes')}</th>{/if}
-                  {#if hasHw}<th>{t('course.hw')}</th>{/if}
-                </tr>
-              </thead>
-              <tbody>
-                {#each detail.sessions as s}
-                  {@const isExam = !s.readings && s.resources.length === 0}
-                  <tr class:session-exam={isExam}>
-                    <td class="session-num">{s.sort_order}</td>
-                    {#if isExam}
-                      <td class="session-topic" colspan={colCount - 1}>
-                        <strong>{s.topic || ''}</strong>
-                      </td>
-                    {:else}
-                      <td class="session-topic">
-                        {s.topic || ''}
-                        {#if s.tags && s.tags.length > 0}
-                          <div class="session-tags">
-                            {#each s.tags as tag}
-                              <a href="/tag?id={encodeURIComponent(tag.tag_id)}" class="session-tag">{tag.tag_name}</a>
-                            {/each}
-                          </div>
-                        {/if}
-                      </td>
-                      {#if hasReadings}
-                        <td class="session-readings">
-                          {#if s.readings}
-                            {#if s.readings.startsWith('/')}
-                              <a href={s.readings} class="res-link res-notes">&#128196; {t('course.notes')}</a>
-                            {:else}
-                              <span class="res-reading">{s.readings}</span>
-                            {/if}
-                          {/if}
-                        </td>
-                      {/if}
-                      {#if hasVideo}
-                        <td class="session-video">
-                          {#each getResources(s, 'video') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {r.label}</a>
-                          {/each}
-                        </td>
-                      {/if}
-                      {#if hasNotes}
-                        <td class="session-notes">
-                          {#each getResources(s, 'notes') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {r.label}</a>
-                          {/each}
-                        </td>
-                      {/if}
-                      {#if hasHw}
-                        <td class="session-hw">
-                          {#each getResources(s, 'hw') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {r.label}</a>
-                          {/each}
-                          {#each getResources(s, 'discussion') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {r.label}</a>
-                          {/each}
-                        </td>
-                      {/if}
+                  <td class="session-num">{s.sort_order}</td>
+                  <td class="session-topic">
+                    {s.topic || ''}
+                    {#if s.date}<span class="session-date">· {s.date}</span>{/if}
+                    {#if s.tags && s.tags.length > 0}
+                      <div class="session-tags">
+                        {#each s.tags as tag}
+                          <a href="/tag?id={encodeURIComponent(tag.tag_id)}" class="session-tag">{tag.tag_name}</a>
+                        {/each}
+                      </div>
                     {/if}
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
+                  </td>
+                  {#if hasReadings}
+                    <td class="session-readings">
+                      {#if s.readings}
+                        {#if s.readings.startsWith('/')}
+                          <a href={s.readings} class="res-link res-notes">&#128196; {t('course.notes')}</a>
+                        {:else}
+                          <span class="res-reading">{s.readings}</span>
+                        {/if}
+                      {/if}
+                    </td>
+                  {/if}
+                  {#if hasVideo}
+                    <td class="session-video">
+                      {#each getResources(s, 'video') as r}
+                        <a href={r.url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {r.label}</a>
+                      {/each}
+                    </td>
+                  {/if}
+                  {#if hasNotes}
+                    <td class="session-notes">
+                      {#each getResources(s, 'notes') as r}
+                        <a href={r.url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {r.label}</a>
+                      {/each}
+                      {#each getResources(s, 'slides') as r}
+                        <a href={r.url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {r.label}</a>
+                      {/each}
+                    </td>
+                  {/if}
+                  {#if hasHw}
+                    <td class="session-hw">
+                      {#each getResources(s, 'hw') as r}
+                        <a href={r.url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {r.label}</a>
+                      {/each}
+                      {#each getResources(s, 'discussion') as r}
+                        <a href={r.url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {r.label}</a>
+                      {/each}
+                    </td>
+                  {/if}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/snippet}
+
+        {#if lectures.length > 0}
+          <section class="schedule">
+            <h2>{t('course.lectures') || 'Lectures'}</h2>
+            {@render scheduleTable(lectures)}
+          </section>
+        {/if}
+
+        {#if labs.length > 0}
+          <section class="schedule">
+            <h2>{t('course.labs') || 'Labs'}</h2>
+            {@render scheduleTable(labs)}
+          </section>
+        {/if}
+
+        {#if assignments.length > 0}
+          <section class="schedule">
+            <h2>{t('course.assignments') || 'Assignments'}</h2>
+            {@render scheduleTable(assignments)}
           </section>
         {/if}
 

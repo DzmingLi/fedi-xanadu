@@ -887,6 +887,9 @@ enum CourseCommand {
         /// Prereq tags (comma-separated tag IDs) — what you should know
         #[arg(long, value_delimiter = ',')]
         prereqs: Vec<String>,
+        /// Session kind: "lecture" (default), "lab", "assignment"
+        #[arg(long, default_value = "lecture")]
+        kind: String,
     },
     /// Update a session
     #[command(name = "update-session")]
@@ -2508,7 +2511,7 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             println!("Updated course {id}");
         }
 
-        CourseCommand::AddSession { course_id, topic, date, readings, resource, order, tags, prereqs } => {
+        CourseCommand::AddSession { course_id, topic, date, readings, resource, order, tags, prereqs, kind } => {
             let resources: Vec<serde_json::Value> = resource.iter().filter_map(|s| {
                 let parts: Vec<&str> = s.splitn(3, ':').collect();
                 if parts.len() == 3 {
@@ -2522,6 +2525,7 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
                 "readings": readings,
                 "resources": resources,
                 "sort_order": order,
+                "kind": kind,
             });
 
             let resp: serde_json::Value = client()

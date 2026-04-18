@@ -750,6 +750,7 @@ export interface CourseSession {
   resources: SessionResource[];
   tags: CourseTag[];
   prereqs: CourseTag[];
+  kind: 'lecture' | 'lab' | 'assignment';
 }
 
 export interface CourseTextbook {

@@ -797,6 +797,9 @@ export default {
 
   // Course
   'course.calendar': '课程日历',
+  'course.lectures': '讲座',
+  'course.labs': '实验',
+  'course.assignments': '作业',
   'course.topic': '主题',
   'course.readings': '阅读材料',
   'course.video': '视频',
