@@ -207,24 +207,6 @@
         {/if}
       </div>
       <div class="header-side">
-        {#if detail.staff.length > 0}
-          <div class="staff-list">
-            <h3>{t('course.staff')}</h3>
-            {#each detail.staff as s}
-              <a href="/profile?did={encodeURIComponent(s.user_did)}" class="staff-item">
-                {#if s.avatar_url}
-                  <img src={s.avatar_url} alt="" class="staff-avatar" />
-                {:else}
-                  <div class="staff-avatar placeholder">{(s.display_name || s.handle || '?').charAt(0).toUpperCase()}</div>
-                {/if}
-                <div class="staff-info">
-                  <span class="staff-name">{s.display_name || s.handle || s.user_did.slice(0, 16)}</span>
-                  <span class="staff-role">{s.role}</span>
-                </div>
-              </a>
-            {/each}
-          </div>
-        {/if}
         {#if isOwner}
           <a href="/new-course?edit={encodeURIComponent(c.id)}" class="edit-btn">{t('common.edit')}</a>
         {/if}

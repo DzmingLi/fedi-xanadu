@@ -34,7 +34,6 @@ pub struct CourseListRow {
     pub semester: Option<String>,
     pub lang: String,
     pub series_count: i64,
-    pub staff_count: i64,
     pub session_count: i64,
     pub avg_rating: f64,
     pub rating_count: i64,
@@ -50,16 +49,6 @@ pub struct CourseSeriesRow {
     pub sort_order: i32,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
-pub struct CourseStaffRow {
-    pub user_did: String,
-    pub handle: Option<String>,
-    pub display_name: Option<String>,
-    pub avatar_url: Option<String>,
-    pub role: String,
-    pub sort_order: i32,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct CourseDetailResponse {
     pub course: CourseRow,
@@ -69,7 +58,6 @@ pub struct CourseDetailResponse {
     pub textbooks: Vec<CourseTextbookRow>,
     pub tags: Vec<CourseTagRow>,
     pub series: Vec<CourseSeriesRow>,
-    pub staff: Vec<CourseStaffRow>,
     pub skill_trees: Vec<CourseSkillTreeRow>,
     pub prerequisites: Vec<CoursePrereqRow>,
     pub rating: CourseRatingStats,
@@ -290,12 +278,6 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
          WHERE cs.course_id = $1 ORDER BY cs.sort_order",
     ).bind(id).fetch_all(pool).await?;
 
-    let staff = sqlx::query_as::<_, CourseStaffRow>(
-        "SELECT cs.user_did, p.handle, p.display_name, p.avatar_url, cs.role, cs.sort_order \
-         FROM course_staff cs LEFT JOIN profiles p ON p.did = cs.user_did \
-         WHERE cs.course_id = $1 ORDER BY cs.sort_order",
-    ).bind(id).fetch_all(pool).await?;
-
     let skill_trees = sqlx::query_as::<_, CourseSkillTreeRow>(
         "SELECT cst.tree_uri, st.title, cst.role \
          FROM course_skill_trees cst JOIN skill_trees st ON st.at_uri = cst.tree_uri \
@@ -312,7 +294,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
     let reviews = get_course_reviews(pool, id).await?;
 
     let authors = list_course_authors(pool, id).await?;
-    Ok(CourseDetailResponse { course, syllabus, authors, sessions, textbooks, tags, series, staff, skill_trees, prerequisites, rating, reviews })
+    Ok(CourseDetailResponse { course, syllabus, authors, sessions, textbooks, tags, series, skill_trees, prerequisites, rating, reviews })
 }
 
 pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
@@ -320,8 +302,7 @@ pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
         "SELECT c.id, c.did, p.handle AS author_handle, c.title, c.code, c.description, \
          c.institution, c.semester, c.lang, \
          (SELECT COUNT(*) FROM course_series WHERE course_id = c.id) AS series_count, \
-         (SELECT COUNT(*) FROM course_staff WHERE course_id = c.id) AS staff_count, \
-         (SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
+(SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
          COALESCE(r.avg, 0) AS avg_rating, \
          COALESCE(r.cnt, 0) AS rating_count, \
          c.created_at \
@@ -337,8 +318,7 @@ pub async fn list_my_courses(pool: &PgPool, did: &str) -> crate::Result<Vec<Cour
         "SELECT c.id, c.did, p.handle AS author_handle, c.title, c.code, c.description, \
          c.institution, c.semester, c.lang, \
          (SELECT COUNT(*) FROM course_series WHERE course_id = c.id) AS series_count, \
-         (SELECT COUNT(*) FROM course_staff WHERE course_id = c.id) AS staff_count, \
-         (SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
+(SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
          COALESCE(r.avg, 0) AS avg_rating, \
          COALESCE(r.cnt, 0) AS rating_count, \
          c.created_at \
@@ -569,20 +549,6 @@ pub async fn add_series(pool: &PgPool, course_id: &str, series_id: &str, role: &
 pub async fn remove_series(pool: &PgPool, course_id: &str, series_id: &str) -> crate::Result<()> {
     sqlx::query("DELETE FROM course_series WHERE course_id = $1 AND series_id = $2")
         .bind(course_id).bind(series_id).execute(pool).await?;
-    Ok(())
-}
-
-pub async fn add_staff(pool: &PgPool, course_id: &str, user_did: &str, role: &str) -> crate::Result<()> {
-    sqlx::query(
-        "INSERT INTO course_staff (course_id, user_did, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING"
-    ).bind(course_id).bind(user_did).bind(role)
-    .execute(pool).await?;
-    Ok(())
-}
-
-pub async fn remove_staff(pool: &PgPool, course_id: &str, user_did: &str) -> crate::Result<()> {
-    sqlx::query("DELETE FROM course_staff WHERE course_id = $1 AND user_did = $2")
-        .bind(course_id).bind(user_did).execute(pool).await?;
     Ok(())
 }
 

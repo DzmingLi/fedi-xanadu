@@ -800,10 +800,6 @@ export const addCourseSeries = (id: string, series_id: string, role?: string, so
   post<void>(`/courses/${encodeURIComponent(id)}/series`, { series_id, role, sort_order });
 export const removeCourseSeries = (id: string, series_id: string) =>
   del<void>(`/courses/${encodeURIComponent(id)}/series?series_id=${encodeURIComponent(series_id)}`);
-export const addCourseStaff = (id: string, user_did: string, role?: string) =>
-  post<void>(`/courses/${encodeURIComponent(id)}/staff`, { user_did, role });
-export const removeCourseStaff = (id: string, user_did: string) =>
-  del<void>(`/courses/${encodeURIComponent(id)}/staff?user_did=${encodeURIComponent(user_did)}`);
 export const addCourseSkillTree = (id: string, tree_uri: string, role?: string) =>
   post<void>(`/courses/${encodeURIComponent(id)}/skill-trees`, { tree_uri, role });
 

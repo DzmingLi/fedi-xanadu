@@ -42,10 +42,6 @@ pub async fn create_course(
 
     let id = format!("crs-{}", tid());
     let course = course_service::create_course(&state.pool, &id, &user.did, &input).await?;
-
-    // Auto-add creator as instructor
-    let _ = course_service::add_staff(&state.pool, &id, &user.did, "instructor").await;
-
     Ok((StatusCode::CREATED, Json(course)))
 }
 
@@ -100,33 +96,6 @@ pub async fn remove_series(
 ) -> ApiResult<StatusCode> {
     let series_id = q.get("series_id").ok_or(AppError(fx_core::Error::BadRequest("missing series_id".into())))?;
     course_service::remove_series(&state.pool, &id, series_id).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-#[derive(Deserialize)]
-pub struct AddStaffInput {
-    user_did: String,
-    role: Option<String>,
-}
-
-pub async fn add_staff(
-    State(state): State<AppState>,
-    WriteAuth(_user): WriteAuth,
-    Path(id): Path<String>,
-    Json(input): Json<AddStaffInput>,
-) -> ApiResult<StatusCode> {
-    course_service::add_staff(&state.pool, &id, &input.user_did, input.role.as_deref().unwrap_or("ta")).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-pub async fn remove_staff(
-    State(state): State<AppState>,
-    WriteAuth(_user): WriteAuth,
-    Path(id): Path<String>,
-    Query(q): Query<std::collections::HashMap<String, String>>,
-) -> ApiResult<StatusCode> {
-    let user_did = q.get("user_did").ok_or(AppError(fx_core::Error::BadRequest("missing user_did".into())))?;
-    course_service::remove_staff(&state.pool, &id, user_did).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

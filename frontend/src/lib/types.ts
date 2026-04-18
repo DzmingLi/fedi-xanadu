@@ -704,7 +704,6 @@ export interface CourseListItem {
   semester: string | null;
   lang: string;
   series_count: number;
-  staff_count: number;
   session_count: number;
   avg_rating: number;
   rating_count: number;
@@ -715,15 +714,6 @@ export interface CourseSeries {
   series_id: string;
   title: string;
   summary: string | null;
-  role: string;
-  sort_order: number;
-}
-
-export interface CourseStaff {
-  user_did: string;
-  handle: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
   role: string;
   sort_order: number;
 }
@@ -798,7 +788,6 @@ export interface CourseDetail {
   textbooks: CourseTextbook[];
   tags: CourseTag[];
   series: CourseSeries[];
-  staff: CourseStaff[];
   skill_trees: CourseSkillTree[];
   prerequisites: CoursePrereq[];
   rating: CourseRatingStats;
