@@ -662,6 +662,46 @@ enum BookCommand {
         #[arg(long)]
         cover_url: Option<String>,
     },
+    /// Update an existing edition's info (only supplied fields change)
+    #[command(name = "update-edition")]
+    UpdateEdition {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+        /// Edition ID
+        #[arg(long)]
+        edition_id: String,
+        /// Edition title (localized title of this edition)
+        #[arg(short, long)]
+        title: Option<String>,
+        /// Edition subtitle (pass empty string to clear)
+        #[arg(short = 'S', long)]
+        subtitle: Option<String>,
+        /// Edition name (e.g. "Fourth Edition")
+        #[arg(short = 'n', long)]
+        edition_name: Option<String>,
+        /// Language code (e.g. zh, en, ja)
+        #[arg(short, long)]
+        lang: Option<String>,
+        /// ISBN
+        #[arg(long)]
+        isbn: Option<String>,
+        /// Publisher
+        #[arg(long)]
+        publisher: Option<String>,
+        /// Year
+        #[arg(long)]
+        year: Option<String>,
+        /// Translators (comma-separated, replaces existing)
+        #[arg(long, value_delimiter = ',')]
+        translators: Option<Vec<String>>,
+        /// Purchase links as JSON (replaces existing)
+        #[arg(long)]
+        purchase_links: Option<String>,
+        /// Cover image URL for this edition
+        #[arg(long)]
+        cover_url: Option<String>,
+    },
     /// Show a book's detail
     Show {
         /// Book ID
@@ -1709,6 +1749,64 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             let eid = resp["id"].as_str().unwrap_or("?");
             println!("Added edition to book {book_id}: {title} ({lang})");
             println!("Edition ID: {eid}");
+        }
+
+        BookCommand::UpdateEdition {
+            book_id, edition_id, title, subtitle, edition_name, lang,
+            isbn, publisher, year, translators, purchase_links, cover_url,
+        } => {
+            let current: serde_json::Value = client()
+                .get(format!("{base}/books/{book_id}"))
+                .send().await?
+                .error_for_status().context("Get book failed")?
+                .json().await?;
+            let ed = current["editions"].as_array()
+                .and_then(|eds| eds.iter().find(|e| e["id"].as_str() == Some(&edition_id)))
+                .with_context(|| format!("Edition {edition_id} not found on book {book_id}"))?;
+
+            let merge_str = |new: Option<String>, key: &str| -> Option<String> {
+                new.or_else(|| ed[key].as_str().map(String::from))
+            };
+            let title = merge_str(title, "title").context("title missing")?;
+            let edition_name = merge_str(edition_name, "edition_name").unwrap_or_else(|| title.clone());
+            let lang = merge_str(lang, "lang").context("lang missing")?;
+            let subtitle = subtitle
+                .map(|s| if s.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(s) })
+                .unwrap_or_else(|| ed["subtitle"].clone());
+            let isbn = merge_str(isbn, "isbn").map(serde_json::Value::String).unwrap_or(serde_json::Value::Null);
+            let publisher = merge_str(publisher, "publisher").map(serde_json::Value::String).unwrap_or(serde_json::Value::Null);
+            let year = merge_str(year, "year").map(serde_json::Value::String).unwrap_or(serde_json::Value::Null);
+            let cover_url = merge_str(cover_url, "cover_url").map(serde_json::Value::String).unwrap_or(serde_json::Value::Null);
+            let translators = match translators {
+                Some(v) => serde_json::Value::Array(v.into_iter().map(serde_json::Value::String).collect()),
+                None => ed["translators"].clone(),
+            };
+            let purchase_links = match purchase_links {
+                Some(pl) => serde_json::from_str(&pl).context("Invalid JSON for --purchase-links")?,
+                None => ed["purchase_links"].clone(),
+            };
+
+            let body = serde_json::json!({
+                "title": title,
+                "subtitle": subtitle,
+                "edition_name": edition_name,
+                "lang": lang,
+                "isbn": isbn,
+                "publisher": publisher,
+                "year": year,
+                "translators": translators,
+                "purchase_links": purchase_links,
+                "cover_url": cover_url,
+            });
+
+            client()
+                .put(format!("{base}/books/{book_id}/editions/{edition_id}"))
+                .bearer_auth(token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Update edition failed")?;
+
+            println!("Updated edition {edition_id}");
         }
 
         BookCommand::UploadCover { book_id, edition_id, file } => {
