@@ -69,16 +69,20 @@
     const title = article?.title ?? series?.title ?? '';
     const summary = article?.summary ?? series?.summary ?? '';
     const fullW = cardEl.clientWidth - PADDING_X;
-    const narrowW = Math.max(80, fullW - MAX_COVER - COVER_GAP);
     if (fullW < 100) return;
 
     const titlePrep = title ? prepareWithSegments(title, TITLE_FONT) : null;
     const summaryPrep = summary ? prepareWithSegments(summary, SUMMARY_FONT) : null;
 
     // Iterate to a fixed point: find cover height H s.t. H ≤ text height
-    // when text wraps around an MAX_COVER × H image.
+    // when text wraps around a coverW × H image. coverW = min(MAX_COVER, H)
+    // (square assumption, conservative — real covers are never wider than
+    // their height unless the source image is landscape, in which case
+    // MAX_COVER caps it).
     let H = MAX_COVER;
-    for (let iter = 0; iter < 6; iter++) {
+    for (let iter = 0; iter < 8; iter++) {
+      const coverW = Math.min(MAX_COVER, H);
+      const narrowW = Math.max(80, fullW - coverW - COVER_GAP);
       let y = 0;
       if (titlePrep) y = flowBlock(titlePrep, TITLE_LINE_H, narrowW, fullW, H, y);
       if (summaryPrep) y = flowBlock(summaryPrep, SUMMARY_LINE_H, narrowW, fullW, H, y);
