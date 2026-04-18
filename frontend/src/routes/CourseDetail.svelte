@@ -125,6 +125,17 @@
         {#if c.semester}
           <p class="course-semester">{c.semester}</p>
         {/if}
+        {#if detail.authors.length > 0}
+          <p class="course-authors">
+            {#each detail.authors as a, i}
+              {#if a.did}
+                <a href="/profile?did={encodeURIComponent(a.did)}">{a.name}</a>
+              {:else}
+                <a href="/author?id={encodeURIComponent(a.id)}">{a.name}</a>
+              {/if}{#if i < detail.authors.length - 1}, {/if}
+            {/each}
+          </p>
+        {/if}
         {#if c.description}
           <p class="course-desc">{c.description}</p>
         {/if}
@@ -465,6 +476,9 @@
   .course-title { font-family: var(--font-serif); font-size: 2rem; font-weight: 400; margin: 0 0 8px; line-height: 1.3; }
   .course-institution { font-size: 14px; color: var(--text-secondary); margin: 4px 0; }
   .course-semester { font-size: 13px; color: var(--text-hint); margin: 2px 0; }
+  .course-authors { font-size: 14px; color: var(--text-secondary); margin: 6px 0; }
+  .course-authors a { color: var(--text-primary); text-decoration: none; }
+  .course-authors a:hover { color: var(--accent); }
   .course-desc { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin: 12px 0; }
   .course-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
   .course-tag { font-size: 12px; padding: 3px 10px; border-radius: 3px; background: rgba(95,155,101,0.1); color: var(--accent); text-decoration: none; transition: background 0.15s; }

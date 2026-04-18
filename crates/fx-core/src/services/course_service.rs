@@ -18,7 +18,6 @@ pub struct CourseRow {
     pub license: String,
     pub source_url: Option<String>,
     pub source_attribution: Option<String>,
-    pub is_published: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -34,7 +33,6 @@ pub struct CourseListRow {
     pub institution: Option<String>,
     pub semester: Option<String>,
     pub lang: String,
-    pub is_published: bool,
     pub series_count: i64,
     pub staff_count: i64,
     pub session_count: i64,
@@ -66,6 +64,7 @@ pub struct CourseStaffRow {
 pub struct CourseDetailResponse {
     pub course: CourseRow,
     pub syllabus: String,
+    pub authors: Vec<crate::services::author_service::Author>,
     pub sessions: Vec<CourseSessionDetail>,
     pub textbooks: Vec<CourseTextbookRow>,
     pub tags: Vec<CourseTagRow>,
@@ -149,6 +148,10 @@ pub struct CreateCourse {
     pub license: Option<String>,
     pub source_url: Option<String>,
     pub source_attribution: Option<String>,
+    /// Author/instructor names — creates author entities (with did=NULL
+    /// until claimed) and links them via course_authors.
+    #[serde(default)]
+    pub authors: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -164,7 +167,8 @@ pub struct UpdateCourse {
     pub license: Option<String>,
     pub source_url: Option<String>,
     pub source_attribution: Option<String>,
-    pub is_published: Option<bool>,
+    #[serde(default)]
+    pub authors: Option<Vec<String>>,
     #[serde(default)]
     pub summary: Option<String>,
 }
@@ -188,13 +192,49 @@ pub async fn create_course(pool: &PgPool, id: &str, did: &str, input: &CreateCou
     .bind(&input.source_url).bind(&input.source_attribution)
     .execute(pool).await?;
 
+    for (position, name) in input.authors.iter().enumerate() {
+        let author_id = super::author_service::get_or_create_author(pool, name).await?;
+        sqlx::query(
+            "INSERT INTO course_authors (course_id, author_id, position, role) \
+             VALUES ($1, $2, $3, 'instructor') ON CONFLICT DO NOTHING",
+        )
+        .bind(id).bind(&author_id).bind(position as i16)
+        .execute(pool).await?;
+    }
+
     get_course(pool, id).await
+}
+
+/// Replace the course's author list. Clears course_authors and re-links.
+pub async fn set_course_authors(pool: &PgPool, course_id: &str, names: &[String]) -> crate::Result<()> {
+    sqlx::query("DELETE FROM course_authors WHERE course_id = $1")
+        .bind(course_id).execute(pool).await?;
+    for (position, name) in names.iter().enumerate() {
+        let author_id = super::author_service::get_or_create_author(pool, name).await?;
+        sqlx::query(
+            "INSERT INTO course_authors (course_id, author_id, position, role) \
+             VALUES ($1, $2, $3, 'instructor') ON CONFLICT DO NOTHING",
+        )
+        .bind(course_id).bind(&author_id).bind(position as i16)
+        .execute(pool).await?;
+    }
+    Ok(())
+}
+
+pub async fn list_course_authors(pool: &PgPool, course_id: &str) -> crate::Result<Vec<crate::services::author_service::Author>> {
+    let rows = sqlx::query_as::<_, crate::services::author_service::Author>(
+        "SELECT a.id, a.name, a.did, a.orcid, a.affiliation, a.homepage \
+         FROM course_authors ca JOIN authors a ON a.id = ca.author_id \
+         WHERE ca.course_id = $1 ORDER BY ca.position",
+    )
+    .bind(course_id).fetch_all(pool).await?;
+    Ok(rows)
 }
 
 pub async fn get_course(pool: &PgPool, id: &str) -> crate::Result<CourseRow> {
     sqlx::query_as::<_, CourseRow>(
         "SELECT id, did, title, code, description, institution, department, semester, \
-         lang, license, source_url, source_attribution, is_published, created_at, updated_at \
+         lang, license, source_url, source_attribution, created_at, updated_at \
          FROM courses WHERE id = $1",
     )
     .bind(id).fetch_one(pool).await
@@ -271,13 +311,14 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
     let rating = get_rating_stats(pool, id).await?;
     let reviews = get_course_reviews(pool, id).await?;
 
-    Ok(CourseDetailResponse { course, syllabus, sessions, textbooks, tags, series, staff, skill_trees, prerequisites, rating, reviews })
+    let authors = list_course_authors(pool, id).await?;
+    Ok(CourseDetailResponse { course, syllabus, authors, sessions, textbooks, tags, series, staff, skill_trees, prerequisites, rating, reviews })
 }
 
 pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
     Ok(sqlx::query_as::<_, CourseListRow>(
         "SELECT c.id, c.did, p.handle AS author_handle, c.title, c.code, c.description, \
-         c.institution, c.semester, c.lang, c.is_published, \
+         c.institution, c.semester, c.lang, \
          (SELECT COUNT(*) FROM course_series WHERE course_id = c.id) AS series_count, \
          (SELECT COUNT(*) FROM course_staff WHERE course_id = c.id) AS staff_count, \
          (SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
@@ -287,7 +328,6 @@ pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
          FROM courses c \
          LEFT JOIN profiles p ON c.did = p.did \
          LEFT JOIN (SELECT course_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM course_ratings GROUP BY course_id) r ON r.course_id = c.id \
-         WHERE c.is_published = true \
          ORDER BY COALESCE(r.avg, 0) * LN(COALESCE(r.cnt, 0) + 1) DESC, c.created_at DESC",
     ).fetch_all(pool).await?)
 }
@@ -295,7 +335,7 @@ pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
 pub async fn list_my_courses(pool: &PgPool, did: &str) -> crate::Result<Vec<CourseListRow>> {
     Ok(sqlx::query_as::<_, CourseListRow>(
         "SELECT c.id, c.did, p.handle AS author_handle, c.title, c.code, c.description, \
-         c.institution, c.semester, c.lang, c.is_published, \
+         c.institution, c.semester, c.lang, \
          (SELECT COUNT(*) FROM course_series WHERE course_id = c.id) AS series_count, \
          (SELECT COUNT(*) FROM course_staff WHERE course_id = c.id) AS staff_count, \
          (SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
@@ -324,7 +364,6 @@ fn course_to_json(c: &CourseRow, syllabus: &str) -> serde_json::Value {
         "license": c.license,
         "source_url": c.source_url,
         "source_attribution": c.source_attribution,
-        "is_published": c.is_published,
     })
 }
 
@@ -357,7 +396,6 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
         "license": input.license.as_deref().unwrap_or(&cur.license),
         "source_url": input.source_url.as_ref().or(cur.source_url.as_ref()),
         "source_attribution": input.source_attribution.as_ref().or(cur.source_attribution.as_ref()),
-        "is_published": input.is_published.unwrap_or(cur.is_published),
     });
 
     // Compute diff
@@ -378,9 +416,9 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
             "UPDATE courses SET \
              title = $1, code = $2, description = $3, syllabus = $4, \
              institution = $5, department = $6, semester = $7, lang = $8, license = $9, \
-             source_url = $10, source_attribution = $11, is_published = $12, \
+             source_url = $10, source_attribution = $11, \
              updated_at = NOW() \
-             WHERE id = $13",
+             WHERE id = $12",
         )
         .bind(new_json["title"].as_str())
         .bind(new_json["code"].as_str())
@@ -393,9 +431,12 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
         .bind(new_json["license"].as_str())
         .bind(new_json["source_url"].as_str())
         .bind(new_json["source_attribution"].as_str())
-        .bind(new_json["is_published"].as_bool().unwrap_or(false))
         .bind(id)
         .execute(pool).await?;
+
+        if let Some(ref authors) = input.authors {
+            set_course_authors(pool, id, authors).await?;
+        }
     }
 
     get_course(pool, id).await

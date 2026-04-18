@@ -841,6 +841,10 @@ enum CourseCommand {
         /// Source attribution
         #[arg(long)]
         source_attribution: Option<String>,
+        /// Instructors / authors (comma-separated names). Creates author
+        /// entities that can later be bound to a platform DID.
+        #[arg(long, value_delimiter = ',')]
+        authors: Vec<String>,
     },
     /// Update course metadata
     Update {
@@ -852,9 +856,9 @@ enum CourseCommand {
         /// New description
         #[arg(short, long)]
         desc: Option<String>,
-        /// Publish/unpublish
-        #[arg(long)]
-        publish: Option<bool>,
+        /// Replace the instructor list (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        authors: Option<Vec<String>>,
     },
     /// Add a session (lecture) to a course
     #[command(name = "add-session")]
@@ -2460,7 +2464,7 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             }
         }
 
-        CourseCommand::Create { title, code, desc, institution, department, semester, lang, source_url, source_attribution } => {
+        CourseCommand::Create { title, code, desc, institution, department, semester, lang, source_url, source_attribution, authors } => {
             let body = serde_json::json!({
                 "title": title,
                 "code": code,
@@ -2471,6 +2475,7 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
                 "lang": lang,
                 "source_url": source_url,
                 "source_attribution": source_attribution,
+                "authors": authors,
             });
 
             let resp: serde_json::Value = client()
@@ -2486,11 +2491,11 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             println!("ID: {id}");
         }
 
-        CourseCommand::Update { id, title, desc, publish } => {
+        CourseCommand::Update { id, title, desc, authors } => {
             let mut body = serde_json::json!({});
             if let Some(t) = &title { body["title"] = serde_json::json!(t); }
             if let Some(d) = &desc { body["description"] = serde_json::json!(d); }
-            if let Some(p) = publish { body["is_published"] = serde_json::json!(p); }
+            if let Some(ref a) = authors { body["authors"] = serde_json::json!(a); }
 
             client()
                 .put(format!("{base}/courses/{id}"))

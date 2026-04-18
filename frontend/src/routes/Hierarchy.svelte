@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listTagParents, addTagParent, removeTagParent, listTags, searchTags } from '../lib/api';
+  import { listTagParents, addTagParent, removeTagParent, listTags, searchTags, createTagInline } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import type { Tag } from '../lib/types';
@@ -19,6 +19,11 @@
   let parentSuggest = $state<Tag[]>([]);
   let childSuggest = $state<Tag[]>([]);
   let submitting = $state(false);
+
+  // New-root-tag form state
+  let newTagId = $state('');
+  let newTagName = $state('');
+  let creatingTag = $state(false);
 
   let parentTimer: ReturnType<typeof setTimeout>;
   let childTimer: ReturnType<typeof setTimeout>;
@@ -79,6 +84,24 @@
     }
   }
 
+  async function submitCreateTag() {
+    const id = newTagId.trim();
+    const name = newTagName.trim() || id;
+    if (!id) return;
+    creatingTag = true;
+    error = '';
+    try {
+      await createTagInline(id, name);
+      newTagId = '';
+      newTagName = '';
+      await load();
+    } catch (err: any) {
+      error = err.message ?? String(err);
+    } finally {
+      creatingTag = false;
+    }
+  }
+
   async function removeEdge(parent: string, child: string) {
     if (!confirm(t('hierarchy.confirmRemove').replace('{p}', parent).replace('{c}', child))) return;
     try {
@@ -102,11 +125,11 @@
       .sort((a, b) => a.parent.localeCompare(b.parent));
   });
 
+  // All tags that are not a child of any edge — includes tags that have
+  // children in the hierarchy AND isolated tags that were just created.
   let orphans = $derived.by(() => {
     const hasParent = new Set(edges.map(e => e.child_tag));
-    const mentioned = new Set<string>();
-    for (const e of edges) { mentioned.add(e.parent_tag); mentioned.add(e.child_tag); }
-    return Array.from(mentioned).filter(tag => !hasParent.has(tag)).sort();
+    return tags.map(tg => tg.id).filter(id => !hasParent.has(id)).sort();
   });
 </script>
 
@@ -147,6 +170,22 @@
         </div>
         <button class="btn btn-primary" onclick={submitAdd} disabled={submitting}>
           {submitting ? t('hierarchy.adding') : t('hierarchy.add')}
+        </button>
+      </div>
+    </section>
+    <section class="add-form">
+      <h2>{t('hierarchy.addRoot')}</h2>
+      <div class="form-row">
+        <div class="field">
+          <label>{t('hierarchy.tagId')}</label>
+          <input bind:value={newTagId} placeholder={t('hierarchy.tagIdPlaceholder')} />
+        </div>
+        <div class="field">
+          <label>{t('hierarchy.tagName')}</label>
+          <input bind:value={newTagName} placeholder={t('hierarchy.tagNamePlaceholder')} />
+        </div>
+        <button class="btn btn-primary" onclick={submitCreateTag} disabled={creatingTag}>
+          {creatingTag ? t('hierarchy.creating') : t('hierarchy.createRoot')}
         </button>
       </div>
     </section>

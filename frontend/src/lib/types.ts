@@ -689,7 +689,6 @@ export interface Course {
   license: string;
   source_url: string | null;
   source_attribution: string | null;
-  is_published: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -704,7 +703,6 @@ export interface CourseListItem {
   institution: string | null;
   semester: string | null;
   lang: string;
-  is_published: boolean;
   series_count: number;
   staff_count: number;
   session_count: number;
@@ -795,6 +793,7 @@ export interface CourseReview {
 export interface CourseDetail {
   course: Course;
   syllabus: string;
+  authors: LinkedAuthor[];
   sessions: CourseSession[];
   textbooks: CourseTextbook[];
   tags: CourseTag[];
