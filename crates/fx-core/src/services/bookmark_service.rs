@@ -9,12 +9,12 @@ pub struct BookmarkWithTitle {
     pub folder_path: String,
     pub created_at: DateTime<Utc>,
     pub title: String,
-    pub description: String,
+    pub summary: String,
 }
 
 pub async fn list_bookmarks(pool: &PgPool, did: &str) -> crate::Result<Vec<BookmarkWithTitle>> {
     let rows = sqlx::query_as::<_, BookmarkWithTitle>(
-        "SELECT b.article_uri, b.folder_path, b.created_at, a.title, a.description \
+        "SELECT b.article_uri, b.folder_path, b.created_at, a.title, a.summary \
          FROM user_bookmarks b \
          JOIN articles a ON a.at_uri = b.article_uri \
          WHERE b.did = $1 \

@@ -11,7 +11,7 @@ use crate::{ClientResult, FxClient};
 pub struct SeriesRow {
     pub id: String,
     pub title: String,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub long_description: Option<String>,
     pub order_index: i32,
     pub created_by: String,
@@ -27,7 +27,7 @@ pub struct SeriesRow {
 pub struct SeriesListRow {
     pub id: String,
     pub title: String,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub long_description: Option<String>,
     pub order_index: i32,
     pub created_by: String,
@@ -81,11 +81,13 @@ pub struct SeriesContextItem {
 pub struct CreateSeriesInput {
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+    pub summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub long_description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub topics: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

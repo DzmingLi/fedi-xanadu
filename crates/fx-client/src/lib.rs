@@ -499,7 +499,7 @@ mod tests {
         fn create_article_input_serialization() {
             let input = CreateArticleInput {
                 title: "Test Title".into(),
-                description: Some("desc".into()),
+                summary: Some("desc".into()),
                 content: "# Hello".into(),
                 content_format: "typst".into(),
                 lang: Some("zh".into()),
@@ -532,7 +532,7 @@ mod tests {
         fn create_article_input_minimal_serialization() {
             let input = CreateArticleInput {
                 title: "T".into(),
-                description: None,
+                summary: None,
                 content: "body".into(),
                 content_format: "markdown".into(),
                 lang: None,
@@ -547,7 +547,7 @@ mod tests {
             };
             let json = serde_json::to_value(&input).unwrap();
             assert_eq!(json["title"], "T");
-            assert!(json.get("description").is_none());
+            assert!(json.get("summary").is_none());
             assert!(json.get("lang").is_none());
             assert_eq!(json["tags"], serde_json::json!([]));
         }
@@ -557,13 +557,13 @@ mod tests {
             let input = UpdateArticleInput {
                 uri: "at://did:plc:abc/com.example.article/tid123".into(),
                 title: None,
-                description: Some("updated".into()),
+                summary: Some("updated".into()),
                 content: None,
             };
             let json = serde_json::to_value(&input).unwrap();
             assert_eq!(json["uri"], "at://did:plc:abc/com.example.article/tid123");
             assert!(json.get("title").is_none());
-            assert_eq!(json["description"], "updated");
+            assert_eq!(json["summary"], "updated");
             assert!(json.get("content").is_none());
         }
 
@@ -613,7 +613,7 @@ mod tests {
                 "author_handle": "alice",
                 "kind": "article",
                 "title": "Test",
-                "description": "",
+                "summary": "",
                 "content_hash": null,
                 "content_format": "typst",
                 "lang": "en",
@@ -975,7 +975,7 @@ mod tests {
         fn save_draft_input_serialization() {
             let input = SaveDraftInput {
                 title: "My Draft".into(),
-                description: None,
+                summary: None,
                 content: "WIP content".into(),
                 content_format: "typst".into(),
                 lang: Some("zh".into()),
@@ -985,7 +985,7 @@ mod tests {
             };
             let json = serde_json::to_value(&input).unwrap();
             assert_eq!(json["title"], "My Draft");
-            assert!(json.get("description").is_none());
+            assert!(json.get("summary").is_none());
             assert_eq!(json["lang"], "zh");
             assert!(json.get("license").is_none());
         }
@@ -995,7 +995,7 @@ mod tests {
             let input = UpdateDraftInput {
                 id: "draft-1".into(),
                 title: None,
-                description: None,
+                summary: None,
                 content: None,
                 content_format: None,
                 lang: None,
@@ -1016,7 +1016,7 @@ mod tests {
             let input = UpdateDraftInput {
                 id: "d1".into(),
                 title: Some("Updated".into()),
-                description: None,
+                summary: None,
                 content: Some("new body".into()),
                 content_format: None,
                 lang: None,
@@ -1036,7 +1036,7 @@ mod tests {
                 "id": "draft-1",
                 "did": "did:plc:abc",
                 "title": "WIP",
-                "description": "",
+                "summary": "",
                 "content": "hello",
                 "content_format": "markdown",
                 "lang": "en",
@@ -1059,7 +1059,7 @@ mod tests {
         fn create_series_input_serialization() {
             let input = CreateSeriesInput {
                 title: "Linear Algebra Series".into(),
-                description: Some("Learn LA".into()),
+                summary: Some("Learn LA".into()),
                 long_description: None,
                 topics: Some(vec!["math".into()]),
                 parent_id: None,
@@ -1069,7 +1069,7 @@ mod tests {
             };
             let json = serde_json::to_value(&input).unwrap();
             assert_eq!(json["title"], "Linear Algebra Series");
-            assert_eq!(json["description"], "Learn LA");
+            assert_eq!(json["summary"], "Learn LA");
             assert!(json.get("long_description").is_none());
             assert_eq!(json["topics"], serde_json::json!(["math"]));
             assert!(json.get("parent_id").is_none());
@@ -1080,7 +1080,7 @@ mod tests {
         fn create_series_input_minimal() {
             let input = CreateSeriesInput {
                 title: "S".into(),
-                description: None,
+                summary: None,
                 long_description: None,
                 topics: None,
                 parent_id: None,
@@ -1092,7 +1092,7 @@ mod tests {
             assert_eq!(json["title"], "S");
             // All optional fields should be absent
             for key in [
-                "description",
+                "summary",
                 "long_description",
                 "topics",
                 "parent_id",
@@ -1109,7 +1109,7 @@ mod tests {
             let json = serde_json::json!({
                 "id": "s1",
                 "title": "My Series",
-                "description": "Desc",
+                "summary": "Desc",
                 "long_description": null,
                 "parent_id": null,
                 "order_index": 0,
@@ -1129,7 +1129,7 @@ mod tests {
             let json = serde_json::json!({
                 "id": "s1",
                 "title": "Series",
-                "description": null,
+                "summary": null,
                 "long_description": null,
                 "parent_id": null,
                 "order_index": 0,

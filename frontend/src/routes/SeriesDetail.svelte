@@ -185,8 +185,8 @@
       <a href="/article?uri={encodeURIComponent(article.article_uri)}&series_id={encodeURIComponent(id)}" class="item-title">
         {article.title}
       </a>
-      {#if article.description}
-        <p class="item-desc">{article.description}</p>
+      {#if article.summary}
+        <p class="item-desc">{article.summary}</p>
       {/if}
       <div class="item-actions">
         <span class="vote-score">{(articleVotes.get(article.article_uri)?.score) ?? 0}</span>
@@ -239,8 +239,8 @@
     </div>
     {#if detail.series.long_description}
       <p class="series-long-desc">{detail.series.long_description}</p>
-    {:else if detail.series.description}
-      <p class="series-desc">{detail.series.description}</p>
+    {:else if detail.series.summary}
+      <p class="series-desc">{detail.series.summary}</p>
     {/if}
     <div class="series-meta">
       <span class="meta">{detail.articles.length} {t('series.articles')}</span>

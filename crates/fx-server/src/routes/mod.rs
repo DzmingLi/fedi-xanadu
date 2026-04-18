@@ -83,7 +83,7 @@ async fn rss_feed_handler(
     let author = handle.as_deref().unwrap_or(&did);
 
     let articles: Vec<(String, String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
-        "SELECT at_uri, title, description, created_at FROM articles \
+        "SELECT at_uri, title, summary, created_at FROM articles \
          WHERE did = $1 AND removed_at IS NULL AND visibility = 'public' \
          ORDER BY created_at DESC LIMIT 50"
     ).bind(&did).fetch_all(&state.pool).await.unwrap_or_default();

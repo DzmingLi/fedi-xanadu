@@ -524,7 +524,7 @@ pub async fn compile_series(
                     .bind(&meta.title).bind(&series_id).execute(&state.pool).await;
             }
             if let Some(ref desc) = meta.description {
-                let _ = sqlx::query("UPDATE series SET description = $1 WHERE id = $2")
+                let _ = sqlx::query("UPDATE series SET summary = $1 WHERE id = $2")
                     .bind(desc).bind(&series_id).execute(&state.pool).await;
             }
             if let Some(ref long_desc) = meta.long_description {

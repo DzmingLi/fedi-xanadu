@@ -208,7 +208,7 @@
                 <a class="series-card" href="/series?id={encodeURIComponent(s.id)}">
                   <span class="series-badge">{t('home.series')}</span>
                   <h3>{s.title}</h3>
-                  {#if s.description}<p class="desc">{s.description}</p>{/if}
+                  {#if s.summary}<p class="desc">{s.summary}</p>{/if}
                 </a>
               {/if}
             {/each}

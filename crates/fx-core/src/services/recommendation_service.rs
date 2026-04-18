@@ -290,7 +290,7 @@ scored AS (
 
 -- Final SELECT matching Article struct field order
 SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation,
-       a.kind, a.title, a.description,
+       a.kind, a.title, a.summary,
        a.content_hash, a.content_format, a.lang, a.translation_group, a.license,
        a.prereq_threshold, a.question_uri, a.answer_count, a.restricted, a.category,
        a.book_id, a.edition_id,
@@ -360,7 +360,7 @@ user_mastered AS (
 ),
 questions AS (
     SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation,
-           a.kind, a.title, a.description,
+           a.kind, a.title, a.summary,
            a.content_hash, a.content_format, a.lang, a.translation_group, a.license,
            a.prereq_threshold, a.question_uri, a.answer_count, a.restricted, a.category,
            a.book_id, a.edition_id,

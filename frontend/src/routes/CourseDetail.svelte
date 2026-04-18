@@ -317,7 +317,7 @@
               <a href="/series?id={encodeURIComponent(s.series_id)}" class="series-link">
                 <span class="series-role">{s.role}</span>
                 <span class="series-title">{s.title}</span>
-                {#if s.description}<span class="series-desc">{s.description}</span>{/if}
+                {#if s.summary}<span class="series-desc">{s.summary}</span>{/if}
               </a>
             {/each}
           </section>
@@ -386,8 +386,8 @@
               <span class="review-date">{new Date(review.created_at).toLocaleDateString()}</span>
             </div>
             <h3 class="review-title">{review.title}</h3>
-            {#if review.description}
-              <p class="review-desc">{review.description}</p>
+            {#if review.summary}
+              <p class="review-desc">{review.summary}</p>
             {/if}
             <div class="review-stats">
               <span>{review.vote_score} votes</span>

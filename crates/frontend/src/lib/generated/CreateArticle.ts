@@ -3,7 +3,7 @@ import type { ArticlePrereq } from "./ArticlePrereq";
 import type { CategoryMetadata } from "./CategoryMetadata";
 import type { ContentFormat } from "./ContentFormat";
 
-export type CreateArticle = { title: string, description: string | null, content: string, content_format: ContentFormat, lang: string | null, license: string | null, translation_of: string | null, restricted: boolean | null, category: string | null, tags: Array<string>, prereqs: Array<ArticlePrereq>, 
+export type CreateArticle = { title: string, summary: string | null, content: string, content_format: ContentFormat, lang: string | null, license: string | null, translation_of: string | null, restricted: boolean | null, category: string | null, tags: Array<string>, prereqs: Array<ArticlePrereq>, 
 /**
  * If set, the article belongs to this series and its source is stored in the series repo.
  */

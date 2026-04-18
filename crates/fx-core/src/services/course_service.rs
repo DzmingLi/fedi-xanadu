@@ -47,7 +47,7 @@ pub struct CourseListRow {
 pub struct CourseSeriesRow {
     pub series_id: String,
     pub title: String,
-    pub description: Option<String>,
+    pub summary: Option<String>,
     pub role: String,
     pub sort_order: i32,
 }
@@ -245,7 +245,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
     ).bind(id).fetch_all(pool).await?;
 
     let series = sqlx::query_as::<_, CourseSeriesRow>(
-        "SELECT cs.series_id, s.title, s.description, cs.role, cs.sort_order \
+        "SELECT cs.series_id, s.title, s.summary, cs.role, cs.sort_order \
          FROM course_series cs JOIN series s ON s.id = cs.series_id \
          WHERE cs.course_id = $1 ORDER BY cs.sort_order",
     ).bind(id).fetch_all(pool).await?;
@@ -635,7 +635,7 @@ pub async fn get_user_rating(pool: &PgPool, course_id: &str, user_did: &str) -> 
 pub struct CourseReviewRow {
     pub at_uri: String,
     pub title: String,
-    pub description: String,
+    pub summary: String,
     pub did: String,
     pub author_handle: Option<String>,
     pub author_display_name: Option<String>,
@@ -646,7 +646,7 @@ pub struct CourseReviewRow {
 
 pub async fn get_course_reviews(pool: &PgPool, course_id: &str) -> crate::Result<Vec<CourseReviewRow>> {
     Ok(sqlx::query_as::<_, CourseReviewRow>(
-        "SELECT a.at_uri, a.title, a.description, a.did, \
+        "SELECT a.at_uri, a.title, a.summary, a.did, \
          p.handle AS author_handle, p.display_name AS author_display_name, \
          a.created_at, \
          COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \

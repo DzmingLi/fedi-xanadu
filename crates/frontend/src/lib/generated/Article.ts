@@ -2,7 +2,7 @@
 import type { ContentFormat } from "./ContentFormat";
 import type { ContentKind } from "./ContentKind";
 
-export type Article = { at_uri: string, did: string, author_handle: string | null, author_display_name: string | null, author_avatar: string | null, author_reputation: number, kind: ContentKind, title: string, description: string, description_html: string, cover_url: string | null, 
+export type Article = { at_uri: string, did: string, author_handle: string | null, author_display_name: string | null, author_avatar: string | null, author_reputation: number, kind: ContentKind, title: string, summary: string, summary_html: string, cover_url: string | null, 
 /**
  * Paper metadata (joined). `paper_accepted` drives the "accepted venue"
  * badge next to the title on cards. None for non-papers.

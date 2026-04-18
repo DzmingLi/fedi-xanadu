@@ -355,7 +355,7 @@ pub async fn list_content(
         Vec::new()
     } else {
         sqlx::query_as::<_, fx_core::services::series_service::SeriesListRow>(
-            "SELECT s.id, s.title, s.description, s.long_description, s.order_index, \
+            "SELECT s.id, s.title, s.summary, s.long_description, s.order_index, \
                     s.created_by, p.handle AS author_handle, p.display_name AS author_display_name, \
                     p.avatar_url AS author_avatar, s.created_at, s.lang, s.translation_group, \
                     s.category, s.split_level, s.is_published, \

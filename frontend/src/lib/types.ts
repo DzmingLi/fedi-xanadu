@@ -741,7 +741,7 @@ export interface CourseListItem {
 export interface CourseSeries {
   series_id: string;
   title: string;
-  description: string | null;
+  summary: string | null;
   role: string;
   sort_order: number;
 }
@@ -808,7 +808,7 @@ export interface CourseRatingStats {
 export interface CourseReview {
   at_uri: string;
   title: string;
-  description: string;
+  summary: string;
   did: string;
   author_handle: string | null;
   author_display_name: string | null;

@@ -2,4 +2,4 @@
 import type { ArticlePrereq } from "./ArticlePrereq";
 import type { ContentFormat } from "./ContentFormat";
 
-export type UpdateDraft = { id: string, title: string | null, description: string | null, content: string | null, content_format: ContentFormat | null, lang: string | null, license: string | null, tags: Array<string> | null, prereqs: Array<ArticlePrereq> | null, };
+export type UpdateDraft = { id: string, title: string | null, summary: string | null, content: string | null, content_format: ContentFormat | null, lang: string | null, license: string | null, tags: Array<string> | null, prereqs: Array<ArticlePrereq> | null, };

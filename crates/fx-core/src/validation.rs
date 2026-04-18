@@ -306,7 +306,7 @@ mod tests {
         use crate::content::ContentFormat;
         let input = crate::models::CreateArticle {
             title: "Test".into(),
-            description: None,
+            summary: None,
             content: "Hello".into(),
             content_format: ContentFormat::Typst,
             lang: None,
@@ -329,7 +329,7 @@ mod tests {
         use crate::content::ContentFormat;
         let input = crate::models::CreateArticle {
             title: "".into(),
-            description: None,
+            summary: None,
             content: "x".repeat(500_001),
             content_format: ContentFormat::Typst,
             lang: None,
@@ -359,7 +359,7 @@ mod tests {
         use crate::content::ContentFormat;
         let input = crate::models::SaveDraft {
             title: "Draft".into(),
-            description: None,
+            summary: None,
             content: "content".into(),
             content_format: ContentFormat::Typst,
             lang: None,
@@ -375,7 +375,7 @@ mod tests {
         use crate::content::ContentFormat;
         let input = crate::models::SaveDraft {
             title: "".into(),
-            description: None,
+            summary: None,
             content: "ok".into(),
             content_format: ContentFormat::Typst,
             lang: None,
