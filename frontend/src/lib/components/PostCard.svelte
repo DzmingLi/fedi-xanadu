@@ -7,6 +7,7 @@
   import { timeAgo } from '../utils';
   import type { Article, ArticleContent, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
   import CommentThread from './CommentThread.svelte';
+  import { prepare, layout } from '@chenglou/pretext';
 
   let {
     article = undefined,
@@ -35,6 +36,36 @@
   let expandedContent = $state<ArticleContent | null>(null);
   let expandLoading = $state(false);
   let contentEl = $state<HTMLDivElement | undefined>(undefined);
+  let cardEl = $state<HTMLAnchorElement | undefined>(undefined);
+  let coverMaxH = $state(180);
+
+  const TITLE_FONT = '600 19.2px "Noto Serif SC", Garamond, serif';
+  const SUMMARY_FONT = '14px system-ui, -apple-system, sans-serif';
+  const TITLE_LINE_H = 19.2 * 1.35;
+  const SUMMARY_LINE_H = 14 * 1.55;
+  const NON_TEXT_RESERVE = 70;
+  const COVER_RESERVE = 220 + 18;
+  const PADDING_X = 40;
+
+  function measureCover() {
+    if (!cardEl) return;
+    const title = article?.title ?? series?.title ?? '';
+    const summary = article?.summary ?? series?.summary ?? '';
+    const width = cardEl.clientWidth - PADDING_X - COVER_RESERVE;
+    if (width < 100) return;
+    let h = NON_TEXT_RESERVE;
+    if (title) h += layout(prepare(title, TITLE_FONT), width, TITLE_LINE_H).height;
+    if (summary) h += layout(prepare(summary, SUMMARY_FONT), width, SUMMARY_LINE_H).height;
+    coverMaxH = Math.min(220, Math.round(h));
+  }
+
+  $effect(() => {
+    if (!cardEl) return;
+    measureCover();
+    const ro = new ResizeObserver(measureCover);
+    ro.observe(cardEl);
+    return () => ro.disconnect();
+  });
 
 
   let expandedTitle = $state('');
@@ -130,11 +161,11 @@
 </script>
 
 {#if article}
-  <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card" class:hidden={expanded} class:has-cover={!!article.cover_url}>
+  <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card" class:hidden={expanded} class:has-cover={!!article.cover_url} bind:this={cardEl}>
     <div class="card-body">
     {#if article.cover_url}
       <div class="post-cover">
-        <img src={article.cover_url} alt="" loading="lazy" />
+        <img src={article.cover_url} alt="" loading="lazy" style:max-height={coverMaxH + 'px'} />
       </div>
     {/if}
     <div class="card-top">
@@ -260,11 +291,11 @@
     </div>
   {/if}
 {:else if series}
-  <a href="/series?id={encodeURIComponent(series.id)}" class="post-card series-card" class:has-cover={!!series.cover_url}>
+  <a href="/series?id={encodeURIComponent(series.id)}" class="post-card series-card" class:has-cover={!!series.cover_url} bind:this={cardEl}>
     <div class="card-body">
     {#if series.cover_url}
       <div class="post-cover">
-        <img src={series.cover_url} alt="" loading="lazy" />
+        <img src={series.cover_url} alt="" loading="lazy" style:max-height={coverMaxH + 'px'} />
       </div>
     {/if}
     <div class="card-top">
@@ -370,8 +401,7 @@
   }
   .post-cover img {
     display: block;
-    max-width: 200px;
-    max-height: 130px;
+    max-width: 220px;
     width: auto;
     height: auto;
   }

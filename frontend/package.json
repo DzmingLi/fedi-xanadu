@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@chenglou/pretext": "^0.0.5",
     "cytoscape": "^3.31.0",
     "cytoscape-dagre": "^2.5.0",
     "katex": "^0.16.42",
