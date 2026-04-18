@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { searchArticles, logout as apiLogout, getUnreadCount } from '../lib/api';
+  import { logout as apiLogout, getUnreadCount } from '../lib/api';
   import { getAuth, setAuth } from '../lib/auth.svelte';
   import { t, getLocale, setLocale, LOCALES } from '../lib/i18n/index.svelte';
   import { loadLangPrefs, clearLangPrefs } from '../lib/langPrefs.svelte';
   import { loadBlocklist, clearBlocklist } from '../lib/blocklist.svelte';
   import type { Locale } from '../lib/i18n/index.svelte';
-  import type { Article, AuthUser } from '../lib/types';
+  import type { AuthUser } from '../lib/types';
   import LoginModal from './LoginModal.svelte';
 
   let locale = $derived(getLocale());
@@ -32,10 +32,7 @@
 
   let searchOpen = $state(false);
   let query = $state('');
-  let results = $state<Article[]>([]);
-  let selectedIdx = $state(-1);
   let searchEl: HTMLInputElement | undefined = $state();
-  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   let loginOpen = $state(false);
   let user = $derived(getAuth());
@@ -61,39 +58,17 @@
   function closeSearch() {
     searchOpen = false;
     query = '';
-    results = [];
-    selectedIdx = -1;
-  }
-
-  function onInput() {
-    const q = query.trim();
-    if (!q) { results = []; selectedIdx = -1; return; }
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(async () => {
-      try {
-        results = await searchArticles(q, 20);
-        selectedIdx = -1;
-      } catch { results = []; }
-    }, 200);
   }
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') { closeSearch(); return; }
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'Enter') {
       e.preventDefault();
-      if (results.length > 0) selectedIdx = (selectedIdx + 1) % results.length;
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (results.length > 0) selectedIdx = selectedIdx <= 0 ? results.length - 1 : selectedIdx - 1;
-    } else if (e.key === 'Enter' && selectedIdx >= 0 && selectedIdx < results.length) {
-      e.preventDefault();
-      goToArticle(results[selectedIdx].at_uri);
+      const q = query.trim();
+      if (!q) return;
+      window.location.href = `/search?q=${encodeURIComponent(q)}`;
+      closeSearch();
     }
-  }
-
-  function goToArticle(uri: string) {
-    window.location.href = `/article?uri=${encodeURIComponent(uri)}`;
-    closeSearch();
   }
 
   let unreadCount = $state(0);
@@ -124,7 +99,6 @@
     <a href="/books">{t('nav.books')}</a>
     <a href="/courses">{t('nav.courses')}</a>
     <a href="/listings">{t('nav.listings')}</a>
-    <a href="/events">{t('nav.events')}</a>
   </div>
 
   <div class="nav-right">
@@ -196,26 +170,12 @@
       <input
         bind:this={searchEl}
         bind:value={query}
-        oninput={onInput}
         onkeydown={onKeydown}
         type="text"
         placeholder={t('nav.search')}
         class="search-input"
       />
-      {#if results.length > 0}
-        <div class="search-results">
-          {#each results as a, i}
-            <button type="button" class="search-result" class:selected={i === selectedIdx} onclick={() => goToArticle(a.at_uri)}>
-              <span class="result-title">{a.title}</span>
-              {#if a.description}
-                <span class="result-desc">{a.description}</span>
-              {/if}
-            </button>
-          {/each}
-        </div>
-      {:else if query.trim()}
-        <div class="search-empty">{t('search.noResults')}</div>
-      {/if}
+      <p class="search-hint">{t('search.pressEnter')}</p>
     </div>
   </div>
 {/if}
@@ -479,34 +439,11 @@
     border-radius: 0;
   }
   .search-input::placeholder { color: var(--text-hint); }
-  .search-results { overflow-y: auto; }
-  .search-result {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
+  .search-hint {
     padding: 10px 18px;
-    border: none;
-    border-bottom: 1px solid var(--border);
-    background: none;
-    cursor: pointer;
-    text-align: left;
-    transition: background 0.1s;
-  }
-  .search-result:last-child { border-bottom: none; }
-  .search-result:hover, .search-result.selected { background: var(--bg-hover); }
-  .result-title {
-    font-family: var(--font-serif);
-    font-size: 15px;
-    color: var(--text-primary);
-  }
-  .result-desc {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin-top: 2px;
-  }
-  .search-empty {
-    padding: 16px 18px;
     color: var(--text-hint);
-    font-size: 14px;
+    font-size: 12px;
+    margin: 0;
+    border-top: 1px solid var(--border);
   }
 </style>

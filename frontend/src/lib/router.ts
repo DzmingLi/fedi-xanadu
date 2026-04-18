@@ -6,6 +6,7 @@ export interface Route {
 
 export const routes: Route[] = [
   { pattern: '/', page: 'home' },
+  { pattern: '/search', page: 'search' },
   { pattern: '/article', page: 'article' },
   { pattern: '/new', page: 'new' },
   { pattern: '/skills', page: 'skills' },
@@ -36,9 +37,6 @@ export const routes: Route[] = [
   { pattern: '/listings', page: 'listings' },
   { pattern: '/listing', page: 'listing-detail' },
   { pattern: '/new-listing', page: 'new-listing' },
-  { pattern: '/events', page: 'events' },
-  { pattern: '/event', page: 'event-detail' },
-  { pattern: '/new-event', page: 'new-event' },
   { pattern: '/courses', page: 'courses' },
   { pattern: '/course', page: 'course-detail' },
   { pattern: '/new-course', page: 'new-course' },

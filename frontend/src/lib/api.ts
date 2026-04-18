@@ -675,28 +675,6 @@ export interface AdSlot {
 export const serveAd = (placement = 'sidebar') => get<AdSlot | null>(`/ads/serve?placement=${encodeURIComponent(placement)}`);
 export const recordAdClick = (id: string) => post<void>(`/ads/${encodeURIComponent(id)}/click`, {});
 
-// --- Events ---
-export const listEvents = (kind?: string, tag?: string, upcoming?: boolean, limit = 30, offset = 0) => {
-  const params = new URLSearchParams();
-  if (kind) params.set('kind', kind);
-  if (tag) params.set('tag', tag);
-  if (upcoming !== undefined) params.set('upcoming', String(upcoming));
-  params.set('limit', String(limit));
-  params.set('offset', String(offset));
-  return get<import('./types').NbEvent[]>(`/events?${params}`);
-};
-export const getEventById = (id: string) => get<import('./types').NbEvent>(`/events/${encodeURIComponent(id)}`);
-export const createEvent = (data: object) => post<import('./types').NbEvent>('/events', data);
-export const updateEvent = (id: string, data: object) => put<import('./types').NbEvent>(`/events/${encodeURIComponent(id)}`, data);
-export const cancelEvent = (id: string) => post<void>(`/events/${encodeURIComponent(id)}/cancel`, {});
-export const uncancelEvent = (id: string) => post<void>(`/events/${encodeURIComponent(id)}/uncancel`, {});
-export const deleteEvent = (id: string) => del<void>(`/events/${encodeURIComponent(id)}`);
-export const rsvpEvent = (id: string, status = 'going') => post<void>(`/events/${encodeURIComponent(id)}/rsvp`, { status });
-export const cancelRsvp = (id: string) => del<void>(`/events/${encodeURIComponent(id)}/rsvp`);
-export const listEventRsvps = (id: string) => get<import('./types').EventRsvp[]>(`/events/${encodeURIComponent(id)}/rsvps`);
-export const myEvents = () => get<import('./types').NbEvent[]>('/events/mine');
-export const myEventRsvps = () => get<import('./types').NbEvent[]>('/events/my-rsvps');
-
 // --- Admin API ---
 // All admin endpoints require x-admin-secret header
 

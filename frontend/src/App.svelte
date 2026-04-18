@@ -74,14 +74,12 @@
   const lazyListings = () => import('./routes/Listings.svelte');
   const lazyListingDetail = () => import('./routes/ListingDetail.svelte');
   const lazyNewListing = () => import('./routes/NewListing.svelte');
-  const lazyEvents = () => import('./routes/Events.svelte');
-  const lazyEventDetail = () => import('./routes/EventDetail.svelte');
-  const lazyNewEvent = () => import('./routes/NewEvent.svelte');
   const lazyCourses = () => import('./routes/Courses.svelte');
   const lazyCourseDetail = () => import('./routes/CourseDetail.svelte');
   const lazyNewCourse = () => import('./routes/NewCourse.svelte');
   const lazyPublications = () => import('./routes/Publications.svelte');
   const lazyPublicationDetail = () => import('./routes/PublicationDetail.svelte');
+  const lazySearch = () => import('./routes/Search.svelte');
 </script>
 
 <Toast />
@@ -265,17 +263,9 @@
       {#await lazyNewListing() then mod}
         <mod.default editId={route.params.edit || ''} />
       {/await}
-    {:else if route.page === 'events'}
-      {#await lazyEvents() then mod}
-        <mod.default />
-      {/await}
-    {:else if route.page === 'event-detail'}
-      {#await lazyEventDetail() then mod}
-        <mod.default id={route.params.id || ''} />
-      {/await}
-    {:else if route.page === 'new-event'}
-      {#await lazyNewEvent() then mod}
-        <mod.default editId={route.params.edit || ''} />
+    {:else if route.page === 'search'}
+      {#await lazySearch() then mod}
+        <mod.default q={route.params.q || ''} />
       {/await}
     {:else if route.page === 'feedback'}
       {#await lazyFeedback() then mod}
