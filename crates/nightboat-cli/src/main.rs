@@ -244,6 +244,16 @@ enum AdminCommand {
         #[arg(long)]
         translation_of: Option<String>,
     },
+    /// Upload a cover image for a series (admin override)
+    #[command(name = "upload-series-cover")]
+    UploadSeriesCover {
+        /// Series ID (e.g. s-223mjladc6xr7)
+        #[arg(long)]
+        id: String,
+        /// Path to image file (jpg, png, webp; max 5 MB)
+        #[arg(short, long)]
+        file: PathBuf,
+    },
     /// Add an article to a series
     #[command(name = "add-to-series")]
     AddToSeries {
@@ -2768,6 +2778,30 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             let id = resp["id"].as_str().unwrap_or("?");
             println!("Created series: {title}");
             println!("ID: {id}");
+        }
+
+        AdminCommand::UploadSeriesCover { id, file } => {
+            let file_bytes = std::fs::read(&file)
+                .with_context(|| format!("Cannot read {}", file.display()))?;
+            let file_name = file.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("cover.jpg");
+            let part = reqwest::multipart::Part::bytes(file_bytes)
+                .file_name(file_name.to_string());
+            let form = reqwest::multipart::Form::new().part("file", part);
+
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/series/cover"))
+                .query(&[("id", &id)])
+                .header("x-admin-secret", &secret)
+                .multipart(form)
+                .send().await?
+                .error_for_status().context("Upload series cover failed")?
+                .json().await?;
+
+            let url = resp["cover_url"].as_str().unwrap_or("?");
+            println!("Uploaded cover for series {id}");
+            println!("URL: {url}");
         }
 
         AdminCommand::AddToSeries { series, article } => {

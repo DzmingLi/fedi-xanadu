@@ -423,6 +423,7 @@ fn admin_routes() -> Router<AppState> {
         .route("/admin/series", post(admin::admin_create_series))
         .route("/admin/series/articles", post(admin::admin_add_series_article))
         .route("/admin/series/batch-publish", post(admin::admin_batch_publish))
+        .route("/admin/series/cover", post(covers::admin_upload_series_cover).delete(covers::admin_remove_series_cover))
         .route("/admin/tags/merge", post(admin::admin_merge_tag))
         .route("/admin/tags/alias", post(admin::admin_add_tag_alias).delete(admin::admin_remove_tag_alias))
         .route("/admin/questions", post(admin::admin_create_question))

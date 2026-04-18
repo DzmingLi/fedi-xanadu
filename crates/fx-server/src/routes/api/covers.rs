@@ -16,7 +16,7 @@ use axum::{
 };
 use fx_core::util::uri_to_node_id;
 
-use crate::auth::WriteAuth;
+use crate::auth::{AdminAuth, WriteAuth};
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
 
@@ -266,6 +266,51 @@ pub async fn remove_series_cover(
     let node_id = format!("series_{}", q.id);
     let repo_path = state.pijul.series_repo_path(&node_id);
     remove_cover_from_repo(&state, &repo_path, &node_id, &user.did, true).await;
+    sqlx::query("UPDATE series SET cover_url = NULL WHERE id = $1")
+        .bind(&q.id).execute(&state.pool).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Admin override: set a series cover regardless of who created the series.
+/// The pijul patch is still attributed to the series' `created_by` so the
+/// repo history stays authored by the platform user, not "admin".
+pub async fn admin_upload_series_cover(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    axum::extract::Query(q): axum::extract::Query<IdQuery>,
+    multipart: Multipart,
+) -> ApiResult<Json<serde_json::Value>> {
+    let owner: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
+        .bind(&q.id).fetch_optional(&state.pool).await?;
+    let Some(owner_did) = owner else {
+        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
+    };
+
+    let node_id = format!("series_{}", q.id);
+    let repo_path = state.pijul.series_repo_path(&node_id);
+    let (data, ext) = read_multipart(multipart).await?;
+
+    write_cover_to_repo(&state, &repo_path, &node_id, &owner_did, &data, &ext, true).await?;
+
+    let cover_url = format!("/api/covers/s-{node_id}");
+    sqlx::query("UPDATE series SET cover_url = $1 WHERE id = $2")
+        .bind(&cover_url).bind(&q.id).execute(&state.pool).await?;
+    Ok(Json(serde_json::json!({ "cover_url": cover_url })))
+}
+
+pub async fn admin_remove_series_cover(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    axum::extract::Query(q): axum::extract::Query<IdQuery>,
+) -> ApiResult<StatusCode> {
+    let owner: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
+        .bind(&q.id).fetch_optional(&state.pool).await?;
+    let Some(owner_did) = owner else {
+        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
+    };
+    let node_id = format!("series_{}", q.id);
+    let repo_path = state.pijul.series_repo_path(&node_id);
+    remove_cover_from_repo(&state, &repo_path, &node_id, &owner_did, true).await;
     sqlx::query("UPDATE series SET cover_url = NULL WHERE id = $1")
         .bind(&q.id).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
