@@ -242,8 +242,8 @@ pub(super) async fn resolve_location(
     let chapter_id = article_uri.rsplit('/').next()?;
 
     // Check if article belongs to a series with a pijul repo
-    let series_row: Option<(String, String)> = sqlx::query_as(
-        "SELECT s.pijul_node_id, s.id FROM series s \
+    let series_row: Option<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT s.pijul_node_id, s.id, sa.repo_path FROM series s \
          JOIN series_articles sa ON s.id = sa.series_id \
          WHERE sa.article_uri = $1 AND s.pijul_node_id IS NOT NULL \
          LIMIT 1",
@@ -253,9 +253,14 @@ pub(super) async fn resolve_location(
     .await
     .ok()?;
 
-    if let Some((pijul_node_id, series_id)) = series_row {
+    if let Some((pijul_node_id, series_id, db_repo_path)) = series_row {
         let repo_path = state.pijul.repo_path(&pijul_node_id);
-        let content_path = fx_core::meta::resolve_chapter_path(&repo_path, chapter_id, src_ext);
+        // Prefer the path recorded on series_articles (authoritative since
+        // batch-publish stores it there); fall back to meta.json / legacy.
+        let content_path = match db_repo_path.as_deref().filter(|p| !p.is_empty()) {
+            Some(p) => repo_path.join(p),
+            None => fx_core::meta::resolve_chapter_path(&repo_path, chapter_id, src_ext),
+        };
 
         // Verify chapter exists
         if !content_path.exists() {
