@@ -244,7 +244,7 @@
     {/if}
     <div class="series-meta">
       <span class="meta">{detail.articles.length} {t('series.articles')}</span>
-      <span class="meta"><a href="/profile?did={encodeURIComponent(detail.series.created_by)}">@{detail.series.author_handle || detail.series.created_by}</a></span>
+      <span class="meta"><a href="/profile?did={encodeURIComponent(detail.series.created_by)}">{detail.series.author_display_name || '@' + (detail.series.author_handle || detail.series.created_by)}</a></span>
     </div>
     {#if detail.translations && detail.translations.length > 0}
       <div class="series-translations">

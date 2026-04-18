@@ -219,15 +219,20 @@ enum AdminCommand {
         #[arg(long)]
         into: String,
     },
-    /// Create a series as a platform user
+    /// Create a series as a platform user. Fields can be supplied as flags
+    /// or loaded from a repo's `meta.yaml` via `--from`.
     #[command(name = "create-series")]
     CreateSeries {
         /// Platform user handle
         #[arg(long)]
         r#as: String,
-        /// Series title
+        /// Load title/description/lang/category/topics from this meta.yaml
+        /// file. Flags still override whatever the file provides.
+        #[arg(long, value_name = "META_YAML")]
+        from: Option<PathBuf>,
+        /// Series title (required unless provided via `--from`)
         #[arg(short, long)]
-        title: String,
+        title: Option<String>,
         /// Short description
         #[arg(short, long)]
         desc: Option<String>,
@@ -243,6 +248,14 @@ enum AdminCommand {
         /// Source series ID this is a translation of
         #[arg(long)]
         translation_of: Option<String>,
+    },
+    /// Rebuild a series' DB index from its pijul repo (meta.yaml + per-chapter
+    /// frontmatter). Use when the DB has drifted from the repo.
+    #[command(name = "rebuild-series-index")]
+    RebuildSeriesIndex {
+        /// Series ID
+        #[arg(long)]
+        series: String,
     },
     /// Upload a cover image for a series (admin override)
     #[command(name = "upload-series-cover")]
@@ -2862,15 +2875,35 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             println!("Merged question into '{into}' ({moved} answers moved)");
         }
 
-        AdminCommand::CreateSeries { r#as: as_handle, title, desc, topics, parent, lang, translation_of } => {
-            let topics_vec: Vec<&str> = topics.as_deref().map(|t| t.split(',').collect()).unwrap_or_default();
+        AdminCommand::CreateSeries { r#as: as_handle, from, title, desc, topics, parent, lang, translation_of } => {
+            // --from loads defaults from a meta.yaml; individual flags win.
+            let from_meta: Option<fx_core::meta::SeriesMeta> = if let Some(path) = &from {
+                let data = std::fs::read_to_string(path)
+                    .with_context(|| format!("Cannot read {}", path.display()))?;
+                Some(serde_yml::from_str(&data).context("Invalid meta.yaml")?)
+            } else {
+                None
+            };
+
+            let resolved_title = title.clone()
+                .or_else(|| from_meta.as_ref().map(|m| m.title.clone()))
+                .context("title required (pass --title or --from with a `title:` field)")?;
+            let resolved_desc = desc.clone()
+                .or_else(|| from_meta.as_ref().and_then(|m| m.description.clone()));
+            let resolved_lang = lang.clone()
+                .or_else(|| from_meta.as_ref().and_then(|m| m.lang.clone()));
+            let resolved_topics: Vec<String> = topics.as_deref()
+                .map(|t| t.split(',').map(str::to_string).collect())
+                .or_else(|| from_meta.as_ref().map(|m| m.topics.clone()))
+                .unwrap_or_default();
+
             let body = serde_json::json!({
                 "as_handle": as_handle,
-                "title": title,
-                "description": desc,
-                "topics": topics_vec,
+                "title": resolved_title,
+                "description": resolved_desc,
+                "topics": resolved_topics,
                 "parent_id": parent,
-                "lang": lang,
+                "lang": resolved_lang,
                 "translation_of": translation_of,
             });
 
@@ -2883,8 +2916,21 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                 .json().await?;
 
             let id = resp["id"].as_str().unwrap_or("?");
-            println!("Created series: {title}");
+            println!("Created series: {resolved_title}");
             println!("ID: {id}");
+        }
+
+        AdminCommand::RebuildSeriesIndex { series } => {
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/admin/series/{series}/rebuild-index"))
+                .header("x-admin-secret", &secret)
+                .send().await?
+                .error_for_status().context("Rebuild index failed")?
+                .json().await?;
+            let updated = resp.get("chapters_updated").and_then(|v| v.as_u64()).unwrap_or(0);
+            let added = resp.get("chapters_added").and_then(|v| v.as_u64()).unwrap_or(0);
+            let removed = resp.get("chapters_removed").and_then(|v| v.as_u64()).unwrap_or(0);
+            println!("Rebuilt series {series}: +{added} / ~{updated} / -{removed}");
         }
 
         AdminCommand::UploadSeriesCover { id, file } => {
@@ -3516,8 +3562,8 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
             let mut referenced_images: HashSet<String> = HashSet::new();
 
             for entry in article_entries {
-                let title = entry.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled");
                 let path = entry.get("path").and_then(|v| v.as_str()).context("article missing 'path'")?;
+                let explicit_title = entry.get("title").and_then(|v| v.as_str());
 
                 let full_path = root.join(path);
                 let content = std::fs::read_to_string(&full_path)
@@ -3547,19 +3593,25 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
                     }
                 }
 
-                let entry_tags: Vec<String> = entry.get("tags")
+                let explicit_tags = entry.get("tags")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                    .unwrap_or_else(|| tags.clone());
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<_>>());
 
-                articles.push(serde_json::json!({
-                    "title": title,
+                let mut body = serde_json::json!({
                     "content": content,
                     "content_format": format,
                     "path": path,
-                    "tags": entry_tags,
                     "license": entry.get("license").and_then(|v| v.as_str()).unwrap_or(&license),
-                }));
+                });
+                if let Some(t) = explicit_title {
+                    body["title"] = serde_json::Value::String(t.to_string());
+                }
+                match explicit_tags {
+                    Some(v) => { body["tags"] = serde_json::json!(v); }
+                    None if !tags.is_empty() => { body["tags"] = serde_json::json!(tags); }
+                    None => {} // let the server read frontmatter
+                }
+                articles.push(body);
             }
 
             // Collect images from referenced paths + extra image_dirs

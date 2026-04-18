@@ -15,6 +15,12 @@ pub struct SeriesRow {
     pub long_description: Option<String>,
     pub order_index: i32,
     pub created_by: String,
+    #[sqlx(default)]
+    pub author_handle: Option<String>,
+    #[sqlx(default)]
+    pub author_display_name: Option<String>,
+    #[sqlx(default)]
+    pub author_avatar: Option<String>,
     pub created_at: DateTime<Utc>,
     pub lang: String,
     pub translation_group: Option<String>,
@@ -191,8 +197,10 @@ pub async fn create_series(
     tx.commit().await?;
 
     let row = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, summary, summary_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
-         FROM series WHERE id = $1",
+        "SELECT s.id, s.title, s.summary, s.summary_html, s.long_description, s.order_index, s.created_by, \
+                p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, \
+                s.created_at, s.lang, s.translation_group, s.category, s.split_level, s.is_published, s.cover_url \
+         FROM series s LEFT JOIN profiles p ON p.did = s.created_by WHERE s.id = $1",
     )
     .bind(id)
     .fetch_one(pool)
@@ -241,8 +249,10 @@ pub async fn list_series_by_creator(pool: &PgPool, did: &str) -> crate::Result<V
 
 pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesDetailResponse> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, summary, summary_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
-         FROM series WHERE id = $1",
+        "SELECT s.id, s.title, s.summary, s.summary_html, s.long_description, s.order_index, s.created_by, \
+                p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, \
+                s.created_at, s.lang, s.translation_group, s.category, s.split_level, s.is_published, s.cover_url \
+         FROM series s LEFT JOIN profiles p ON p.did = s.created_by WHERE s.id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -321,8 +331,10 @@ pub async fn get_series_translations(pool: &PgPool, id: &str) -> crate::Result<V
     };
 
     let rows = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, summary, summary_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
-         FROM series WHERE translation_group = $1 AND id != $2 ORDER BY lang",
+        "SELECT s.id, s.title, s.summary, s.summary_html, s.long_description, s.order_index, s.created_by, \
+                p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, \
+                s.created_at, s.lang, s.translation_group, s.category, s.split_level, s.is_published, s.cover_url \
+         FROM series s LEFT JOIN profiles p ON p.did = s.created_by WHERE s.translation_group = $1 AND s.id != $2 ORDER BY s.lang",
     )
     .bind(&group)
     .bind(id)
@@ -467,8 +479,10 @@ pub async fn all_series_articles(pool: &PgPool, limit: i64) -> crate::Result<Vec
 /// Build a flat tree node for a series (no children — parent series removed).
 pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<SeriesTreeNode> {
     let series = sqlx::query_as::<_, SeriesRow>(
-        "SELECT id, title, summary, summary_html, long_description, order_index, created_by, created_at, lang, translation_group, category, split_level, is_published \
-         FROM series WHERE id = $1",
+        "SELECT s.id, s.title, s.summary, s.summary_html, s.long_description, s.order_index, s.created_by, \
+                p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, \
+                s.created_at, s.lang, s.translation_group, s.category, s.split_level, s.is_published, s.cover_url \
+         FROM series s LEFT JOIN profiles p ON p.did = s.created_by WHERE s.id = $1",
     )
     .bind(root_id)
     .fetch_optional(pool)

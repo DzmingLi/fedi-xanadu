@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
 };
 use fx_core::content::ContentKind;
@@ -776,11 +776,23 @@ pub async fn admin_set_default_edition(
 
 #[derive(serde::Deserialize)]
 pub struct BatchArticle {
-    pub title: String,
+    /// Manifest override. When absent, the title falls back to the markdown
+    /// frontmatter's `title` field, then to the first `# ` / `= ` / `<h1>`
+    /// heading, then to the file stem.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Manifest override for the article summary. Falls back to the
+    /// frontmatter's `description` when absent.
+    #[serde(default)]
     pub summary: Option<String>,
     pub content: String,
+    #[serde(default)]
     pub content_format: Option<String>,
+    /// Manifest override for tags. When absent, markdown frontmatter's
+    /// `teaches` list is used.
+    #[serde(default)]
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
     pub license: Option<String>,
     /// Path in the repo (e.g. "ch1/34DataFlowAnalysis.md"). Required — the
     /// path is the authoritative identifier of a chapter within a series.
@@ -893,18 +905,50 @@ pub async fn admin_batch_publish(
             }
         }
 
+        // Markdown frontmatter is authoritative for per-chapter metadata
+        // when the manifest doesn't override it. Non-markdown formats fall
+        // back to the author-supplied manifest fields plus first-heading
+        // extraction for title.
+        let (fm, body_for_heading) = if format == "markdown" {
+            let (fm, body) = fx_core::meta::split_frontmatter(&item.content);
+            (fm, body)
+        } else {
+            (fx_core::meta::Frontmatter::default(), item.content.as_str())
+        };
+
+        let title = item.title.clone()
+            .or_else(|| fm.title.clone())
+            .or_else(|| fx_core::meta::extract_first_heading(body_for_heading, format))
+            .unwrap_or_else(|| {
+                std::path::Path::new(repo_path)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "Untitled".to_string())
+            });
+
+        let resolved_tags = item.tags.clone().unwrap_or_else(|| fm.teaches.clone());
+        let resolved_prereqs: Vec<fx_core::models::ArticlePrereq> = fm.prereqs.iter()
+            .map(|p| fx_core::models::ArticlePrereq {
+                tag_id: p.tag.clone(),
+                prereq_type: match p.kind() {
+                    "recommended" => fx_core::content::PrereqType::Recommended,
+                    _ => fx_core::content::PrereqType::Required,
+                },
+            })
+            .collect();
+
         let create = CreateArticle {
-            title: item.title.clone(),
-            summary: item.summary.clone(),
+            title,
+            summary: item.summary.clone().or_else(|| fm.description.clone()),
             content: item.content.clone(),
             content_format,
-            lang: Some(lang.to_string()),
-            license: Some(license.to_string()),
-            tags: item.tags.clone().unwrap_or_default(),
-            prereqs: vec![],
+            lang: Some(fm.lang.clone().unwrap_or_else(|| lang.to_string())),
+            license: Some(fm.license.clone().unwrap_or_else(|| license.to_string())),
+            tags: resolved_tags,
+            prereqs: resolved_prereqs,
             series_id: Some(input.series_id.clone()),
             translation_of: None,
-            category: Some("lecture".to_string()),
+            category: Some(fm.category.clone().unwrap_or_else(|| "lecture".to_string())),
             restricted: None,
             metadata: None,
             authors: vec![],
@@ -954,6 +998,184 @@ pub async fn admin_batch_publish(
     }
 
     Ok(Json(results))
+}
+
+/// Rebuild a series' DB index from its pijul repo. Walks the `chapters:`
+/// list in meta.yaml, reads each file's YAML frontmatter (markdown) or first
+/// heading (typst/html), and reconciles `series_articles` + `articles.title`
+/// + `content_teaches` + `content_prereqs`.
+///
+/// This is the inverse of `write_series_meta_from_db`: on-disk pijul content
+/// becomes the authority, DB is rewritten to match.
+pub async fn admin_rebuild_series_index(
+    State(state): State<AppState>,
+    Path(series_id): Path<String>,
+    _admin: AdminAuth,
+) -> ApiResult<Json<serde_json::Value>> {
+    let pijul_node_id: String = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(&series_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten()
+    .ok_or_else(|| AppError(fx_core::Error::BadRequest("series has no pijul repo".into())))?;
+
+    let series_repo = state.pijul.series_repo_path(&pijul_node_id);
+    let meta = fx_core::meta::read_series_meta(&series_repo)
+        .ok_or_else(|| AppError(fx_core::Error::BadRequest(
+            "series has no meta.yaml".into(),
+        )))?;
+
+    // Existing repo_path → article_uri map.
+    let existing: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+        "SELECT repo_path, article_uri FROM series_articles \
+         WHERE series_id = $1 AND repo_path IS NOT NULL AND repo_path <> ''",
+    )
+    .bind(&series_id)
+    .fetch_all(&state.pool)
+    .await?;
+    let mut by_path: std::collections::HashMap<String, String> =
+        existing.into_iter().collect();
+
+    let did: String = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
+        .bind(&series_id)
+        .fetch_one(&state.pool)
+        .await?;
+
+    let mut added = 0u64;
+    let mut updated = 0u64;
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for (order_index, rel_path) in meta.chapters.iter().enumerate() {
+        let full = series_repo.join(rel_path);
+        let Ok(content) = tokio::fs::read_to_string(&full).await else {
+            tracing::warn!("rebuild: missing chapter file {rel_path}");
+            continue;
+        };
+        seen.insert(rel_path.clone());
+
+        let ext = std::path::Path::new(rel_path)
+            .extension().and_then(|e| e.to_str()).unwrap_or("md");
+        let format = match ext {
+            "typ" | "typst" => "typst",
+            "html" | "htm" => "html",
+            _ => "markdown",
+        };
+
+        let (fm, body) = if format == "markdown" {
+            fx_core::meta::split_frontmatter(&content)
+        } else {
+            (fx_core::meta::Frontmatter::default(), content.as_str())
+        };
+        let title = fm.title.clone()
+            .or_else(|| fx_core::meta::extract_first_heading(body, format))
+            .unwrap_or_else(|| rel_path.clone());
+
+        let at_uri = match by_path.remove(rel_path) {
+            Some(uri) => {
+                sqlx::query(
+                    "UPDATE series_articles SET order_index = $1 \
+                     WHERE series_id = $2 AND article_uri = $3",
+                )
+                .bind(order_index as i32).bind(&series_id).bind(&uri)
+                .execute(&state.pool).await?;
+                sqlx::query("UPDATE articles SET title = $1 WHERE at_uri = $2")
+                    .bind(&title).bind(&uri).execute(&state.pool).await?;
+                updated += 1;
+                uri
+            }
+            None => {
+                let new_uri = format!("at://{did}/{}/{}", fx_atproto::lexicon::ARTICLE, tid());
+                let content_format: fx_core::content::ContentFormat =
+                    format.parse().unwrap_or(fx_core::content::ContentFormat::Markdown);
+                let hash = content_hash(&content);
+                let license = fm.license.as_deref().unwrap_or("CC-BY-SA-4.0");
+                let create = CreateArticle {
+                    title: title.clone(),
+                    summary: fm.description.clone(),
+                    content: content.clone(),
+                    content_format,
+                    lang: fm.lang.clone(),
+                    license: Some(license.to_string()),
+                    tags: fm.teaches.clone(),
+                    prereqs: vec![],
+                    series_id: Some(series_id.clone()),
+                    translation_of: None,
+                    category: fm.category.clone().or(Some("lecture".into())),
+                    restricted: None,
+                    metadata: None,
+                    authors: vec![],
+                    invites: vec![],
+                };
+                let resolved_desc = create.summary.as_deref().unwrap_or("").to_string();
+                let desc_html = crate::summary::render_summary_inline(
+                    create.content_format.as_str(), &resolved_desc, &series_repo,
+                ).unwrap_or_default();
+                article_service::create_article(
+                    &state.pool, &did, &new_uri, &create, &hash, None,
+                    default_visibility(true), ContentKind::Article, None,
+                    &resolved_desc, &desc_html,
+                ).await?;
+                series_service::add_series_article(
+                    &state.pool, &series_id, &new_uri, Some(rel_path),
+                ).await?;
+                added += 1;
+                new_uri
+            }
+        };
+
+        // Rewrite teaches/prereqs to match frontmatter.
+        let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
+            .bind(&at_uri).execute(&state.pool).await;
+        for tag in &fm.teaches {
+            let _ = sqlx::query(
+                "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            ).bind(&at_uri).bind(tag).execute(&state.pool).await;
+        }
+        let _ = sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
+            .bind(&at_uri).execute(&state.pool).await;
+        for p in &fm.prereqs {
+            let _ = sqlx::query(
+                "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
+                 VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            )
+            .bind(&at_uri).bind(&p.tag).bind(p.kind())
+            .execute(&state.pool).await;
+        }
+    }
+
+    // Anything left in `by_path` was in DB but is no longer listed in meta.yaml.
+    let mut removed = 0u64;
+    for (_rel, stale_uri) in by_path {
+        sqlx::query(
+            "DELETE FROM series_articles WHERE series_id = $1 AND article_uri = $2",
+        )
+        .bind(&series_id).bind(&stale_uri)
+        .execute(&state.pool).await?;
+        removed += 1;
+    }
+
+    // Also sync the series-level fields (title, etc.) from meta.yaml.
+    sqlx::query("UPDATE series SET title = $1 WHERE id = $2 AND title <> $1")
+        .bind(&meta.title).bind(&series_id).execute(&state.pool).await?;
+    if let Some(desc) = &meta.description {
+        sqlx::query("UPDATE series SET summary = $1 WHERE id = $2")
+            .bind(desc).bind(&series_id).execute(&state.pool).await?;
+    }
+    if let Some(level) = meta.split_level {
+        if (1..=6).contains(&level) {
+            sqlx::query("UPDATE series SET split_level = $1 WHERE id = $2")
+                .bind(level as i32).bind(&series_id).execute(&state.pool).await?;
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "chapters_added":   added,
+        "chapters_updated": updated,
+        "chapters_removed": removed,
+        "chapters_seen":    seen.len(),
+    })))
 }
 
 /// Rebuild meta.yaml from the authoritative DB state of a series. Called

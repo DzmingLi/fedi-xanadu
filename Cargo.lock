@@ -3539,6 +3539,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "serde_yml",
  "tokio",
  "toml",
  "urlencoding",

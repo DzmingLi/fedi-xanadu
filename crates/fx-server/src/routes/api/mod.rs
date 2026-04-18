@@ -425,6 +425,7 @@ fn admin_routes() -> Router<AppState> {
         .route("/admin/series", post(admin::admin_create_series))
         .route("/admin/series/articles", post(admin::admin_add_series_article))
         .route("/admin/series/batch-publish", post(admin::admin_batch_publish))
+        .route("/admin/series/{id}/rebuild-index", post(admin::admin_rebuild_series_index))
         .route("/admin/series/cover", post(covers::admin_upload_series_cover).delete(covers::admin_remove_series_cover))
         .route("/admin/series/cover/reference", post(covers::admin_set_series_cover_reference))
         .route("/admin/articles/cover/reference", post(covers::admin_set_article_cover_reference))
