@@ -7,7 +7,7 @@
   import { timeAgo } from '../utils';
   import type { Article, ArticleContent, ContentTeachRow, ContentPrereqBulkRow, Series } from '../types';
   import CommentThread from './CommentThread.svelte';
-  import { prepare, layout } from '@chenglou/pretext';
+  import { prepareWithSegments, layoutNextLineRange } from '@chenglou/pretext';
 
   let {
     article = undefined,
@@ -43,19 +43,51 @@
   const SUMMARY_FONT = '14px system-ui, -apple-system, sans-serif';
   const TITLE_LINE_H = 19.2 * 1.35;
   const SUMMARY_LINE_H = 14 * 1.55;
-  const NON_TEXT_RESERVE = 24;
+  const META_RESERVE = 30;
   const PADDING_X = 40;
+  const MAX_COVER = 220;
+  const COVER_GAP = 18;
+
+  // Flow one prepared text block through a two-width layout (narrow column
+  // while y < coverH, full width after). Returns bottom y.
+  function flowBlock(prep: ReturnType<typeof prepareWithSegments>, lineH: number, narrowW: number, fullW: number, coverH: number, startY: number): number {
+    let cursor = { segmentIndex: 0, graphemeIndex: 0 };
+    let y = startY;
+    for (let guard = 0; guard < 200; guard++) {
+      const w = y < coverH ? narrowW : fullW;
+      const line = layoutNextLineRange(prep, cursor, w);
+      if (!line) break;
+      if (line.end.segmentIndex === cursor.segmentIndex && line.end.graphemeIndex === cursor.graphemeIndex) break;
+      cursor = line.end;
+      y += lineH;
+    }
+    return y;
+  }
 
   function measureCover() {
     if (!cardEl) return;
     const title = article?.title ?? series?.title ?? '';
     const summary = article?.summary ?? series?.summary ?? '';
-    const width = cardEl.clientWidth - PADDING_X;
-    if (width < 100) return;
-    let h = NON_TEXT_RESERVE;
-    if (title) h += layout(prepare(title, TITLE_FONT), width, TITLE_LINE_H).height;
-    if (summary) h += layout(prepare(summary, SUMMARY_FONT), width, SUMMARY_LINE_H).height;
-    coverMaxH = Math.min(220, Math.round(h));
+    const fullW = cardEl.clientWidth - PADDING_X;
+    const narrowW = Math.max(80, fullW - MAX_COVER - COVER_GAP);
+    if (fullW < 100) return;
+
+    const titlePrep = title ? prepareWithSegments(title, TITLE_FONT) : null;
+    const summaryPrep = summary ? prepareWithSegments(summary, SUMMARY_FONT) : null;
+
+    // Iterate to a fixed point: find cover height H s.t. H ≤ text height
+    // when text wraps around an MAX_COVER × H image.
+    let H = MAX_COVER;
+    for (let iter = 0; iter < 6; iter++) {
+      let y = 0;
+      if (titlePrep) y = flowBlock(titlePrep, TITLE_LINE_H, narrowW, fullW, H, y);
+      if (summaryPrep) y = flowBlock(summaryPrep, SUMMARY_LINE_H, narrowW, fullW, H, y);
+      y += META_RESERVE;
+      const newH = Math.min(MAX_COVER, y);
+      if (Math.abs(newH - H) < 2) { H = newH; break; }
+      H = newH;
+    }
+    coverMaxH = Math.round(H);
   }
 
   $effect(() => {
