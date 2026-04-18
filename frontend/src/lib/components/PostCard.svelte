@@ -359,12 +359,12 @@
   }
   .post-cover {
     width: auto;
-    height: auto;
-    max-width: 180px;
-    max-height: 140px;
+    max-width: 320px;
+    max-height: 320px;
     border-radius: 3px;
     flex-shrink: 0;
-    align-self: flex-start;
+    align-self: stretch;
+    object-fit: cover;
     background: var(--bg-hover, #f5f5f5);
   }
   .card-top {
