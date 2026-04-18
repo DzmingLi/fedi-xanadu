@@ -363,7 +363,6 @@
   }
   .post-cover {
     float: right;
-    width: 220px;
     margin: 0 0 10px 18px;
     border-radius: 3px;
     overflow: hidden;
@@ -371,7 +370,9 @@
   }
   .post-cover img {
     display: block;
-    width: 100%;
+    max-width: 220px;
+    max-height: 180px;
+    width: auto;
     height: auto;
   }
   .card-top {
