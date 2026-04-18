@@ -303,6 +303,7 @@ SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_disp
 FROM scored sc
 JOIN articles a ON a.at_uri = sc.at_uri
 LEFT JOIN profiles p ON a.did = p.did
+LEFT JOIN paper_metadata pm ON pm.article_uri = a.at_uri
 LEFT JOIN (SELECT target_uri, SUM(value) AS score FROM votes GROUP BY target_uri) vs
     ON vs.target_uri = a.at_uri
 LEFT JOIN (SELECT article_uri, COUNT(*) AS cnt FROM user_bookmarks GROUP BY article_uri) bk
