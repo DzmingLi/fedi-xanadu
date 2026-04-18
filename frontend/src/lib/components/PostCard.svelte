@@ -43,15 +43,14 @@
   const SUMMARY_FONT = '14px system-ui, -apple-system, sans-serif';
   const TITLE_LINE_H = 19.2 * 1.35;
   const SUMMARY_LINE_H = 14 * 1.55;
-  const NON_TEXT_RESERVE = 70;
-  const COVER_RESERVE = 220 + 18;
+  const NON_TEXT_RESERVE = 24;
   const PADDING_X = 40;
 
   function measureCover() {
     if (!cardEl) return;
     const title = article?.title ?? series?.title ?? '';
     const summary = article?.summary ?? series?.summary ?? '';
-    const width = cardEl.clientWidth - PADDING_X - COVER_RESERVE;
+    const width = cardEl.clientWidth - PADDING_X;
     if (width < 100) return;
     let h = NON_TEXT_RESERVE;
     if (title) h += layout(prepare(title, TITLE_FONT), width, TITLE_LINE_H).height;
