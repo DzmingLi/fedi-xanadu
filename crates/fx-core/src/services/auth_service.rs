@@ -63,8 +63,10 @@ pub async fn upsert_profile(
 ) -> Result<()> {
     sqlx::query(
         "INSERT INTO profiles (did, handle, display_name, avatar_url) VALUES ($1, $2, $3, $4)
-         ON CONFLICT(did) DO UPDATE SET handle = EXCLUDED.handle, display_name = EXCLUDED.display_name,
-         avatar_url = EXCLUDED.avatar_url, updated_at = NOW()",
+         ON CONFLICT(did) DO UPDATE SET handle = EXCLUDED.handle,
+         display_name = COALESCE(EXCLUDED.display_name, profiles.display_name),
+         avatar_url = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url),
+         updated_at = NOW()",
     )
     .bind(did)
     .bind(handle)
