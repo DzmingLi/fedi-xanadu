@@ -677,6 +677,7 @@ export default {
   'books.tagsPlaceholder': 'Tag eingeben, mit Enter hinzufügen',
   'books.prereqsLabel': 'Voraussetzungs-Tags',
   'books.prereqsPlaceholder': 'Tag eingeben, mit Enter hinzufügen',
+  'books.topicTooltip': 'Themenbereich (aus deinem Skill-Tree abgeleitet)',
   'books.descriptionLabel': 'Beschreibung',
   'books.coverUrlLabel': 'Cover-URL',
   'books.editSummary': 'Zusammenfassung der Änderung',

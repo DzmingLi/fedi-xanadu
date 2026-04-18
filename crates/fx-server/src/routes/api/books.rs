@@ -4,7 +4,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::{StatusCode, Response, header},
 };
-use fx_core::services::{author_service, book_service, skill_service};
+use fx_core::services::{author_service, book_service, skill_service, tag_service};
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
@@ -47,6 +47,10 @@ pub struct BookDetail {
     pub my_chapter_progress: Vec<book_service::ChapterProgress>,
     pub tags: Vec<String>,
     pub prereqs: Vec<String>,
+    /// Derived from `tags` through the viewer's skill tree — ancestor tags
+    /// that this book can be said to "belong to". Not stored; computed per
+    /// request because it depends on the viewer's tree.
+    pub topics: Vec<String>,
 }
 
 pub async fn get_book(
@@ -86,7 +90,12 @@ pub async fn get_book(
     .bind(&content_uri)
     .fetch_all(&state.pool)
     .await?;
-    Ok(Json(BookDetail { book, linked_authors, editions, chapters, reviews, review_count, rating, my_rating, my_reading_status, my_chapter_progress, tags, prereqs }))
+    let topics = tag_service::derive_topics(
+        &state.pool,
+        &content_uri,
+        user.as_ref().map(|u| u.did.as_str()),
+    ).await.unwrap_or_default();
+    Ok(Json(BookDetail { book, linked_authors, editions, chapters, reviews, review_count, rating, my_rating, my_reading_status, my_chapter_progress, tags, prereqs, topics }))
 }
 
 // --- Create book ---
@@ -147,10 +156,6 @@ pub struct UpdateBookInput {
     /// Tag ids that this book requires as prereqs. When present, replaces
     /// content_prereqs for this book (all marked as 'required').
     pub prereqs: Option<Vec<String>>,
-    /// Top-level domain tag ids this book belongs to (cs, math, linux, …).
-    /// Distinct from `tags` (what it teaches) — topics are the subject
-    /// area it lives in. When present, replaces content_topics.
-    pub topics: Option<Vec<String>>,
     pub edit_summary: Option<String>,
 }
 
@@ -235,22 +240,6 @@ pub async fn update_book(
             ).bind(&content_uri).bind(t).execute(&state.pool).await?;
         }
     }
-    if let Some(ref topics) = input.topics {
-        let content_uri = format!("book:{}", input.id);
-        sqlx::query("DELETE FROM content_topics WHERE content_uri = $1")
-            .bind(&content_uri).execute(&state.pool).await?;
-        for tag_id in topics {
-            let t = tag_id.trim();
-            if t.is_empty() { continue; }
-            sqlx::query(
-                "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
-            ).bind(t).bind(t).bind(&user.did).execute(&state.pool).await?;
-            sqlx::query(
-                "INSERT INTO content_topics (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
-        }
-    }
-
     // Save edit log
     let edit_id = tid();
     sqlx::query(

@@ -573,8 +573,11 @@
           {/if}
 
           <!-- Tags -->
-          {#if detail.tags.length > 0 || detail.prereqs.length > 0}
+          {#if detail.tags.length > 0 || detail.prereqs.length > 0 || detail.topics.length > 0}
             <div class="book-tags">
+              {#each detail.topics as topic}
+                <a href="/tag?id={encodeURIComponent(topic)}" class="tag-badge topic" title={t('books.topicTooltip')}>{topic}</a>
+              {/each}
               {#each detail.tags as tag}
                 <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches">{tag}</a>
               {/each}
@@ -1745,6 +1748,7 @@
   }
   .tag-badge.teaches { background: var(--accent-light, #e8f4fd); color: var(--accent); }
   .tag-badge.prereq { background: #fdf2e8; color: #b06000; }
+  .tag-badge.topic { background: var(--bg-hover, #f5f5f5); color: var(--text-secondary); border: 1px dashed var(--border-strong); }
   .tag-badge.sm { font-size: 11px; padding: 1px 6px; }
   .tag-badge:hover { opacity: 0.8; }
   .tag-remove {

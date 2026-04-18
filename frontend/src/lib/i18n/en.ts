@@ -677,6 +677,7 @@ export default {
   'books.tagsPlaceholder': 'Type a tag, Enter to add',
   'books.prereqsLabel': 'Prerequisite tags',
   'books.prereqsPlaceholder': 'Type a tag, Enter to add',
+  'books.topicTooltip': 'Belongs to (derived from your skill tree)',
   'books.descriptionLabel': 'Description',
   'books.coverUrlLabel': 'Cover URL',
   'books.editSummary': 'Edit summary',

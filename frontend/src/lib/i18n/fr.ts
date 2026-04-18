@@ -677,6 +677,7 @@ export default {
   'books.tagsPlaceholder': 'Tapez une étiquette, Entrée pour ajouter',
   'books.prereqsLabel': 'Étiquettes de prérequis',
   'books.prereqsPlaceholder': 'Tapez une étiquette, Entrée pour ajouter',
+  'books.topicTooltip': 'Domaine (dérivé de votre arbre de compétences)',
   'books.descriptionLabel': 'Description',
   'books.coverUrlLabel': 'URL de la couverture',
   'books.editSummary': 'Résumé des modifications',

@@ -677,6 +677,7 @@ export default {
   'books.tagsPlaceholder': '输入标签，按 Enter 添加',
   'books.prereqsLabel': '前置标签',
   'books.prereqsPlaceholder': '输入标签，按 Enter 添加',
+  'books.topicTooltip': '归属（根据你的技能树推导）',
   'books.descriptionLabel': '简介',
   'books.coverUrlLabel': '封面 URL',
   'books.editSummary': '编辑摘要',

@@ -286,6 +286,48 @@ pub async fn list_aliases(pool: &PgPool, tag_id: &str) -> crate::Result<Vec<Stri
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
+/// Derive the set of "topic" tags for a content — the transitive closure of
+/// parents (in the viewer's user_tag_tree, falling back to the anonymous
+/// default) of the content's teach tags. Result excludes the teach tags
+/// themselves. `viewer_did` = None means anonymous/logged-out.
+pub async fn derive_topics(
+    pool: &PgPool,
+    content_uri: &str,
+    viewer_did: Option<&str>,
+) -> Result<Vec<String>> {
+    let did = viewer_did.unwrap_or("did:plc:anonymous");
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"
+        WITH RECURSIVE teach AS (
+            SELECT tag_id FROM content_teaches WHERE content_uri = $1
+        ),
+        tree AS (
+            -- Viewer's tree, with anonymous fallback if they have none
+            SELECT parent_tag, child_tag FROM user_tag_tree
+            WHERE did = $2
+               OR (did = 'did:plc:anonymous'
+                   AND NOT EXISTS (SELECT 1 FROM user_tag_tree WHERE did = $2))
+        ),
+        ancestors AS (
+            SELECT t.parent_tag AS tag_id, 1 AS depth
+            FROM tree t WHERE t.child_tag IN (SELECT tag_id FROM teach)
+            UNION
+            SELECT t.parent_tag, a.depth + 1
+            FROM tree t JOIN ancestors a ON t.child_tag = a.tag_id
+            WHERE a.depth < 10
+        )
+        SELECT DISTINCT tag_id FROM ancestors
+        WHERE tag_id NOT IN (SELECT tag_id FROM teach)
+        ORDER BY tag_id
+        "#,
+    )
+    .bind(content_uri)
+    .bind(did)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
+}
+
 /// Resolve a tag ID or alias to the canonical tag ID.
 pub async fn resolve_tag(pool: &PgPool, id_or_alias: &str) -> crate::Result<String> {
     // First check if it's a direct tag ID

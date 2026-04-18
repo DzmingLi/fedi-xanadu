@@ -255,6 +255,7 @@ export interface BookDetail {
   my_chapter_progress: ChapterProgress[];
   tags: string[];
   prereqs: string[];
+  topics: string[];
 }
 
 export interface SeriesArticle {
