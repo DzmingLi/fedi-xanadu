@@ -360,14 +360,14 @@
   .post-cover {
     width: auto;
     height: auto;
-    max-width: 140px;
-    max-height: 96px;
+    max-width: 160px;
+    max-height: 120px;
     border-radius: 3px;
     flex-shrink: 0;
     align-self: flex-start;
     background: var(--bg-hover, #f5f5f5);
   }
-  .post-card.has-cover { min-height: 160px; }
+  .post-card.has-cover { min-height: 184px; }
   .card-top {
     display: flex;
     align-items: flex-start;
