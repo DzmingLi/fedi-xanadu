@@ -132,6 +132,11 @@
 {#if article}
   <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card" class:hidden={expanded} class:has-cover={!!article.cover_url}>
     <div class="card-body">
+    {#if article.cover_url}
+      <div class="post-cover">
+        <img src={article.cover_url} alt="" loading="lazy" />
+      </div>
+    {/if}
     <div class="card-top">
       {#if article.kind === 'question'}
         <span class="question-badge">{t('qa.questionBadge')}</span>
@@ -190,11 +195,6 @@
       {#if expandLoading}...{:else}{expanded ? t('home.collapse') : t('home.expand')}{/if}
     </button>
     </div>
-    {#if article.cover_url}
-      <div class="post-cover">
-        <img src={article.cover_url} alt="" loading="lazy" />
-      </div>
-    {/if}
   </a>
 
   {#if expanded && expandedContent}
@@ -262,6 +262,11 @@
 {:else if series}
   <a href="/series?id={encodeURIComponent(series.id)}" class="post-card series-card" class:has-cover={!!series.cover_url}>
     <div class="card-body">
+    {#if series.cover_url}
+      <div class="post-cover">
+        <img src={series.cover_url} alt="" loading="lazy" />
+      </div>
+    {/if}
     <div class="card-top">
       <span class="post-title">{series.title}</span>
       <span class="series-badge">{t('home.series')}</span>
@@ -297,11 +302,6 @@
       {#if expandLoading}...{:else}{expanded ? t('home.collapse') : t('home.expandFirst')}{/if}
     </button>
     </div>
-    {#if series.cover_url}
-      <div class="post-cover">
-        <img src={series.cover_url} alt="" loading="lazy" />
-      </div>
-    {/if}
   </a>
 
   {#if expanded && expandedContent}
@@ -339,8 +339,7 @@
     display: none;
   }
   .post-card {
-    display: flex;
-    align-items: stretch;
+    display: block;
     gap: 14px;
     position: relative;
     background: var(--bg-white);
@@ -357,26 +356,23 @@
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
     text-decoration: none;
   }
-  .card-body {
-    flex: 1;
-    min-width: 0;
+  .card-body::after {
+    content: '';
+    display: block;
+    clear: both;
   }
   .post-cover {
+    float: right;
     width: 220px;
-    max-height: 280px;
-    flex-shrink: 0;
-    align-self: stretch;
-    position: relative;
-    overflow: hidden;
+    margin: 0 0 10px 18px;
     border-radius: 3px;
+    overflow: hidden;
     background: var(--bg-hover, #f5f5f5);
   }
   .post-cover img {
-    position: absolute;
-    inset: 0;
+    display: block;
     width: 100%;
-    height: 100%;
-    object-fit: cover;
+    height: auto;
   }
   .card-top {
     display: flex;
