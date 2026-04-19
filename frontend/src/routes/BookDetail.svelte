@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, updateBook, updateBookEdition, uploadEditionCover, getBookEditHistory, rateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource } from '../lib/api';
+  import { getBook, updateBook, updateBookEdition, uploadEditionCover, getBookEditHistory, rateBook, unrateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource } from '../lib/api';
   import type { BookResource } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
@@ -150,6 +150,16 @@
     myRating = r;
     try {
       const stats = await rateBook(id, r);
+      avgRating = stats.avg_rating;
+      ratingCount = stats.rating_count;
+    } catch { /* */ }
+  }
+
+  async function clearRating() {
+    if (!getAuth()) return;
+    try {
+      const stats = await unrateBook(id);
+      myRating = 0;
       avgRating = stats.avg_rating;
       ratingCount = stats.rating_count;
     } catch { /* */ }
@@ -652,6 +662,7 @@
               </span>
               {#if myRating > 0}
                 <span class="my-rating-value">{formatRating(myRating)}</span>
+                <button class="clear-rating" onclick={clearRating} title={t('books.clearRating')}>×</button>
               {/if}
             </div>
           {/if}
@@ -1565,6 +1576,18 @@
   .my-rating-value {
     font-weight: 600;
     color: #f59e0b;
+  }
+  .clear-rating {
+    background: none;
+    border: none;
+    color: var(--text-hint);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  .clear-rating:hover {
+    color: #c00;
   }
   .star-picker {
     display: inline-flex;

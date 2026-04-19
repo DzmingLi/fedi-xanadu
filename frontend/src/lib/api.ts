@@ -569,6 +569,8 @@ export const getBookEditHistory = (id: string) =>
   get<any[]>(`/books/${encodeURIComponent(id)}/history`);
 export const rateBook = (book_id: string, rating: number) =>
   post<{ avg_rating: number; rating_count: number }>(`/books/${encodeURIComponent(book_id)}/rate`, { rating });
+export const unrateBook = (book_id: string) =>
+  del<{ avg_rating: number; rating_count: number }>(`/books/${encodeURIComponent(book_id)}/rate`);
 export const setReadingStatus = (book_id: string, status: string, progress: number = 0, edition_id?: string) =>
   post<void>(`/books/${encodeURIComponent(book_id)}/reading-status`, { status, progress, edition_id });
 export const removeReadingStatus = (book_id: string) =>
@@ -796,6 +798,8 @@ export const deleteCourse = (id: string) =>
   del<void>(`/courses/${encodeURIComponent(id)}`);
 export const rateCourse = (id: string, rating: number) =>
   post<import('./types').CourseRatingStats>(`/courses/${encodeURIComponent(id)}/rate`, { rating });
+export const unrateCourse = (id: string) =>
+  del<import('./types').CourseRatingStats>(`/courses/${encodeURIComponent(id)}/rate`);
 export const addCourseSeries = (id: string, series_id: string, role?: string, sort_order?: number) =>
   post<void>(`/courses/${encodeURIComponent(id)}/series`, { series_id, role, sort_order });
 export const removeCourseSeries = (id: string, series_id: string) =>

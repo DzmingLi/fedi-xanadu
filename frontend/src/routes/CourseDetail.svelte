@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getCourseDetail, rateCourse } from '../lib/api';
+  import { getCourseDetail, rateCourse, unrateCourse } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
 
@@ -34,6 +34,7 @@
         detail = d;
         avgRating = d.rating.avg_rating;
         ratingCount = d.rating.rating_count;
+        myRating = d.my_rating ?? 0;
         document.title = `${d.course.title} — NightBoat`;
       })
       .catch(e => { error = e.message; })
@@ -49,6 +50,13 @@
   async function submitRating(value: number) {
     myRating = value;
     const stats = await rateCourse(id, value);
+    avgRating = stats.avg_rating;
+    ratingCount = stats.rating_count;
+  }
+
+  async function clearRating() {
+    const stats = await unrateCourse(id);
+    myRating = 0;
     avgRating = stats.avg_rating;
     ratingCount = stats.rating_count;
   }
@@ -176,6 +184,7 @@
             </span>
             {#if myRating > 0}
               <span class="my-rating-value">{formatRating(myRating)}</span>
+              <button class="clear-rating" onclick={clearRating} title={t('course.clearRating')}>×</button>
             {/if}
           </div>
         {/if}
@@ -539,6 +548,8 @@
   .star-picker { display: flex; gap: 1px; cursor: pointer; }
   .star-svg { display: block; }
   .my-rating-value { font-size: 12px; color: #f59e0b; font-weight: 600; }
+  .clear-rating { background: none; border: none; color: var(--text-hint); cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; }
+  .clear-rating:hover { color: #c00; }
 
   /* Reviews */
   .reviews-section { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); }

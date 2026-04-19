@@ -811,6 +811,7 @@ export interface CourseDetail {
   note_count: number;
   discussions: Comment[];
   discussion_count: number;
+  my_rating: number | null;
 }
 
 export interface PagedCourseReviews {

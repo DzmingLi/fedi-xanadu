@@ -71,6 +71,8 @@ pub struct CourseDetailResponse {
     pub note_count: i64,
     pub discussions: Vec<crate::models::Comment>,
     pub discussion_count: i64,
+    /// The current viewer's rating for this course (1-10), if any.
+    pub my_rating: Option<i16>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -250,7 +252,7 @@ pub async fn get_course(pool: &PgPool, id: &str) -> crate::Result<CourseRow> {
     .map_err(|_| crate::Error::NotFound { entity: "course", id: id.to_string() })
 }
 
-pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseDetailResponse> {
+pub async fn get_course_detail(pool: &PgPool, id: &str, viewer_did: Option<&str>) -> crate::Result<CourseDetailResponse> {
     let course = get_course(pool, id).await?;
 
     let syllabus: String = sqlx::query_scalar("SELECT syllabus FROM courses WHERE id = $1")
@@ -322,9 +324,16 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
     let discussion_count = crate::services::comment_service::count_top_comments(pool, &course_uri).await?;
 
     let authors = list_course_authors(pool, id).await?;
+
+    let my_rating = if let Some(did) = viewer_did {
+        get_user_rating(pool, id, did).await?
+    } else {
+        None
+    };
+
     Ok(CourseDetailResponse {
         course, syllabus, authors, sessions, textbooks, tags, series, skill_trees, prerequisites,
-        rating, reviews, review_count, notes, note_count, discussions, discussion_count,
+        rating, reviews, review_count, notes, note_count, discussions, discussion_count, my_rating,
     })
 }
 
@@ -648,6 +657,13 @@ pub async fn rate_course(pool: &PgPool, course_id: &str, user_did: &str, rating:
     ).bind(course_id).bind(user_did).bind(rating)
     .execute(pool).await?;
 
+    get_rating_stats(pool, course_id).await
+}
+
+pub async fn unrate_course(pool: &PgPool, course_id: &str, user_did: &str) -> crate::Result<CourseRatingStats> {
+    sqlx::query("DELETE FROM course_ratings WHERE course_id = $1 AND user_did = $2")
+        .bind(course_id).bind(user_did)
+        .execute(pool).await?;
     get_rating_stats(pool, course_id).await
 }
 

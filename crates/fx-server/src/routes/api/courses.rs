@@ -4,7 +4,7 @@ use fx_core::services::patch_service;
 use fx_core::util::tid;
 use serde::Deserialize;
 
-use crate::auth::WriteAuth;
+use crate::auth::{WriteAuth, MaybeAuth};
 use crate::state::AppState;
 use crate::error::{ApiResult, AppError};
 
@@ -25,9 +25,11 @@ pub async fn my_courses(
 
 pub async fn get_course(
     State(state): State<AppState>,
+    MaybeAuth(user): MaybeAuth,
     Path(id): Path<String>,
 ) -> ApiResult<Json<CourseDetailResponse>> {
-    let detail = course_service::get_course_detail(&state.pool, &id).await?;
+    let viewer = user.as_ref().map(|u| u.did.as_str());
+    let detail = course_service::get_course_detail(&state.pool, &id, viewer).await?;
     Ok(Json(detail))
 }
 
@@ -273,6 +275,15 @@ pub async fn rate_course(
         return Err(AppError(fx_core::Error::BadRequest("rating must be 1-10".into())));
     }
     let stats = course_service::rate_course(&state.pool, &id, &user.did, input.rating).await?;
+    Ok(Json(stats))
+}
+
+pub async fn unrate_course(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Path(id): Path<String>,
+) -> ApiResult<Json<CourseRatingStats>> {
+    let stats = course_service::unrate_course(&state.pool, &id, &user.did).await?;
     Ok(Json(stats))
 }
 

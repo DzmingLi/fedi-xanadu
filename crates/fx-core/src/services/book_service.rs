@@ -465,6 +465,13 @@ pub async fn rate_book(pool: &PgPool, book_id: &str, user_did: &str, rating: i16
     Ok(())
 }
 
+pub async fn unrate_book(pool: &PgPool, book_id: &str, user_did: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM book_ratings WHERE book_id = $1 AND user_did = $2")
+        .bind(book_id).bind(user_did)
+        .execute(pool).await?;
+    Ok(())
+}
+
 pub async fn get_user_rating(pool: &PgPool, book_id: &str, user_did: &str) -> crate::Result<Option<i16>> {
     let row = sqlx::query_scalar::<_, i16>(
         "SELECT rating FROM book_ratings WHERE book_id = $1 AND user_did = $2",

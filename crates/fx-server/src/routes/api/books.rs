@@ -344,6 +344,16 @@ pub async fn rate_book(
     Ok(Json(stats))
 }
 
+pub async fn unrate_book(
+    State(state): State<AppState>,
+    Path(book_id): Path<String>,
+    Auth(user): Auth,
+) -> ApiResult<Json<book_service::BookRatingStats>> {
+    book_service::unrate_book(&state.pool, &book_id, &user.did).await?;
+    let stats = book_service::get_rating_stats(&state.pool, &book_id).await?;
+    Ok(Json(stats))
+}
+
 // --- Set reading status ---
 
 #[derive(serde::Deserialize)]
