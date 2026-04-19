@@ -535,6 +535,7 @@ export default {
   'tags.edit': 'Edit tag',
   'tags.editTitle': 'Edit tag',
   'tags.translationsLabel': 'Translations',
+  'tags.primaryLocale': 'primary',
   'tags.aliasesLabel': 'Aliases',
   'tags.addAlias': 'Add alias',
   'tags.aliasPlaceholder': 'e.g. compsci',

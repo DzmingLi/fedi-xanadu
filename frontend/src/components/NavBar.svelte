@@ -30,7 +30,6 @@
     isDark = !isDark;
   }
 
-  let searchOpen = $state(false);
   let query = $state('');
   let searchEl: HTMLInputElement | undefined = $state();
 
@@ -43,32 +42,18 @@
     else { clearLangPrefs(); clearBlocklist(); }
   });
 
-  async function openSearch() {
-    searchOpen = true;
-    setTimeout(() => searchEl?.focus(), 0);
-  }
-
-  // Listen for keyboard shortcut trigger
+  // Keyboard shortcut (`/`) focuses the navbar search input.
   $effect(() => {
-    const handler = () => openSearch();
+    const handler = () => searchEl?.focus();
     window.addEventListener('fx:search', handler);
     return () => window.removeEventListener('fx:search', handler);
   });
 
-  function closeSearch() {
-    searchOpen = false;
-    query = '';
-  }
-
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') { closeSearch(); return; }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const q = query.trim();
-      if (!q) return;
-      window.location.href = `/search?q=${encodeURIComponent(q)}`;
-      closeSearch();
-    }
+  function submitSearch(e: Event) {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+    window.location.href = `/search?q=${encodeURIComponent(q)}`;
   }
 
   let unreadCount = $state(0);
@@ -90,7 +75,7 @@
 </script>
 
 <nav>
-  <a href="/" class="brand">NightBoat</a>
+  <a href="/" class="brand">NightBo.at</a>
   <div class="nav-links">
     <a href="/questions">{t('nav.questions')}</a>
     <a href="/skills">{t('nav.skills')}</a>
@@ -115,12 +100,20 @@
       {/if}
     </button>
 
-    <button type="button" class="search-btn" onclick={openSearch} aria-label="Search">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <form class="nav-search" onsubmit={submitSearch} role="search">
+      <svg class="nav-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="11" cy="11" r="8"></circle>
         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
       </svg>
-    </button>
+      <input
+        bind:this={searchEl}
+        bind:value={query}
+        type="search"
+        placeholder={t('nav.search')}
+        class="nav-search-input"
+        aria-label={t('nav.search')}
+      />
+    </form>
 
     {#if user}
       <a href="/notifications" class="notif-btn" title={t('nav.notifications')}>
@@ -161,25 +154,6 @@
 
 <LoginModal bind:open={loginOpen} />
 
-{#if searchOpen}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="search-overlay" onclick={closeSearch}>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="search-box" onclick={(e) => e.stopPropagation()}>
-      <input
-        bind:this={searchEl}
-        bind:value={query}
-        onkeydown={onKeydown}
-        type="text"
-        placeholder={t('nav.search')}
-        class="search-input"
-      />
-      <p class="search-hint">{t('search.pressEnter')}</p>
-    </div>
-  </div>
-{/if}
 
 <style>
   nav {
@@ -266,19 +240,37 @@
   .theme-toggle:hover {
     color: var(--accent);
   }
-  .search-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-secondary);
-    padding: 4px;
+  .nav-search {
     display: flex;
     align-items: center;
-    transition: color 0.15s;
+    gap: 4px;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-input, transparent);
+    transition: border-color 0.15s;
+    min-width: 180px;
   }
-  .search-btn:hover {
-    color: var(--accent);
+  .nav-search:focus-within {
+    border-color: var(--accent);
   }
+  .nav-search-icon {
+    color: var(--text-hint);
+    flex-shrink: 0;
+  }
+  .nav-search-input {
+    border: none;
+    outline: none;
+    background: none;
+    font-size: 13px;
+    color: var(--text-primary);
+    padding: 3px 0;
+    flex: 1;
+    min-width: 0;
+    font-family: inherit;
+  }
+  .nav-search-input::placeholder { color: var(--text-hint); }
+  .nav-search-input::-webkit-search-cancel-button { appearance: none; }
 
   /* Notification bell */
   .notif-btn {
@@ -406,45 +398,4 @@
     text-decoration: none;
   }
 
-  /* Search overlay */
-  .search-overlay {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 200;
-    display: flex;
-    justify-content: center;
-    padding-top: 10vh;
-  }
-  .search-box {
-    width: 560px;
-    max-width: 90vw;
-    background: var(--bg-white);
-    border-radius: 6px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-    overflow: hidden;
-    max-height: 70vh;
-    display: flex;
-    flex-direction: column;
-  }
-  .search-input {
-    width: 100%;
-    padding: 14px 18px;
-    border: none;
-    border-bottom: 1px solid var(--border);
-    font-family: var(--font-sans);
-    font-size: 16px;
-    color: var(--text-primary);
-    background: var(--bg-white);
-    outline: none;
-    border-radius: 0;
-  }
-  .search-input::placeholder { color: var(--text-hint); }
-  .search-hint {
-    padding: 10px 18px;
-    color: var(--text-hint);
-    font-size: 12px;
-    margin: 0;
-    border-top: 1px solid var(--border);
-  }
 </style>

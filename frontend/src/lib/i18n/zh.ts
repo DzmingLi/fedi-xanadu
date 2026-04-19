@@ -535,6 +535,7 @@ export default {
   'tags.edit': '编辑标签',
   'tags.editTitle': '编辑标签',
   'tags.translationsLabel': '翻译',
+  'tags.primaryLocale': '主语言',
   'tags.aliasesLabel': '别名',
   'tags.addAlias': '添加别名',
   'tags.aliasPlaceholder': '如 compsci',

@@ -176,8 +176,10 @@
       {#if editError}<p class="error-msg">{editError}</p>{/if}
 
       <h4>{t('tags.translationsLabel')}</h4>
-      {#each LOCALES as loc}
-        <label class="inline-label">{loc.label}</label>
+      {#each [...LOCALES].sort((a, b) => (a.code === 'en' ? -1 : b.code === 'en' ? 1 : 0)) as loc (loc.code)}
+        <label class="inline-label">
+          {loc.label}{#if loc.code === 'en'} <span class="primary-marker">· {t('tags.primaryLocale')}</span>{/if}
+        </label>
         <input bind:value={editNames[loc.code]} placeholder={loc.code === 'en' ? 'English name' : ''} />
       {/each}
       <button class="btn btn-primary" onclick={saveNames} disabled={editSaving}>
@@ -330,6 +332,7 @@
   .modal h4 { margin: 14px 0 6px; font-size: 13px; color: var(--text-secondary); font-weight: 500; }
   .modal input { width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-white); color: var(--text-primary); font-size: 14px; box-sizing: border-box; margin-bottom: 6px; }
   .inline-label { font-size: 12px; color: var(--text-hint); display: block; margin-top: 8px; }
+  .primary-marker { color: var(--accent); font-weight: 500; text-transform: lowercase; }
   .btn { padding: 6px 14px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-white); cursor: pointer; font-size: 14px; }
   .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
