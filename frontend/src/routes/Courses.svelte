@@ -56,8 +56,8 @@
               </span>
             {/if}
             <span class="stat">{course.session_count} {t('courses.sessions')}</span>
-            {#if course.author_handle}
-              <span class="author">@{course.author_handle}</span>
+            {#if course.author_names && course.author_names.length > 0}
+              <span class="author">{course.author_names.join(', ')}</span>
             {/if}
           </div>
         </a>

@@ -38,6 +38,10 @@ pub struct CourseListRow {
     pub avg_rating: f64,
     pub rating_count: i64,
     pub created_at: DateTime<Utc>,
+    /// Names of the course's real authors (professors), joined from
+    /// `course_authors`. Displayed on cards instead of the uploader handle.
+    #[sqlx(default)]
+    pub author_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -324,36 +328,32 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
     })
 }
 
+const COURSE_LIST_SELECT: &str = "\
+    SELECT c.id, c.did, p.handle AS author_handle, c.title, c.code, c.description, \
+    c.institution, c.semester, c.lang, \
+    (SELECT COUNT(*) FROM course_series WHERE course_id = c.id) AS series_count, \
+    (SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
+    COALESCE(r.avg, 0) AS avg_rating, \
+    COALESCE(r.cnt, 0) AS rating_count, \
+    c.created_at, \
+    COALESCE( \
+      (SELECT array_agg(a.name ORDER BY ca.position NULLS LAST) \
+       FROM course_authors ca JOIN authors a ON a.id = ca.author_id \
+       WHERE ca.course_id = c.id), \
+      ARRAY[]::text[]) AS author_names \
+    FROM courses c \
+    LEFT JOIN profiles p ON c.did = p.did \
+    LEFT JOIN (SELECT course_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM course_ratings GROUP BY course_id) r ON r.course_id = c.id";
+
 pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
     Ok(sqlx::query_as::<_, CourseListRow>(
-        "SELECT c.id, c.did, p.handle AS author_handle, c.title, c.code, c.description, \
-         c.institution, c.semester, c.lang, \
-         (SELECT COUNT(*) FROM course_series WHERE course_id = c.id) AS series_count, \
-(SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
-         COALESCE(r.avg, 0) AS avg_rating, \
-         COALESCE(r.cnt, 0) AS rating_count, \
-         c.created_at \
-         FROM courses c \
-         LEFT JOIN profiles p ON c.did = p.did \
-         LEFT JOIN (SELECT course_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM course_ratings GROUP BY course_id) r ON r.course_id = c.id \
-         ORDER BY COALESCE(r.avg, 0) * LN(COALESCE(r.cnt, 0) + 1) DESC, c.created_at DESC",
+        &format!("{COURSE_LIST_SELECT} ORDER BY COALESCE(r.avg, 0) * LN(COALESCE(r.cnt, 0) + 1) DESC, c.created_at DESC"),
     ).fetch_all(pool).await?)
 }
 
 pub async fn list_my_courses(pool: &PgPool, did: &str) -> crate::Result<Vec<CourseListRow>> {
     Ok(sqlx::query_as::<_, CourseListRow>(
-        "SELECT c.id, c.did, p.handle AS author_handle, c.title, c.code, c.description, \
-         c.institution, c.semester, c.lang, \
-         (SELECT COUNT(*) FROM course_series WHERE course_id = c.id) AS series_count, \
-(SELECT COUNT(*) FROM course_sessions WHERE course_id = c.id) AS session_count, \
-         COALESCE(r.avg, 0) AS avg_rating, \
-         COALESCE(r.cnt, 0) AS rating_count, \
-         c.created_at \
-         FROM courses c \
-         LEFT JOIN profiles p ON c.did = p.did \
-         LEFT JOIN (SELECT course_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM course_ratings GROUP BY course_id) r ON r.course_id = c.id \
-         WHERE c.did = $1 \
-         ORDER BY c.created_at DESC",
+        &format!("{COURSE_LIST_SELECT} WHERE c.did = $1 ORDER BY c.created_at DESC"),
     ).bind(did).fetch_all(pool).await?)
 }
 

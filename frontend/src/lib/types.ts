@@ -701,6 +701,7 @@ export interface CourseListItem {
   id: string;
   did: string;
   author_handle: string | null;
+  author_names: string[];
   title: string;
   code: string | null;
   description: string;
