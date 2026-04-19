@@ -103,11 +103,12 @@
   let doneSessions = $derived(Array.from(sessionDone.values()).filter(v => v).length);
 
   // Detect which resource types exist across all sessions
-  let hasMaterials = $derived(detail?.sessions.some(s => (s.materials?.length ?? 0) > 0) ?? false);
+  let hasMaterials = $derived(detail?.sessions.some(s => (s.materials ?? []).some(m => !m.optional)) ?? false);
+  let hasSupplementary = $derived(detail?.sessions.some(s => (s.materials ?? []).some(m => m.optional)) ?? false);
   let hasVideo = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'video')) ?? false);
   let hasHw = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'hw')) ?? false);
   let hasDiscussion = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'discussion')) ?? false);
-  let colCount = $derived(2 + (hasMaterials ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0) + (hasDiscussion ? 1 : 0));
+  let colCount = $derived(2 + (hasMaterials ? 1 : 0) + (hasSupplementary ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0) + (hasDiscussion ? 1 : 0));
 
   // Helper to get resources by type
   function getResources(session: import('./lib/types').CourseSession, type: string) {
@@ -276,6 +277,7 @@
                   <th>#</th>
                   <th>{t('course.topic')}</th>
                   {#if hasMaterials}<th>{t('course.materials')}</th>{/if}
+                  {#if hasSupplementary}<th>{t('course.supplementary')}</th>{/if}
                   {#if hasVideo}<th>{t('course.video')}</th>{/if}
                   {#if hasDiscussion}<th>{t('course.discussion')}</th>{/if}
                   {#if hasHw}<th>{t('course.hw')}</th>{/if}
@@ -313,7 +315,22 @@
                       </td>
                       {#if hasMaterials}
                         <td class="session-materials">
-                          {#each s.materials ?? [] as m}
+                          {#each (s.materials ?? []).filter(m => !m.optional) as m}
+                            {#if m.url}
+                              <a href={m.url} target="_blank" rel="noopener" class="res-link res-mat" title={m.label}>
+                                {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
+                              </a>
+                            {:else}
+                              <span class="res-mat-plain" title={m.label}>
+                                {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
+                              </span>
+                            {/if}
+                          {/each}
+                        </td>
+                      {/if}
+                      {#if hasSupplementary}
+                        <td class="session-materials">
+                          {#each (s.materials ?? []).filter(m => m.optional) as m}
                             {#if m.url}
                               <a href={m.url} target="_blank" rel="noopener" class="res-link res-mat" title={m.label}>
                                 {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}

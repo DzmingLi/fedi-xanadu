@@ -817,6 +817,7 @@ export default {
   'course.prerequisites': 'Prerequisites',
   'course.skillTrees': 'Skill Trees',
   'course.materials': 'Materials',
+  'course.supplementary': 'Supplementary',
   'course.source': 'Source',
   'course.license': 'License',
   'course.language': 'Language',

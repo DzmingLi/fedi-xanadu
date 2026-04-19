@@ -748,6 +748,7 @@ export interface Material {
   kind?: MaterialKind | null;
   label: string;
   url?: string | null;
+  optional?: boolean;
 }
 
 export interface CourseSession {

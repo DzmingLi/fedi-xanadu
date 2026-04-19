@@ -817,6 +817,7 @@ export default {
   'course.prerequisites': '先修课程',
   'course.skillTrees': '技能树',
   'course.materials': '材料',
+  'course.supplementary': '补充阅读',
   'course.source': '来源',
   'course.license': '许可证',
   'course.language': '语言',

@@ -817,6 +817,7 @@ export default {
   'course.prerequisites': 'Voraussetzungen',
   'course.skillTrees': 'Fähigkeitsbäume',
   'course.materials': 'Kursmaterialien',
+  'course.supplementary': 'Ergänzende Lektüre',
   'course.source': 'Quelle',
   'course.license': 'Lizenz',
   'course.language': 'Sprache',

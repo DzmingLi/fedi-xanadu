@@ -119,6 +119,8 @@ pub struct SessionResource {
 
 /// A single study/lecture material entry. `kind` is an optional hint used
 /// by the UI to pick an icon (reading, slides, handout, summary, notes).
+/// `optional` splits required reading from supplementary / further-reading
+/// items; the UI renders them in separate columns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Material {
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -126,6 +128,8 @@ pub struct Material {
     pub label: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub url: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub optional: bool,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
