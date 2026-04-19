@@ -43,7 +43,7 @@
   let syllabusHtml = $derived(detail?.syllabus ? marked.parse(detail.syllabus) as string : '');
 
   function formatRating(r: number) {
-    return (r / 2).toFixed(1);
+    return r.toFixed(1);
   }
 
   async function submitRating(value: number) {
@@ -278,18 +278,6 @@
           </section>
         {/if}
 
-        {#if detail.series.length > 0}
-          <section class="course-series">
-            <h2>{t('course.relatedSeries')}</h2>
-            {#each detail.series as s}
-              <a href="/series?id={encodeURIComponent(s.series_id)}" class="series-link">
-                <span class="series-role">{s.role}</span>
-                <span class="series-title">{s.title}</span>
-                {#if s.summary}<span class="series-desc">{s.summary}</span>{/if}
-              </a>
-            {/each}
-          </section>
-        {/if}
       </div>
 
       <div class="body-side">
@@ -471,7 +459,7 @@
   .course-body { display: flex; gap: 32px; }
   .body-main { flex: 1; min-width: 0; }
   .body-side { width: 260px; flex-shrink: 0; }
-  .syllabus h2, .course-series h2, .schedule h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.3rem; margin: 0 0 16px; }
+  .syllabus h2, .schedule h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.3rem; margin: 0 0 16px; }
   .syllabus { margin-bottom: 32px; }
 
   .schedule { margin-bottom: 32px; }

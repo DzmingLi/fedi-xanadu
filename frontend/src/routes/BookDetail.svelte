@@ -142,7 +142,7 @@
   }
 
   function formatRating(val: number): string {
-    return (val / 2).toFixed(1);
+    return val.toFixed(1);
   }
 
   async function submitRating(r: number) {
