@@ -19,8 +19,8 @@ export default {
 
   // Nav
   'nav.skills': 'Fähigkeitsbaum',
-  'nav.hierarchy': 'Tag-Hierarchie',
-  'hierarchy.title': 'Tag-Hierarchie',
+  'nav.hierarchy': 'Tags',
+  'hierarchy.title': 'Tags',
   'hierarchy.intro': 'Globaler „gehört zu"-Baum zwischen Tags. Jede:r angemeldete Nutzer:in kann Kanten hinzufügen oder entfernen; alle Änderungen werden protokolliert.',
   'hierarchy.addEdge': 'Eltern → Kind-Beziehung hinzufügen',
   'hierarchy.parent': 'Elternteil',

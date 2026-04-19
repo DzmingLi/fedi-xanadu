@@ -19,8 +19,8 @@ export default {
 
   // Nav
   'nav.skills': 'Skill Tree',
-  'nav.hierarchy': 'Tag Hierarchy',
-  'hierarchy.title': 'Tag Hierarchy',
+  'nav.hierarchy': 'Tags',
+  'hierarchy.title': 'Tags',
   'hierarchy.intro': 'The global "belongs to" tree between tags. Anyone logged in can add or remove edges; all changes are logged.',
   'hierarchy.addEdge': 'Add a parent → child relationship',
   'hierarchy.parent': 'Parent',

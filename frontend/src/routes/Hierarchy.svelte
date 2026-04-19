@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listTagParents, addTagParent, removeTagParent, listTags, searchTags, createTagInline } from '../lib/api';
+  import {
+    listTagParents, addTagParent, removeTagParent, listTags, searchTags, createTagInline,
+    updateTagNames, listTagAliases, addTagAlias, removeTagAlias,
+  } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
-  import { t } from '../lib/i18n/index.svelte';
+  import { t, LOCALES } from '../lib/i18n/index.svelte';
   import type { Tag } from '../lib/types';
 
   type Edge = { parent_tag: string; child_tag: string };
@@ -12,6 +15,77 @@
   let loading = $state(true);
   let error = $state('');
   let isLoggedIn = $derived(!!getAuth());
+
+  // Inline tag editor state (one tag open at a time)
+  let editingTag = $state<string | null>(null);
+  let editNames = $state<Record<string, string>>({});
+  let editAliases = $state<string[]>([]);
+  let newAlias = $state('');
+  let editSaving = $state(false);
+  let editError = $state('');
+
+  let tagById = $derived.by(() => {
+    const m = new Map<string, Tag>();
+    for (const tg of tags) m.set(tg.id, tg);
+    return m;
+  });
+
+  async function toggleEdit(id: string) {
+    if (editingTag === id) { editingTag = null; return; }
+    editingTag = id;
+    editError = '';
+    newAlias = '';
+    const tg = tagById.get(id);
+    const names: Record<string, string> = { ...(tg?.names ?? {}) };
+    for (const loc of LOCALES) {
+      if (!(loc.code in names)) names[loc.code] = '';
+    }
+    editNames = names;
+    editAliases = [];
+    try {
+      editAliases = await listTagAliases(id);
+    } catch {}
+  }
+
+  async function saveEditNames() {
+    if (!editingTag) return;
+    editSaving = true;
+    editError = '';
+    try {
+      const cleaned = Object.fromEntries(Object.entries(editNames).filter(([_, v]) => v.trim()));
+      const updated = await updateTagNames(editingTag, cleaned);
+      // Refresh local tag entry so other UI reflects the change
+      const idx = tags.findIndex(x => x.id === updated.id);
+      if (idx >= 0) tags[idx] = updated;
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    } finally {
+      editSaving = false;
+    }
+  }
+
+  async function submitAddAlias() {
+    if (!editingTag) return;
+    const a = newAlias.trim();
+    if (!a) return;
+    try {
+      await addTagAlias(editingTag, a);
+      newAlias = '';
+      editAliases = await listTagAliases(editingTag);
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    }
+  }
+
+  async function removeAliasEntry(alias: string) {
+    if (!editingTag) return;
+    try {
+      await removeTagAlias(editingTag, alias);
+      editAliases = await listTagAliases(editingTag);
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    }
+  }
 
   // Add-edge form state
   let newParent = $state('');
@@ -133,6 +207,39 @@
   });
 </script>
 
+{#snippet tagEditor(id: string)}
+  <div class="tag-editor">
+    <div class="te-header">
+      <strong>{id}</strong>
+      <button class="btn-ghost" onclick={() => (editingTag = null)}>{t('common.close')}</button>
+    </div>
+    {#if editError}<p class="error-msg">{editError}</p>{/if}
+    <div class="te-section">
+      <div class="te-label">{t('tags.translationsLabel')}</div>
+      {#each LOCALES as loc}
+        <label class="inline-label">{loc.label}</label>
+        <input bind:value={editNames[loc.code]} placeholder={loc.code === 'en' ? 'English name' : ''} />
+      {/each}
+      <button class="btn btn-primary" onclick={saveEditNames} disabled={editSaving}>
+        {editSaving ? t('common.saving') : t('common.save')}
+      </button>
+    </div>
+    <div class="te-section">
+      <div class="te-label">{t('tags.aliasesLabel')}</div>
+      <div class="alias-chips">
+        {#each editAliases as a}
+          <span class="alias-chip">{a} <button onclick={() => removeAliasEntry(a)}>×</button></span>
+        {/each}
+      </div>
+      <div class="alias-add">
+        <input bind:value={newAlias} placeholder={t('tags.aliasPlaceholder')}
+          onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitAddAlias(); } }} />
+        <button class="btn" onclick={submitAddAlias}>{t('tags.addAlias')}</button>
+      </div>
+    </div>
+  </div>
+{/snippet}
+
 <div class="hierarchy-page">
   <header class="page-header">
     <h1>{t('hierarchy.title')}</h1>
@@ -200,7 +307,15 @@
       <h2>{t('hierarchy.roots')} <span class="count">({orphans.length})</span></h2>
       <div class="chip-row">
         {#each orphans as tag}
-          <a href="/tag?id={encodeURIComponent(tag)}" class="tag-chip root">{tag}</a>
+          <span class="tag-chip root">
+            <a href="/tag?id={encodeURIComponent(tag)}">{tag}</a>
+            {#if isLoggedIn}
+              <button class="gear" onclick={() => toggleEdit(tag)} title={t('tags.edit')}>✎</button>
+            {/if}
+          </span>
+          {#if editingTag === tag}
+            {@render tagEditor(tag)}
+          {/if}
         {/each}
       </div>
     </section>
@@ -211,15 +326,25 @@
           <h3 class="group-parent">
             <a href="/tag?id={encodeURIComponent(g.parent)}">{g.parent}</a>
             <span class="count">{g.children.length}</span>
+            {#if isLoggedIn}
+              <button class="gear" onclick={() => toggleEdit(g.parent)} title={t('tags.edit')}>✎</button>
+            {/if}
           </h3>
+          {#if editingTag === g.parent}
+            {@render tagEditor(g.parent)}
+          {/if}
           <div class="chip-row">
             {#each g.children as c}
               <span class="tag-chip">
                 <a href="/tag?id={encodeURIComponent(c)}">{c}</a>
                 {#if isLoggedIn}
+                  <button class="gear" onclick={() => toggleEdit(c)} title={t('tags.edit')}>✎</button>
                   <button class="x" onclick={() => removeEdge(g.parent, c)} title={t('hierarchy.remove')}>×</button>
                 {/if}
               </span>
+              {#if editingTag === c}
+                {@render tagEditor(c)}
+              {/if}
             {/each}
           </div>
         </div>
@@ -265,4 +390,22 @@
   .group-parent { font-size: 14px; font-family: var(--font-serif); margin: 0 0 6px; display: flex; align-items: center; gap: 8px; }
   .group-parent a { color: var(--text-primary); text-decoration: none; }
   .group-parent a:hover { color: var(--accent); }
+
+  .gear { background: none; border: none; cursor: pointer; color: var(--text-hint); font-size: 12px; padding: 0; line-height: 1; }
+  .gear:hover { color: var(--accent); }
+
+  .tag-editor { flex-basis: 100%; width: 100%; background: var(--bg-white); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; margin: 6px 0 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+  .te-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-family: var(--font-serif); }
+  .te-section { margin-top: 10px; }
+  .te-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
+  .tag-editor input { width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-white); color: var(--text-primary); font-size: 14px; box-sizing: border-box; margin-bottom: 6px; }
+  .inline-label { font-size: 12px; color: var(--text-hint); display: block; margin-top: 4px; }
+  .alias-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .alias-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 12px; background: var(--bg-hover, #f5f5f5); border: 1px solid var(--border); font-size: 12px; }
+  .alias-chip button { background: none; border: none; cursor: pointer; color: var(--text-hint); padding: 0; line-height: 1; font-size: 14px; }
+  .alias-chip button:hover { color: #c00; }
+  .alias-add { display: flex; gap: 6px; }
+  .alias-add input { margin-bottom: 0; flex: 1; }
+  .btn-ghost { background: none; border: none; cursor: pointer; color: var(--text-hint); font-size: 12px; padding: 2px 6px; }
+  .btn-ghost:hover { color: var(--accent); }
 </style>

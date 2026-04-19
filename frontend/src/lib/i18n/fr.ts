@@ -19,8 +19,8 @@ export default {
 
   // Nav
   'nav.skills': 'Compétences',
-  'nav.hierarchy': 'Hiérarchie',
-  'hierarchy.title': 'Hiérarchie des étiquettes',
+  'nav.hierarchy': 'Étiquettes',
+  'hierarchy.title': 'Étiquettes',
   'hierarchy.intro': 'Arbre global des relations d\'appartenance entre étiquettes. Tout utilisateur connecté peut ajouter ou retirer des liens ; chaque modification est journalisée.',
   'hierarchy.addEdge': 'Ajouter une relation parent → enfant',
   'hierarchy.parent': 'Parent',

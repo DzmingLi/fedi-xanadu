@@ -19,8 +19,8 @@ export default {
 
   // Nav
   'nav.skills': '技能树',
-  'nav.hierarchy': '标签层级',
-  'hierarchy.title': '标签层级',
+  'nav.hierarchy': '标签',
+  'hierarchy.title': '标签',
   'hierarchy.intro': '全站通用的标签"归属"关系树。登录用户都可以添加/删除边，所有改动都记录在审计日志里。',
   'hierarchy.addEdge': '添加 父 → 子 关系',
   'hierarchy.parent': '父标签',
