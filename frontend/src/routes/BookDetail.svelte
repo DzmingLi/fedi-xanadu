@@ -76,6 +76,9 @@
   // Chapter progress (reactive, keyed by chapter_id)
   let chapterDone = $state(new Map<string, boolean>());
 
+  let totalChapters = $derived(detail?.chapters?.length ?? 0);
+  let doneChapters = $derived(Array.from(chapterDone.values()).filter(v => v).length);
+
   let selectedEdition = $state('');
   // Auto-select: admin default > first edition
   $effect(() => {
@@ -103,7 +106,16 @@
     const next = !chapterDone.get(chapterId);
     chapterDone.set(chapterId, next);
     chapterDone = new Map(chapterDone); // trigger reactivity
-    try { await setChapterProgress(id, chapterId, next); } catch { /* revert on error */ chapterDone.set(chapterId, !next); chapterDone = new Map(chapterDone); }
+    try {
+      const status = await setChapterProgress(id, chapterId, next);
+      if (status) {
+        readingStatus = status.status;
+        readingProgress = status.progress;
+      }
+    } catch {
+      chapterDone.set(chapterId, !next);
+      chapterDone = new Map(chapterDone);
+    }
   }
 
   // Edit history
@@ -178,11 +190,6 @@
       else if (status === 'want_to_read') readingProgress = 0;
       try { await setReadingStatus(id, status, readingProgress, selectedEdition || undefined); } catch { /* */ }
     }
-  }
-
-  async function updateProgress() {
-    if (!getAuth() || readingStatus !== 'reading') return;
-    try { await setReadingStatus(id, 'reading', readingProgress); } catch { /* */ }
   }
 
   // Edit modal state
@@ -700,13 +707,16 @@
             </button>
           </div>
 
-          <!-- Progress bar for "reading" -->
-          {#if readingStatus === 'reading'}
+          <!-- Chapter-based progress readout for in-progress / dropped states -->
+          {#if (readingStatus === 'reading' || readingStatus === 'dropped') && totalChapters > 0}
             <div class="progress-section">
-              <label class="progress-label">
-                {t('books.progress')}: {readingProgress}%
-                <input type="range" min="0" max="100" bind:value={readingProgress} onchange={updateProgress} class="progress-slider" />
-              </label>
+              <div class="progress-readout">
+                <span>{t('books.progress')}: {doneChapters} / {totalChapters} {t('books.chaptersDone')}</span>
+                <span class="progress-pct">{Math.round((doneChapters / totalChapters) * 100)}%</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: {(doneChapters / totalChapters) * 100}%"></div>
+              </div>
             </div>
           {/if}
         </div>
@@ -1641,17 +1651,27 @@
   .progress-section {
     margin-top: 10px;
   }
-  .progress-label {
+  .progress-readout {
+    display: flex;
+    justify-content: space-between;
     font-size: 13px;
     color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    margin-bottom: 4px;
   }
-  .progress-slider {
-    flex: 1;
-    max-width: 200px;
-    accent-color: var(--accent);
+  .progress-pct {
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.2s;
   }
 
   /* Editions (sidebar) */

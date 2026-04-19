@@ -705,6 +705,7 @@ export default {
   'books.finished': '已读',
   'books.dropped': '不读了',
   'books.progress': '进度',
+  'books.chaptersDone': '章已读',
   'books.titleLabel': '书名',
   'books.subtitleLabel': '副标题',
   'books.abbreviationLabel': '缩写（如 CLRS、SICP）',

@@ -757,20 +757,62 @@ pub async fn set_chapter_progress(
     chapter_id: &str,
     user_did: &str,
     completed: bool,
-) -> crate::Result<()> {
+) -> crate::Result<Option<ReadingStatus>> {
+    let mut tx = pool.begin().await?;
+
     sqlx::query(
         "INSERT INTO book_chapter_progress (book_id, chapter_id, user_did, completed, completed_at) \
          VALUES ($1, $2, $3, $4, CASE WHEN $4 THEN NOW() ELSE NULL END) \
          ON CONFLICT (chapter_id, user_did) DO UPDATE SET completed = $4, \
          completed_at = CASE WHEN $4 THEN COALESCE(book_chapter_progress.completed_at, NOW()) ELSE NULL END",
     )
-    .bind(book_id)
-    .bind(chapter_id)
-    .bind(user_did)
-    .bind(completed)
-    .execute(pool)
-    .await?;
-    Ok(())
+    .bind(book_id).bind(chapter_id).bind(user_did).bind(completed)
+    .execute(&mut *tx).await?;
+
+    // Auto-transition into 'reading' when user completes a chapter from an
+    // idle state. 'finished' stays (user already marked the book done) and
+    // 'reading' stays (already there).
+    if completed {
+        sqlx::query(
+            "INSERT INTO book_reading_status (book_id, user_did, status, progress) \
+             VALUES ($1, $2, 'reading', 0) \
+             ON CONFLICT (book_id, user_did) DO UPDATE SET \
+               status = CASE WHEN book_reading_status.status IN ('want_to_read', 'dropped') \
+                             THEN 'reading' ELSE book_reading_status.status END, \
+               updated_at = NOW()",
+        )
+        .bind(book_id).bind(user_did)
+        .execute(&mut *tx).await?;
+    }
+
+    // Recompute progress = completed_chapters / total_chapters * 100.
+    // Only touch the row if the user already has one (don't create a status
+    // row from an uncheck action).
+    let exists: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM book_reading_status WHERE book_id = $1 AND user_did = $2"
+    ).bind(book_id).bind(user_did).fetch_optional(&mut *tx).await?;
+
+    if exists.is_some() {
+        let total: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM book_chapters WHERE book_id = $1"
+        ).bind(book_id).fetch_one(&mut *tx).await?;
+        let done: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM book_chapter_progress \
+             WHERE book_id = $1 AND user_did = $2 AND completed = TRUE"
+        ).bind(book_id).bind(user_did).fetch_one(&mut *tx).await?;
+        let progress: i16 = if total > 0 { ((done * 100 / total) as i16).clamp(0, 100) } else { 0 };
+        sqlx::query(
+            "UPDATE book_reading_status SET progress = $1, updated_at = NOW() \
+             WHERE book_id = $2 AND user_did = $3"
+        ).bind(progress).bind(book_id).bind(user_did).execute(&mut *tx).await?;
+    }
+
+    let status = sqlx::query_as::<_, ReadingStatus>(
+        "SELECT * FROM book_reading_status WHERE book_id = $1 AND user_did = $2"
+    ).bind(book_id).bind(user_did).fetch_optional(&mut *tx).await?;
+
+    tx.commit().await?;
+    Ok(status)
 }
 
 pub async fn list_chapter_progress(

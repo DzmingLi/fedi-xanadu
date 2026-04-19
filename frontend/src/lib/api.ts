@@ -584,7 +584,7 @@ export const createChapter = (book_id: string, chapter: { title: string; parent_
 export const deleteChapter = (book_id: string, chapter_id: string) =>
   del<void>(`/books/${encodeURIComponent(book_id)}/chapters/delete`, { chapter_id });
 export const setChapterProgress = (book_id: string, chapter_id: string, completed: boolean) =>
-  post<void>(`/books/${encodeURIComponent(book_id)}/chapters/progress`, { chapter_id, completed });
+  post<import('./types').ReadingStatus | null>(`/books/${encodeURIComponent(book_id)}/chapters/progress`, { chapter_id, completed });
 export const updateChapterTags = (book_id: string, chapter_id: string, teaches: string[], prereqs: ChapterPrereqEntry[]) =>
   put<void>(`/books/${encodeURIComponent(book_id)}/chapters/tags`, { chapter_id, teaches, prereqs });
 

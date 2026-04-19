@@ -505,8 +505,10 @@ pub async fn set_chapter_progress(
     Path(book_id): Path<String>,
     Auth(user): Auth,
     Json(input): Json<ChapterProgressInput>,
-) -> ApiResult<StatusCode> {
-    book_service::set_chapter_progress(&state.pool, &book_id, &input.chapter_id, &user.did, input.completed).await?;
+) -> ApiResult<Json<Option<book_service::ReadingStatus>>> {
+    let status = book_service::set_chapter_progress(
+        &state.pool, &book_id, &input.chapter_id, &user.did, input.completed,
+    ).await?;
 
     // Auto-learn: when chapter completed, light up chapter's teaches tags
     if input.completed {
@@ -524,7 +526,7 @@ pub async fn set_chapter_progress(
         }
     }
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok(Json(status))
 }
 
 // --- Book cover: serve & upload ---

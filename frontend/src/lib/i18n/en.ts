@@ -705,6 +705,7 @@ export default {
   'books.finished': 'Finished',
   'books.dropped': 'Dropped',
   'books.progress': 'Progress',
+  'books.chaptersDone': 'chapters done',
   'books.titleLabel': 'Title',
   'books.subtitleLabel': 'Subtitle',
   'books.abbreviationLabel': 'Abbreviation (e.g. CLRS, SICP)',
