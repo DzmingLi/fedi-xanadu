@@ -54,16 +54,27 @@
   }
 
   // Detect which resource types exist across all sessions
-  let hasReadings = $derived(detail?.sessions.some(s => s.readings || (s.reading_refs?.length ?? 0) > 0) ?? false);
+  let hasMaterials = $derived(detail?.sessions.some(s => (s.materials?.length ?? 0) > 0) ?? false);
   let hasVideo = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'video')) ?? false);
-  let hasNotes = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'notes')) ?? false);
   let hasHw = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'hw')) ?? false);
   let hasDiscussion = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'discussion')) ?? false);
-  let colCount = $derived(2 + (hasReadings ? 1 : 0) + (hasVideo ? 1 : 0) + (hasNotes ? 1 : 0) + (hasHw ? 1 : 0) + (hasDiscussion ? 1 : 0));
+  let colCount = $derived(2 + (hasMaterials ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0) + (hasDiscussion ? 1 : 0));
 
   // Helper to get resources by type
   function getResources(session: import('./lib/types').CourseSession, type: string) {
     return session.resources.filter(r => r.type === type);
+  }
+
+  // Icon per material kind (falsy kind → no icon)
+  function matIcon(kind?: string | null): string {
+    switch (kind) {
+      case 'reading': return '📘';
+      case 'slides': return '🖼️';
+      case 'handout': return '📄';
+      case 'summary': return '📝';
+      case 'notes': return '📓';
+      default: return '';
+    }
   }
 </script>
 
@@ -197,16 +208,15 @@
                 <tr>
                   <th>#</th>
                   <th>{t('course.topic')}</th>
-                  {#if hasReadings}<th>{t('course.readings')}</th>{/if}
+                  {#if hasMaterials}<th>{t('course.materials')}</th>{/if}
                   {#if hasVideo}<th>{t('course.video')}</th>{/if}
-                  {#if hasNotes}<th>{t('course.notes')}</th>{/if}
-                  {#if hasDiscussion}<th>{t('course.discussion') || 'Discussion'}</th>{/if}
+                  {#if hasDiscussion}<th>{t('course.discussion')}</th>{/if}
                   {#if hasHw}<th>{t('course.hw')}</th>{/if}
                 </tr>
               </thead>
               <tbody>
                 {#each detail.sessions as s}
-                  {@const isExam = !s.readings && s.resources.length === 0}
+                  {@const isExam = (s.materials?.length ?? 0) === 0 && s.resources.length === 0}
                   <tr class:session-exam={isExam}>
                     <td class="session-num">{s.sort_order}</td>
                     {#if isExam}
@@ -224,20 +234,17 @@
                           </div>
                         {/if}
                       </td>
-                      {#if hasReadings}
-                        <td class="session-readings">
-                          {#if s.readings}
-                            {#if s.readings.startsWith('/')}
-                              <a href={s.readings} class="res-link res-reading" title={t('course.readings')}>&#128214; {t('course.readings')}</a>
+                      {#if hasMaterials}
+                        <td class="session-materials">
+                          {#each s.materials ?? [] as m}
+                            {#if m.url}
+                              <a href={m.url} target="_blank" rel="noopener" class="res-link res-mat" title={m.label}>
+                                {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
+                              </a>
                             {:else}
-                              <span class="res-reading" title={s.readings}>{s.readings}</span>
-                            {/if}
-                          {/if}
-                          {#each s.reading_refs ?? [] as r}
-                            {#if r.url}
-                              <a href={r.url} target="_blank" rel="noopener" class="res-link res-reading" title={r.label}>&#128214; {r.label}</a>
-                            {:else}
-                              <span class="res-reading" title={r.label}>{r.label}</span>
+                              <span class="res-mat" title={m.label}>
+                                {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
+                              </span>
                             {/if}
                           {/each}
                         </td>
@@ -246,16 +253,6 @@
                         <td class="session-video">
                           {#each getResources(s, 'video') as r}
                             <a href={r.url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {r.label}</a>
-                          {/each}
-                        </td>
-                      {/if}
-                      {#if hasNotes}
-                        <td class="session-notes">
-                          {#each getResources(s, 'notes') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {r.label}</a>
-                          {/each}
-                          {#each getResources(s, 'slides') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-notes">&#128196; {r.label}</a>
                           {/each}
                         </td>
                       {/if}
@@ -283,7 +280,7 @@
 
         {#if detail.series.length > 0}
           <section class="course-series">
-            <h2>{t('course.materials')}</h2>
+            <h2>{t('course.relatedSeries')}</h2>
             {#each detail.series as s}
               <a href="/series?id={encodeURIComponent(s.series_id)}" class="series-link">
                 <span class="series-role">{s.role}</span>
@@ -489,9 +486,13 @@
   .session-video { white-space: nowrap; }
   .session-notes { white-space: nowrap; }
   .session-hw { white-space: nowrap; }
-  .session-readings { max-width: 240px; }
-  .session-readings > * { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
-  .session-readings > *:last-child { margin-bottom: 0; }
+  .session-materials { max-width: 260px; }
+  .session-materials > * { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+  .session-materials > *:last-child { margin-bottom: 0; }
+  .mat-icon { margin-right: 3px; font-size: 11px; }
+  .res-mat { font-size: 11px; color: var(--text-primary); background: var(--bg-hover, #f5f5f5); padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; }
+  a.res-mat { color: var(--text-primary); }
+  a.res-mat:hover { color: var(--accent); text-decoration: none; opacity: 0.85; }
   .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
   .res-link:hover { opacity: 0.8; text-decoration: none; }
   .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }

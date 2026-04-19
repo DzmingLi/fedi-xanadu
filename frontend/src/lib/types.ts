@@ -741,7 +741,10 @@ export interface SessionResource {
   label: string;
 }
 
-export interface ReadingRef {
+export type MaterialKind = 'reading' | 'slides' | 'handout' | 'summary' | 'notes';
+
+export interface Material {
+  kind?: MaterialKind | null;
   label: string;
   url?: string | null;
 }
@@ -752,8 +755,7 @@ export interface CourseSession {
   sort_order: number;
   topic?: string | null;
   date?: string | null;
-  readings?: string | null;
-  reading_refs: ReadingRef[];
+  materials: Material[];
   resources: SessionResource[];
   tags: CourseTag[];
   prereqs: CourseTag[];

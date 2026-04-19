@@ -872,10 +872,10 @@ enum CourseCommand {
         /// Date
         #[arg(long)]
         date: Option<String>,
-        /// Readings (e.g. "Sipser Ch. 1.1-1.3")
-        #[arg(short, long)]
-        readings: Option<String>,
-        /// Resources as "type:label:url" (e.g. "video:Lecture:https://...", "notes:Handout:https://...")
+        /// Materials as "kind:label:url" (e.g. "reading:§1 Intro:https://...", "handout:Handout:https://..."). kind ∈ {reading, slides, handout, summary, notes} or empty.
+        #[arg(long, value_delimiter = ',')]
+        material: Vec<String>,
+        /// Resources as "type:label:url" — video, hw, or discussion only
         #[arg(long, value_delimiter = ',')]
         resource: Vec<String>,
         /// Sort order (auto-increments if omitted)
@@ -900,10 +900,10 @@ enum CourseCommand {
         /// Topic
         #[arg(short, long)]
         topic: Option<String>,
-        /// Readings
-        #[arg(short, long)]
-        readings: Option<String>,
-        /// Resources as "type:label:url" (replaces all resources)
+        /// Materials as "kind:label:url" (replaces all materials)
+        #[arg(long, value_delimiter = ',')]
+        material: Vec<String>,
+        /// Resources as "type:label:url" (replaces all resources) — video, hw, discussion only
         #[arg(long, value_delimiter = ',')]
         resource: Vec<String>,
     },
@@ -2428,15 +2428,14 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
                         let sid = s["id"].as_str().unwrap_or("?");
                         let order = s["sort_order"].as_i64().unwrap_or(0);
                         let topic = s["topic"].as_str().unwrap_or("-");
-                        let readings = s["readings"].as_str().unwrap_or("");
+                        let materials = s["materials"].as_array();
                         let res = s["resources"].as_array();
+                        let mat_flag = if materials.map_or(false, |m| !m.is_empty()) { "📘" } else { "" };
                         let video = if res.map_or(false, |r| r.iter().any(|x| x["type"] == "video")) { "📹" } else { "" };
-                        let notes = if res.map_or(false, |r| r.iter().any(|x| x["type"] == "notes")) { "📝" } else { "" };
                         let hw = if res.map_or(false, |r| r.iter().any(|x| x["type"] == "hw")) { "📋" } else { "" };
                         print!("  {order}. {topic}");
-                        if !readings.is_empty() { print!("  [{readings}]"); }
+                        if !mat_flag.is_empty() { print!(" {mat_flag}"); }
                         if !video.is_empty() { print!(" {video}"); }
-                        if !notes.is_empty() { print!(" {notes}"); }
                         if !hw.is_empty() { print!(" {hw}"); }
 
                         // Show tags
@@ -2508,7 +2507,21 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             println!("Updated course {id}");
         }
 
-        CourseCommand::AddSession { course_id, topic, date, readings, resource, order, tags, prereqs } => {
+        CourseCommand::AddSession { course_id, topic, date, material, resource, order, tags, prereqs } => {
+            let materials: Vec<serde_json::Value> = material.iter().filter_map(|s| {
+                let parts: Vec<&str> = s.splitn(3, ':').collect();
+                match parts.len() {
+                    3 => {
+                        let kind = if parts[0].is_empty() { serde_json::Value::Null } else { serde_json::Value::String(parts[0].to_string()) };
+                        Some(serde_json::json!({"kind": kind, "label": parts[1], "url": parts[2]}))
+                    }
+                    2 => {
+                        let kind = if parts[0].is_empty() { serde_json::Value::Null } else { serde_json::Value::String(parts[0].to_string()) };
+                        Some(serde_json::json!({"kind": kind, "label": parts[1]}))
+                    }
+                    _ => None,
+                }
+            }).collect();
             let resources: Vec<serde_json::Value> = resource.iter().filter_map(|s| {
                 let parts: Vec<&str> = s.splitn(3, ':').collect();
                 if parts.len() == 3 {
@@ -2519,7 +2532,7 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             let body = serde_json::json!({
                 "topic": topic,
                 "date": date,
-                "readings": readings,
+                "materials": materials,
                 "resources": resources,
                 "sort_order": order,
             });
@@ -2565,11 +2578,27 @@ async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Re
             }
         }
 
-        CourseCommand::UpdateSession { course_id, session_id, topic, readings, resource } => {
+        CourseCommand::UpdateSession { course_id, session_id, topic, material, resource } => {
             let mut body = serde_json::json!({
                 "topic": topic,
-                "readings": readings,
             });
+            if !material.is_empty() {
+                let materials: Vec<serde_json::Value> = material.iter().filter_map(|s| {
+                    let parts: Vec<&str> = s.splitn(3, ':').collect();
+                    match parts.len() {
+                        3 => {
+                            let kind = if parts[0].is_empty() { serde_json::Value::Null } else { serde_json::Value::String(parts[0].to_string()) };
+                            Some(serde_json::json!({"kind": kind, "label": parts[1], "url": parts[2]}))
+                        }
+                        2 => {
+                            let kind = if parts[0].is_empty() { serde_json::Value::Null } else { serde_json::Value::String(parts[0].to_string()) };
+                            Some(serde_json::json!({"kind": kind, "label": parts[1]}))
+                        }
+                        _ => None,
+                    }
+                }).collect();
+                body["materials"] = serde_json::json!(materials);
+            }
             if !resource.is_empty() {
                 let resources: Vec<serde_json::Value> = resource.iter().filter_map(|s| {
                     let parts: Vec<&str> = s.splitn(3, ':').collect();
