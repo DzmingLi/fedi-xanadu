@@ -276,8 +276,13 @@ pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64
 }
 
 pub async fn list_editions(pool: &PgPool, book_id: &str) -> crate::Result<Vec<BookEdition>> {
+    // Newest edition first (by year). NULL years sink to the bottom, and ties
+    // fall back to insertion order so a multi-volume set keeps Vol I above
+    // Vol II. Year is stored as text but all current values are 4-digit years,
+    // so a numeric cast is safe and gives correct chronological ordering.
     let rows = sqlx::query_as::<_, BookEdition>(
-        "SELECT * FROM book_editions WHERE book_id = $1 ORDER BY created_at",
+        "SELECT * FROM book_editions WHERE book_id = $1 \
+         ORDER BY NULLIF(year, '')::int DESC NULLS LAST, created_at",
     )
     .bind(book_id)
     .fetch_all(pool)
