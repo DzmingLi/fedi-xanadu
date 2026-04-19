@@ -1125,7 +1125,22 @@
       {#each detail.editions as ed}
         <div class="edition-card">
           {#if ed.cover_url}
-            <img src={ed.cover_url} alt={ed.edition_name || ''} class="edition-cover" />
+            <img
+              src={ed.cover_url}
+              alt=""
+              class="edition-cover"
+              onerror={(e) => {
+                const img = e.currentTarget as HTMLImageElement;
+                img.classList.add('broken');
+                // Swap into an explicit error slot so the problem is visible
+                // instead of showing a stray alt string in the empty image box.
+                const slot = img.nextElementSibling as HTMLElement | null;
+                if (slot?.classList.contains('edition-cover-error')) slot.hidden = false;
+                img.hidden = true;
+                console.error('edition cover failed to load', { edition: ed.id, url: ed.cover_url });
+              }}
+            />
+            <div class="edition-cover-error" hidden>{t('books.coverLoadError') || 'Cover failed to load'}: {ed.cover_url}</div>
           {/if}
           <div class="edition-top">
             <strong>{editionFullTitle(ed)}</strong>
@@ -1688,6 +1703,15 @@
     object-fit: contain;
     border-radius: 3px;
     margin-bottom: 8px;
+  }
+  .edition-cover-error {
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border: 1px dashed var(--danger, #c0392b);
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--danger, #c0392b);
+    word-break: break-all;
   }
   .edition-top {
     display: flex;

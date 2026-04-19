@@ -739,6 +739,7 @@ export default {
   'books.askContentPlaceholder': '补充细节（可选）...',
   'books.setAsCover': '使用此封面',
   'books.uploadCover': '上传封面',
+  'books.coverLoadError': '封面加载失败',
   'books.uploadingCover': '上传中...',
   'books.coverTooLarge': '封面过大（最大 5MB）',
   'books.coverWrongType': '请使用 JPG、PNG 或 WebP 格式',

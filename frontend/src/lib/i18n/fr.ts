@@ -739,6 +739,7 @@ export default {
   'books.askContentPlaceholder': 'Ajouter des détails (optionnel)...',
   'books.setAsCover': 'Utiliser cette couverture',
   'books.uploadCover': 'Téléverser une couverture',
+  'books.coverLoadError': 'Échec du chargement de la couverture',
   'books.uploadingCover': 'Téléversement...',
   'books.coverTooLarge': 'Couverture trop volumineuse (max 5 Mo)',
   'books.coverWrongType': 'Utilisez JPG, PNG ou WebP',
