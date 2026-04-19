@@ -18,21 +18,26 @@ pub fn router(state: AppState, config: &Config) -> Router {
     // CORS: explicit origin whitelist, never permissive
     let cors = build_cors_layer(config);
 
-    // Rate limiting: burst 600, refill 4/s per real client IP
-    // Uses SmartIpKeyExtractor to read X-Forwarded-For/X-Real-IP from Caddy,
-    // instead of peer IP (which is always 127.0.0.1 behind the reverse proxy).
-    let governor_conf = std::sync::Arc::new(
+    // Rate limit only the /api/* tree, not static assets. A single SPA page
+    // load pulls ~50 JS chunks + many images; counting them against the same
+    // bucket as API calls starves real requests.
+    //
+    // SmartIpKeyExtractor reads X-Forwarded-For / X-Real-IP from Caddy, so
+    // the per-IP bucket is keyed on the actual client rather than 127.0.0.1.
+    let api_governor_conf = std::sync::Arc::new(
         tower_governor::governor::GovernorConfigBuilder::default()
             .key_extractor(tower_governor::key_extractor::SmartIpKeyExtractor)
-            .per_second(20)
-            .burst_size(600)
+            .per_second(50)
+            .burst_size(1500)
             .finish()
             .expect("invalid rate limiter config"),
     );
-    let governor_limiter = tower_governor::GovernorLayer::new(governor_conf);
+    let api_governor = tower_governor::GovernorLayer::new(api_governor_conf);
+
+    let api_routes = api::routes().layer(api_governor);
 
     Router::new()
-        .nest("/api", api::routes())
+        .nest("/api", api_routes)
         .route("/sitemap.xml", axum::routing::get(sitemap_handler))
         .route("/feed/{filename}", axum::routing::get(rss_feed_handler))
         .fallback_service(spa)
@@ -40,7 +45,6 @@ pub fn router(state: AppState, config: &Config) -> Router {
         .layer(TraceLayer::new_for_http())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(cors)
-        .layer(governor_limiter)
         // Override axum's default 2MB body limit; use tower-http's 256MB limit instead
         .layer(axum::extract::DefaultBodyLimit::max(256 * 1024 * 1024))
         .layer(RequestBodyLimitLayer::new(256 * 1024 * 1024))
