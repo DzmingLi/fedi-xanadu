@@ -797,6 +797,7 @@ export default {
 
   // Course
   'course.calendar': 'Calendar',
+  'course.discussion': 'Discussion',
   'course.topic': 'Topic',
   'course.readings': 'Readings',
   'course.video': 'Video',
@@ -805,7 +806,6 @@ export default {
   'course.writeNote': 'Write a note',
   'course.noNotes': 'No notes yet.',
   'course.onLecture': 'Lecture',
-  'course.discussion': 'Discussion',
   'course.syllabus': 'Syllabus',
   'course.textbooks': 'Textbooks',
   'course.staff': 'Staff',

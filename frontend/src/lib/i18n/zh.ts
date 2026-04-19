@@ -797,6 +797,7 @@ export default {
 
   // Course
   'course.calendar': '课程日历',
+  'course.discussion': '讨论课',
   'course.topic': '主题',
   'course.readings': '阅读材料',
   'course.video': '视频',
@@ -805,7 +806,6 @@ export default {
   'course.writeNote': '写笔记',
   'course.noNotes': '暂无笔记。',
   'course.onLecture': '第',
-  'course.discussion': '讨论',
   'course.syllabus': '教学大纲',
   'course.textbooks': '教材',
   'course.staff': '教学团队',

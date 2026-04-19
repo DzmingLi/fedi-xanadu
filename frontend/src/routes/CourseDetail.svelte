@@ -95,8 +95,9 @@
   let hasReadings = $derived(detail?.sessions.some(s => s.readings) ?? false);
   let hasVideo = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'video')) ?? false);
   let hasNotes = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'notes')) ?? false);
-  let hasHw = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'hw' || r.type === 'discussion')) ?? false);
-  let colCount = $derived(2 + (hasReadings ? 1 : 0) + (hasVideo ? 1 : 0) + (hasNotes ? 1 : 0) + (hasHw ? 1 : 0));
+  let hasHw = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'hw')) ?? false);
+  let hasDiscussion = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'discussion')) ?? false);
+  let colCount = $derived(2 + (hasReadings ? 1 : 0) + (hasVideo ? 1 : 0) + (hasNotes ? 1 : 0) + (hasHw ? 1 : 0) + (hasDiscussion ? 1 : 0));
 
   // Helper to get resources by type
   function getResources(session: import('./lib/types').CourseSession, type: string) {
@@ -237,6 +238,7 @@
                   {#if hasReadings}<th>{t('course.readings')}</th>{/if}
                   {#if hasVideo}<th>{t('course.video')}</th>{/if}
                   {#if hasNotes}<th>{t('course.notes')}</th>{/if}
+                  {#if hasDiscussion}<th>{t('course.discussion') || 'Discussion'}</th>{/if}
                   {#if hasHw}<th>{t('course.hw')}</th>{/if}
                 </tr>
               </thead>
@@ -288,13 +290,17 @@
                           {/each}
                         </td>
                       {/if}
+                      {#if hasDiscussion}
+                        <td class="session-disc">
+                          {#each getResources(s, 'discussion') as r}
+                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {r.label}</a>
+                          {/each}
+                        </td>
+                      {/if}
                       {#if hasHw}
                         <td class="session-hw">
                           {#each getResources(s, 'hw') as r}
                             <a href={r.url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {r.label}</a>
-                          {/each}
-                          {#each getResources(s, 'discussion') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {r.label}</a>
                           {/each}
                         </td>
                       {/if}
