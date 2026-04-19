@@ -242,10 +242,13 @@ pub async fn merge_tag(pool: &PgPool, from_id: &str, into_id: &str) -> Result<()
 /// Search tags by prefix/substring match on id and name.
 pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<Tag>> {
     let pattern = format!("%{query}%");
+    // EXISTS (not LEFT JOIN + DISTINCT) so the ORDER BY CASE expression is
+    // allowed — Postgres requires every ORDER BY expression to appear in the
+    // select list under SELECT DISTINCT.
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT DISTINCT t.id, t.name, t.names, t.description, t.created_by, t.created_at FROM tags t \
-         LEFT JOIN tag_aliases a ON a.tag_id = t.id \
-         WHERE t.id ILIKE $1 OR t.name ILIKE $1 OR a.alias ILIKE $1 \
+        "SELECT t.id, t.name, t.names, t.description, t.created_by, t.created_at FROM tags t \
+         WHERE t.id ILIKE $1 OR t.name ILIKE $1 \
+            OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.tag_id = t.id AND a.alias ILIKE $1) \
          ORDER BY CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END, t.name \
          LIMIT $4",
     )
