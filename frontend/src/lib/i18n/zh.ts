@@ -56,6 +56,11 @@ export default {
   'nav.creator': '创作中心',
   'nav.notifications': '通知',
 
+  // Search page
+  'search.typeToSearch': '输入关键词以搜索文章。',
+  'search.noResults': '没有匹配结果。',
+  'search.resultsSuffix': '条结果',
+
   // Creator Dashboard
   'creator.articles': '文章',
   'creator.series': '系列',
@@ -813,6 +818,7 @@ export default {
   'course.onLecture': '第',
   'course.syllabus': '教学大纲',
   'course.textbooks': '教材',
+  'course.recommendedReading': '推荐读物',
   'course.staff': '教学团队',
   'course.prerequisites': '先修课程',
   'course.skillTrees': '技能树',

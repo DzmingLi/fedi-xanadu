@@ -375,20 +375,32 @@
       </div>
 
       <div class="body-side">
-        {#if detail.textbooks.length > 0}
+        {#snippet bookCard(tb: (typeof detail.textbooks)[number])}
+          <a href="/book?id={encodeURIComponent(tb.book_id)}" class="textbook-card">
+            {#if tb.cover_url}
+              <img src={tb.cover_url} alt="" class="textbook-cover" />
+            {/if}
+            <div class="textbook-info">
+              <span class="textbook-title">{loc(tb.title)}</span>
+              <span class="textbook-authors">{tb.authors.join(', ')}</span>
+            </div>
+          </a>
+        {/snippet}
+
+        {#if detail.textbooks.some(t => t.role === 'required')}
           <section class="textbooks">
             <h3>{t('course.textbooks')}</h3>
-            {#each detail.textbooks as tb}
-              <a href="/book?id={encodeURIComponent(tb.book_id)}" class="textbook-card">
-                {#if tb.cover_url}
-                  <img src={tb.cover_url} alt="" class="textbook-cover" />
-                {/if}
-                <div class="textbook-info">
-                  <span class="textbook-title">{loc(tb.title)}</span>
-                  <span class="textbook-authors">{tb.authors.join(', ')}</span>
-                  <span class="textbook-role">{tb.role}</span>
-                </div>
-              </a>
+            {#each detail.textbooks.filter(t => t.role === 'required') as tb}
+              {@render bookCard(tb)}
+            {/each}
+          </section>
+        {/if}
+
+        {#if detail.textbooks.some(t => t.role !== 'required')}
+          <section class="textbooks">
+            <h3>{t('course.recommendedReading')}</h3>
+            {#each detail.textbooks.filter(t => t.role !== 'required') as tb}
+              {@render bookCard(tb)}
             {/each}
           </section>
         {/if}

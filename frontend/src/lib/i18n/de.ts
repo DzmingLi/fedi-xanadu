@@ -56,6 +56,11 @@ export default {
   'nav.creator': 'Creator',
   'nav.notifications': 'Benachrichtigungen',
 
+  // Search page
+  'search.typeToSearch': 'Gib einen Suchbegriff ein, um Artikel zu suchen.',
+  'search.noResults': 'Keine Ergebnisse.',
+  'search.resultsSuffix': 'Ergebnisse',
+
   // Creator Dashboard
   'creator.articles': 'Artikel',
   'creator.series': 'Serien',
@@ -813,6 +818,7 @@ export default {
   'course.onLecture': 'Vorlesung',
   'course.syllabus': 'Modulhandbuch',
   'course.textbooks': 'Lehrbücher',
+  'course.recommendedReading': 'Empfohlene Lektüre',
   'course.staff': 'Lehrende',
   'course.prerequisites': 'Voraussetzungen',
   'course.skillTrees': 'Fähigkeitsbäume',
