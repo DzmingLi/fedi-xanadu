@@ -376,6 +376,32 @@
             {/each}
           </section>
         {/if}
+
+        <section class="qa-summary">
+          <h3>
+            {t('course.qa')}
+            <span class="qa-count">{topComments.length}</span>
+          </h3>
+          {#if topComments.length === 0}
+            <p class="qa-empty">{t('course.noDiscussions')}</p>
+          {:else}
+            {#each topComments.slice(0, 5) as c}
+              <a href="#qa-full" class="qa-item">
+                <span class="qa-body">{c.body}</span>
+                <span class="qa-meta">
+                  <span class="qa-author">{c.author_handle || c.did.slice(0, 12)}</span>
+                  <span class="qa-replies">{replies(c.id).length} {t('course.reply')}</span>
+                </span>
+              </a>
+            {/each}
+            {#if topComments.length > 5}
+              <a href="#qa-full" class="qa-more">{t('course.qa')} ({topComments.length}) →</a>
+            {/if}
+          {/if}
+          {#if getAuth()}
+            <a href="#qa-full" class="qa-ask-btn">{t('course.askQuestion')}</a>
+          {/if}
+        </section>
       </div>
     </div>
 
@@ -444,7 +470,7 @@
     </section>
 
     <!-- Q&A Discussion -->
-    <section class="qa-section">
+    <section class="qa-section" id="qa-full">
       <h2>{t('course.qa')}</h2>
 
       <!-- Section filter -->
@@ -570,6 +596,21 @@
   .series-role { font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; display: block; margin-bottom: 2px; }
   .series-title { font-family: var(--font-serif); font-size: 1.05rem; display: block; }
   .series-desc { font-size: 13px; color: var(--text-secondary); display: block; margin-top: 4px; }
+
+  .qa-summary { margin-bottom: 20px; }
+  .qa-summary h3 { font-family: var(--font-serif); font-weight: 400; font-size: 0.95rem; margin: 0 0 8px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+  .qa-count { font-size: 12px; color: var(--text-hint); font-weight: 400; }
+  .qa-empty { font-size: 12px; color: var(--text-hint); margin: 4px 0 8px; }
+  .qa-item { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 6px; text-decoration: none; color: inherit; transition: border-color 0.15s; }
+  .qa-item:hover { border-color: var(--accent); text-decoration: none; }
+  .qa-body { font-size: 12px; color: var(--text-primary); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .qa-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-hint); }
+  .qa-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .qa-replies { flex-shrink: 0; margin-left: 6px; }
+  .qa-more { display: block; font-size: 12px; color: var(--accent); text-decoration: none; margin-top: 4px; }
+  .qa-more:hover { text-decoration: underline; }
+  .qa-ask-btn { display: inline-block; margin-top: 6px; padding: 4px 10px; font-size: 12px; background: var(--accent); color: white; border-radius: 3px; text-decoration: none; }
+  .qa-ask-btn:hover { opacity: 0.9; text-decoration: none; }
 
   .textbooks { margin-bottom: 20px; }
   .textbooks h3 { font-family: var(--font-serif); font-weight: 400; font-size: 0.95rem; margin: 0 0 8px; color: var(--text-secondary); }
