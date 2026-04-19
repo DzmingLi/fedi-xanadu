@@ -92,7 +92,7 @@
   let replies = $derived((parentId: string) => comments.filter(c => c.parent_id === parentId));
 
   // Detect which resource types exist across all sessions
-  let hasReadings = $derived(detail?.sessions.some(s => s.readings) ?? false);
+  let hasReadings = $derived(detail?.sessions.some(s => s.readings || (s.reading_refs?.length ?? 0) > 0) ?? false);
   let hasVideo = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'video')) ?? false);
   let hasNotes = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'notes')) ?? false);
   let hasHw = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'hw')) ?? false);
@@ -266,11 +266,18 @@
                         <td class="session-readings">
                           {#if s.readings}
                             {#if s.readings.startsWith('/')}
-                              <a href={s.readings} class="res-link res-notes">&#128196; {t('course.notes')}</a>
+                              <a href={s.readings} class="res-link res-reading">&#128214; {t('course.readings')}</a>
                             {:else}
                               <span class="res-reading">{s.readings}</span>
                             {/if}
                           {/if}
+                          {#each s.reading_refs ?? [] as r}
+                            {#if r.url}
+                              <a href={r.url} target="_blank" rel="noopener" class="res-link res-reading">&#128214; {r.label}</a>
+                            {:else}
+                              <span class="res-reading">{r.label}</span>
+                            {/if}
+                          {/each}
                         </td>
                       {/if}
                       {#if hasVideo}

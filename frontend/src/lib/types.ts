@@ -740,6 +740,11 @@ export interface SessionResource {
   label: string;
 }
 
+export interface ReadingRef {
+  label: string;
+  url?: string | null;
+}
+
 export interface CourseSession {
   id: string;
   course_id: string;
@@ -747,6 +752,7 @@ export interface CourseSession {
   topic?: string | null;
   date?: string | null;
   readings?: string | null;
+  reading_refs: ReadingRef[];
   resources: SessionResource[];
   tags: CourseTag[];
   prereqs: CourseTag[];

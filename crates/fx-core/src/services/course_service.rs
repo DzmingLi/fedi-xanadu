@@ -103,6 +103,13 @@ pub struct SessionResource {
     pub label: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ReadingRef {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub url: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct CourseSessionRow {
     pub id: String,
@@ -111,6 +118,8 @@ pub struct CourseSessionRow {
     pub topic: Option<String>,
     pub date: Option<String>,
     pub readings: Option<String>,
+    #[sqlx(default)]
+    pub reading_refs: sqlx::types::Json<Vec<ReadingRef>>,
     pub resources: sqlx::types::Json<Vec<SessionResource>>,
 }
 
@@ -238,7 +247,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
 
     // Fetch sessions with their tags and prereqs
     let session_rows = sqlx::query_as::<_, CourseSessionRow>(
-        "SELECT id, course_id, sort_order, topic, date, readings, resources \
+        "SELECT id, course_id, sort_order, topic, date, readings, reading_refs, resources \
          FROM course_sessions WHERE course_id = $1 ORDER BY sort_order",
     ).bind(id).fetch_all(pool).await?;
 
@@ -441,6 +450,8 @@ pub struct CreateSession {
     pub date: Option<String>,
     pub readings: Option<String>,
     #[serde(default)]
+    pub reading_refs: Vec<ReadingRef>,
+    #[serde(default)]
     pub resources: Vec<SessionResource>,
     pub sort_order: Option<i32>,
 }
@@ -450,6 +461,7 @@ pub struct UpdateSession {
     pub topic: Option<String>,
     pub date: Option<String>,
     pub readings: Option<String>,
+    pub reading_refs: Option<Vec<ReadingRef>>,
     pub resources: Option<Vec<SessionResource>>,
     pub sort_order: Option<i32>,
 }
@@ -466,11 +478,12 @@ pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, in
     };
 
     sqlx::query(
-        "INSERT INTO course_sessions (id, course_id, sort_order, topic, date, readings, resources) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO course_sessions (id, course_id, sort_order, topic, date, readings, reading_refs, resources) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(session_id).bind(course_id).bind(sort_order)
     .bind(&input.topic).bind(&input.date).bind(&input.readings)
+    .bind(sqlx::types::Json(&input.reading_refs))
     .bind(sqlx::types::Json(&input.resources))
     .execute(pool).await?;
 
@@ -479,7 +492,7 @@ pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, in
 
 pub async fn get_session(pool: &PgPool, session_id: &str) -> crate::Result<CourseSessionRow> {
     sqlx::query_as::<_, CourseSessionRow>(
-        "SELECT id, course_id, sort_order, topic, date, readings, resources \
+        "SELECT id, course_id, sort_order, topic, date, readings, reading_refs, resources \
          FROM course_sessions WHERE id = $1",
     )
     .bind(session_id).fetch_one(pool).await
@@ -491,12 +504,13 @@ pub async fn update_session(pool: &PgPool, session_id: &str, input: &UpdateSessi
 
     sqlx::query(
         "UPDATE course_sessions SET \
-         topic = $1, date = $2, readings = $3, resources = $4, sort_order = $5 \
-         WHERE id = $6",
+         topic = $1, date = $2, readings = $3, reading_refs = $4, resources = $5, sort_order = $6 \
+         WHERE id = $7",
     )
     .bind(input.topic.as_ref().or(cur.topic.as_ref()))
     .bind(input.date.as_ref().or(cur.date.as_ref()))
     .bind(input.readings.as_ref().or(cur.readings.as_ref()))
+    .bind(sqlx::types::Json(input.reading_refs.as_ref().unwrap_or(&cur.reading_refs.0)))
     .bind(sqlx::types::Json(input.resources.as_ref().unwrap_or(&cur.resources.0)))
     .bind(input.sort_order.unwrap_or(cur.sort_order))
     .bind(session_id)
