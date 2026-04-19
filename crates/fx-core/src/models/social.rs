@@ -46,6 +46,7 @@ pub struct Comment {
     pub did: String,
     pub author_handle: Option<String>,
     pub parent_id: Option<String>,
+    pub title: Option<String>,
     pub body: String,
     pub quote_text: Option<String>,
     pub section_ref: Option<String>,

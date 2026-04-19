@@ -62,7 +62,11 @@ pub struct CourseDetailResponse {
     pub prerequisites: Vec<CoursePrereqRow>,
     pub rating: CourseRatingStats,
     pub reviews: Vec<CourseReviewRow>,
+    pub review_count: i64,
     pub notes: Vec<CourseReviewRow>,
+    pub note_count: i64,
+    pub discussions: Vec<crate::models::Comment>,
+    pub discussion_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -301,11 +305,20 @@ pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseD
     ).bind(id).fetch_all(pool).await?;
 
     let rating = get_rating_stats(pool, id).await?;
-    let reviews = get_course_reviews(pool, id).await?;
-    let notes = get_course_notes(pool, id).await?;
+    let reviews = list_course_articles_by_category(pool, id, "review", 5, 0).await?;
+    let review_count = count_course_articles_by_category(pool, id, "review").await?;
+    let notes = list_course_articles_by_category(pool, id, "note", 5, 0).await?;
+    let note_count = count_course_articles_by_category(pool, id, "note").await?;
+
+    let course_uri = format!("course:{id}");
+    let discussions = crate::services::comment_service::list_top_comments(pool, &course_uri, 5, 0).await?;
+    let discussion_count = crate::services::comment_service::count_top_comments(pool, &course_uri).await?;
 
     let authors = list_course_authors(pool, id).await?;
-    Ok(CourseDetailResponse { course, syllabus, authors, sessions, textbooks, tags, series, skill_trees, prerequisites, rating, reviews, notes })
+    Ok(CourseDetailResponse {
+        course, syllabus, authors, sessions, textbooks, tags, series, skill_trees, prerequisites,
+        rating, reviews, review_count, notes, note_count, discussions, discussion_count,
+    })
 }
 
 pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<CourseListRow>> {
@@ -669,8 +682,8 @@ pub struct CourseReviewRow {
     pub comment_count: i64,
 }
 
-async fn get_course_articles_by_category(
-    pool: &PgPool, course_id: &str, category: &str,
+pub async fn list_course_articles_by_category(
+    pool: &PgPool, course_id: &str, category: &str, limit: i64, offset: i64,
 ) -> crate::Result<Vec<CourseReviewRow>> {
     Ok(sqlx::query_as::<_, CourseReviewRow>(
         "SELECT a.at_uri, a.title, a.summary, a.did, \
@@ -681,14 +694,15 @@ async fn get_course_articles_by_category(
          FROM articles a \
          LEFT JOIN profiles p ON p.did = a.did \
          WHERE a.course_id = $1 AND a.category = $2 \
-         ORDER BY vote_score DESC, a.created_at DESC"
-    ).bind(course_id).bind(category).fetch_all(pool).await?)
+         ORDER BY vote_score DESC, a.created_at DESC \
+         LIMIT $3 OFFSET $4"
+    ).bind(course_id).bind(category).bind(limit).bind(offset).fetch_all(pool).await?)
 }
 
-pub async fn get_course_reviews(pool: &PgPool, course_id: &str) -> crate::Result<Vec<CourseReviewRow>> {
-    get_course_articles_by_category(pool, course_id, "review").await
-}
-
-pub async fn get_course_notes(pool: &PgPool, course_id: &str) -> crate::Result<Vec<CourseReviewRow>> {
-    get_course_articles_by_category(pool, course_id, "note").await
+pub async fn count_course_articles_by_category(
+    pool: &PgPool, course_id: &str, category: &str,
+) -> crate::Result<i64> {
+    Ok(sqlx::query_scalar(
+        "SELECT COUNT(*) FROM articles WHERE course_id = $1 AND category = $2",
+    ).bind(course_id).bind(category).fetch_one(pool).await?)
 }

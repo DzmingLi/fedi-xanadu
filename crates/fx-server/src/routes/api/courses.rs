@@ -276,10 +276,57 @@ pub async fn rate_course(
     Ok(Json(stats))
 }
 
+#[derive(Deserialize)]
+pub struct PageQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(serde::Serialize)]
+pub struct PagedReviews {
+    pub items: Vec<CourseReviewRow>,
+    pub total: i64,
+}
+
+#[derive(serde::Serialize)]
+pub struct PagedDiscussions {
+    pub items: Vec<fx_core::models::Comment>,
+    pub total: i64,
+}
+
 pub async fn get_reviews(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> ApiResult<Json<Vec<CourseReviewRow>>> {
-    let reviews = course_service::get_course_reviews(&state.pool, &id).await?;
-    Ok(Json(reviews))
+    Query(q): Query<PageQuery>,
+) -> ApiResult<Json<PagedReviews>> {
+    let limit = q.limit.unwrap_or(30).clamp(1, 200);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let items = course_service::list_course_articles_by_category(&state.pool, &id, "review", limit, offset).await?;
+    let total = course_service::count_course_articles_by_category(&state.pool, &id, "review").await?;
+    Ok(Json(PagedReviews { items, total }))
+}
+
+pub async fn get_notes(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<PageQuery>,
+) -> ApiResult<Json<PagedReviews>> {
+    let limit = q.limit.unwrap_or(30).clamp(1, 200);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let items = course_service::list_course_articles_by_category(&state.pool, &id, "note", limit, offset).await?;
+    let total = course_service::count_course_articles_by_category(&state.pool, &id, "note").await?;
+    Ok(Json(PagedReviews { items, total }))
+}
+
+pub async fn get_discussions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<PageQuery>,
+) -> ApiResult<Json<PagedDiscussions>> {
+    let limit = q.limit.unwrap_or(30).clamp(1, 200);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let course_uri = format!("course:{id}");
+    let items = fx_core::services::comment_service::list_top_comments(&state.pool, &course_uri, limit, offset).await?;
+    let total = fx_core::services::comment_service::count_top_comments(&state.pool, &course_uri).await?;
+    Ok(Json(PagedDiscussions { items, total }))
 }

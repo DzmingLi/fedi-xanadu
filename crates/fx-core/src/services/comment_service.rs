@@ -5,7 +5,7 @@ use crate::Result;
 use crate::Error;
 
 const COMMENT_SELECT: &str = "\
-    SELECT c.id, c.content_uri, c.did, p.handle AS author_handle, c.parent_id, c.body, c.quote_text, \
+    SELECT c.id, c.content_uri, c.did, p.handle AS author_handle, c.parent_id, c.title, c.body, c.quote_text, \
     c.section_ref, \
     COALESCE((SELECT SUM(value) FROM comment_votes WHERE comment_id = c.id), 0) AS vote_score, \
     c.created_at, c.updated_at \
@@ -40,22 +40,58 @@ pub async fn list_comments(pool: &PgPool, content_uri: &str, section_ref: Option
     Ok(comments)
 }
 
+/// List top-level comments (no replies) for a given content, ordered by
+/// vote score then creation time, with pagination. Used by course/book
+/// discussion summaries + full listing pages.
+pub async fn list_top_comments(
+    pool: &PgPool,
+    content_uri: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Comment>> {
+    let comments = sqlx::query_as::<_, Comment>(
+        &format!(
+            "{COMMENT_SELECT} WHERE c.content_uri = $1 AND c.parent_id IS NULL \
+             ORDER BY vote_score DESC, c.created_at DESC LIMIT $2 OFFSET $3"
+        ),
+    )
+    .bind(content_uri)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(comments)
+}
+
+/// Count top-level comments for a given content.
+pub async fn count_top_comments(pool: &PgPool, content_uri: &str) -> Result<i64> {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM comments WHERE content_uri = $1 AND parent_id IS NULL",
+    )
+    .bind(content_uri)
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
 pub async fn create_comment(
     pool: &PgPool,
     id: &str,
     content_uri: &str,
     did: &str,
+    title: Option<&str>,
     body: &str,
     parent_id: Option<&str>,
     quote_text: Option<&str>,
     section_ref: Option<&str>,
 ) -> Result<Comment> {
     sqlx::query(
-        "INSERT INTO comments (id, content_uri, did, body, parent_id, quote_text, section_ref) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO comments (id, content_uri, did, title, body, parent_id, quote_text, section_ref) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(id)
     .bind(content_uri)
     .bind(did)
+    .bind(title)
     .bind(body)
     .bind(parent_id)
     .bind(quote_text)

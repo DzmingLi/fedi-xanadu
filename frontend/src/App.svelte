@@ -76,6 +76,9 @@
   const lazyNewListing = () => import('./routes/NewListing.svelte');
   const lazyCourses = () => import('./routes/Courses.svelte');
   const lazyCourseDetail = () => import('./routes/CourseDetail.svelte');
+  const lazyCourseReviews = () => import('./routes/CourseReviews.svelte');
+  const lazyCourseNotes = () => import('./routes/CourseNotes.svelte');
+  const lazyCourseDiscussions = () => import('./routes/CourseDiscussions.svelte');
   const lazyNewCourse = () => import('./routes/NewCourse.svelte');
   const lazyPublications = () => import('./routes/Publications.svelte');
   const lazyPublicationDetail = () => import('./routes/PublicationDetail.svelte');
@@ -153,6 +156,33 @@
   </div>
   <div class="profile-container">
     {#await lazyCourseDetail() then mod}
+      <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{:else if route.page === 'course-reviews'}
+  <div class="profile-nav">
+    <NavBar />
+  </div>
+  <div class="profile-container">
+    {#await lazyCourseReviews() then mod}
+      <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{:else if route.page === 'course-notes'}
+  <div class="profile-nav">
+    <NavBar />
+  </div>
+  <div class="profile-container">
+    {#await lazyCourseNotes() then mod}
+      <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{:else if route.page === 'course-discussions'}
+  <div class="profile-nav">
+    <NavBar />
+  </div>
+  <div class="profile-container">
+    {#await lazyCourseDiscussions() then mod}
       <mod.default id={route.params.id || ''} />
     {/await}
   </div>

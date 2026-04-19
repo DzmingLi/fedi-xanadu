@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getCourseDetail, rateCourse, listComments, createComment, voteComment } from '../lib/api';
+  import { getCourseDetail, rateCourse } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
 
@@ -10,7 +10,7 @@
     return field[locale] || field['en'] || field['zh'] || Object.values(field)[0] || '';
   }
   import { marked } from 'marked';
-  import type { CourseDetail, Comment } from '../lib/types';
+  import type { CourseDetail } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
   let detail = $state<CourseDetail | null>(null);
@@ -25,13 +25,6 @@
   let myRating = $state(0);
   let hoverRating = $state(0);
 
-  // Comments / Q&A state
-  let comments = $state<Comment[]>([]);
-  let newComment = $state('');
-  let replyTo = $state<string | null>(null);
-  let replyText = $state('');
-  let selectedSection = $state<string | null>(null);
-
   $effect(() => {
     if (!id) return;
     loading = true;
@@ -45,9 +38,6 @@
       })
       .catch(e => { error = e.message; })
       .finally(() => { loading = false; });
-
-    // Load comments
-    loadComments();
   });
 
   let syllabusHtml = $derived(detail?.syllabus ? marked.parse(detail.syllabus) as string : '');
@@ -62,34 +52,6 @@
     avgRating = stats.avg_rating;
     ratingCount = stats.rating_count;
   }
-
-  async function loadComments() {
-    comments = await listComments(`course:${id}`, selectedSection ?? undefined).catch(() => []);
-  }
-
-  async function selectSection(ref: string | null) {
-    selectedSection = ref;
-    await loadComments();
-  }
-
-  async function postComment() {
-    if (!newComment.trim()) return;
-    const c = await createComment(`course:${id}`, newComment.trim(), undefined, undefined, selectedSection ?? undefined);
-    comments = [c, ...comments];
-    newComment = '';
-  }
-
-  async function postReply(parentId: string) {
-    if (!replyText.trim()) return;
-    const c = await createComment(`course:${id}`, replyText.trim(), parentId, undefined, selectedSection ?? undefined);
-    comments = [c, ...comments];
-    replyText = '';
-    replyTo = null;
-  }
-
-  // Separate top-level and replies
-  let topComments = $derived(comments.filter(c => !c.parent_id));
-  let replies = $derived((parentId: string) => comments.filter(c => c.parent_id === parentId));
 
   // Detect which resource types exist across all sessions
   let hasReadings = $derived(detail?.sessions.some(s => s.readings || (s.reading_refs?.length ?? 0) > 0) ?? false);
@@ -380,26 +342,25 @@
         <section class="qa-summary">
           <h3>
             {t('course.qa')}
-            <span class="qa-count">{topComments.length}</span>
+            <span class="qa-count">{detail.discussion_count}</span>
           </h3>
-          {#if topComments.length === 0}
+          {#if detail.discussions.length === 0}
             <p class="qa-empty">{t('course.noDiscussions')}</p>
           {:else}
-            {#each topComments.slice(0, 5) as c}
-              <a href="#qa-full" class="qa-item">
-                <span class="qa-body">{c.body}</span>
+            {#each detail.discussions as c}
+              <a href="/course-discussions?id={encodeURIComponent(id)}#c-{c.id}" class="qa-item" title={c.title || c.body}>
+                <span class="qa-body">{c.title || c.body.split('\n')[0]}</span>
                 <span class="qa-meta">
                   <span class="qa-author">{c.author_handle || c.did.slice(0, 12)}</span>
-                  <span class="qa-replies">{replies(c.id).length} {t('course.reply')}</span>
                 </span>
               </a>
             {/each}
-            {#if topComments.length > 5}
-              <a href="#qa-full" class="qa-more">{t('course.qa')} ({topComments.length}) →</a>
+            {#if detail.discussion_count > detail.discussions.length}
+              <a href="/course-discussions?id={encodeURIComponent(id)}" class="qa-more">{t('course.viewAll')} ({detail.discussion_count}) →</a>
             {/if}
           {/if}
           {#if getAuth()}
-            <a href="#qa-full" class="qa-ask-btn">{t('course.askQuestion')}</a>
+            <a href="/course-discussions?id={encodeURIComponent(id)}#new" class="qa-ask-btn">{t('course.askQuestion')}</a>
           {/if}
         </section>
       </div>
@@ -434,6 +395,9 @@
             </div>
           </a>
         {/each}
+        {#if detail.review_count > detail.reviews.length}
+          <a href="/course-reviews?id={encodeURIComponent(id)}" class="view-all">{t('course.viewAll')} ({detail.review_count}) →</a>
+        {/if}
       {/if}
     </section>
 
@@ -466,62 +430,9 @@
             </div>
           </a>
         {/each}
-      {/if}
-    </section>
-
-    <!-- Q&A Discussion -->
-    <section class="qa-section" id="qa-full">
-      <h2>{t('course.qa')}</h2>
-
-      <!-- Section filter -->
-      <div class="section-filter">
-        <button class="filter-btn" class:active={!selectedSection} onclick={() => selectSection(null)}>{t('course.allSessions')}</button>
-        {#each detail.sessions as s}
-          <button class="filter-btn" class:active={selectedSection === s.id} onclick={() => selectSection(s.id)}>
-            {s.sort_order}. {s.topic || ''}
-          </button>
-        {/each}
-      </div>
-
-      {#if getAuth()}
-        <div class="comment-form">
-          <textarea bind:value={newComment} placeholder={t('course.askQuestion')} rows="3"></textarea>
-          <button class="post-btn" onclick={postComment} disabled={!newComment.trim()}>{t('course.post')}</button>
-        </div>
-      {/if}
-      {#if topComments.length === 0}
-        <p class="meta">{t('course.noDiscussions')}</p>
-      {:else}
-        {#each topComments as c}
-          <div class="comment">
-            <div class="comment-header">
-              <a href="/profile?did={encodeURIComponent(c.did)}" class="comment-author">{c.author_handle || c.did.slice(0, 16)}</a>
-              <span class="comment-date">{new Date(c.created_at).toLocaleDateString()}</span>
-            </div>
-            <p class="comment-body">{c.body}</p>
-            <div class="comment-actions">
-              <span class="comment-score">{c.vote_score}</span>
-              {#if getAuth()}
-                <button class="reply-btn" onclick={() => { replyTo = replyTo === c.id ? null : c.id; }}>{t('course.reply')}</button>
-              {/if}
-            </div>
-            {#if replyTo === c.id}
-              <div class="reply-form">
-                <textarea bind:value={replyText} placeholder={t('course.reply')} rows="2"></textarea>
-                <button class="post-btn" onclick={() => postReply(c.id)} disabled={!replyText.trim()}>{t('course.post')}</button>
-              </div>
-            {/if}
-            {#each replies(c.id) as r}
-              <div class="comment reply">
-                <div class="comment-header">
-                  <a href="/profile?did={encodeURIComponent(r.did)}" class="comment-author">{r.author_handle || r.did.slice(0, 16)}</a>
-                  <span class="comment-date">{new Date(r.created_at).toLocaleDateString()}</span>
-                </div>
-                <p class="comment-body">{r.body}</p>
-              </div>
-            {/each}
-          </div>
-        {/each}
+        {#if detail.note_count > detail.notes.length}
+          <a href="/course-notes?id={encodeURIComponent(id)}" class="view-all">{t('course.viewAll')} ({detail.note_count}) →</a>
+        {/if}
       {/if}
     </section>
   </div>
@@ -603,7 +514,7 @@
   .qa-empty { font-size: 12px; color: var(--text-hint); margin: 4px 0 8px; }
   .qa-item { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 6px; text-decoration: none; color: inherit; transition: border-color 0.15s; }
   .qa-item:hover { border-color: var(--accent); text-decoration: none; }
-  .qa-body { font-size: 12px; color: var(--text-primary); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .qa-body { font-size: 12px; color: var(--text-primary); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .qa-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-hint); }
   .qa-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
   .qa-replies { flex-shrink: 0; margin-left: 6px; }
@@ -652,30 +563,8 @@
   .review-desc { font-size: 13px; color: var(--text-secondary); margin: 0 0 8px; }
   .review-stats { font-size: 11px; color: var(--text-hint); display: flex; gap: 12px; }
 
-  /* Q&A */
-  .qa-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
-  .qa-section h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.3rem; margin: 0 0 16px; }
-  .section-filter { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; max-height: 80px; overflow-y: auto; }
-  .filter-btn { font-size: 11px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 3px; background: none; color: var(--text-secondary); cursor: pointer; white-space: nowrap; }
-  .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
-  .comment-form { margin-bottom: 20px; }
-  .comment-form textarea { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; background: var(--bg-page); color: var(--text-primary); }
-  .comment-form textarea:focus { outline: none; border-color: var(--accent); }
-  .post-btn { margin-top: 8px; padding: 6px 16px; background: var(--accent); color: white; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
-  .post-btn:disabled { opacity: 0.5; cursor: default; }
-  .comment { padding: 12px 0; border-bottom: 1px solid var(--border); }
-  .comment.reply { margin-left: 24px; padding: 8px 0; border-bottom: 1px dashed var(--border); }
-  .comment-header { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-  .comment-author { font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none; }
-  .comment-author:hover { color: var(--accent); text-decoration: none; }
-  .comment-date { font-size: 11px; color: var(--text-hint); }
-  .comment-body { font-size: 14px; color: var(--text-primary); line-height: 1.6; margin: 0; }
-  .comment-actions { display: flex; gap: 12px; align-items: center; margin-top: 4px; }
-  .comment-score { font-size: 12px; color: var(--text-hint); }
-  .reply-btn { font-size: 12px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; }
-  .reply-form { margin-top: 8px; margin-left: 24px; }
-  .reply-form textarea { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; font-family: inherit; resize: vertical; background: var(--bg-page); color: var(--text-primary); }
+  .view-all { display: inline-block; margin-top: 8px; font-size: 13px; color: var(--accent); text-decoration: none; }
+  .view-all:hover { text-decoration: underline; }
 
   @media (max-width: 768px) {
     .course-header { flex-direction: column; }

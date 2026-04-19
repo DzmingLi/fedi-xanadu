@@ -398,6 +398,8 @@ fn course_routes() -> Router<AppState> {
         .route("/courses/{id}/textbooks", post(courses::add_textbook).delete(courses::remove_textbook))
         .route("/courses/{id}/rate", post(courses::rate_course))
         .route("/courses/{id}/reviews", get(courses::get_reviews))
+        .route("/courses/{id}/notes", get(courses::get_notes))
+        .route("/courses/{id}/discussions", get(courses::get_discussions))
         .route("/courses/{id}/sessions", post(courses::create_session))
         .route("/courses/{id}/sessions/{session_id}", put(courses::update_session).delete(courses::delete_session))
         .route("/courses/{id}/sessions/{session_id}/tags", post(courses::add_session_tag).delete(courses::remove_session_tag))

@@ -525,6 +525,7 @@ export interface Comment {
   did: string;
   author_handle: string | null;
   parent_id: string | null;
+  title: string | null;
   body: string;
   quote_text: string | null;
   section_ref: string | null;
@@ -802,7 +803,21 @@ export interface CourseDetail {
   prerequisites: CoursePrereq[];
   rating: CourseRatingStats;
   reviews: CourseReview[];
+  review_count: number;
   notes: CourseReview[];
+  note_count: number;
+  discussions: Comment[];
+  discussion_count: number;
+}
+
+export interface PagedCourseReviews {
+  items: CourseReview[];
+  total: number;
+}
+
+export interface PagedCourseDiscussions {
+  items: Comment[];
+  total: number;
 }
 
 // ---- Publications (专栏) ----

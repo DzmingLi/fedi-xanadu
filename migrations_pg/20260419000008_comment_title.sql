@@ -1,0 +1,1 @@
+ALTER TABLE comments ADD COLUMN title VARCHAR(200);

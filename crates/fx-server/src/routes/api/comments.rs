@@ -32,6 +32,7 @@ pub async fn list_comments(
 #[derive(serde::Deserialize)]
 pub struct CreateComment {
     pub content_uri: String,
+    pub title: Option<String>,
     pub body: String,
     pub parent_id: Option<String>,
     pub quote_text: Option<String>,
@@ -50,12 +51,15 @@ pub async fn create_comment(
         comment_service::verify_parent_comment(&state.pool, pid, &input.content_uri).await?;
     }
 
+    let title = input.title.as_deref().map(str::trim).filter(|s| !s.is_empty());
+
     let id = tid();
     let comment = comment_service::create_comment(
         &state.pool,
         &id,
         &input.content_uri,
         &user.did,
+        title,
         &input.body,
         input.parent_id.as_deref(),
         input.quote_text.as_deref(),
