@@ -400,6 +400,8 @@ fn course_routes() -> Router<AppState> {
         .route("/courses/{id}/reviews", get(courses::get_reviews))
         .route("/courses/{id}/notes", get(courses::get_notes))
         .route("/courses/{id}/discussions", get(courses::get_discussions))
+        .route("/courses/{id}/resources", get(courses::list_resources).post(courses::add_resource))
+        .route("/courses/{id}/resources/{resource_id}", axum::routing::delete(courses::delete_resource))
         .route("/courses/{id}/learning-status", post(courses::set_learning_status).delete(courses::remove_learning_status))
         .route("/courses/{id}/session-progress", post(courses::set_session_progress))
         .route("/courses/{id}/sessions", post(courses::create_session))

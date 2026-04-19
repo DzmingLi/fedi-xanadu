@@ -77,6 +77,8 @@ pub struct CourseDetailResponse {
     pub my_learning_status: Option<CourseLearningStatus>,
     /// The current viewer's per-session completion records.
     pub my_session_progress: Vec<SessionProgress>,
+    /// Course-level supplementary resources (software pages, tools, etc.).
+    pub resources: Vec<CourseResource>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -343,10 +345,12 @@ pub async fn get_course_detail(pool: &PgPool, id: &str, viewer_did: Option<&str>
         (None, None, vec![])
     };
 
+    let resources = list_course_resources(pool, id).await?;
+
     Ok(CourseDetailResponse {
         course, syllabus, authors, sessions, textbooks, tags, series, skill_trees, prerequisites,
         rating, reviews, review_count, notes, note_count, discussions, discussion_count,
-        my_rating, my_learning_status, my_session_progress,
+        my_rating, my_learning_status, my_session_progress, resources,
     })
 }
 
@@ -809,6 +813,41 @@ pub async fn list_session_progress(
 /// course learning status out of idle states (empty, want_to_learn,
 /// dropped) into `learning`; progress % is recomputed from the session
 /// completion count in the same transaction.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct CourseResource {
+    pub id: String,
+    pub course_id: String,
+    pub kind: String,
+    pub label: String,
+    pub url: String,
+    pub position: i16,
+}
+
+pub async fn list_course_resources(pool: &PgPool, course_id: &str) -> crate::Result<Vec<CourseResource>> {
+    Ok(sqlx::query_as::<_, CourseResource>(
+        "SELECT id, course_id, kind, label, url, position \
+         FROM course_resources WHERE course_id = $1 ORDER BY position, created_at"
+    ).bind(course_id).fetch_all(pool).await?)
+}
+
+pub async fn add_course_resource(
+    pool: &PgPool, course_id: &str, kind: &str, label: &str, url: &str,
+    position: i16, created_by: &str,
+) -> crate::Result<String> {
+    let id: String = sqlx::query_scalar(
+        "INSERT INTO course_resources (course_id, kind, label, url, position, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id"
+    ).bind(course_id).bind(kind).bind(label).bind(url).bind(position).bind(created_by)
+    .fetch_one(pool).await?;
+    Ok(id)
+}
+
+pub async fn delete_course_resource(pool: &PgPool, id: &str) -> crate::Result<bool> {
+    let result = sqlx::query("DELETE FROM course_resources WHERE id = $1")
+        .bind(id).execute(pool).await?;
+    Ok(result.rows_affected() > 0)
+}
+
 pub async fn set_session_progress(
     pool: &PgPool, course_id: &str, session_id: &str, user_did: &str, completed: bool,
 ) -> crate::Result<Option<CourseLearningStatus>> {

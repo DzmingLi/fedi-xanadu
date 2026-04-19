@@ -818,6 +818,7 @@ export default {
   'course.skillTrees': 'Arbres de compétences',
   'course.materials': 'Supports',
   'course.supplementary': 'Lectures complémentaires',
+  'course.resources': 'Ressources',
   'course.source': 'Source',
   'course.license': 'Licence',
   'course.language': 'Langue',

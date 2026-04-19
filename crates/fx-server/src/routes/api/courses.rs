@@ -287,6 +287,46 @@ pub async fn unrate_course(
     Ok(Json(stats))
 }
 
+// ── Course-level resources ────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct AddCourseResourceInput {
+    pub kind: String,
+    pub label: String,
+    pub url: String,
+    #[serde(default)]
+    pub position: i16,
+}
+
+pub async fn list_resources(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<course_service::CourseResource>>> {
+    let rows = course_service::list_course_resources(&state.pool, &id).await?;
+    Ok(Json(rows))
+}
+
+pub async fn add_resource(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Path(id): Path<String>,
+    Json(input): Json<AddCourseResourceInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let new_id = course_service::add_course_resource(
+        &state.pool, &id, &input.kind, &input.label, &input.url, input.position, &user.did,
+    ).await?;
+    Ok(Json(serde_json::json!({ "id": new_id })))
+}
+
+pub async fn delete_resource(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path((_id, resource_id)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    course_service::delete_course_resource(&state.pool, &resource_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ── Learning status & session progress ────────────────────────────────
 
 #[derive(Deserialize)]

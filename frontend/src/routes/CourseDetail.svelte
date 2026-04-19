@@ -418,6 +418,18 @@
           </section>
         {/if}
 
+        {#if detail.resources.length > 0}
+          <section class="course-resources">
+            <h3>{t('course.resources')}</h3>
+            {#each detail.resources as r}
+              <a href={r.url} target="_blank" rel="noopener" class="resource-link">
+                {#if r.kind}<span class="resource-kind">{r.kind}</span>{/if}
+                <span class="resource-label">{r.label}</span>
+              </a>
+            {/each}
+          </section>
+        {/if}
+
         <section class="qa-summary">
           <h3>
             {t('course.qa')}
@@ -620,6 +632,13 @@
   .prereqs h3, .skill-trees h3 { font-family: var(--font-serif); font-weight: 400; font-size: 0.95rem; margin: 0 0 8px; color: var(--text-secondary); }
   .prereq-link, .tree-link { display: block; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 6px; text-decoration: none; color: var(--text-primary); font-size: 13px; transition: border-color 0.15s; }
   .prereq-link:hover, .tree-link:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+
+  .course-resources { margin-bottom: 20px; }
+  .course-resources h3 { font-family: var(--font-serif); font-weight: 400; font-size: 0.95rem; margin: 0 0 8px; color: var(--text-secondary); }
+  .resource-link { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 5px; text-decoration: none; color: var(--text-primary); font-size: 13px; transition: border-color 0.15s; }
+  .resource-link:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+  .resource-kind { font-size: 10px; text-transform: uppercase; color: var(--text-hint); background: var(--bg-hover, #f5f5f5); padding: 1px 6px; border-radius: 3px; flex-shrink: 0; }
+  .resource-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .prereq-code { font-weight: 600; color: var(--accent); margin-right: 6px; }
   .prereq-inst { font-size: 12px; color: var(--text-hint); margin-left: 6px; }
   .tree-role { font-size: 11px; color: var(--text-hint); text-transform: capitalize; display: block; margin-bottom: 2px; }

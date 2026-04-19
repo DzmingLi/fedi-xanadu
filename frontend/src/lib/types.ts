@@ -815,6 +815,16 @@ export interface CourseDetail {
   my_rating: number | null;
   my_learning_status: CourseLearningStatus | null;
   my_session_progress: SessionProgress[];
+  resources: CourseResource[];
+}
+
+export interface CourseResource {
+  id: string;
+  course_id: string;
+  kind: string;
+  label: string;
+  url: string;
+  position: number;
 }
 
 export interface CourseLearningStatus {

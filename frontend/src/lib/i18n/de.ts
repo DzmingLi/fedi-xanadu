@@ -818,6 +818,7 @@ export default {
   'course.skillTrees': 'Fähigkeitsbäume',
   'course.materials': 'Kursmaterialien',
   'course.supplementary': 'Ergänzende Lektüre',
+  'course.resources': 'Ressourcen',
   'course.source': 'Quelle',
   'course.license': 'Lizenz',
   'course.language': 'Sprache',
