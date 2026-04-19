@@ -406,7 +406,7 @@
 
     <!-- Notes (learner thoughts / knowledge supplements) -->
     <section class="reviews-section">
-      <h2>{t('course.notes') || 'Notes'}</h2>
+      <h2>{t('course.learnerNotes') || 'Notes'}</h2>
       {#if getAuth()}
         <a href="/new?category=note&course_id={encodeURIComponent(id)}" class="write-review-btn">{t('course.writeNote') || 'Write a note'}</a>
       {/if}
