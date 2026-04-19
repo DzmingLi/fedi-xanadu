@@ -319,7 +319,7 @@
                                 {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
                               </a>
                             {:else}
-                              <span class="res-mat" title={m.label}>
+                              <span class="res-mat-plain" title={m.label}>
                                 {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
                               </span>
                             {/if}
@@ -558,6 +558,7 @@
   .res-mat { font-size: 11px; color: var(--text-primary); background: var(--bg-hover, #f5f5f5); padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; }
   a.res-mat { color: var(--text-primary); }
   a.res-mat:hover { color: var(--accent); text-decoration: none; opacity: 0.85; }
+  .res-mat-plain { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
   .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
   .res-link:hover { opacity: 0.8; text-decoration: none; }
   .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }
