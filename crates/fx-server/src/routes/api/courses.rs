@@ -287,6 +287,59 @@ pub async fn unrate_course(
     Ok(Json(stats))
 }
 
+// ── Learning status & session progress ────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct LearningStatusInput { pub status: String }
+
+pub async fn set_learning_status(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Path(id): Path<String>,
+    Json(input): Json<LearningStatusInput>,
+) -> ApiResult<Json<course_service::CourseLearningStatus>> {
+    if !matches!(input.status.as_str(), "want_to_learn" | "learning" | "finished" | "dropped") {
+        return Err(AppError(fx_core::Error::BadRequest("invalid status".into())));
+    }
+    let row = course_service::set_learning_status(&state.pool, &id, &user.did, &input.status).await?;
+    Ok(Json(row))
+}
+
+pub async fn remove_learning_status(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    course_service::remove_learning_status(&state.pool, &id, &user.did).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct SessionProgressInput { pub session_id: String, pub completed: bool }
+
+pub async fn set_session_progress(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Path(id): Path<String>,
+    Json(input): Json<SessionProgressInput>,
+) -> ApiResult<Json<Option<course_service::CourseLearningStatus>>> {
+    let status = course_service::set_session_progress(
+        &state.pool, &id, &input.session_id, &user.did, input.completed,
+    ).await?;
+
+    // Auto-learn: when a session is completed, light up its teaches tags.
+    if input.completed {
+        let tag_ids: Vec<String> = sqlx::query_scalar(
+            "SELECT tag_id FROM course_session_tags WHERE session_id = $1",
+        ).bind(&input.session_id).fetch_all(&state.pool).await.unwrap_or_default();
+        for tag_id in &tag_ids {
+            let _ = fx_core::services::skill_service::light_skill(&state.pool, &user.did, tag_id, "mastered").await;
+        }
+    }
+
+    Ok(Json(status))
+}
+
 #[derive(Deserialize)]
 pub struct PageQuery {
     pub limit: Option<i64>,

@@ -400,6 +400,8 @@ fn course_routes() -> Router<AppState> {
         .route("/courses/{id}/reviews", get(courses::get_reviews))
         .route("/courses/{id}/notes", get(courses::get_notes))
         .route("/courses/{id}/discussions", get(courses::get_discussions))
+        .route("/courses/{id}/learning-status", post(courses::set_learning_status).delete(courses::remove_learning_status))
+        .route("/courses/{id}/session-progress", post(courses::set_session_progress))
         .route("/courses/{id}/sessions", post(courses::create_session))
         .route("/courses/{id}/sessions/{session_id}", put(courses::update_session).delete(courses::delete_session))
         .route("/courses/{id}/sessions/{session_id}/tags", post(courses::add_session_tag).delete(courses::remove_session_tag))

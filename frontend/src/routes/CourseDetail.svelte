@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getCourseDetail, rateCourse, unrateCourse } from '../lib/api';
+  import { getCourseDetail, rateCourse, unrateCourse, setCourseLearningStatus, removeCourseLearningStatus, setSessionProgress } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
 
@@ -25,6 +25,10 @@
   let myRating = $state(0);
   let hoverRating = $state(0);
 
+  let learningStatus = $state('');
+  let learningProgress = $state(0);
+  let sessionDone = $state(new Map<string, boolean>());
+
   $effect(() => {
     if (!id) return;
     loading = true;
@@ -35,6 +39,9 @@
         avgRating = d.rating.avg_rating;
         ratingCount = d.rating.rating_count;
         myRating = d.my_rating ?? 0;
+        learningStatus = d.my_learning_status?.status ?? '';
+        learningProgress = d.my_learning_status?.progress ?? 0;
+        sessionDone = new Map(d.my_session_progress.map(p => [p.session_id, p.completed]));
         document.title = `${d.course.title} — NightBoat`;
       })
       .catch(e => { error = e.message; })
@@ -60,6 +67,40 @@
     avgRating = stats.avg_rating;
     ratingCount = stats.rating_count;
   }
+
+  async function setStatus(status: 'want_to_learn' | 'learning' | 'finished' | 'dropped') {
+    if (learningStatus === status) {
+      // toggle off
+      learningStatus = '';
+      learningProgress = 0;
+      try { await removeCourseLearningStatus(id); } catch { /* */ }
+    } else {
+      try {
+        const row = await setCourseLearningStatus(id, status);
+        learningStatus = row.status;
+        learningProgress = row.progress;
+      } catch { /* */ }
+    }
+  }
+
+  async function toggleSession(sessionId: string) {
+    const next = !sessionDone.get(sessionId);
+    sessionDone.set(sessionId, next);
+    sessionDone = new Map(sessionDone);
+    try {
+      const row = await setSessionProgress(id, sessionId, next);
+      if (row) {
+        learningStatus = row.status;
+        learningProgress = row.progress;
+      }
+    } catch {
+      sessionDone.set(sessionId, !next);
+      sessionDone = new Map(sessionDone);
+    }
+  }
+
+  let totalSessions = $derived(detail?.sessions?.length ?? 0);
+  let doneSessions = $derived(Array.from(sessionDone.values()).filter(v => v).length);
 
   // Detect which resource types exist across all sessions
   let hasMaterials = $derived(detail?.sessions.some(s => (s.materials?.length ?? 0) > 0) ?? false);
@@ -187,6 +228,23 @@
               <button class="clear-rating" onclick={clearRating} title={t('course.clearRating')}>×</button>
             {/if}
           </div>
+          <div class="status-actions">
+            <button class="status-btn" class:active={learningStatus === 'want_to_learn'} onclick={() => setStatus('want_to_learn')}>{t('course.status.wantToLearn')}</button>
+            <button class="status-btn" class:active={learningStatus === 'learning'} onclick={() => setStatus('learning')}>{t('course.status.learning')}</button>
+            <button class="status-btn" class:active={learningStatus === 'finished'} onclick={() => setStatus('finished')}>{t('course.status.finished')}</button>
+            <button class="status-btn" class:active={learningStatus === 'dropped'} onclick={() => setStatus('dropped')}>{t('course.status.dropped')}</button>
+          </div>
+          {#if (learningStatus === 'learning' || learningStatus === 'dropped') && totalSessions > 0}
+            <div class="progress-section">
+              <div class="progress-readout">
+                <span>{t('course.progress')}: {doneSessions} / {totalSessions} {t('course.sessionsDone')}</span>
+                <span class="progress-pct">{Math.round((doneSessions / totalSessions) * 100)}%</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: {(doneSessions / totalSessions) * 100}%"></div>
+              </div>
+            </div>
+          {/if}
         {/if}
       </div>
       <div class="header-side">
@@ -227,7 +285,17 @@
                 {#each detail.sessions as s}
                   {@const isExam = (s.materials?.length ?? 0) === 0 && s.resources.length === 0}
                   <tr class:session-exam={isExam}>
-                    <td class="session-num">{s.sort_order}</td>
+                    <td class="session-num">
+                      {s.sort_order}
+                      {#if getAuth() && !isExam}
+                        <button
+                          class="session-check"
+                          class:done={sessionDone.get(s.id)}
+                          onclick={() => toggleSession(s.id)}
+                          title={sessionDone.get(s.id) ? t('course.markUndone') : t('course.markDone')}
+                        ></button>
+                      {/if}
+                    </td>
                     {#if isExam}
                       <td class="session-topic" colspan={colCount - 1}>
                         <strong>{s.topic || ''}</strong>
@@ -550,6 +618,22 @@
   .my-rating-value { font-size: 12px; color: #f59e0b; font-weight: 600; }
   .clear-rating { background: none; border: none; color: var(--text-hint); cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; }
   .clear-rating:hover { color: #c00; }
+
+  .status-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .status-btn { padding: 4px 12px; border: 1px solid var(--border); background: var(--bg-white); border-radius: 4px; font-size: 12px; cursor: pointer; color: var(--text-secondary); transition: all 0.15s; }
+  .status-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .status-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  .progress-section { margin-top: 10px; max-width: 360px; }
+  .progress-readout { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .progress-pct { color: var(--accent); font-weight: 500; }
+  .progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); transition: width 0.2s; }
+
+  .session-check { width: 14px; height: 14px; border: 1.5px solid var(--border); border-radius: 3px; background: transparent; cursor: pointer; margin-left: 6px; padding: 0; vertical-align: middle; position: relative; }
+  .session-check:hover { border-color: var(--accent); }
+  .session-check.done { background: var(--accent); border-color: var(--accent); }
+  .session-check.done::after { content: ''; position: absolute; left: 3px; top: 0px; width: 4px; height: 8px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 
   /* Reviews */
   .reviews-section { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); }

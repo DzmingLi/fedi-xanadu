@@ -73,6 +73,10 @@ pub struct CourseDetailResponse {
     pub discussion_count: i64,
     /// The current viewer's rating for this course (1-10), if any.
     pub my_rating: Option<i16>,
+    /// The current viewer's learning status + progress % for this course.
+    pub my_learning_status: Option<CourseLearningStatus>,
+    /// The current viewer's per-session completion records.
+    pub my_session_progress: Vec<SessionProgress>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -325,15 +329,20 @@ pub async fn get_course_detail(pool: &PgPool, id: &str, viewer_did: Option<&str>
 
     let authors = list_course_authors(pool, id).await?;
 
-    let my_rating = if let Some(did) = viewer_did {
-        get_user_rating(pool, id, did).await?
+    let (my_rating, my_learning_status, my_session_progress) = if let Some(did) = viewer_did {
+        (
+            get_user_rating(pool, id, did).await?,
+            get_learning_status(pool, id, did).await?,
+            list_session_progress(pool, id, did).await?,
+        )
     } else {
-        None
+        (None, None, vec![])
     };
 
     Ok(CourseDetailResponse {
         course, syllabus, authors, sessions, textbooks, tags, series, skill_trees, prerequisites,
-        rating, reviews, review_count, notes, note_count, discussions, discussion_count, my_rating,
+        rating, reviews, review_count, notes, note_count, discussions, discussion_count,
+        my_rating, my_learning_status, my_session_progress,
     })
 }
 
@@ -721,4 +730,129 @@ pub async fn count_course_articles_by_category(
     Ok(sqlx::query_scalar(
         "SELECT COUNT(*) FROM articles WHERE course_id = $1 AND category = $2",
     ).bind(course_id).bind(category).fetch_one(pool).await?)
+}
+
+// ── Learning status & session progress ────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct CourseLearningStatus {
+    pub course_id: String,
+    pub user_did: String,
+    pub status: String,
+    pub progress: i16,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct SessionProgress {
+    pub course_id: String,
+    pub session_id: String,
+    pub user_did: String,
+    pub completed: bool,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+pub async fn get_learning_status(
+    pool: &PgPool, course_id: &str, user_did: &str,
+) -> crate::Result<Option<CourseLearningStatus>> {
+    Ok(sqlx::query_as::<_, CourseLearningStatus>(
+        "SELECT * FROM course_learning_status WHERE course_id = $1 AND user_did = $2",
+    ).bind(course_id).bind(user_did).fetch_optional(pool).await?)
+}
+
+pub async fn set_learning_status(
+    pool: &PgPool, course_id: &str, user_did: &str, status: &str,
+) -> crate::Result<CourseLearningStatus> {
+    // Recompute progress from session completion counts so it can't drift
+    // from whatever the user has already ticked off.
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM course_sessions WHERE course_id = $1"
+    ).bind(course_id).fetch_one(pool).await?;
+    let done: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM course_session_progress \
+         WHERE course_id = $1 AND user_did = $2 AND completed = TRUE"
+    ).bind(course_id).bind(user_did).fetch_one(pool).await?;
+    let progress: i16 = if total > 0 { ((done * 100 / total) as i16).clamp(0, 100) } else { 0 };
+
+    sqlx::query(
+        "INSERT INTO course_learning_status (course_id, user_did, status, progress) \
+         VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (course_id, user_did) DO UPDATE SET status = $3, progress = $4, updated_at = NOW()",
+    ).bind(course_id).bind(user_did).bind(status).bind(progress)
+    .execute(pool).await?;
+
+    Ok(get_learning_status(pool, course_id, user_did).await?.expect("just inserted"))
+}
+
+pub async fn remove_learning_status(
+    pool: &PgPool, course_id: &str, user_did: &str,
+) -> crate::Result<()> {
+    sqlx::query("DELETE FROM course_learning_status WHERE course_id = $1 AND user_did = $2")
+        .bind(course_id).bind(user_did).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn list_session_progress(
+    pool: &PgPool, course_id: &str, user_did: &str,
+) -> crate::Result<Vec<SessionProgress>> {
+    Ok(sqlx::query_as::<_, SessionProgress>(
+        "SELECT * FROM course_session_progress WHERE course_id = $1 AND user_did = $2",
+    ).bind(course_id).bind(user_did).fetch_all(pool).await?)
+}
+
+/// Upsert a session's completion for `user_did`. Mirrors book chapter
+/// progress: when a session is first completed we auto-transition the
+/// course learning status out of idle states (empty, want_to_learn,
+/// dropped) into `learning`; progress % is recomputed from the session
+/// completion count in the same transaction.
+pub async fn set_session_progress(
+    pool: &PgPool, course_id: &str, session_id: &str, user_did: &str, completed: bool,
+) -> crate::Result<Option<CourseLearningStatus>> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query(
+        "INSERT INTO course_session_progress (course_id, session_id, user_did, completed, completed_at) \
+         VALUES ($1, $2, $3, $4, CASE WHEN $4 THEN NOW() ELSE NULL END) \
+         ON CONFLICT (session_id, user_did) DO UPDATE SET completed = $4, \
+         completed_at = CASE WHEN $4 THEN COALESCE(course_session_progress.completed_at, NOW()) ELSE NULL END",
+    ).bind(course_id).bind(session_id).bind(user_did).bind(completed)
+    .execute(&mut *tx).await?;
+
+    if completed {
+        sqlx::query(
+            "INSERT INTO course_learning_status (course_id, user_did, status, progress) \
+             VALUES ($1, $2, 'learning', 0) \
+             ON CONFLICT (course_id, user_did) DO UPDATE SET \
+               status = CASE WHEN course_learning_status.status IN ('want_to_learn', 'dropped') \
+                             THEN 'learning' ELSE course_learning_status.status END, \
+               updated_at = NOW()",
+        ).bind(course_id).bind(user_did)
+        .execute(&mut *tx).await?;
+    }
+
+    let exists: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM course_learning_status WHERE course_id = $1 AND user_did = $2"
+    ).bind(course_id).bind(user_did).fetch_optional(&mut *tx).await?;
+
+    if exists.is_some() {
+        let total: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM course_sessions WHERE course_id = $1"
+        ).bind(course_id).fetch_one(&mut *tx).await?;
+        let done: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM course_session_progress \
+             WHERE course_id = $1 AND user_did = $2 AND completed = TRUE"
+        ).bind(course_id).bind(user_did).fetch_one(&mut *tx).await?;
+        let progress: i16 = if total > 0 { ((done * 100 / total) as i16).clamp(0, 100) } else { 0 };
+        sqlx::query(
+            "UPDATE course_learning_status SET progress = $1, updated_at = NOW() \
+             WHERE course_id = $2 AND user_did = $3"
+        ).bind(progress).bind(course_id).bind(user_did).execute(&mut *tx).await?;
+    }
+
+    let status = sqlx::query_as::<_, CourseLearningStatus>(
+        "SELECT * FROM course_learning_status WHERE course_id = $1 AND user_did = $2"
+    ).bind(course_id).bind(user_did).fetch_optional(&mut *tx).await?;
+
+    tx.commit().await?;
+    Ok(status)
 }

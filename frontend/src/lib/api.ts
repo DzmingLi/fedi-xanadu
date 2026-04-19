@@ -800,6 +800,12 @@ export const rateCourse = (id: string, rating: number) =>
   post<import('./types').CourseRatingStats>(`/courses/${encodeURIComponent(id)}/rate`, { rating });
 export const unrateCourse = (id: string) =>
   del<import('./types').CourseRatingStats>(`/courses/${encodeURIComponent(id)}/rate`);
+export const setCourseLearningStatus = (id: string, status: 'want_to_learn' | 'learning' | 'finished' | 'dropped') =>
+  post<import('./types').CourseLearningStatus>(`/courses/${encodeURIComponent(id)}/learning-status`, { status });
+export const removeCourseLearningStatus = (id: string) =>
+  del<void>(`/courses/${encodeURIComponent(id)}/learning-status`);
+export const setSessionProgress = (id: string, session_id: string, completed: boolean) =>
+  post<import('./types').CourseLearningStatus | null>(`/courses/${encodeURIComponent(id)}/session-progress`, { session_id, completed });
 export const addCourseSeries = (id: string, series_id: string, role?: string, sort_order?: number) =>
   post<void>(`/courses/${encodeURIComponent(id)}/series`, { series_id, role, sort_order });
 export const removeCourseSeries = (id: string, series_id: string) =>

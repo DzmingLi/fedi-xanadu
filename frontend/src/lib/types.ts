@@ -812,6 +812,24 @@ export interface CourseDetail {
   discussions: Comment[];
   discussion_count: number;
   my_rating: number | null;
+  my_learning_status: CourseLearningStatus | null;
+  my_session_progress: SessionProgress[];
+}
+
+export interface CourseLearningStatus {
+  course_id: string;
+  user_did: string;
+  status: 'want_to_learn' | 'learning' | 'finished' | 'dropped';
+  progress: number;
+  updated_at: string;
+}
+
+export interface SessionProgress {
+  course_id: string;
+  session_id: string;
+  user_did: string;
+  completed: boolean;
+  completed_at: string | null;
 }
 
 export interface PagedCourseReviews {
