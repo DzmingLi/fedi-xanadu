@@ -266,16 +266,16 @@
                         <td class="session-readings">
                           {#if s.readings}
                             {#if s.readings.startsWith('/')}
-                              <a href={s.readings} class="res-link res-reading">&#128214; {t('course.readings')}</a>
+                              <a href={s.readings} class="res-link res-reading" title={t('course.readings')}>&#128214; {t('course.readings')}</a>
                             {:else}
-                              <span class="res-reading">{s.readings}</span>
+                              <span class="res-reading" title={s.readings}>{s.readings}</span>
                             {/if}
                           {/if}
                           {#each s.reading_refs ?? [] as r}
                             {#if r.url}
-                              <a href={r.url} target="_blank" rel="noopener" class="res-link res-reading">&#128214; {r.label}</a>
+                              <a href={r.url} target="_blank" rel="noopener" class="res-link res-reading" title={r.label}>&#128214; {r.label}</a>
                             {:else}
-                              <span class="res-reading">{r.label}</span>
+                              <span class="res-reading" title={r.label}>{r.label}</span>
                             {/if}
                           {/each}
                         </td>
@@ -552,6 +552,9 @@
   .session-video { white-space: nowrap; }
   .session-notes { white-space: nowrap; }
   .session-hw { white-space: nowrap; }
+  .session-readings { max-width: 240px; }
+  .session-readings > * { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+  .session-readings > *:last-child { margin-bottom: 0; }
   .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
   .res-link:hover { opacity: 0.8; text-decoration: none; }
   .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }
