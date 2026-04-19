@@ -11,7 +11,7 @@ use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use crate::auth::{WriteAuth, pds_create_record};
+use crate::auth::{WriteAuth, pds_create_record, pds_delete_record};
 use fx_core::util::{content_hash, tid, uri_to_node_id, now_rfc3339};
 use super::UriQuery;
 
@@ -938,7 +938,8 @@ pub async fn create_article(
             "tags": input.tags,
             "createdAt": now_rfc3339(),
         });
-        pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, None, "create article").await;
+        let rkey = at_uri.rsplit('/').next().map(str::to_string);
+        pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, rkey, "create article").await;
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
@@ -1093,7 +1094,8 @@ pub async fn create_article_multipart(
             "tags": input.tags,
             "createdAt": now_rfc3339(),
         });
-        pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, None, "create article").await;
+        let rkey = at_uri.rsplit('/').next().map(str::to_string);
+        pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, rkey, "create article").await;
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
@@ -1380,7 +1382,8 @@ pub async fn fork_article(
         "fork": fork_at_uri,
         "createdAt": now_rfc3339(),
     });
-    pds_create_record(&state, &user.token, fx_atproto::lexicon::FORK, record, None, "create fork").await;
+    let fork_rkey = fork_uri.rsplit('/').next().map(str::to_string);
+    pds_create_record(&state, &user.token, fx_atproto::lexicon::FORK, record, fork_rkey, "create fork").await;
 
     if let Err(e) = notification_service::create_notification(
         &state.pool, &tid(), &source.did, &user.did,
@@ -1730,6 +1733,24 @@ pub async fn delete_article(
 ) -> ApiResult<StatusCode> {
     let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
     require_owner(Some(&owner), &user.did)?;
+
+    // Delete PDS records before DB delete so we can still read authorship_uri.
+    let article_rkey = input.uri.rsplit('/').next().unwrap_or("").to_string();
+    pds_delete_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, article_rkey, "delete article").await;
+
+    let authorship_uri: Option<String> = sqlx::query_scalar(
+        "SELECT authorship_uri FROM article_authors \
+         WHERE article_uri = $1 AND author_did = $2 AND authorship_uri IS NOT NULL",
+    )
+    .bind(&input.uri)
+    .bind(&user.did)
+    .fetch_optional(&state.pool)
+    .await?;
+    if let Some(au) = authorship_uri {
+        if let Some(rkey) = au.rsplit('/').next() {
+            pds_delete_record(&state, &user.token, fx_atproto::lexicon::AUTHORSHIP, rkey.to_string(), "delete authorship").await;
+        }
+    }
 
     // Clean up source files before deleting DB record
     if let Some(loc) = resolve_location(&state, &input.uri, "typst").await {
