@@ -150,12 +150,17 @@ pub struct UpdateBookInput {
     /// Ordered author names. When present, replaces both `books.authors`
     /// and the `book_authors` join table.
     pub authors: Option<Vec<String>>,
-    /// Tag ids that this book teaches. When present, replaces
-    /// content_teaches for this book.
+    /// Tag ids that this book COVERS (teaches deeply enough that mastering
+    /// it grants skill credit). When present, replaces content_teaches.
     pub tags: Option<Vec<String>>,
     /// Tag ids that this book requires as prereqs. When present, replaces
     /// content_prereqs for this book (all marked as 'required').
     pub prereqs: Option<Vec<String>>,
+    /// Tag ids this book is RELATED to (belongs-to a field, mentions,
+    /// application domain) but doesn't cover. When present, replaces
+    /// content_topics for this book. Feeds the field filter / topic
+    /// closure but NOT skill-mastery inference.
+    pub topics: Option<Vec<String>>,
     pub edit_summary: Option<String>,
 }
 
@@ -210,34 +215,50 @@ pub async fn update_book(
             author_service::link_author_to_book(&state.pool, &input.id, &author_id, position as i16).await?;
         }
     }
+    // Shared helper: ensure every tag id exists (creates solo-member
+    // group + lang rep if missing), then bulk-insert the edge. Using
+    // `ensure_tag` (not raw INSERT INTO tags) keeps group_id + lang
+    // NOT-NULL invariants intact.
     if let Some(ref tags) = input.tags {
         let content_uri = format!("book:{}", input.id);
         sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
             .bind(&content_uri).execute(&state.pool).await?;
+        let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
         for tag_id in tags {
             let t = tag_id.trim();
             if t.is_empty() { continue; }
-            sqlx::query(
-                "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
-            ).bind(t).bind(t).bind(&user.did).execute(&state.pool).await?;
+            fx_core::services::tag_service::ensure_tag(&mut conn, t, &user.did).await?;
             sqlx::query(
                 "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
+            ).bind(&content_uri).bind(t).execute(&mut *conn).await?;
         }
     }
     if let Some(ref prereqs) = input.prereqs {
         let content_uri = format!("book:{}", input.id);
         sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
             .bind(&content_uri).execute(&state.pool).await?;
+        let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
         for tag_id in prereqs {
             let t = tag_id.trim();
             if t.is_empty() { continue; }
-            sqlx::query(
-                "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
-            ).bind(t).bind(t).bind(&user.did).execute(&state.pool).await?;
+            fx_core::services::tag_service::ensure_tag(&mut conn, t, &user.did).await?;
             sqlx::query(
                 "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, 'required') ON CONFLICT DO NOTHING",
-            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
+            ).bind(&content_uri).bind(t).execute(&mut *conn).await?;
+        }
+    }
+    if let Some(ref topics) = input.topics {
+        let content_uri = format!("book:{}", input.id);
+        sqlx::query("DELETE FROM content_topics WHERE content_uri = $1")
+            .bind(&content_uri).execute(&state.pool).await?;
+        let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
+        for tag_id in topics {
+            let t = tag_id.trim();
+            if t.is_empty() { continue; }
+            fx_core::services::tag_service::ensure_tag(&mut conn, t, &user.did).await?;
+            sqlx::query(
+                "INSERT INTO content_topics (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            ).bind(&content_uri).bind(t).execute(&mut *conn).await?;
         }
     }
     // Save edit log

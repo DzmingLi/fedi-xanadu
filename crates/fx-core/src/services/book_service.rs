@@ -268,22 +268,17 @@ pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64
          COALESCE(rd.cnt, 0) AS reader_count, \
          COALESCE((SELECT jsonb_agg(ct.tag_id) FROM content_teaches ct WHERE ct.content_uri = 'book:' || b.id), '[]'::jsonb) AS tags, \
          COALESCE(( \
-             WITH RECURSIVE seed(tag_id) AS ( \
-                 -- Direct teach tags and explicit belongs-to topics. \
-                 SELECT tag_id FROM content_teaches WHERE content_uri = 'book:' || b.id \
-                 UNION \
-                 SELECT tag_id FROM content_topics  WHERE content_uri = 'book:' || b.id \
-             ), \
-             sibs(tag_id) AS ( \
-                 -- Expand each seed to its whole alias/translation group. \
-                 SELECT s2.id FROM seed \
+             WITH RECURSIVE closure(tag_id) AS ( \
+                 SELECT s2.id FROM ( \
+                     SELECT tag_id FROM content_teaches WHERE content_uri = 'book:' || b.id \
+                     UNION \
+                     SELECT tag_id FROM content_topics  WHERE content_uri = 'book:' || b.id \
+                 ) seed \
                  JOIN tags s1 ON s1.id = seed.tag_id \
                  JOIN tags s2 ON s2.group_id = s1.group_id \
-             ), \
-             closure(tag_id) AS ( \
-                 SELECT tag_id FROM sibs \
                  UNION \
-                 SELECT tp.parent_tag FROM tag_parents tp JOIN closure c ON tp.child_tag = c.tag_id \
+                 SELECT tp.parent_tag FROM tag_parents tp \
+                 JOIN closure c ON tp.child_tag = c.tag_id \
              ) \
              SELECT jsonb_agg(DISTINCT s2.id) FROM closure c \
              JOIN tags s1 ON s1.id = c.tag_id \
