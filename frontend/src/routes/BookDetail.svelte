@@ -93,7 +93,23 @@
   });
 
   // Q&A
-  import { authorName, authorDisplayName } from '../lib/display';
+  import { authorName, authorDisplayName, tagName } from '../lib/display';
+  import { listTags } from '../lib/api';
+  import type { Tag } from '../lib/types';
+
+  let tagMap = $state(new Map<string, Tag>());
+  $effect(() => {
+    // Fetch the full tag list once so we can localize tag chips. The
+    // list is small (couple hundred rows) and shared across every book
+    // page, so one bulk fetch is cheaper than per-chip lookups.
+    listTags(500).then(tags => {
+      tagMap = new Map(tags.map(t => [t.id, t]));
+    }).catch(() => {});
+  });
+  function localTag(id: string): string {
+    const t = tagMap.get(id);
+    return t ? tagName(t.names as any, t.name, t.id) : id;
+  }
   import type { Article, ContentFormat } from '../lib/types';
   let bookQuestions = $state<Article[]>([]);
   let showAskForm = $state(false);
@@ -610,13 +626,13 @@
           {#if detail.tags.length > 0 || detail.prereqs.length > 0 || detail.topics.length > 0}
             <div class="book-tags">
               {#each detail.topics as topic}
-                <a href="/tag?id={encodeURIComponent(topic)}" class="tag-badge topic" title={t('books.topicTooltip')}>{topic}</a>
+                <a href="/tag?id={encodeURIComponent(topic)}" class="tag-badge topic" title={t('books.topicTooltip')}>{localTag(topic)}</a>
               {/each}
               {#each detail.tags as tag}
-                <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches">{tag}</a>
+                <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches">{localTag(tag)}</a>
               {/each}
               {#each detail.prereqs as prereq}
-                <a href="/tag?id={encodeURIComponent(prereq)}" class="tag-badge prereq">{prereq}</a>
+                <a href="/tag?id={encodeURIComponent(prereq)}" class="tag-badge prereq">{localTag(prereq)}</a>
               {/each}
             </div>
           {/if}
@@ -857,10 +873,10 @@
                   {#if ch.teaches.length > 0 || ch.prereqs.length > 0}
                     <div class="chapter-tag-row">
                       {#each ch.teaches as tag}
-                        <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
+                        <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{localTag(tag)}</a>
                       {/each}
                       {#each ch.prereqs as p}
-                        <span class="tag-badge prereq sm" title="{p.prereq_type === 'required' ? '必须前置' : '推荐前置'}">{p.tag_id}</span>
+                        <span class="tag-badge prereq sm" title="{p.prereq_type === 'required' ? '必须前置' : '推荐前置'}">{localTag(p.tag_id)}</span>
                       {/each}
                     </div>
                   {/if}
@@ -955,10 +971,10 @@
                         {#if sub.teaches.length > 0 || sub.prereqs.length > 0}
                           <div class="chapter-tag-row">
                             {#each sub.teaches as tag}
-                              <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{tag}</a>
+                              <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches sm">{localTag(tag)}</a>
                             {/each}
                             {#each sub.prereqs as p}
-                              <span class="tag-badge prereq sm">{p.tag_id}</span>
+                              <span class="tag-badge prereq sm">{localTag(p.tag_id)}</span>
                             {/each}
                           </div>
                         {/if}
