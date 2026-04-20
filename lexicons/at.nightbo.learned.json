@@ -1,0 +1,19 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.learned",
+  "description": "A reader's mark that they have completed / read a given article. One record per (reader, article) pair. `rkey` is the article's TID so lookup/unmark is O(1).",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["article", "learnedAt"],
+        "properties": {
+          "article":   { "type": "string", "format": "at-uri", "description": "The article that was learned." },
+          "learnedAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

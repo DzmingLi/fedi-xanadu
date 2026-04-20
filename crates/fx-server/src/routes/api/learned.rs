@@ -7,7 +7,8 @@ use fx_core::services::learned_service;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use crate::auth::{Auth, WriteAuth, MaybeAuth};
+use crate::auth::{Auth, WriteAuth, MaybeAuth, pds_create_record, pds_delete_record};
+use fx_core::util::now_rfc3339;
 use super::UriQuery;
 
 #[derive(serde::Deserialize)]
@@ -21,6 +22,16 @@ pub async fn mark_learned(
     Json(input): Json<MarkLearnedInput>,
 ) -> ApiResult<StatusCode> {
     learned_service::mark_learned(&state.pool, &user.did, &input.article_uri).await?;
+
+    // rkey = article's TID so unmark can target it directly without an index lookup.
+    let rkey = input.article_uri.rsplit('/').next().map(str::to_string);
+    let record = serde_json::json!({
+        "$type": fx_atproto::lexicon::LEARNED,
+        "article": input.article_uri,
+        "learnedAt": now_rfc3339(),
+    });
+    pds_create_record(&state, &user.token, fx_atproto::lexicon::LEARNED, record, rkey, "mark learned").await;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -30,6 +41,11 @@ pub async fn unmark_learned(
     Json(input): Json<MarkLearnedInput>,
 ) -> ApiResult<StatusCode> {
     learned_service::unmark_learned(&state.pool, &user.did, &input.article_uri).await?;
+
+    if let Some(rkey) = input.article_uri.rsplit('/').next() {
+        pds_delete_record(&state, &user.token, fx_atproto::lexicon::LEARNED, rkey.to_string(), "unmark learned").await;
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
