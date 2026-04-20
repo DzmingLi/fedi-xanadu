@@ -6,7 +6,13 @@
   } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, LOCALES } from '../lib/i18n/index.svelte';
+  import { tagName } from '../lib/display';
   import type { Tag } from '../lib/types';
+
+  function displayTagId(id: string, map: Map<string, Tag>): string {
+    const t = map.get(id);
+    return t ? tagName(t.names as any, t.name, t.id) : id;
+  }
 
   type Edge = { parent_tag: string; child_tag: string };
 
@@ -309,7 +315,7 @@
       <div class="chip-row">
         {#each orphans as tag}
           <span class="tag-chip root">
-            <a href="/tag?id={encodeURIComponent(tag)}">{tag}</a>
+            <a href="/tag?id={encodeURIComponent(tag)}">{displayTagId(tag, tagById)}</a>
             {#if isLoggedIn}
               <button class="gear" onclick={() => toggleEdit(tag)} title={t('tags.edit')}>✎</button>
             {/if}
@@ -325,7 +331,7 @@
       {#each groupedByParent as g}
         <div class="group">
           <h3 class="group-parent">
-            <a href="/tag?id={encodeURIComponent(g.parent)}">{g.parent}</a>
+            <a href="/tag?id={encodeURIComponent(g.parent)}">{displayTagId(g.parent, tagById)}</a>
             <span class="count">{g.children.length}</span>
             {#if isLoggedIn}
               <button class="gear" onclick={() => toggleEdit(g.parent)} title={t('tags.edit')}>✎</button>
@@ -337,7 +343,7 @@
           <div class="chip-row">
             {#each g.children as c}
               <span class="tag-chip">
-                <a href="/tag?id={encodeURIComponent(c)}">{c}</a>
+                <a href="/tag?id={encodeURIComponent(c)}">{displayTagId(c, tagById)}</a>
                 {#if isLoggedIn}
                   <button class="gear" onclick={() => toggleEdit(c)} title={t('tags.edit')}>✎</button>
                   <button class="x" onclick={() => removeEdge(g.parent, c)} title={t('hierarchy.remove')}>×</button>
