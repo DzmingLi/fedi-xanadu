@@ -6,6 +6,8 @@
   import { getAuth } from '../lib/auth.svelte';
   import { timeAgo } from '../lib/utils';
   import { tagName } from '../lib/display';
+  import { tagStore } from '../lib/tagStore.svelte';
+  $effect(() => { tagStore.ensure(); });
   import { isBlocked, addBlocked } from '../lib/blocklist.svelte';
   import { t, LANG_NAMES } from '../lib/i18n/index.svelte';
   import CommentThread from '../lib/components/CommentThread.svelte';
@@ -692,7 +694,7 @@ try {
         {#if prereqs.length > 0}
           <span class="prereq-sep">|</span>
           {#each prereqs as p}
-            <span class="tag {p.prereq_type}">{tagName(p.tag_names, p.tag_name, p.tag_id)}</span>
+            <span class="tag {p.prereq_type}">{tagStore.localize(p.tag_id)}</span>
           {/each}
         {/if}
       </div>

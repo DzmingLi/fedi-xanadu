@@ -108,7 +108,7 @@ export const oauthMe = async (): Promise<{ did: string; handle: string | null } 
 };
 
 // Tags
-export const listTags = () => get<Tag[]>('/tags');
+export const listTags = (limit = 500) => get<Tag[]>(`/tags?limit=${limit}`);
 export const getTag = (id: string) => get<Tag>(`/tags/${encodeURIComponent(id)}`);
 
 // Articles

@@ -10,6 +10,11 @@ export interface Tag {
   description: string | null;
   created_by: string;
   created_at: string;
+  /** Alias/translation group this tag belongs to. Same group_id means
+   * same concept; siblings differ in language or spelling. */
+  group_id: string;
+  /** Language code (ISO) of this specific label. */
+  lang: string;
 }
 
 export interface Article {

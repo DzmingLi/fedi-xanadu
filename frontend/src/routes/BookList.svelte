@@ -1,5 +1,7 @@
 <script lang="ts">
   import { listBooks } from '../lib/api';
+  import { tagStore } from '../lib/tagStore.svelte';
+  $effect(() => { tagStore.ensure(); });
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import type { Book } from '../lib/types';
@@ -157,7 +159,7 @@
             {#if book.tags && book.tags.length > 0}
               <div class="book-tags">
                 {#each book.tags.slice(0, 4) as tag}
-                  <span class="tag">{tag}</span>
+                  <span class="tag">{tagStore.localize(tag)}</span>
                 {/each}
               </div>
             {/if}

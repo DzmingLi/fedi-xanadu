@@ -93,23 +93,11 @@
   });
 
   // Q&A
-  import { authorName, authorDisplayName, tagName } from '../lib/display';
-  import { listTags } from '../lib/api';
-  import type { Tag } from '../lib/types';
+  import { authorName, authorDisplayName } from '../lib/display';
+  import { tagStore } from '../lib/tagStore.svelte';
 
-  let tagMap = $state(new Map<string, Tag>());
-  $effect(() => {
-    // Fetch the full tag list once so we can localize tag chips. The
-    // list is small (couple hundred rows) and shared across every book
-    // page, so one bulk fetch is cheaper than per-chip lookups.
-    listTags(500).then(tags => {
-      tagMap = new Map(tags.map(t => [t.id, t]));
-    }).catch(() => {});
-  });
-  function localTag(id: string): string {
-    const t = tagMap.get(id);
-    return t ? tagName(t.names as any, t.name, t.id) : id;
-  }
+  $effect(() => { tagStore.ensure(); });
+  const localTag = (id: string) => tagStore.localize(id);
   import type { Article, ContentFormat } from '../lib/types';
   let bookQuestions = $state<Article[]>([]);
   let showAskForm = $state(false);

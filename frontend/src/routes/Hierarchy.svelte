@@ -6,13 +6,11 @@
   } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, LOCALES, getLocale } from '../lib/i18n/index.svelte';
-  import { tagName } from '../lib/display';
+  import { tagStore } from '../lib/tagStore.svelte';
   import type { Tag } from '../lib/types';
 
-  function displayTagId(id: string, map: Map<string, Tag>): string {
-    const t = map.get(id);
-    return t ? tagName(t.names as any, t.name, t.id) : id;
-  }
+  $effect(() => { tagStore.ensure(); });
+  const displayTagId = (id: string, _map?: Map<string, Tag>) => tagStore.localize(id);
 
   /**
    * For each group pick one canonical tag: the member matching the UI
