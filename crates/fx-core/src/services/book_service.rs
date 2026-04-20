@@ -241,6 +241,12 @@ pub struct BookListItem {
     pub rating_count: i64,
     pub reader_count: i64,
     pub tags: sqlx::types::Json<Vec<String>>,
+    /// Full topic closure: for each direct teach tag of the book, include
+    /// every group-sibling of that tag plus every ancestor reachable via
+    /// tag_parents. Used by the book-list field tabs (Math / CS / Physics
+    /// / Econ): a book lives under a field if its closure contains any
+    /// member of that field's group.
+    pub topics: sqlx::types::Json<Vec<String>>,
 }
 
 pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64, offset: i64) -> crate::Result<Vec<BookListItem>> {

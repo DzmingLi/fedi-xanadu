@@ -227,7 +227,9 @@ pub async fn set_teach(
     Json(input): Json<SetTeachInput>,
 ) -> ApiResult<StatusCode> {
     // Ensure tag exists
-    tag_service::ensure_tag(&state.pool, &input.tag_id, &_user.did).await?;
+    let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
+    tag_service::ensure_tag(&mut conn, &input.tag_id, &_user.did).await?;
+    drop(conn);
     sqlx::query(
         "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
     )

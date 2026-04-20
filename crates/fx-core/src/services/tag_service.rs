@@ -50,18 +50,83 @@ pub async fn create_tag(pool: &PgPool, input: &CreateTag, created_by: &str) -> R
 
 /// Ensure a tag exists (insert if missing, no-op on conflict).
 /// Accepts any sqlx Executor (pool or transaction).
-pub async fn ensure_tag<'e, E>(executor: E, tag_id: &str, created_by: &str) -> Result<()>
-where
-    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
-{
-    sqlx::query(
-        "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+/// Detect a tag's default language from its id. CJK characters anywhere
+/// → `zh`; otherwise `en`. Used by `ensure_tag` to stamp `lang` on
+/// newly-minted tags so group logic treats them correctly.
+fn guess_lang_from_id(id: &str) -> &'static str {
+    for c in id.chars() {
+        let code = c as u32;
+        if (0x4E00..=0x9FFF).contains(&code)     // CJK Unified Ideographs
+            || (0x3400..=0x4DBF).contains(&code) // CJK Extension A
+            || (0x3040..=0x309F).contains(&code) // Hiragana
+            || (0x30A0..=0x30FF).contains(&code) // Katakana
+            || (0xAC00..=0xD7AF).contains(&code) // Hangul
+        {
+            return "zh";
+        }
+    }
+    "en"
+}
+
+/// Ensure a tag row exists for `tag_id`. If missing, create a fresh
+/// alias/translation group containing just this one tag, guess its lang
+/// from the id (CJK → `zh`, else `en`), and mark it as the group's rep
+/// for that lang. `INSERT ... ON CONFLICT DO NOTHING` still applies, so
+/// callers can safely invoke this for tags they suspect may already
+/// exist.
+pub async fn ensure_tag(
+    conn: &mut sqlx::PgConnection,
+    tag_id: &str,
+    created_by: &str,
+) -> Result<()> {
+    // Fast path: tag already exists.
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1)")
+        .bind(tag_id)
+        .fetch_one(&mut *conn)
+        .await?;
+    if exists {
+        return Ok(());
+    }
+    let lang = guess_lang_from_id(tag_id);
+    // Three statements — caller may already be inside a transaction
+    // (skill-tree import builds edges in one tx), so we just run
+    // sequentially instead of opening a nested one.
+    let group_id: String = sqlx::query_scalar(
+        "INSERT INTO tag_groups DEFAULT VALUES RETURNING id",
+    )
+    .fetch_one(&mut *conn)
+    .await?;
+    let inserted = sqlx::query(
+        "INSERT INTO tags (id, name, created_by, lang, group_id, names) \
+         VALUES ($1, $2, $3, $4, $5, jsonb_build_object($4::text, $2::text)) \
+         ON CONFLICT (id) DO NOTHING",
     )
     .bind(tag_id)
     .bind(tag_id)
     .bind(created_by)
-    .execute(executor)
-    .await?;
+    .bind(lang)
+    .bind(&group_id)
+    .execute(&mut *conn)
+    .await?
+    .rows_affected();
+    if inserted > 0 {
+        sqlx::query(
+            "INSERT INTO tag_group_representatives (group_id, lang, tag_id) \
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        )
+        .bind(&group_id)
+        .bind(lang)
+        .bind(tag_id)
+        .execute(&mut *conn)
+        .await?;
+    } else {
+        // Race: some other inserter put the tag in between our check
+        // and our INSERT. Clean up the stray group row.
+        sqlx::query("DELETE FROM tag_groups WHERE id = $1")
+            .bind(&group_id)
+            .execute(&mut *conn)
+            .await?;
+    }
     Ok(())
 }
 
@@ -242,26 +307,21 @@ pub async fn merge_tag(pool: &PgPool, from_id: &str, into_id: &str) -> Result<()
 /// Search tags by prefix/substring match on id and name.
 pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<Tag>> {
     let pattern = format!("%{query}%");
-    // De-dupe by group: when several tags in the same alias/translation
-    // group match the query, return only one representative (preferring
-    // the English label and then the tag whose id equals the query).
-    // We achieve this via a DISTINCT ON subquery — `DISTINCT ON (group_id)`
-    // keeps the first row per group under the given ORDER BY — and then
-    // re-order the result for display.
+    // Return every tag whose id/name/aliases matches the query, without
+    // collapsing siblings. A zh-typing user querying "线性" sees
+    // "线性代数" / "线性逻辑" (zh siblings that match); an en-typing
+    // user querying "linear" sees "Linear Algebra" / "Linear Logic"
+    // (en siblings). If the user's query matches across languages the
+    // autocomplete will list each match separately — they pick the
+    // label they want to use.
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT * FROM ( \
-             SELECT DISTINCT ON (t.group_id) \
-                 t.id, t.name, t.names, t.description, t.created_by, t.created_at, t.group_id, t.lang, \
-                 (CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END) AS rank \
-             FROM tags t \
-             WHERE t.id ILIKE $1 OR t.name ILIKE $1 OR t.names::text ILIKE $1 \
-                OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.tag_id = t.id AND a.alias ILIKE $1) \
-             ORDER BY t.group_id, \
-                      (t.lang = 'en') DESC, \
-                      (CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END), \
-                      t.name \
-         ) g \
-         ORDER BY rank, name \
+        "SELECT t.id, t.name, t.names, t.description, t.created_by, t.created_at, t.group_id, t.lang \
+         FROM tags t \
+         WHERE t.id ILIKE $1 OR t.name ILIKE $1 OR t.names::text ILIKE $1 \
+            OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.tag_id = t.id AND a.alias ILIKE $1) \
+         ORDER BY \
+             CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END, \
+             t.name \
          LIMIT $4",
     )
     .bind(&pattern)

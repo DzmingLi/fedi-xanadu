@@ -216,8 +216,10 @@ pub async fn add_edge(
 ) -> Result<()> {
     verify_owner(pool, tree_uri, did).await?;
 
-    super::tag_service::ensure_tag(pool, parent_tag, did).await?;
-    super::tag_service::ensure_tag(pool, child_tag, did).await?;
+    let mut conn = pool.acquire().await?;
+    super::tag_service::ensure_tag(&mut conn, parent_tag, did).await?;
+    super::tag_service::ensure_tag(&mut conn, child_tag, did).await?;
+    drop(conn);
 
     sqlx::query("INSERT INTO skill_tree_edges (tree_uri, parent_tag, child_tag) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
         .bind(tree_uri)
@@ -256,8 +258,10 @@ pub async fn add_prereq(
 ) -> Result<()> {
     verify_owner(pool, tree_uri, did).await?;
 
-    super::tag_service::ensure_tag(pool, from_tag, did).await?;
-    super::tag_service::ensure_tag(pool, to_tag, did).await?;
+    let mut conn = pool.acquire().await?;
+    super::tag_service::ensure_tag(&mut conn, from_tag, did).await?;
+    super::tag_service::ensure_tag(&mut conn, to_tag, did).await?;
+    drop(conn);
 
     sqlx::query("INSERT INTO skill_tree_prereqs (tree_uri, from_tag, to_tag, prereq_type) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
         .bind(tree_uri)
