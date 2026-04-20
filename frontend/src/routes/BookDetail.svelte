@@ -632,14 +632,25 @@
           {/if}
 
           <!-- Tags -->
-          {#if detail.tags.length > 0 || detail.prereqs.length > 0 || detail.topics.length > 0}
-            <div class="book-tags">
+          {#if detail.topics.length > 0}
+            <div class="book-tag-row">
+              <span class="book-tag-row-label" title={t('books.topicTooltip')}>{t('books.topicRowLabel')}</span>
               {#each detail.topics as topic}
-                <a href="/tag?id={encodeURIComponent(topic)}" class="tag-badge topic" title={t('books.topicTooltip')}>{localTag(topic)}</a>
+                <a href="/tag?id={encodeURIComponent(topic)}" class="tag-badge topic">{localTag(topic)}</a>
               {/each}
+            </div>
+          {/if}
+          {#if detail.tags.length > 0}
+            <div class="book-tag-row">
+              <span class="book-tag-row-label">{t('books.teachesRowLabel')}</span>
               {#each detail.tags as tag}
                 <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge teaches">{localTag(tag)}</a>
               {/each}
+            </div>
+          {/if}
+          {#if detail.prereqs.length > 0}
+            <div class="book-tag-row">
+              <span class="book-tag-row-label">{t('books.prereqRowLabel')}</span>
               {#each detail.prereqs as prereq}
                 <a href="/tag?id={encodeURIComponent(prereq)}" class="tag-badge prereq">{localTag(prereq)}</a>
               {/each}
@@ -1885,6 +1896,14 @@
   /* Book tags */
   .book-tags {
     display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px;
+  }
+  .book-tag-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    margin: 4px 0;
+  }
+  .book-tag-row-label {
+    font-size: 12px; color: var(--text-secondary);
+    min-width: 3.5em; margin-right: 2px;
   }
   .tag-badge {
     display: inline-flex; align-items: center; gap: 4px;
