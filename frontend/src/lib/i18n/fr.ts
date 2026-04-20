@@ -39,6 +39,7 @@ export default {
   'hierarchy.remove': 'Retirer',
   'hierarchy.confirmRemove': 'Retirer « {c} » comme enfant de « {p} » ?',
   'hierarchy.roots': 'Étiquettes racines (sans parent)',
+  'hierarchy.openTagPage': 'Éditeur complet (groupe / repr. / fusion)',
   'hierarchy.bothRequired': 'Parent et enfant sont obligatoires.',
   'hierarchy.sameTag': 'Le parent et l\'enfant doivent différer.',
   'hierarchy.loginToEdit': 'Connectez-vous pour modifier la hiérarchie.',

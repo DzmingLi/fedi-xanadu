@@ -39,6 +39,7 @@ export default {
   'hierarchy.remove': 'Entfernen',
   'hierarchy.confirmRemove': '„{c}" als Kind von „{p}" entfernen?',
   'hierarchy.roots': 'Wurzel-Tags (ohne Eltern)',
+  'hierarchy.openTagPage': 'Vollständiger Editor (Gruppe / Repräs. / Zusammenführen)',
   'hierarchy.bothRequired': 'Eltern und Kind sind erforderlich.',
   'hierarchy.sameTag': 'Eltern und Kind müssen unterschiedlich sein.',
   'hierarchy.loginToEdit': 'Melde dich an, um die Hierarchie zu bearbeiten.',

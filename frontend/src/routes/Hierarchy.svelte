@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import {
     listTagParents, addTagParent, removeTagParent, listTags, searchTags, createTagInline,
-    updateTagNames, listTagAliases, addTagAlias, removeTagAlias,
+    updateTagNames, listTagAliases, addTagAlias, removeTagAlias, requestTagDeletion,
   } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, LOCALES, getLocale } from '../lib/i18n/index.svelte';
@@ -53,6 +53,24 @@
   let newAlias = $state('');
   let editSaving = $state(false);
   let editError = $state('');
+  let deleteReason = $state('');
+  let deleteSubmitting = $state(false);
+  let deleteSubmitted = $state(false);
+
+  async function submitDeletionRequest(tagId: string) {
+    const reason = deleteReason.trim();
+    if (!reason) return;
+    deleteSubmitting = true;
+    try {
+      await requestTagDeletion(tagId, reason);
+      deleteSubmitted = true;
+      deleteReason = '';
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    } finally {
+      deleteSubmitting = false;
+    }
+  }
 
   let tagById = $derived.by(() => {
     const m = new Map<string, Tag>();
@@ -65,6 +83,8 @@
     editingTag = id;
     editError = '';
     newAlias = '';
+    deleteReason = '';
+    deleteSubmitted = false;
     const tg = tagById.get(id);
     const names: Record<string, string> = { ...(tg?.names ?? {}) };
     for (const loc of LOCALES) {
@@ -282,17 +302,23 @@
       </button>
     </div>
     <div class="te-section">
-      <div class="te-label">{t('tags.aliasesLabel')}</div>
-      <div class="alias-chips">
-        {#each editAliases as a}
-          <span class="alias-chip">{a} <button onclick={() => removeAliasEntry(a)}>×</button></span>
-        {/each}
-      </div>
-      <div class="alias-add">
-        <input bind:value={newAlias} placeholder={t('tags.aliasPlaceholder')}
-          onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitAddAlias(); } }} />
-        <button class="btn" onclick={submitAddAlias}>{t('tags.addAlias')}</button>
-      </div>
+      <a class="btn" href="/tag?id={encodeURIComponent(id)}">{t('hierarchy.openTagPage')} →</a>
+    </div>
+    <div class="te-section">
+      <div class="te-label">{t('tags.deleteTitle')}</div>
+      <p class="hint" style="margin:4px 0 6px">{t('tags.deleteHint')}</p>
+      {#if deleteSubmitted}
+        <p class="hint" style="color: var(--accent)">{t('tags.deleteSubmitted')}</p>
+      {:else}
+        <div class="alias-add">
+          <input bind:value={deleteReason} placeholder={t('tags.deleteReasonPlaceholder')} />
+          <button class="btn" style="color:#c00;border-color:#c00"
+            onclick={() => submitDeletionRequest(id)}
+            disabled={!deleteReason.trim() || deleteSubmitting}>
+            {deleteSubmitting ? t('common.saving') : t('tags.requestDelete')}
+          </button>
+        </div>
+      {/if}
     </div>
   </div>
 {/snippet}

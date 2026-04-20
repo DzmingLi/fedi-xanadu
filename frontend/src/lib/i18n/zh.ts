@@ -39,6 +39,7 @@ export default {
   'hierarchy.remove': '删除',
   'hierarchy.confirmRemove': '确定从 "{p}" 移除子标签 "{c}"？',
   'hierarchy.roots': '根标签（无父）',
+  'hierarchy.openTagPage': '完整编辑（同组/代表/合并）',
   'hierarchy.bothRequired': '父标签和子标签都必须填写。',
   'hierarchy.sameTag': '父子必须不同。',
   'hierarchy.loginToEdit': '登录后可编辑层级。',

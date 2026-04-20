@@ -1,1 +1,0 @@
-import{ds as n,dt as o,u as c,bQ as u}from"./index-_LMM1FcK.js";function l(t){throw new Error("https://svelte.dev/e/lifecycle_outside_component")}function i(t){n===null&&l(),o&&n.l!==null?a(n).m.push(t):c(()=>{const e=u(t);if(typeof e=="function")return e})}function a(t){var e=t.l;return e.u??(e.u={a:[],b:[],m:[]})}export{i as o};

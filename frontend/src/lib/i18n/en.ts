@@ -39,6 +39,7 @@ export default {
   'hierarchy.remove': 'Remove',
   'hierarchy.confirmRemove': 'Remove "{c}" as a child of "{p}"?',
   'hierarchy.roots': 'Root tags (no parent)',
+  'hierarchy.openTagPage': 'Full editor (group / rep / merge)',
   'hierarchy.bothRequired': 'Both parent and child are required.',
   'hierarchy.sameTag': 'Parent and child must differ.',
   'hierarchy.loginToEdit': 'Log in to edit the hierarchy.',
