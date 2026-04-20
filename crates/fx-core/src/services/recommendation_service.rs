@@ -161,7 +161,7 @@ article_stats AS (
         WHERE created_at > NOW() - INTERVAL '7 days'
         GROUP BY content_uri
     ) cm7 ON cm7.content_uri = a.at_uri
-    WHERE {vis} AND a.kind = 'article'
+    WHERE {vis} AND a.kind IN ('article', 'question', 'answer')
 ),
 
 -- Per-article prereq readiness
@@ -194,14 +194,19 @@ author_rep AS (
     GROUP BY a.did
 ),
 
--- Translation dedup: pick best language per translation group
+-- Translation dedup: pick best language per translation group (articles only;
+-- questions and answers fall through one-per-uri).
 best_translation AS (
-    SELECT DISTINCT ON (COALESCE(a.translation_group, a.at_uri))
+    SELECT DISTINCT ON (
+        CASE WHEN a.kind = 'article' THEN COALESCE(a.translation_group, a.at_uri)
+             ELSE a.at_uri
+        END
+    )
         a.at_uri
     FROM articles a
     LEFT JOIN lang_settings ls ON TRUE
-    WHERE {vis} AND a.kind = 'article'
-      -- Exclude series chapters (surfaced via their parent series card instead)
+    WHERE {vis} AND a.kind IN ('article', 'question', 'answer')
+      -- Exclude series chapters (articles only have these)
       AND NOT EXISTS (SELECT 1 FROM series_articles sa WHERE sa.article_uri = a.at_uri)
       -- Exclude learned
       AND NOT EXISTS (SELECT 1 FROM user_learned ul WHERE ul.article_uri = a.at_uri)
@@ -219,7 +224,9 @@ best_translation AS (
                SELECT jsonb_array_elements_text(ls.known_langs)
            ))
     ORDER BY
-        COALESCE(a.translation_group, a.at_uri),
+        CASE WHEN a.kind = 'article' THEN COALESCE(a.translation_group, a.at_uri)
+             ELSE a.at_uri
+        END,
         CASE
             WHEN ls.native_lang IS NOT NULL AND a.lang = ls.native_lang THEN 0
             WHEN a.lang = ANY(SELECT jsonb_array_elements_text(COALESCE(ls.known_langs, '[]'::jsonb))) THEN 1

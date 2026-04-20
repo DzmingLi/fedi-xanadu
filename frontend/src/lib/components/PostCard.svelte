@@ -196,7 +196,11 @@
 </script>
 
 {#if article}
-  <a href="/article?uri={encodeURIComponent(article.at_uri)}" class="post-card" class:hidden={expanded} class:has-cover={!!article.cover_url} bind:this={cardEl}>
+  {@const cardHref =
+    article.kind === 'question' ? `/question?uri=${encodeURIComponent(article.at_uri)}`
+    : article.kind === 'answer' && article.question_uri ? `/question?uri=${encodeURIComponent(article.question_uri)}#${encodeURIComponent(article.at_uri)}`
+    : `/article?uri=${encodeURIComponent(article.at_uri)}`}
+  <a href={cardHref} class="post-card" class:hidden={expanded} class:has-cover={!!article.cover_url} bind:this={cardEl}>
     <div class="card-body">
     {#if article.cover_url}
       <div class="post-cover">
@@ -206,6 +210,8 @@
     <div class="card-top">
       {#if article.kind === 'question'}
         <span class="question-badge">{t('qa.questionBadge')}</span>
+      {:else if article.kind === 'answer'}
+        <span class="answer-badge">{t('qa.answerBadge')}</span>
       {:else if article.category === 'review' && article.book_id}
         <a href="/book?id={encodeURIComponent(article.book_id)}" class="review-badge" onclick={(e) => e.stopPropagation()}>{t('article.reviewBadge')}</a>
       {/if}
@@ -514,6 +520,17 @@
     letter-spacing: 0.05em;
     color: #d97706;
     background: rgba(217, 119, 6, 0.1);
+    padding: 2px 8px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .answer-badge {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: #0d9488;
+    background: rgba(13, 148, 136, 0.1);
     padding: 2px 8px;
     border-radius: 3px;
     flex-shrink: 0;
