@@ -783,6 +783,38 @@ pub(super) async fn publish_article_content(
         Err(e) => tracing::warn!("pijul record failed for {}: {e}", loc.node_id),
     }
 
+    // Sync cover from the source's native metadata to the DB cache. Markdown
+    // reads frontmatter, HTML parses <meta>, typst compiles + introspects.
+    // Only for standalone articles — series chapters don't own their cover.
+    if series_id.is_none() {
+        let cover_from_source: Option<String> = match fmt {
+            "markdown" => {
+                tokio::fs::read_to_string(&loc.content_path).await.ok()
+                    .and_then(|s| fx_core::meta::split_frontmatter(&s).0.cover)
+            }
+            "html" => {
+                tokio::fs::read_to_string(&loc.content_path).await.ok()
+                    .and_then(|s| super::covers::html_cover_from_meta(&s))
+            }
+            "typst" => {
+                let repo = loc.repo_path.clone();
+                tokio::task::spawn_blocking(move || {
+                    let config = fx_renderer::fx_render_config();
+                    fx_renderer::extract_typst_article_cover(&repo, &config)
+                }).await.ok().flatten()
+            }
+            _ => None,
+        };
+        if let Some(rel) = cover_from_source {
+            let cover_url = format!("/api/covers/a-{}", loc.node_id);
+            let _ = sqlx::query(
+                "UPDATE articles SET cover_url = $1, cover_file = $2 WHERE at_uri = $3",
+            )
+            .bind(&cover_url).bind(&rel).bind(at_uri)
+            .execute(&state.pool).await;
+        }
+    }
+
     Ok(PublishResult {
         repo_path: loc.repo_path,
         summary_source,

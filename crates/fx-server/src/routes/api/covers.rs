@@ -134,21 +134,30 @@ pub async fn get_cover(
         }
     }
 
-    // Preferred path for markdown articles: content.md's YAML frontmatter.
+    // Preferred path for articles: each format's native metadata.
+    // Markdown → content.md frontmatter. HTML → <meta name="nightboat:cover">.
+    // Typst is handled through the DB: publish_article_content extracts the
+    // cover via typst introspection and syncs it to articles.cover_file.
     if kind == "a" {
+        let mut rel_from_native: Option<String> = None;
         if let Ok(src) = tokio::fs::read_to_string(repo.join("content.md")).await {
-            let (fm, _) = fx_core::meta::split_frontmatter(&src);
-            if let Some(rel) = fm.cover {
-                if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
-                    let ext = ext_of(&rel);
-                    if let Ok(data) = tokio::fs::read(repo.join(&rel)).await {
-                        return Response::builder()
-                            .status(StatusCode::OK)
-                            .header(header::CONTENT_TYPE, content_type_for_ext(&ext))
-                            .header(header::CACHE_CONTROL, "public, max-age=300")
-                            .body(Body::from(data))
-                            .unwrap();
-                    }
+            rel_from_native = fx_core::meta::split_frontmatter(&src).0.cover;
+        }
+        if rel_from_native.is_none() {
+            if let Ok(src) = tokio::fs::read_to_string(repo.join("content.html")).await {
+                rel_from_native = html_cover_from_meta(&src);
+            }
+        }
+        if let Some(rel) = rel_from_native {
+            if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
+                let ext = ext_of(&rel);
+                if let Ok(data) = tokio::fs::read(repo.join(&rel)).await {
+                    return Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, content_type_for_ext(&ext))
+                        .header(header::CACHE_CONTROL, "public, max-age=300")
+                        .body(Body::from(data))
+                        .unwrap();
                 }
             }
         }
@@ -269,10 +278,13 @@ async fn write_cover_to_repo(
     Ok(())
 }
 
-/// For a markdown article, rewrite `content.md`'s YAML frontmatter so its
-/// `cover` field matches the new selection. No-op for typst/html until those
-/// formats get their own metadata mechanism. Returns whether the file changed
-/// (so the caller can emit a pijul patch).
+/// Write the cover selection into the article source's format-native metadata
+/// slot so fork/clone preserves it. Returns whether the file changed (so the
+/// caller can emit a pijul patch).
+///
+/// * markdown: `cover:` in YAML frontmatter at top of `content.md`
+/// * typst:    `#metadata(("cover": "...")) <nbt-article>` at top of `content.typ`
+/// * html:     `<meta name="nightboat:cover" content="...">` in `<head>` of `content.html`
 async fn update_article_cover_meta(
     pool: &sqlx::PgPool,
     repo_path: &std::path::Path,
@@ -285,20 +297,88 @@ async fn update_article_cover_meta(
     .bind(article_uri)
     .fetch_optional(pool)
     .await?;
-    if format.as_deref() != Some("markdown") {
-        return Ok(false);
-    }
-    let content_path = repo_path.join("content.md");
+
+    let (filename, rewrite): (&str, fn(&str, Option<String>) -> String) = match format.as_deref() {
+        Some("markdown") => ("content.md",   fx_core::meta::rewrite_markdown_cover),
+        Some("typst")    => ("content.typ",  rewrite_typst_article_cover),
+        Some("html")     => ("content.html", rewrite_html_article_cover),
+        _ => return Ok(false),
+    };
+
+    let content_path = repo_path.join(filename);
     let src = match tokio::fs::read_to_string(&content_path).await {
         Ok(s) => s,
         Err(_) => return Ok(false),
     };
-    let new_src = fx_core::meta::rewrite_markdown_cover(&src, cover);
+    let new_src = rewrite(&src, cover);
     if new_src == src {
         return Ok(false);
     }
     tokio::fs::write(&content_path, new_src).await?;
     Ok(true)
+}
+
+/// Upsert the `#metadata(("cover": "...")) <nbt-article>` line at the top of a
+/// typst source. Any existing line carrying that label is removed first so we
+/// never leave two covers behind. A None cover means "remove it".
+fn rewrite_typst_article_cover(source: &str, cover: Option<String>) -> String {
+    use regex_lite::Regex;
+    // Matches a full `#metadata(...) <nbt-article>` line plus its trailing newline.
+    let re = Regex::new(
+        r#"(?m)^\s*#metadata\([^)]*\)\s*<nbt-article>\s*\n?"#,
+    ).unwrap();
+    let stripped = re.replace_all(source, "").to_string();
+    match cover {
+        Some(c) => {
+            let escaped = c.replace('\\', r"\\").replace('"', r#"\""#);
+            let leading_newline = if stripped.starts_with('\n') { "" } else { "\n" };
+            format!("#metadata((cover: \"{escaped}\")) <nbt-article>\n{leading_newline}{stripped}")
+        }
+        None => stripped,
+    }
+}
+
+/// Parse `<meta name="nightboat:cover" content="...">` out of an HTML source.
+pub(super) fn html_cover_from_meta(source: &str) -> Option<String> {
+    use regex_lite::Regex;
+    let re = Regex::new(
+        r#"(?i)<meta\s+name="nightboat:cover"\s+content="([^"]+)"\s*/?>"#,
+    ).ok()?;
+    let caps = re.captures(source)?;
+    let raw = caps.get(1)?.as_str();
+    let decoded = raw
+        .replace("&quot;", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&");
+    Some(decoded)
+}
+
+/// Upsert `<meta name="nightboat:cover" content="...">` in an HTML source's
+/// head. Idempotent; None removes the tag. Falls back to prepending the tag
+/// when the document has no recognizable `<head>`.
+fn rewrite_html_article_cover(source: &str, cover: Option<String>) -> String {
+    use regex_lite::Regex;
+    let existing = Regex::new(
+        r#"(?i)<meta\s+name="nightboat:cover"\s+content="[^"]*"\s*/?>\s*\n?"#,
+    ).unwrap();
+    let stripped = existing.replace_all(source, "").to_string();
+    let Some(c) = cover else { return stripped; };
+    let escaped = c
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    let tag = format!("<meta name=\"nightboat:cover\" content=\"{escaped}\">\n");
+    // Insert right after <head> if present; else just prepend.
+    let head_open = Regex::new(r"(?i)<head[^>]*>").unwrap();
+    if let Some(m) = head_open.find(&stripped) {
+        let (a, b) = stripped.split_at(m.end());
+        let needs_newline = if b.starts_with('\n') { "" } else { "\n" };
+        format!("{a}{needs_newline}{tag}{b}")
+    } else {
+        format!("{tag}{stripped}")
+    }
 }
 
 /// After updating the article's markdown frontmatter cover, commit the change
