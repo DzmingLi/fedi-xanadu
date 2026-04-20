@@ -244,7 +244,8 @@ pub async fn set_course_authors(pool: &PgPool, course_id: &str, names: &[String]
 
 pub async fn list_course_authors(pool: &PgPool, course_id: &str) -> crate::Result<Vec<crate::services::author_service::Author>> {
     let rows = sqlx::query_as::<_, crate::services::author_service::Author>(
-        "SELECT a.id, a.name, a.did, a.orcid, a.affiliation, a.homepage \
+        "SELECT a.id, a.name, a.did, a.orcid, a.affiliation, a.homepage, \
+                a.original_names, a.official_translations, a.translations \
          FROM course_authors ca JOIN authors a ON a.id = ca.author_id \
          WHERE ca.course_id = $1 ORDER BY ca.position",
     )
