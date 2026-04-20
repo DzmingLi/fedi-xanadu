@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { getQuestionDetail, postAnswer, castVote, getMyVote, getArticleContent, addBookmark, removeBookmark, getRelatedQuestions } from '../lib/api';
+  import { getQuestionDetail, postAnswer, castVote, getMyVote, getArticleContent, addBookmark, removeBookmark, getRelatedQuestions, deleteArticle } from '../lib/api';
+  import { navigate } from '../lib/router';
   import { authorName } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
@@ -125,6 +126,26 @@
     } catch { /* */ }
   }
 
+  async function doDeleteQuestion() {
+    if (!detail || !confirm(t('article.deleteConfirm'))) return;
+    try {
+      await deleteArticle(uri);
+      navigate('/');
+    } catch (e: any) {
+      toast(e.message || 'Delete failed', 'error');
+    }
+  }
+
+  async function doDeleteAnswer(answerUri: string) {
+    if (!confirm(t('article.deleteConfirm'))) return;
+    try {
+      await deleteArticle(answerUri);
+      await load();
+    } catch (e: any) {
+      toast(e.message || 'Delete failed', 'error');
+    }
+  }
+
   async function submitAnswer() {
     if (!answerContent.trim()) return;
     answerSubmitting = true;
@@ -203,6 +224,7 @@
 
       {#if getAuth() && q.did === getAuth()?.did}
         <a href="/new?edit={encodeURIComponent(q.at_uri)}" class="edit-link">{t('common.edit')}</a>
+        <button class="edit-link danger" onclick={doDeleteQuestion}>{t('article.delete')}</button>
       {/if}
     </div>
   </div>
@@ -264,6 +286,10 @@
             <span class="vote-score">{answer.vote_score}</span>
             <button class="vote-btn" class:active={(answerVotes.get(answer.at_uri) || 0) < 0} onclick={() => voteAnswer(answer.at_uri, -1)}>&#9660;</button>
             <button class="bookmark-btn" class:active={answerBookmarks.has(answer.at_uri)} onclick={() => bookmarkAnswer(answer.at_uri)} title={t('article.bookmark')}>&#9733;</button>
+            {#if getAuth() && answer.did === getAuth()?.did}
+              <a href="/new?edit={encodeURIComponent(answer.at_uri)}" class="edit-link">{t('common.edit')}</a>
+              <button class="edit-link danger" onclick={() => doDeleteAnswer(answer.at_uri)}>{t('article.delete')}</button>
+            {/if}
             <button class="comment-toggle" onclick={() => {
               const s = new Set(expandedComments);
               if (s.has(answer.at_uri)) s.delete(answer.at_uri); else s.add(answer.at_uri);
@@ -424,8 +450,14 @@
   .edit-link {
     font-size: 13px;
     color: var(--text-hint);
-    margin-left: auto;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
   }
+  .edit-link:first-of-type { margin-left: auto; }
+  .edit-link:hover { color: var(--accent); }
+  .edit-link.danger:hover { color: #dc2626; }
 
   /* Answers */
   .answers-section {
