@@ -147,11 +147,13 @@ BEGIN
 END $$;
 
 -- Drop self-loops that result from collapsing (parent, child) where
--- both land in the same group.
-DELETE FROM tag_parents       WHERE parent_group = child_group;
-DELETE FROM tag_parent_edits  WHERE parent_group = child_group;
-DELETE FROM user_tag_tree     WHERE parent_group = child_group;
-DELETE FROM skill_tree_edges  WHERE parent_group = child_group;
+-- both land in the same group. Also drop orphan edges whose tag has
+-- been hard-deleted (parent_tag / child_tag no longer resolves to a
+-- group via the JOIN).
+DELETE FROM tag_parents       WHERE parent_group = child_group OR parent_group IS NULL OR child_group IS NULL;
+DELETE FROM tag_parent_edits  WHERE parent_group = child_group OR parent_group IS NULL OR child_group IS NULL;
+DELETE FROM user_tag_tree     WHERE parent_group = child_group OR parent_group IS NULL OR child_group IS NULL;
+DELETE FROM skill_tree_edges  WHERE parent_group = child_group OR parent_group IS NULL OR child_group IS NULL;
 
 -- Dedup (parent_group, child_group) pairs — tag_parents: global;
 -- user_tag_tree: per-did; skill_tree_edges: per tree_uri.
@@ -236,8 +238,8 @@ UPDATE user_tag_prereqs e SET
     to_group   = (SELECT group_id FROM tags WHERE id = e.to_tag)
 WHERE e.from_group IS NULL OR e.to_group IS NULL;
 
-DELETE FROM skill_tree_prereqs WHERE from_group = to_group;
-DELETE FROM user_tag_prereqs   WHERE from_group = to_group;
+DELETE FROM skill_tree_prereqs WHERE from_group = to_group OR from_group IS NULL OR to_group IS NULL;
+DELETE FROM user_tag_prereqs   WHERE from_group = to_group OR from_group IS NULL OR to_group IS NULL;
 
 DELETE FROM skill_tree_prereqs a USING (
     SELECT ctid FROM (
