@@ -9,8 +9,8 @@ use fx_core::validation::validate_comment_body;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use crate::auth::{WriteAuth, MaybeAuth};
-use fx_core::util::tid;
+use crate::auth::{WriteAuth, MaybeAuth, pds_create_record, pds_put_record, pds_delete_record};
+use fx_core::util::{tid, now_rfc3339};
 use super::UriQuery;
 
 #[derive(serde::Deserialize)]
@@ -67,6 +67,31 @@ pub async fn create_comment(
     )
     .await?;
 
+    // Publish comment to the commenter's PDS — rkey == DB id so future
+    // update/delete can target it directly.
+    let parent_at_uri = if let Some(ref pid) = input.parent_id {
+        sqlx::query_scalar::<_, (String, String)>(
+            "SELECT did, id FROM comments WHERE id = $1",
+        )
+        .bind(pid)
+        .fetch_optional(&state.pool)
+        .await?
+        .map(|(d, i)| format!("at://{}/{}/{}", d, fx_atproto::lexicon::COMMENT, i))
+    } else {
+        None
+    };
+    let mut record = serde_json::json!({
+        "$type": fx_atproto::lexicon::COMMENT,
+        "subject": input.content_uri,
+        "body": input.body,
+        "createdAt": now_rfc3339(),
+    });
+    if let Some(t) = title { record["title"] = serde_json::Value::String(t.to_string()); }
+    if let Some(p) = parent_at_uri { record["parent"] = serde_json::Value::String(p); }
+    if let Some(q) = input.quote_text.as_deref() { record["quoteText"] = serde_json::Value::String(q.to_string()); }
+    if let Some(s) = input.section_ref.as_deref() { record["sectionRef"] = serde_json::Value::String(s.to_string()); }
+    pds_create_record(&state, &user.token, fx_atproto::lexicon::COMMENT, record, Some(id.clone()), "create comment").await;
+
     // Notify content author
     if let Ok(Some(content_did)) = sqlx::query_scalar::<_, String>(
         "SELECT did FROM articles WHERE at_uri = $1"
@@ -117,6 +142,27 @@ pub async fn update_comment(
     }
 
     let comment = comment_service::update_comment(&state.pool, &id, &input.body).await?;
+
+    // Overwrite the record on PDS with refreshed body + updatedAt.
+    let mut record = serde_json::json!({
+        "$type": fx_atproto::lexicon::COMMENT,
+        "subject": comment.content_uri,
+        "body": comment.body,
+        "createdAt": comment.created_at,
+        "updatedAt": now_rfc3339(),
+    });
+    if let Some(ref t) = comment.title { record["title"] = serde_json::Value::String(t.clone()); }
+    if let Some(ref p) = comment.parent_id {
+        if let Ok(Some(pdid)) = sqlx::query_scalar::<_, String>(
+            "SELECT did FROM comments WHERE id = $1",
+        ).bind(p).fetch_optional(&state.pool).await {
+            record["parent"] = serde_json::Value::String(format!("at://{}/{}/{}", pdid, fx_atproto::lexicon::COMMENT, p));
+        }
+    }
+    if let Some(ref q) = comment.quote_text { record["quoteText"] = serde_json::Value::String(q.clone()); }
+    if let Some(ref s) = comment.section_ref { record["sectionRef"] = serde_json::Value::String(s.clone()); }
+    pds_put_record(&state, &user.token, fx_atproto::lexicon::COMMENT, id.clone(), record, "update comment").await;
+
     Ok(Json(comment))
 }
 
@@ -131,6 +177,13 @@ pub async fn delete_comment(
     // Comment author or article author may delete
     if comment_did != user.did && article_did != user.did {
         return Err(AppError(fx_core::Error::Forbidden { action: "delete comment" }));
+    }
+
+    // Only the commenter has write access to the commenter's PDS. Article
+    // authors can still delete the local DB row, but the PDS record remains
+    // under the commenter's repo (source of truth for that user).
+    if comment_did == user.did {
+        pds_delete_record(&state, &user.token, fx_atproto::lexicon::COMMENT, id.clone(), "delete comment").await;
     }
 
     comment_service::delete_comment(&state.pool, &id).await?;

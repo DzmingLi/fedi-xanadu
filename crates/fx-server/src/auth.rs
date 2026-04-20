@@ -185,6 +185,31 @@ pub async fn pds_create_record(
     }
 }
 
+/// Create-or-update (putRecord) a record on the user's PDS at a specific rkey.
+pub async fn pds_put_record(
+    state: &crate::state::AppState,
+    token: &str,
+    collection: &str,
+    rkey: String,
+    record: serde_json::Value,
+    label: &str,
+) {
+    if let Some(pds) = pds_session(&state.pool, token).await {
+        if let Err(e) = state.at_client.put_record(
+            &pds.pds_url,
+            &pds.access_jwt,
+            &fx_atproto::client::PutRecordInput {
+                repo: pds.did,
+                collection: collection.to_string(),
+                rkey,
+                record,
+            },
+        ).await {
+            log_pds_error(label, e);
+        }
+    }
+}
+
 /// Delete a record from the user's PDS.
 pub async fn pds_delete_record(
     state: &crate::state::AppState,

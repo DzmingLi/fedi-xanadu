@@ -6,7 +6,7 @@ use fx_core::services::{vote_service, reputation_service};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
-use crate::auth::{WriteAuth, MaybeAuth, pds_create_record};
+use crate::auth::{WriteAuth, MaybeAuth, pds_create_record, pds_delete_record};
 use fx_core::util::{tid, now_rfc3339};
 use super::UriQuery;
 
@@ -34,12 +34,22 @@ pub async fn cast_vote(
     WriteAuth(user): WriteAuth,
     Json(input): Json<CastVoteInput>,
 ) -> ApiResult<Json<VoteSummary>> {
-    let vote_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::VOTE, tid());
+    let new_vote_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::VOTE, tid());
     let value = input.value.clamp(-1, 1);
+
+    // Fetch the previous vote's at_uri (if any) before mutating so we can
+    // delete the matching PDS record afterward.
+    let prev_uri: Option<String> = sqlx::query_scalar(
+        "SELECT at_uri FROM votes WHERE target_uri = $1 AND did = $2",
+    )
+    .bind(&input.target_uri)
+    .bind(&user.did)
+    .fetch_optional(&state.pool)
+    .await?;
 
     let summary = vote_service::cast_vote(
         &state.pool,
-        &vote_uri,
+        &new_vote_uri,
         &input.target_uri,
         &user.did,
         value,
@@ -54,7 +64,14 @@ pub async fn cast_vote(
         let _ = reputation_service::update_for_content_vote(&pool, &target, &voter).await;
     });
 
-    // AT Protocol side-effect (only for non-zero votes)
+    // Retire the old PDS record (if switching value, also clears the stale entry)
+    if let Some(pu) = prev_uri {
+        if let Some(rk) = pu.rsplit('/').next() {
+            pds_delete_record(&state, &user.token, fx_atproto::lexicon::VOTE, rk.to_string(), "delete old vote").await;
+        }
+    }
+
+    // Publish the new vote record (only for non-zero votes)
     if value != 0 {
         let record = serde_json::json!({
             "$type": fx_atproto::lexicon::VOTE,
@@ -62,7 +79,8 @@ pub async fn cast_vote(
             "value": value,
             "createdAt": now_rfc3339(),
         });
-        pds_create_record(&state, &user.token, fx_atproto::lexicon::VOTE, record, None, "create vote").await;
+        let rkey = new_vote_uri.rsplit('/').next().map(str::to_string);
+        pds_create_record(&state, &user.token, fx_atproto::lexicon::VOTE, record, rkey, "create vote").await;
     }
 
     Ok(Json(VoteSummary {

@@ -1,0 +1,25 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.comment",
+  "description": "A threaded discussion comment on an article (or another comment). Stored under the commenter's DID; `parent` is the replied-to comment URI when this is a reply.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subject", "body", "createdAt"],
+        "properties": {
+          "subject":    { "type": "string", "format": "at-uri", "description": "The article (or content) this comment is attached to." },
+          "parent":     { "type": "string", "format": "at-uri", "description": "When set, this comment is a reply to the referenced comment." },
+          "title":      { "type": "string", "maxLength": 200 },
+          "body":       { "type": "string", "maxLength": 20000 },
+          "quoteText":  { "type": "string", "maxLength": 5000, "description": "Optional quote from the subject being commented on." },
+          "sectionRef": { "type": "string", "maxLength": 255, "description": "Anchor / section identifier within the subject." },
+          "createdAt":  { "type": "string", "format": "datetime" },
+          "updatedAt":  { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

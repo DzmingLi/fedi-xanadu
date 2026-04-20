@@ -7,6 +7,7 @@ pub const ARTICLE: &str = "at.nightbo.article";
 pub const FORK: &str = "at.nightbo.fork";
 pub const MERGE: &str = "at.nightbo.merge";
 pub const VOTE: &str = "at.nightbo.vote";
+pub const COMMENT: &str = "at.nightbo.comment";
 pub const SKILL: &str = "at.nightbo.skill";
 pub const WANT_LEARN: &str = "at.nightbo.wantlearn";
 pub const TAG: &str = "at.nightbo.tag";
