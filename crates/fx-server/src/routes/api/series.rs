@@ -24,6 +24,11 @@ pub(crate) struct CreateSeriesInput {
     lang: Option<String>,
     translation_of: Option<String>,
     category: Option<String>,
+    /// "markdown" (default), "typst", or "html". Typst series encode their
+    /// series-level metadata natively in main.typ via `<nbt-series>` instead
+    /// of a sidecar `meta.yaml`.
+    #[serde(default)]
+    format: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -93,22 +98,49 @@ pub async fn create_series(
     )
     .await?;
 
-    // Write series meta.yaml
+    // Seed series-level metadata into the repo. Typst series use a native
+    // `#metadata(...) <nbt-series>` directive at the top of main.typ so the
+    // typst source is the single source of truth; markdown/html series use
+    // a sidecar meta.yaml since those formats have no doc-level metadata
+    // slot.
+    let fmt = input.format.as_deref().unwrap_or("markdown");
     if let Some(ref node) = pijul_node_id {
-        let meta = fx_core::meta::SeriesMeta {
-            title: input.title.clone(),
-            description: input.summary.clone(),
-            long_description: input.long_description.clone(),
-            lang: Some(lang.to_string()),
-            category: Some(category.to_string()),
-            topics: topics.clone(),
-            split_level: None,
-            chapters: Vec::new(),
-            cover: None,
-        };
         let repo_path = state.pijul.series_repo_path(node);
-        if let Err(e) = fx_core::meta::write_series_meta(&repo_path, &meta) {
-            tracing::warn!("failed to write series meta.yaml: {e}");
+        match fmt {
+            "typst" => {
+                let summary_meta = fx_renderer::SeriesSummaryMeta {
+                    title: Some(input.title.clone()),
+                    description: input.summary.clone(),
+                    long_description: input.long_description.clone(),
+                    cover: None,
+                    lang: Some(lang.to_string()),
+                    category: Some(category.to_string()),
+                    topics: topics.clone(),
+                    split_level: None,
+                };
+                let main_path = repo_path.join("main.typ");
+                let existing = tokio::fs::read_to_string(&main_path).await.unwrap_or_default();
+                let new_src = fx_renderer::upsert_typst_series_summary(&existing, &summary_meta);
+                if let Err(e) = tokio::fs::write(&main_path, new_src).await {
+                    tracing::warn!("failed to write series main.typ: {e}");
+                }
+            }
+            _ => {
+                let meta = fx_core::meta::SeriesMeta {
+                    title: input.title.clone(),
+                    description: input.summary.clone(),
+                    long_description: input.long_description.clone(),
+                    lang: Some(lang.to_string()),
+                    category: Some(category.to_string()),
+                    topics: topics.clone(),
+                    split_level: None,
+                    chapters: Vec::new(),
+                    cover: None,
+                };
+                if let Err(e) = fx_core::meta::write_series_meta(&repo_path, &meta) {
+                    tracing::warn!("failed to write series meta.yaml: {e}");
+                }
+            }
         }
         let _ = state.pijul_record_series(node.clone(), "Add metadata".into(), Some(user.did.clone())).await;
     }

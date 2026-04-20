@@ -117,9 +117,24 @@ pub async fn get_cover(
         return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
     };
 
-    // Preferred path for series: meta.yaml `cover` field — survives fork/clone.
+    // Preferred path for series: the repo's native metadata slot.
+    // Typst series (main.typ present) query the `<nbt-series>` directive;
+    // markdown/html series fall back to meta.yaml.
     if kind == "s" {
-        if let Some(rel) = fx_core::meta::read_series_meta(&repo).and_then(|m| m.cover) {
+        let rel = if repo.join("main.typ").exists() {
+            let repo_owned = repo.clone();
+            tokio::task::spawn_blocking(move || {
+                let config = fx_renderer::fx_render_config();
+                fx_renderer::extract_typst_series_summary(&repo_owned, &config)
+            })
+            .await
+            .ok()
+            .flatten()
+            .and_then(|m| m.cover)
+        } else {
+            fx_core::meta::read_series_meta(&repo).and_then(|m| m.cover)
+        };
+        if let Some(rel) = rel {
             if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
                 let ext = ext_of(&rel);
                 if let Ok(data) = tokio::fs::read(repo.join(&rel)).await {
@@ -229,6 +244,30 @@ async fn purge_other_exts(dir: &std::path::Path, keep: &str) {
     }
 }
 
+/// Persist a series cover selection to whichever metadata slot the series
+/// uses: `main.typ` with a `<nbt-series>` directive for typst series, or
+/// meta.yaml otherwise.
+async fn persist_series_cover(repo_path: &std::path::Path, cover: Option<String>) {
+    let main_path = repo_path.join("main.typ");
+    if main_path.exists() {
+        // Round-trip: read existing summary, patch cover, rewrite the directive.
+        let config = fx_renderer::fx_render_config();
+        let repo = repo_path.to_path_buf();
+        let current = tokio::task::spawn_blocking(move || {
+            fx_renderer::extract_typst_series_summary(&repo, &config)
+        }).await.ok().flatten().unwrap_or_default();
+        let mut updated = current;
+        updated.cover = cover;
+        let source = tokio::fs::read_to_string(&main_path).await.unwrap_or_default();
+        let new_source = fx_renderer::upsert_typst_series_summary(&source, &updated);
+        if let Err(e) = tokio::fs::write(&main_path, new_source).await {
+            tracing::warn!("update typst series summary failed: {e}");
+        }
+    } else if let Err(e) = fx_core::meta::set_series_meta_cover(repo_path, cover) {
+        tracing::warn!("update series meta cover failed: {e}");
+    }
+}
+
 /// Write the cover to the pijul repo, mirror to knot (if configured), and
 /// record a patch so the change is versioned.
 async fn write_cover_to_repo(
@@ -245,12 +284,10 @@ async fn write_cover_to_repo(
     let cover_path = repo_path.join(format!("{COVER_STEM}.{ext}"));
     tokio::fs::write(&cover_path, data).await?;
 
-    // Persist the cover selection into meta.yaml for series so fork/clone
-    // preserves it without needing the database.
+    // Persist the cover selection into the series' metadata slot so fork/clone
+    // preserves it without the database.
     if is_series {
-        if let Err(e) = fx_core::meta::set_series_meta_cover(repo_path, Some(format!("{COVER_STEM}.{ext}"))) {
-            tracing::warn!("update series meta cover failed: {e}");
-        }
+        persist_series_cover(repo_path, Some(format!("{COVER_STEM}.{ext}"))).await;
     }
 
     // Mirror to knot if the user has one configured (articles only — series
@@ -399,11 +436,8 @@ async fn remove_cover_from_repo(
 ) {
     let mut removed_any = false;
     if is_series {
-        if let Err(e) = fx_core::meta::set_series_meta_cover(repo_path, None) {
-            tracing::warn!("clear series meta cover failed: {e}");
-        } else {
-            removed_any = true;
-        }
+        persist_series_cover(repo_path, None).await;
+        removed_any = true;
     }
     for ext in UPLOAD_EXTENSIONS {
         if tokio::fs::remove_file(repo_path.join(format!("{COVER_STEM}.{ext}"))).await.is_ok() {
@@ -625,13 +659,12 @@ async fn set_series_cover_reference_inner(
         )));
     }
 
-    // meta.yaml is the source of truth; write it before the DB update and
-    // record a patch so fork/clone inherits the selection.
+    // The repo's native metadata slot (typst's <nbt-series> or meta.yaml)
+    // is the source of truth; write it before the DB update so fork/clone
+    // inherits the selection.
     let owner_did: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
         .bind(series_id).fetch_optional(&state.pool).await?;
-    if let Err(e) = fx_core::meta::set_series_meta_cover(&repo_path, Some(file.to_string())) {
-        tracing::warn!("update series meta cover failed: {e}");
-    }
+    persist_series_cover(&repo_path, Some(file.to_string())).await;
     if let Some(d) = owner_did {
         if let Err(e) = state.pijul_record_series(node_id.clone(), "Set cover".into(), Some(d)).await {
             tracing::warn!("pijul record series cover ref failed: {e}");

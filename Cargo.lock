@@ -1965,7 +1965,7 @@ dependencies = [
 [[package]]
 name = "fx-renderer"
 version = "0.1.0"
-source = "git+https://github.com/DzmingLi/typst-render.git#6001d4e658b41d001f620d09c3c29cd3d57d2a50"
+source = "git+https://github.com/DzmingLi/typst-render.git#11afecc9d76a0afb1b51118ae3aeeb7f3649546c"
 dependencies = [
  "anyhow",
  "base64",
@@ -1975,6 +1975,7 @@ dependencies = [
  "markdown-it",
  "markdown-it-footnote",
  "markdown-it-front-matter",
+ "serde",
  "serde_json",
  "serde_yml",
  "tar",
