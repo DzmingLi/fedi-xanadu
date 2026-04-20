@@ -134,6 +134,26 @@ pub async fn get_cover(
         }
     }
 
+    // Preferred path for markdown articles: content.md's YAML frontmatter.
+    if kind == "a" {
+        if let Ok(src) = tokio::fs::read_to_string(repo.join("content.md")).await {
+            let (fm, _) = fx_core::meta::split_frontmatter(&src);
+            if let Some(rel) = fm.cover {
+                if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
+                    let ext = ext_of(&rel);
+                    if let Ok(data) = tokio::fs::read(repo.join(&rel)).await {
+                        return Response::builder()
+                            .status(StatusCode::OK)
+                            .header(header::CONTENT_TYPE, content_type_for_ext(&ext))
+                            .header(header::CACHE_CONTROL, "public, max-age=300")
+                            .body(Body::from(data))
+                            .unwrap();
+                    }
+                }
+            }
+        }
+    }
+
     // Next: DB cover_file (articles, or legacy series rows without meta).
     if let Some(rel) = lookup_cover_file(&state.pool, kind, node_id).await {
         if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
@@ -249,6 +269,46 @@ async fn write_cover_to_repo(
     Ok(())
 }
 
+/// For a markdown article, rewrite `content.md`'s YAML frontmatter so its
+/// `cover` field matches the new selection. No-op for typst/html until those
+/// formats get their own metadata mechanism. Returns whether the file changed
+/// (so the caller can emit a pijul patch).
+async fn update_article_cover_meta(
+    pool: &sqlx::PgPool,
+    repo_path: &std::path::Path,
+    article_uri: &str,
+    cover: Option<String>,
+) -> Result<bool, AppError> {
+    let format: Option<String> = sqlx::query_scalar(
+        "SELECT content_format::text FROM articles WHERE at_uri = $1",
+    )
+    .bind(article_uri)
+    .fetch_optional(pool)
+    .await?;
+    if format.as_deref() != Some("markdown") {
+        return Ok(false);
+    }
+    let content_path = repo_path.join("content.md");
+    let src = match tokio::fs::read_to_string(&content_path).await {
+        Ok(s) => s,
+        Err(_) => return Ok(false),
+    };
+    let new_src = fx_core::meta::rewrite_markdown_cover(&src, cover);
+    if new_src == src {
+        return Ok(false);
+    }
+    tokio::fs::write(&content_path, new_src).await?;
+    Ok(true)
+}
+
+/// After updating the article's markdown frontmatter cover, commit the change
+/// to the repo so fork/clone carries it. Best-effort; errors are logged.
+async fn record_article_cover_meta(state: &AppState, node_id: &str, did: &str) {
+    if let Err(e) = state.pijul_record(node_id.to_string(), "Update cover metadata".into(), Some(did.to_string())).await {
+        tracing::warn!("pijul record cover meta failed for {node_id}: {e}");
+    }
+}
+
 /// Delete every cover.{ext} in the repo and record the deletion.
 async fn remove_cover_from_repo(
     state: &AppState,
@@ -313,6 +373,9 @@ pub async fn upload_article_cover(
 
     let cover_url = format!("/api/covers/a-{node_id}");
     let cover_file = format!("{COVER_STEM}.{ext}");
+    if update_article_cover_meta(&state.pool, &repo_path, &q.uri, Some(cover_file.clone())).await.unwrap_or(false) {
+        record_article_cover_meta(&state, &node_id, &user.did).await;
+    }
     sqlx::query("UPDATE articles SET cover_url = $1, cover_file = $2 WHERE at_uri = $3")
         .bind(&cover_url).bind(&cover_file).bind(&q.uri).execute(&state.pool).await?;
     Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": cover_file })))
@@ -334,6 +397,9 @@ pub async fn remove_article_cover(
     let node_id = uri_to_node_id(&q.uri);
     let repo_path = state.pijul.repo_path(&node_id);
     remove_cover_from_repo(&state, &repo_path, &node_id, &user.did, false).await;
+    if update_article_cover_meta(&state.pool, &repo_path, &q.uri, None).await.unwrap_or(false) {
+        record_article_cover_meta(&state, &node_id, &user.did).await;
+    }
     sqlx::query("UPDATE articles SET cover_url = NULL, cover_file = NULL WHERE at_uri = $1")
         .bind(&q.uri).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -372,6 +438,13 @@ async fn set_article_cover_reference_inner(
         )));
     }
     let cover_url = format!("/api/covers/a-{node_id}");
+    if update_article_cover_meta(&state.pool, &repo_path, uri, Some(file.to_string())).await.unwrap_or(false) {
+        let did: Option<String> = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
+            .bind(uri).fetch_optional(&state.pool).await.ok().flatten();
+        if let Some(d) = did {
+            record_article_cover_meta(state, &node_id, &d).await;
+        }
+    }
     sqlx::query("UPDATE articles SET cover_url = $1, cover_file = $2 WHERE at_uri = $3")
         .bind(&cover_url).bind(file).bind(uri).execute(&state.pool).await?;
     Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": file })))

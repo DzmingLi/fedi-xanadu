@@ -112,10 +112,32 @@ pub struct Frontmatter {
     pub category: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
+    /// Relative path (within the article's pijul repo) to a cover image.
+    /// Authoritative — surviving fork/clone — so other consumers keep the
+    /// cover selection without needing the origin database.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub teaches: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prereqs: Vec<PrereqEntry>,
+}
+
+/// Rewrite a markdown source so its frontmatter `cover` field matches `cover`.
+/// If the source has no frontmatter, one is synthesised; if it had one, only
+/// the cover field is touched (other keys are preserved by round-tripping
+/// through `Frontmatter` — any key we don't model is LOST, so this is meant
+/// for fields the app controls).
+pub fn rewrite_markdown_cover(source: &str, cover: Option<String>) -> String {
+    let (mut fm, body) = split_frontmatter(source);
+    fm.cover = cover;
+    let yaml = serde_yml::to_string(&fm).unwrap_or_default();
+    let trimmed = yaml.trim_end();
+    // Empty frontmatter (everything optional/empty) → emit no block.
+    if trimmed.is_empty() || trimmed == "{}" {
+        return body.to_string();
+    }
+    format!("---\n{trimmed}\n---\n{body}")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
