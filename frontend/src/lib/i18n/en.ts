@@ -559,7 +559,8 @@ export default {
   'tags.confirmMerge': 'Merge the group containing {0} into {1}? This fuses every member, alias, and translation across the two groups.',
   'tags.deleteTitle': 'Request deletion',
   'tags.deleteHint': 'Submits a deletion request. An admin reviews; if approved, the tag is soft-deleted (row stays, no longer displayed).',
-  'tags.deleteReasonPlaceholder': 'Reason (required)',
+  'tags.deleteReasonPlaceholder': 'Reason (optional)',
+  'tags.deletePending': 'A deletion request for this tag is already under admin review.',
   'tags.requestDelete': 'Submit request',
   'tags.deleteSubmitted': 'Submitted. Awaiting admin review.',
 

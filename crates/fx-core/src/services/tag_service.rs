@@ -540,13 +540,30 @@ pub struct TagDeletionRequest {
 }
 
 /// Record a user's request to remove a tag. Admin must later approve
-/// or reject; the tag isn't touched until approval.
+/// or reject; the tag isn't touched until approval. Rejects if there's
+/// already a pending request on the tag (by any user) so a single
+/// pending review is the canonical "under review" state.
 pub async fn request_tag_deletion(
     pool: &PgPool,
     tag_id: &str,
     requester_did: &str,
     reason: &str,
 ) -> Result<TagDeletionRequest> {
+    let existing: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM tag_deletion_requests \
+         WHERE tag_id = $1 AND status = 'pending')",
+    )
+    .bind(tag_id)
+    .fetch_one(pool)
+    .await?;
+    if existing {
+        return Err(crate::Error::Validation(vec![
+            crate::validation::ValidationError {
+                field: "tag_id".into(),
+                message: "this tag already has a pending deletion request under review".into(),
+            }
+        ]));
+    }
     let row = sqlx::query_as::<_, TagDeletionRequest>(
         "INSERT INTO tag_deletion_requests (tag_id, requester_did, reason) \
          VALUES ($1, $2, $3) RETURNING *",
@@ -557,6 +574,19 @@ pub async fn request_tag_deletion(
     .fetch_one(pool)
     .await?;
     Ok(row)
+}
+
+/// Is there a pending deletion request on this tag? Used by the UI to
+/// show an "under review" banner instead of the submit form.
+pub async fn has_pending_deletion(pool: &PgPool, tag_id: &str) -> Result<bool> {
+    let existing: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM tag_deletion_requests \
+         WHERE tag_id = $1 AND status = 'pending')",
+    )
+    .bind(tag_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(existing)
 }
 
 pub async fn list_pending_tag_deletions(pool: &PgPool) -> Result<Vec<TagDeletionRequest>> {
@@ -587,12 +617,79 @@ pub async fn approve_tag_deletion(
     .await?
     .ok_or_else(|| crate::Error::NotFound { entity: "tag_deletion_request", id: request_id.to_string() })?;
 
-    // Soft delete: flip `removed_at`. Read paths filter this out.
-    sqlx::query("UPDATE tags SET removed_at = NOW() WHERE id = $1")
-        .bind(&tag_id)
-        .execute(&mut *tx)
-        .await?;
+    hard_delete_tag(&mut tx, &tag_id).await?;
     tx.commit().await?;
+    Ok(())
+}
+
+/// Remove every reference to a tag from edge tables that don't have
+/// ON DELETE CASCADE wired up, then delete the tag row. If the tag was
+/// the last member of its group, the empty group row is dropped too.
+async fn hard_delete_tag(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tag_id: &str,
+) -> Result<()> {
+    // Non-cascading FK tables — clean up first.
+    for table in &[
+        "content_prereqs",
+        "content_teaches",
+        "content_topics",
+        "course_tags",
+        "listing_preferred_tags",
+        "listing_required_tags",
+        "user_interests",
+        "user_skills",
+        "skill_trees",
+    ] {
+        sqlx::query(&format!("DELETE FROM {table} WHERE tag_id = $1"))
+            .bind(tag_id)
+            .execute(&mut **tx)
+            .await?;
+    }
+    // parent/child pairs
+    for (table, cols) in &[
+        ("user_tag_tree", ("parent_tag", "child_tag")),
+        ("skill_tree_edges", ("parent_tag", "child_tag")),
+        ("tag_parent_edits", ("parent_tag", "child_tag")),
+        ("skill_tree_prereqs", ("from_tag", "to_tag")),
+        ("user_tag_prereqs", ("from_tag", "to_tag")),
+    ] {
+        let (a, b) = cols;
+        sqlx::query(&format!("DELETE FROM {table} WHERE {a} = $1 OR {b} = $1"))
+            .bind(tag_id)
+            .execute(&mut **tx)
+            .await?;
+    }
+
+    let group_id: Option<String> = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+        .bind(tag_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+    // Delete the tag — cascading FKs (tag_parents, tag_aliases,
+    // tag_group_representatives, course_session_*, tag_deletion_requests)
+    // clean themselves up.
+    sqlx::query("DELETE FROM tags WHERE id = $1")
+        .bind(tag_id)
+        .execute(&mut **tx)
+        .await?;
+
+    // If group is now empty, drop it (and the stale rep FK that
+    // cascaded from the tag row).
+    if let Some(g) = group_id {
+        let remaining: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tags WHERE group_id = $1",
+        )
+        .bind(&g)
+        .fetch_one(&mut **tx)
+        .await?;
+        if remaining == 0 {
+            sqlx::query("DELETE FROM tag_groups WHERE id = $1")
+                .bind(&g)
+                .execute(&mut **tx)
+                .await?;
+        }
+    }
     Ok(())
 }
 

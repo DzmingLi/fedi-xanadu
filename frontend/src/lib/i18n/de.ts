@@ -559,7 +559,8 @@ export default {
   'tags.confirmMerge': 'Die Gruppe mit {0} in {1} zusammenführen? Dies vereint alle Mitglieder, Aliase und Übersetzungen beider Gruppen.',
   'tags.deleteTitle': 'Löschung anfordern',
   'tags.deleteHint': 'Sendet eine Löschanfrage. Ein Admin prüft; bei Zustimmung wird das Tag soft-gelöscht (Zeile bleibt, wird nicht mehr angezeigt).',
-  'tags.deleteReasonPlaceholder': 'Grund (erforderlich)',
+  'tags.deleteReasonPlaceholder': 'Grund (optional)',
+  'tags.deletePending': 'Eine Löschanfrage für dieses Tag wird bereits vom Admin geprüft.',
   'tags.requestDelete': 'Senden',
   'tags.deleteSubmitted': 'Gesendet. Warten auf Admin-Prüfung.',
 

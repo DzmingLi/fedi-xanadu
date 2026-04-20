@@ -42,12 +42,20 @@ pub async fn list_tags(
     Ok(Json(tags))
 }
 
+#[derive(serde::Serialize)]
+pub struct TagWithMeta {
+    #[serde(flatten)]
+    pub tag: Tag,
+    pub pending_deletion: bool,
+}
+
 pub async fn get_tag(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> ApiResult<Json<Tag>> {
+) -> ApiResult<Json<TagWithMeta>> {
     let tag = tag_service::get_tag(&state.pool, &id).await?;
-    Ok(Json(tag))
+    let pending_deletion = tag_service::has_pending_deletion(&state.pool, &id).await.unwrap_or(false);
+    Ok(Json(TagWithMeta { tag, pending_deletion }))
 }
 
 #[derive(serde::Serialize)]
@@ -105,25 +113,20 @@ pub async fn remove_group_member(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-#[derive(serde::Deserialize)]
-pub struct DeletionRequestInput { pub reason: String }
+#[derive(serde::Deserialize, Default)]
+pub struct DeletionRequestInput {
+    #[serde(default)]
+    pub reason: String,
+}
 
-/// User-initiated tag deletion request. An admin must later approve
-/// before the tag is actually soft-deleted.
+/// User-initiated tag deletion request. An admin must later approve;
+/// reason is optional. Fails if the tag is already under review.
 pub async fn request_tag_deletion(
     State(state): State<AppState>,
     Path(id): Path<String>,
     crate::auth::Auth(user): crate::auth::Auth,
     Json(input): Json<DeletionRequestInput>,
 ) -> ApiResult<Json<tag_service::TagDeletionRequest>> {
-    if input.reason.trim().is_empty() {
-        return Err(AppError(fx_core::Error::Validation(vec![
-            fx_core::validation::ValidationError {
-                field: "reason".into(),
-                message: "reason is required".into(),
-            }
-        ])));
-    }
     let req = tag_service::request_tag_deletion(&state.pool, &id, &user.did, input.reason.trim()).await?;
     Ok(Json(req))
 }

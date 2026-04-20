@@ -1,1 +1,0 @@
-import{bP as b,bQ as c,bR as o,bS as i,bT as d}from"./index-BB0bsk2m.js";function u(e,n,f){b(()=>{var r=c(()=>n(e,f==null?void 0:f())||{});if(f&&(r!=null&&r.update)){var a=!1,t={};o(()=>{var s=f();i(s),a&&d(t,s)&&(t=s,r.update(s))}),a=!0}if(r!=null&&r.destroy)return()=>r.destroy()})}export{u as a};

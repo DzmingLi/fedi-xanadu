@@ -559,7 +559,8 @@ export default {
   'tags.confirmMerge': '把 {0} 所在的组合并进 {1}？这个动作会把两个组的所有成员、别名、翻译合到一起。',
   'tags.deleteTitle': '请求删除',
   'tags.deleteHint': '提交删除请求，管理员审核后执行软删除（标签仍保留在 DB 里，但不再显示）。',
-  'tags.deleteReasonPlaceholder': '删除理由（必填）',
+  'tags.deleteReasonPlaceholder': '删除理由（可选）',
+  'tags.deletePending': '该标签已提交删除请求，正在等待管理员审核。',
   'tags.requestDelete': '提交请求',
   'tags.deleteSubmitted': '已提交，等待管理员处理。',
 

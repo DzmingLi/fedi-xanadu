@@ -42,6 +42,7 @@
   let deleteReason = $state('');
   let deleteSubmitting = $state(false);
   let deleteSubmitted = $state(false);
+  let pendingDeletion = $state(false);
 
   function openEdit() {
     if (!tag) return;
@@ -64,12 +65,11 @@
   }
 
   async function submitDeletionRequest() {
-    const reason = deleteReason.trim();
-    if (!reason) return;
     deleteSubmitting = true;
     try {
-      await requestTagDeletion(id, reason);
+      await requestTagDeletion(id, deleteReason.trim());
       deleteSubmitted = true;
+      pendingDeletion = true;
       deleteReason = '';
     } catch (err: any) {
       editError = err.message ?? String(err);
@@ -175,9 +175,10 @@
 
   $effect(() => {
     loading = true;
-    Promise.all([getTag(id), getArticlesByTag(id), listSkills()]).then(async ([t, arts, sk]) => {
-      tag = t;
-      document.title = `${t.name} — NightBoat`;
+    Promise.all([getTag(id), getArticlesByTag(id), listSkills()]).then(async ([resp, arts, sk]) => {
+      tag = resp as any;
+      pendingDeletion = !!(resp as any).pending_deletion;
+      document.title = `${resp.name} — NightBoat`;
       articles = arts;
       skills = sk;
 
@@ -339,16 +340,20 @@
       </div>
 
       <h4 style="margin-top:18px">{t('tags.deleteTitle')}</h4>
-      <p class="hint">{t('tags.deleteHint')}</p>
-      {#if deleteSubmitted}
-        <p class="hint" style="color: var(--accent)">{t('tags.deleteSubmitted')}</p>
+      {#if pendingDeletion}
+        <p class="hint" style="color:#d97706">{t('tags.deletePending')}</p>
       {:else}
-        <div class="sibling-add">
-          <input class="sm-input" bind:value={deleteReason} placeholder={t('tags.deleteReasonPlaceholder')} style="flex:1" />
-          <button class="btn" style="color:#c00;border-color:#c00" onclick={submitDeletionRequest} disabled={!deleteReason.trim() || deleteSubmitting}>
-            {deleteSubmitting ? t('common.saving') : t('tags.requestDelete')}
-          </button>
-        </div>
+        <p class="hint">{t('tags.deleteHint')}</p>
+        {#if deleteSubmitted}
+          <p class="hint" style="color: var(--accent)">{t('tags.deleteSubmitted')}</p>
+        {:else}
+          <div class="sibling-add">
+            <input class="sm-input" bind:value={deleteReason} placeholder={t('tags.deleteReasonPlaceholder')} style="flex:1" />
+            <button class="btn" style="color:#c00;border-color:#c00" onclick={submitDeletionRequest} disabled={deleteSubmitting}>
+              {deleteSubmitting ? t('common.saving') : t('tags.requestDelete')}
+            </button>
+          </div>
+        {/if}
       {/if}
 
       <div class="modal-actions">

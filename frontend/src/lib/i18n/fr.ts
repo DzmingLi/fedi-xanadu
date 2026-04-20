@@ -559,7 +559,8 @@ export default {
   'tags.confirmMerge': 'Fusionner le groupe contenant {0} dans {1} ? Cela combine tous les membres, alias et traductions des deux groupes.',
   'tags.deleteTitle': 'Demander la suppression',
   'tags.deleteHint': 'Envoie une demande de suppression. Un admin examine ; si approuvée, le tag est supprimé de manière logicielle (la ligne reste, ne s\'affiche plus).',
-  'tags.deleteReasonPlaceholder': 'Raison (obligatoire)',
+  'tags.deleteReasonPlaceholder': 'Raison (optionnel)',
+  'tags.deletePending': 'Une demande de suppression pour ce tag est déjà en cours d\'examen par l\'administrateur.',
   'tags.requestDelete': 'Envoyer',
   'tags.deleteSubmitted': 'Envoyé. En attente de l\'examen par l\'admin.',
 
