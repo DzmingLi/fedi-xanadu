@@ -393,7 +393,7 @@
           <span class="tag-chip root">
             <a href="/tag?id={encodeURIComponent(tag)}">{displayTagId(tag, tagById)}</a>
             {#if isLoggedIn}
-              <button class="gear" onclick={() => toggleEdit(tag)} title={t('tags.edit')}>✎</button>
+              <a class="gear" href="/tag?id={encodeURIComponent(tag)}&edit=1" title={t('tags.edit')}>✎</a>
             {/if}
           </span>
           {#if editingTag === tag}
@@ -410,7 +410,7 @@
             <a href="/tag?id={encodeURIComponent(g.parent)}">{displayTagId(g.parent, tagById)}</a>
             <span class="count">{g.children.length}</span>
             {#if isLoggedIn}
-              <button class="gear" onclick={() => toggleEdit(g.parent)} title={t('tags.edit')}>✎</button>
+              <a class="gear" href="/tag?id={encodeURIComponent(g.parent)}&edit=1" title={t('tags.edit')}>✎</a>
             {/if}
           </h3>
           {#if editingTag === g.parent}
@@ -421,7 +421,7 @@
               <span class="tag-chip">
                 <a href="/tag?id={encodeURIComponent(c)}">{displayTagId(c, tagById)}</a>
                 {#if isLoggedIn}
-                  <button class="gear" onclick={() => toggleEdit(c)} title={t('tags.edit')}>✎</button>
+                  <a class="gear" href="/tag?id={encodeURIComponent(c)}&edit=1" title={t('tags.edit')}>✎</a>
                   <button class="x" onclick={() => removeEdge(g.parent, c)} title={t('hierarchy.remove')}>×</button>
                 {/if}
               </span>

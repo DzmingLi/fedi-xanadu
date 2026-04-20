@@ -188,6 +188,13 @@
       voteMap = map;
 
       loading = false;
+
+      // Open the edit panel if the URL asks us to (Hierarchy's ✎ sends
+      // admins here with ?edit=1).
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('edit') === '1') openEdit();
+      }
     });
   });
 
