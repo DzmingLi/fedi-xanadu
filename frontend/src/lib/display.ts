@@ -101,3 +101,43 @@ export function tagName(
   }
   return name || id;
 }
+
+/**
+ * Display name for an Author row, in resolution order:
+ *   original_names[locale] → translations[locale] → name (canonical).
+ *
+ * `original_names` is the author's own authoritative forms in other languages
+ * (e.g. Terence Tao ↔ 陶哲轩 — both his own names). `translations` is a
+ * transliteration the author does not use themselves (e.g. Paul Krugman →
+ * 保罗·克鲁格曼).
+ */
+type AuthorNameBag = {
+  name: string;
+  original_names?: Record<string, string> | null;
+  translations?: Record<string, string> | null;
+};
+
+export function authorDisplayName(a: AuthorNameBag): string {
+  const l = getLocale();
+  const orig = a.original_names;
+  if (orig && orig[l]) return orig[l];
+  const tr = a.translations;
+  if (tr && tr[l]) return tr[l];
+  return a.name;
+}
+
+/**
+ * Resolve a plain author name string against a list of linked authors (e.g.
+ * `book.authors` text array vs `linked_authors` Author records), returning
+ * the locale-preferred display string where a matching Author is found.
+ */
+export function resolveAuthorName(
+  plainName: string,
+  linked: AuthorNameBag[] | null | undefined,
+): string {
+  if (linked) {
+    const hit = linked.find(a => a.name === plainName);
+    if (hit) return authorDisplayName(hit);
+  }
+  return plainName;
+}

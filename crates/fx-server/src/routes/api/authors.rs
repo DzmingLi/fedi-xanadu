@@ -3,7 +3,9 @@ use axum::{
     extract::{Path, Query, State},
 };
 use fx_core::services::author_service;
+use std::collections::HashMap;
 
+use crate::auth::WriteAuth;
 use crate::error::ApiResult;
 use crate::state::AppState;
 
@@ -49,4 +51,27 @@ pub async fn get_author(
         courses,
         article_count,
     }))
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct AuthorNamesInput {
+    #[serde(default)]
+    pub original_names: HashMap<String, String>,
+    #[serde(default)]
+    pub translations: HashMap<String, String>,
+}
+
+pub async fn set_author_names(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WriteAuth(_user): WriteAuth,
+    Json(input): Json<AuthorNamesInput>,
+) -> ApiResult<Json<author_service::Author>> {
+    let author = author_service::set_author_names(
+        &state.pool,
+        &id,
+        input.original_names,
+        input.translations,
+    ).await?;
+    Ok(Json(author))
 }

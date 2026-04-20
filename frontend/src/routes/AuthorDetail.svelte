@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { getAuthor } from '../lib/api';
-  import { t, getLocale } from '../lib/i18n/index.svelte';
+  import { getAuthor, setAuthorNames } from '../lib/api';
+  import { t, getLocale, LOCALES } from '../lib/i18n/index.svelte';
+  import { getAuth } from '../lib/auth.svelte';
+  import { authorDisplayName } from '../lib/display';
 
   let { id } = $props<{ id: string }>();
 
@@ -11,6 +13,8 @@
     orcid: string | null;
     affiliation: string | null;
     homepage: string | null;
+    original_names?: Record<string, string> | null;
+    translations?: Record<string, string> | null;
   }
   interface AuthorBook {
     book_id: string;
@@ -35,10 +39,51 @@
   let loading = $state(true);
   let error = $state('');
 
+  // Name editing — two buckets: original_names (authoritative) vs translations.
+  let showEdit = $state(false);
+  let editOriginalNames = $state<Record<string, string>>({});
+  let editTranslations = $state<Record<string, string>>({});
+  let editSaving = $state(false);
+  let editError = $state('');
+
   function loc(field: Record<string, string> | null | undefined): string {
     if (!field) return '';
     const l = getLocale();
     return field[l] || field['en'] || Object.values(field)[0] || '';
+  }
+
+  function openEdit() {
+    if (!detail) return;
+    editOriginalNames = { ...(detail.author.original_names || {}) };
+    editTranslations = { ...(detail.author.translations || {}) };
+    for (const l of LOCALES) {
+      if (!(l.code in editOriginalNames)) editOriginalNames[l.code] = '';
+      if (!(l.code in editTranslations)) editTranslations[l.code] = '';
+    }
+    editError = '';
+    showEdit = true;
+  }
+
+  async function saveNames() {
+    if (!detail) return;
+    editSaving = true;
+    editError = '';
+    try {
+      const clean = (m: Record<string, string>) => Object.fromEntries(
+        Object.entries(m).filter(([_, v]) => v.trim()).map(([k, v]) => [k, v.trim()])
+      );
+      const updated = await setAuthorNames(
+        detail.author.id,
+        clean(editOriginalNames),
+        clean(editTranslations),
+      );
+      detail = { ...detail, author: { ...detail.author, original_names: updated.original_names, translations: updated.translations } };
+      showEdit = false;
+    } catch (e: any) {
+      editError = e.message || 'Failed to save';
+    } finally {
+      editSaving = false;
+    }
   }
 
   $effect(() => {
@@ -61,7 +106,12 @@
 {:else if detail}
   <div class="author-page">
     <div class="author-header">
-      <h1>{detail.author.name}</h1>
+      <h1>
+        {authorDisplayName(detail.author)}
+        {#if authorDisplayName(detail.author) !== detail.author.name}
+          <span class="original-name">· {detail.author.name}</span>
+        {/if}
+      </h1>
       {#if detail.author.affiliation}
         <p class="affiliation">{detail.author.affiliation}</p>
       {/if}
@@ -75,8 +125,41 @@
         {#if detail.author.homepage}
           <a href={detail.author.homepage} target="_blank" rel="noopener" class="author-link-btn">Homepage</a>
         {/if}
+        {#if getAuth()}
+          <button class="author-link-btn" onclick={openEdit}>{t('authors.editNames')}</button>
+        {/if}
       </div>
     </div>
+
+    {#if showEdit}
+      <div class="edit-panel">
+        <h3>{t('authors.editNamesTitle', detail.author.name)}</h3>
+        {#if editError}<p class="edit-error">{editError}</p>{/if}
+
+        <p class="edit-section-hint">{t('authors.originalNamesHint')}</p>
+        {#each LOCALES as loc (loc.code)}
+          <label class="edit-row">
+            <span class="edit-label">{loc.label}</span>
+            <input bind:value={editOriginalNames[loc.code]} placeholder={loc.code === 'en' ? detail.author.name : ''} />
+          </label>
+        {/each}
+
+        <p class="edit-section-hint">{t('authors.translationsHint')}</p>
+        {#each LOCALES as loc (loc.code)}
+          <label class="edit-row">
+            <span class="edit-label">{loc.label}</span>
+            <input bind:value={editTranslations[loc.code]} />
+          </label>
+        {/each}
+
+        <div class="edit-actions">
+          <button class="author-link-btn" onclick={() => showEdit = false} disabled={editSaving}>{t('common.cancel')}</button>
+          <button class="author-link-btn primary" onclick={saveNames} disabled={editSaving}>
+            {editSaving ? t('common.saving') : t('common.save')}
+          </button>
+        </div>
+      </div>
+    {/if}
 
     {#if detail.books.length > 0}
       <section class="author-section">
@@ -134,6 +217,17 @@
   .author-page { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
   .author-header { margin-bottom: 2rem; }
   .author-header h1 { font-family: var(--font-serif); font-size: 2rem; margin: 0 0 4px; }
+  .original-name { font-size: 0.9rem; color: var(--text-hint); font-weight: 400; font-family: var(--font-sans); margin-left: 8px; }
+  .edit-panel { margin-top: 16px; padding: 14px; background: var(--bg-white); border: 1px solid var(--border); border-radius: 6px; max-width: 520px; }
+  .edit-panel h3 { margin: 0 0 12px; font-size: 14px; font-family: var(--font-serif); font-weight: 500; }
+  .edit-section-hint { font-size: 12px; color: var(--text-hint); margin: 10px 0 6px; }
+  .edit-row { display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .edit-label { font-size: 13px; color: var(--text-secondary); }
+  .edit-row input { padding: 6px 8px; font-size: 13px; border: 1px solid var(--border); border-radius: 4px; }
+  .edit-error { color: #c62828; font-size: 13px; margin: 0 0 10px; }
+  .edit-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+  .author-link-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .author-link-btn.primary:hover { background: var(--accent); filter: brightness(0.95); }
   .affiliation { color: var(--text-secondary); margin: 0 0 8px; }
   .author-links { display: flex; gap: 8px; flex-wrap: wrap; }
   .author-link-btn {

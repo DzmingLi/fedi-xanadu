@@ -591,6 +591,12 @@ export const updateChapterTags = (book_id: string, chapter_id: string, teaches: 
 // Authors
 export const getAuthor = (id: string) => get<any>(`/authors/${encodeURIComponent(id)}`);
 export const searchAuthors = (q: string, limit = 20) => get<any[]>(`/authors/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+export const setAuthorNames = (
+  id: string,
+  original_names: Record<string, string>,
+  translations: Record<string, string>,
+) =>
+  put<any>(`/authors/${encodeURIComponent(id)}/names`, { original_names, translations });
 
 // Authorship
 export interface ArticleAuthor { author_did: string | null; author_name: string | null; author_handle: string | null; author_display_name: string | null; author_avatar: string | null; author_reputation: number; position: number | null; role: string; is_corresponding: boolean; status: string; authorship_uri: string | null; }

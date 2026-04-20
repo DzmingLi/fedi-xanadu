@@ -14,6 +14,7 @@
   let books = $state<Book[]>([]);
   let loading = $state(true);
   let activeField = $state('');
+  let search = $state('');
 
   // Derive unique fields from book tags
   const FIELDS = ['math', 'cs', 'physics', 'economics'];
@@ -32,10 +33,24 @@
   });
 
   let filteredBooks = $derived.by(() => {
-    if (!activeField) return books;
-    return books.filter(b => (b.tags || []).some(tag =>
-      tag === activeField || tag.startsWith(activeField + '-') || tag.startsWith(activeField + '/')
-    ));
+    let list = books;
+    if (activeField) {
+      list = list.filter(b => (b.tags || []).some(tag =>
+        tag === activeField || tag.startsWith(activeField + '-') || tag.startsWith(activeField + '/')
+      ));
+    }
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(b => {
+      const haystacks = [
+        ...Object.values(b.title || {}),
+        ...Object.values(b.subtitle || {}),
+        ...(b.authors || []),
+        b.abbreviation || '',
+        ...(b.tags || []),
+      ];
+      return haystacks.some(s => s && s.toLowerCase().includes(q));
+    });
   });
 
   $effect(() => {
@@ -66,6 +81,18 @@
     </div>
     {#if getAuth()}
       <a href="/new-book" class="add-book-btn">{t('books.addBook')}</a>
+    {/if}
+  </div>
+
+  <div class="book-search">
+    <input
+      type="search"
+      bind:value={search}
+      placeholder={t('books.searchPlaceholder')}
+      class="search-input"
+    />
+    {#if search}
+      <button class="search-clear" onclick={() => search = ''} aria-label="clear">×</button>
     {/if}
   </div>
 
@@ -153,6 +180,21 @@
   .tab-count { font-size: 11px; background: var(--border); color: var(--text-hint); padding: 1px 5px; border-radius: 8px; }
 
   .empty { color: var(--text-hint); font-size: 14px; }
+
+  .book-search { position: relative; margin-bottom: 12px; }
+  .search-input {
+    width: 100%; padding: 8px 32px 8px 12px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: var(--bg-white); color: var(--text-primary);
+    font-family: var(--font-sans);
+  }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+  .search-clear {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; font-size: 18px; line-height: 1;
+    color: var(--text-hint); cursor: pointer; padding: 2px 8px;
+  }
+  .search-clear:hover { color: var(--text-primary); }
 
   .book-grid {
     display: grid;

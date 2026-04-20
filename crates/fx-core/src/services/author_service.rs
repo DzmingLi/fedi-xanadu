@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
@@ -10,6 +11,14 @@ pub struct Author {
     pub orcid: Option<String>,
     pub affiliation: Option<String>,
     pub homepage: Option<String>,
+    /// Other authoritative forms of the author's own name, keyed by locale.
+    /// e.g. Terence Tao also signs as 陶哲轩 → `{"zh": "陶哲轩"}`.
+    #[ts(type = "Record<string, string>")]
+    pub original_names: sqlx::types::Json<HashMap<String, String>>,
+    /// Transliterations / translations that the author does not use themselves.
+    /// e.g. Paul Krugman → 保罗·克鲁格曼 → `{"zh": "保罗·克鲁格曼"}`.
+    #[ts(type = "Record<string, string>")]
+    pub translations: sqlx::types::Json<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,7 +63,7 @@ pub async fn list_courses_by_author(
 /// Get author by ID.
 pub async fn get_author(pool: &PgPool, id: &str) -> crate::Result<Author> {
     sqlx::query_as::<_, Author>(
-        "SELECT id, name, did, orcid, affiliation, homepage FROM authors WHERE id = $1",
+        "SELECT id, name, did, orcid, affiliation, homepage, original_names, translations FROM authors WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -65,7 +74,7 @@ pub async fn get_author(pool: &PgPool, id: &str) -> crate::Result<Author> {
 /// Get author by name (exact match).
 pub async fn get_author_by_name(pool: &PgPool, name: &str) -> crate::Result<Option<Author>> {
     let row = sqlx::query_as::<_, Author>(
-        "SELECT id, name, did, orcid, affiliation, homepage FROM authors WHERE name = $1",
+        "SELECT id, name, did, orcid, affiliation, homepage, original_names, translations FROM authors WHERE name = $1",
     )
     .bind(name)
     .fetch_optional(pool)
@@ -76,8 +85,9 @@ pub async fn get_author_by_name(pool: &PgPool, name: &str) -> crate::Result<Opti
 /// Search authors by name prefix.
 pub async fn search_authors(pool: &PgPool, query: &str, limit: i64) -> crate::Result<Vec<Author>> {
     let rows = sqlx::query_as::<_, Author>(
-        "SELECT id, name, did, orcid, affiliation, homepage FROM authors \
-         WHERE name ILIKE $1 ORDER BY name LIMIT $2",
+        "SELECT id, name, did, orcid, affiliation, homepage, original_names, translations FROM authors \
+         WHERE name ILIKE $1 OR original_names::text ILIKE $1 OR translations::text ILIKE $1 \
+         ORDER BY name LIMIT $2",
     )
     .bind(format!("%{query}%"))
     .bind(limit)
@@ -157,10 +167,36 @@ pub async fn update_author(
     Ok(())
 }
 
+/// Replace the author's per-locale name variants.
+///
+/// `original_names` holds the author's own authoritative forms in other
+/// languages; `translations` holds transliterations/translations the author
+/// does not use themselves. Empty values are dropped. `name` (canonical) is
+/// unchanged.
+pub async fn set_author_names(
+    pool: &PgPool,
+    id: &str,
+    original_names: HashMap<String, String>,
+    translations: HashMap<String, String>,
+) -> crate::Result<Author> {
+    let clean = |m: HashMap<String, String>| -> HashMap<String, String> {
+        m.into_iter().filter(|(_, v)| !v.trim().is_empty()).collect()
+    };
+    let o = serde_json::to_value(clean(original_names)).unwrap_or(serde_json::json!({}));
+    let t = serde_json::to_value(clean(translations)).unwrap_or(serde_json::json!({}));
+    sqlx::query("UPDATE authors SET original_names = $2, translations = $3 WHERE id = $1")
+        .bind(id)
+        .bind(o)
+        .bind(t)
+        .execute(pool)
+        .await?;
+    get_author(pool, id).await
+}
+
 /// List authors for a book (ordered by position).
 pub async fn list_book_authors(pool: &PgPool, book_id: &str) -> crate::Result<Vec<Author>> {
     let rows = sqlx::query_as::<_, Author>(
-        "SELECT a.id, a.name, a.did, a.orcid, a.affiliation, a.homepage \
+        "SELECT a.id, a.name, a.did, a.orcid, a.affiliation, a.homepage, a.original_names, a.translations \
          FROM book_authors ba \
          JOIN authors a ON ba.author_id = a.id \
          WHERE ba.book_id = $1 \

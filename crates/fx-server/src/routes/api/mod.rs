@@ -528,6 +528,7 @@ fn author_routes() -> Router<AppState> {
     Router::new()
         .route("/authors/search", get(authors::search_authors))
         .route("/authors/{id}", get(authors::get_author))
+        .route("/authors/{id}/names", put(authors::set_author_names))
 }
 
 fn authorship_routes() -> Router<AppState> {
