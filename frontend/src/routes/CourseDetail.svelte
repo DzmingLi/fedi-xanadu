@@ -108,7 +108,7 @@
   let hasVideo = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'video')) ?? false);
   let hasHw = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'hw')) ?? false);
   let hasDiscussion = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'discussion')) ?? false);
-  let colCount = $derived(2 + (hasMaterials ? 1 : 0) + (hasSupplementary ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0) + (hasDiscussion ? 1 : 0));
+  let colCount = $derived(2 + (hasMaterials ? 1 : 0) + (hasSupplementary ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0) + (hasDiscussion ? 1 : 0) + (isOwner ? 1 : 0));
 
   // Helper to get resources by type
   function getResources(session: import('./lib/types').CourseSession, type: string) {
@@ -124,6 +124,68 @@
       case 'summary': return '📝';
       case 'notes': return '📓';
       default: return '';
+    }
+  }
+
+  // Session CRUD state
+  let showSessionEdit = $state(false);
+  let sessionEditId = $state('');
+  let sessionEditTopic = $state('');
+  let sessionEditDate = $state('');
+  let sessionEditOrder = $state<number | ''>('');
+  let sessionEditSaving = $state(false);
+  let sessionEditError = $state('');
+
+  function openSessionAdd() {
+    sessionEditId = '';
+    sessionEditTopic = '';
+    sessionEditDate = '';
+    sessionEditOrder = (detail?.sessions.length ?? 0) + 1;
+    sessionEditError = '';
+    showSessionEdit = true;
+  }
+
+  function openSessionEdit(s: import('../lib/types').CourseSession) {
+    sessionEditId = s.id;
+    sessionEditTopic = s.topic || '';
+    sessionEditDate = s.date || '';
+    sessionEditOrder = s.sort_order;
+    sessionEditError = '';
+    showSessionEdit = true;
+  }
+
+  async function saveSessionEdit() {
+    sessionEditSaving = true;
+    sessionEditError = '';
+    try {
+      const payload = {
+        topic: sessionEditTopic.trim() || undefined,
+        date: sessionEditDate.trim() || undefined,
+        sort_order: typeof sessionEditOrder === 'number' ? sessionEditOrder : undefined,
+      };
+      if (sessionEditId) {
+        await updateCourseSession(id, sessionEditId, payload);
+      } else {
+        await createCourseSession(id, payload);
+      }
+      showSessionEdit = false;
+      const d = await getCourseDetail(id);
+      detail = d;
+    } catch (e: any) {
+      sessionEditError = e.message || 'Save failed';
+    } finally {
+      sessionEditSaving = false;
+    }
+  }
+
+  async function confirmDeleteSession(sessionId: string) {
+    if (!confirm(t('course.deleteSessionConfirm'))) return;
+    try {
+      await deleteCourseSession(id, sessionId);
+      const d = await getCourseDetail(id);
+      detail = d;
+    } catch (e: any) {
+      alert(e.message || 'Delete failed');
     }
   }
 </script>
@@ -268,7 +330,7 @@
           </section>
         {/if}
 
-        {#if detail.sessions.length > 0}
+        {#if detail.sessions.length > 0 || isOwner}
           <section class="schedule">
             <h2>{t('course.calendar')}</h2>
             <table class="schedule-table">
@@ -281,6 +343,7 @@
                   {#if hasVideo}<th>{t('course.video')}</th>{/if}
                   {#if hasDiscussion}<th>{t('course.discussion')}</th>{/if}
                   {#if hasHw}<th>{t('course.hw')}</th>{/if}
+                  {#if isOwner}<th class="session-actions-col"></th>{/if}
                 </tr>
               </thead>
               <tbody>
@@ -299,7 +362,7 @@
                       {/if}
                     </td>
                     {#if isExam}
-                      <td class="session-topic" colspan={colCount - 1}>
+                      <td class="session-topic" colspan={colCount - 1 - (isOwner ? 1 : 0)}>
                         <strong>{s.topic || ''}</strong>
                       </td>
                     {:else}
@@ -365,8 +428,21 @@
                         </td>
                       {/if}
                     {/if}
+                    {#if isOwner}
+                      <td class="session-actions">
+                        <button class="session-action-btn" onclick={() => openSessionEdit(s)} title={t('course.editSession')}>✎</button>
+                        <button class="session-action-btn" onclick={() => confirmDeleteSession(s.id)} title="Delete">🗑</button>
+                      </td>
+                    {/if}
                   </tr>
                 {/each}
+                {#if isOwner}
+                  <tr class="session-add-row">
+                    <td colspan={colCount}>
+                      <button class="session-add-btn" onclick={openSessionAdd}>{t('course.addSession')}</button>
+                    </td>
+                  </tr>
+                {/if}
               </tbody>
             </table>
           </section>
@@ -541,6 +617,37 @@
   </div>
 {/if}
 
+{#if showSessionEdit}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={() => showSessionEdit = false}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal" onclick={(e) => e.stopPropagation()}>
+      <h3>{sessionEditId ? t('course.editSession') : t('course.newSession')}</h3>
+      {#if sessionEditError}<p class="error-msg">{sessionEditError}</p>{/if}
+      <div class="form-group">
+        <label>{t('course.sessionOrder')}</label>
+        <input type="number" bind:value={sessionEditOrder} />
+      </div>
+      <div class="form-group">
+        <label>{t('course.topic')}</label>
+        <input bind:value={sessionEditTopic} placeholder="Week 0 · Scratch" />
+      </div>
+      <div class="form-group">
+        <label>{t('course.sessionDate')}</label>
+        <input bind:value={sessionEditDate} placeholder="2026-09-01" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick={() => showSessionEdit = false}>Cancel</button>
+        <button class="btn btn-primary" onclick={saveSessionEdit} disabled={sessionEditSaving}>
+          {sessionEditSaving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .course-page { max-width: 100%; }
   .course-header { display: flex; gap: 32px; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
@@ -698,6 +805,42 @@
 
   .view-all { display: inline-block; margin-top: 8px; font-size: 13px; color: var(--accent); text-decoration: none; }
   .view-all:hover { text-decoration: underline; }
+
+  .session-actions { white-space: nowrap; text-align: right; }
+  .session-action-btn {
+    background: none; border: none; cursor: pointer; font-size: 13px;
+    color: var(--text-hint); padding: 2px 6px;
+  }
+  .session-action-btn:hover { color: var(--accent); }
+  .session-actions-col { width: 1%; }
+  .session-add-row td { padding: 4px 0; border: none; }
+  .session-add-btn {
+    background: none; border: 1px dashed var(--border); color: var(--text-hint);
+    padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;
+    width: 100%;
+  }
+  .session-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal {
+    background: var(--bg-white, var(--bg-page, #fff)); border-radius: 8px; padding: 24px;
+    width: 90%; max-width: 420px; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+  .modal h3 { margin: 0 0 16px; font-family: var(--font-serif); font-weight: 400; }
+  .modal .form-group { margin-bottom: 12px; }
+  .modal .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .modal input {
+    width: 100%; padding: 8px; border: 1px solid var(--border);
+    border-radius: 4px; font-size: 14px; background: var(--bg-page, #fff);
+    color: var(--text-primary, #333); box-sizing: border-box;
+  }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .error-msg { color: #c33; font-size: 13px; margin: 0 0 12px; }
 
   @media (max-width: 768px) {
     .course-header { flex-direction: column; }
