@@ -20,7 +20,7 @@
 --      spelling, etc.). We verified no existing tag ids collide.
 --   3. `tag_aliases` is currently empty so no alias migration is needed.
 
-CREATE TABLE tag_groups (
+CREATE TABLE IF NOT EXISTS tag_groups (
     id          VARCHAR(64) PRIMARY KEY
                  DEFAULT 'tg-' || substr(md5(random()::text), 1, 16),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
