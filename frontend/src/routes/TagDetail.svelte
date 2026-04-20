@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias } from '../lib/api';
+  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias, listTagGroup, addTagGroupMember, removeTagGroupMember } from '../lib/api';
   import { authorName, tagName } from '../lib/display';
   import { t, LOCALES } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
@@ -24,6 +24,12 @@
   let editSaving = $state(false);
   let editError = $state('');
 
+  // Group siblings — all tags in the same alias/translation group.
+  let siblings = $state<Tag[]>([]);
+  let newMemberId = $state('');
+  let newMemberName = $state('');
+  let newMemberLang = $state('zh');
+
   function openEdit() {
     if (!tag) return;
     editNames = { ...tag.names };
@@ -32,9 +38,40 @@
     }
     if (!editNames.en?.trim()) editNames.en = tag.id;
     newAlias = '';
+    newMemberId = '';
+    newMemberName = '';
+    newMemberLang = 'zh';
     editError = '';
     showEdit = true;
     listTagAliases(id).then(a => aliases = a).catch(() => {});
+    listTagGroup(id).then(s => siblings = s).catch(() => {});
+  }
+
+  async function submitAddGroupMember() {
+    const mid = newMemberId.trim();
+    const mname = newMemberName.trim() || mid;
+    if (!mid) return;
+    try {
+      await addTagGroupMember(id, { id: mid, name: mname, lang: newMemberLang });
+      newMemberId = '';
+      newMemberName = '';
+      siblings = await listTagGroup(id);
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    }
+  }
+
+  async function removeGroupMember(mid: string) {
+    if (mid === id) {
+      editError = 'Cannot remove the tag you are viewing from its group';
+      return;
+    }
+    try {
+      await removeTagGroupMember(id, mid);
+      siblings = await listTagGroup(id);
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    }
   }
 
   async function saveNames() {
@@ -176,7 +213,33 @@
       <h3>{t('tags.editTitle')} — {tag.id}</h3>
       {#if editError}<p class="error-msg">{editError}</p>{/if}
 
-      <h4>{t('tags.translationsLabel')}</h4>
+      <h4>{t('tags.groupLabel')}</h4>
+      <p class="hint">{t('tags.groupHint')}</p>
+      <div class="sibling-list">
+        {#each siblings as s (s.id)}
+          <div class="sibling-row">
+            <span class="sibling-lang">{s.lang}</span>
+            <a class="sibling-id" href="/tag?id={encodeURIComponent(s.id)}">{s.id}</a>
+            {#if s.id !== id}
+              <button class="sibling-rm" onclick={() => removeGroupMember(s.id)}>×</button>
+            {:else}
+              <span class="sibling-self">{t('tags.thisTag')}</span>
+            {/if}
+          </div>
+        {/each}
+      </div>
+      <div class="sibling-add">
+        <input class="sm-input" bind:value={newMemberId} placeholder={t('tags.newMemberIdPlaceholder')} />
+        <input class="sm-input" bind:value={newMemberName} placeholder={t('tags.newMemberNamePlaceholder')} />
+        <select class="sm-input" bind:value={newMemberLang}>
+          {#each LOCALES as loc (loc.code)}
+            <option value={loc.code}>{loc.code}</option>
+          {/each}
+        </select>
+        <button class="btn" onclick={submitAddGroupMember}>{t('tags.addGroupMember')}</button>
+      </div>
+
+      <h4 style="margin-top:18px">{t('tags.translationsLabel')}</h4>
       {#each [...LOCALES].sort((a, b) => (a.code === 'en' ? -1 : b.code === 'en' ? 1 : 0)) as loc (loc.code)}
         <label class="inline-label">
           {loc.label}{#if loc.code === 'en'} <span class="primary-marker">· {t('tags.primaryLocale')}</span>{/if}
@@ -342,6 +405,18 @@
   .alias-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 12px; background: var(--bg-hover, #f5f5f5); border: 1px solid var(--border); font-size: 12px; }
   .alias-chip button { background: none; border: none; cursor: pointer; color: var(--text-hint); padding: 0; line-height: 1; font-size: 14px; }
   .alias-chip button:hover { color: #c00; }
+  .hint { font-size: 12px; color: var(--text-hint); margin: 4px 0 8px; }
+  .sibling-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+  .sibling-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+  .sibling-lang { font-family: monospace; font-size: 11px; padding: 1px 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--text-hint); }
+  .sibling-id { color: var(--accent); text-decoration: none; }
+  .sibling-id:hover { text-decoration: underline; }
+  .sibling-self { font-size: 11px; color: var(--text-hint); font-style: italic; }
+  .sibling-rm { background: none; border: none; color: var(--text-hint); cursor: pointer; font-size: 14px; padding: 0 4px; }
+  .sibling-rm:hover { color: #c00; }
+  .sibling-add { display: flex; gap: 4px; margin-top: 6px; }
+  .sibling-add .sm-input { flex: 1; padding: 4px 6px; font-size: 12px; border: 1px solid var(--border); border-radius: 3px; }
+  .sibling-add select.sm-input { flex: 0 0 64px; }
   .alias-add { display: flex; gap: 6px; }
   .alias-add input { margin-bottom: 0; flex: 1; }
   .error-msg { background: #fee; color: #c00; padding: 6px 10px; border-radius: 4px; font-size: 13px; }

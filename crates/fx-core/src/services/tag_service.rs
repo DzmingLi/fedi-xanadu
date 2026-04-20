@@ -7,7 +7,7 @@ use crate::Result;
 
 pub async fn list_tags(pool: &PgPool, limit: i64) -> Result<Vec<Tag>> {
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at FROM tags ORDER BY name LIMIT $1",
+        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tags ORDER BY name LIMIT $1",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -17,7 +17,7 @@ pub async fn list_tags(pool: &PgPool, limit: i64) -> Result<Vec<Tag>> {
 
 pub async fn get_tag(pool: &PgPool, id: &str) -> Result<Tag> {
     sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at FROM tags WHERE id = $1",
+        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tags WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -242,14 +242,26 @@ pub async fn merge_tag(pool: &PgPool, from_id: &str, into_id: &str) -> Result<()
 /// Search tags by prefix/substring match on id and name.
 pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<Tag>> {
     let pattern = format!("%{query}%");
-    // EXISTS (not LEFT JOIN + DISTINCT) so the ORDER BY CASE expression is
-    // allowed — Postgres requires every ORDER BY expression to appear in the
-    // select list under SELECT DISTINCT.
+    // De-dupe by group: when several tags in the same alias/translation
+    // group match the query, return only one representative (preferring
+    // the English label and then the tag whose id equals the query).
+    // We achieve this via a DISTINCT ON subquery — `DISTINCT ON (group_id)`
+    // keeps the first row per group under the given ORDER BY — and then
+    // re-order the result for display.
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT t.id, t.name, t.names, t.description, t.created_by, t.created_at FROM tags t \
-         WHERE t.id ILIKE $1 OR t.name ILIKE $1 \
-            OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.tag_id = t.id AND a.alias ILIKE $1) \
-         ORDER BY CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END, t.name \
+        "SELECT * FROM ( \
+             SELECT DISTINCT ON (t.group_id) \
+                 t.id, t.name, t.names, t.description, t.created_by, t.created_at, t.group_id, t.lang, \
+                 (CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END) AS rank \
+             FROM tags t \
+             WHERE t.id ILIKE $1 OR t.name ILIKE $1 OR t.names::text ILIKE $1 \
+                OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.tag_id = t.id AND a.alias ILIKE $1) \
+             ORDER BY t.group_id, \
+                      (t.lang = 'en') DESC, \
+                      (CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END), \
+                      t.name \
+         ) g \
+         ORDER BY rank, name \
          LIMIT $4",
     )
     .bind(&pattern)
@@ -347,4 +359,138 @@ pub async fn resolve_tag(pool: &PgPool, id_or_alias: &str) -> crate::Result<Stri
     let canonical: Option<String> = sqlx::query_scalar("SELECT tag_id FROM tag_aliases WHERE alias = $1")
         .bind(id_or_alias).fetch_optional(pool).await?;
     canonical.ok_or_else(|| crate::Error::NotFound { entity: "tag", id: id_or_alias.to_string() })
+}
+
+// ── Alias / translation groups ────────────────────────────────────────
+
+/// Return every tag id that lives in the same alias/translation group as
+/// the given tag (including the tag itself). Used to treat same-concept
+/// tags as a single unit when querying edge tables.
+pub async fn list_group_members(pool: &PgPool, tag_id: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT id FROM tags WHERE group_id = (SELECT group_id FROM tags WHERE id = $1) \
+         ORDER BY (lang = 'en') DESC, lang, id",
+    )
+    .bind(tag_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
+}
+
+/// Return every tag in the same group as `tag_id` with its lang. Ordered
+/// English-first, then by locale. Useful for UI that shows the full group.
+pub async fn list_group_siblings(pool: &PgPool, tag_id: &str) -> Result<Vec<Tag>> {
+    let tags = sqlx::query_as::<_, Tag>(
+        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tags \
+         WHERE group_id = (SELECT group_id FROM tags WHERE id = $1) \
+         ORDER BY (lang = 'en') DESC, lang, id",
+    )
+    .bind(tag_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(tags)
+}
+
+/// Given a list of tag ids (possibly containing same-group duplicates),
+/// return a deduplicated list — one representative per group. The
+/// representative is English-preferred, then the caller-supplied order.
+pub async fn dedupe_by_group(pool: &PgPool, tag_ids: &[String]) -> Result<Vec<String>> {
+    if tag_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT id, group_id FROM tags WHERE id = ANY($1)",
+    )
+    .bind(tag_ids)
+    .fetch_all(pool)
+    .await?;
+
+    // Keep the first id per group in input order, preferring the one
+    // whose input-position is smallest and whose lang is en if multiple.
+    use std::collections::HashMap;
+    let mut group_of: HashMap<String, String> = HashMap::new();
+    for (id, g) in &rows { group_of.insert(id.clone(), g.clone()); }
+    let mut seen_groups: HashMap<String, String> = HashMap::new();
+    let mut out = Vec::new();
+    for id in tag_ids {
+        if let Some(g) = group_of.get(id) {
+            if !seen_groups.contains_key(g) {
+                seen_groups.insert(g.clone(), id.clone());
+                out.push(id.clone());
+            }
+        } else {
+            out.push(id.clone()); // tag not found — keep as-is
+        }
+    }
+    Ok(out)
+}
+
+/// Add a sibling tag to the same alias/translation group as an existing
+/// tag. The new tag gets its own id/name/lang but shares group_id with the
+/// anchor.
+pub async fn add_group_member(
+    pool: &PgPool,
+    anchor_tag_id: &str,
+    new_id: &str,
+    new_name: &str,
+    lang: &str,
+    created_by: &str,
+) -> Result<Tag> {
+    let group_id: String = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+        .bind(anchor_tag_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: anchor_tag_id.to_string() })?;
+
+    sqlx::query(
+        "INSERT INTO tags (id, name, created_by, lang, group_id, names) \
+         VALUES ($1, $2, $3, $4, $5, jsonb_build_object($4::text, $2::text))",
+    )
+    .bind(new_id)
+    .bind(new_name)
+    .bind(created_by)
+    .bind(lang)
+    .bind(&group_id)
+    .execute(pool)
+    .await?;
+    get_tag(pool, new_id).await
+}
+
+/// Remove a tag from its group (deletes the tag row). If the group becomes
+/// empty, drop the group row too.
+pub async fn remove_group_member(pool: &PgPool, tag_id: &str) -> Result<()> {
+    let group_id: Option<String> = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+        .bind(tag_id)
+        .fetch_optional(pool)
+        .await?;
+    sqlx::query("DELETE FROM tags WHERE id = $1").bind(tag_id).execute(pool).await?;
+    if let Some(g) = group_id {
+        let still_populated: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tags WHERE group_id = $1",
+        )
+        .bind(&g)
+        .fetch_one(pool)
+        .await?;
+        if still_populated == 0 {
+            sqlx::query("DELETE FROM tag_groups WHERE id = $1").bind(&g).execute(pool).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Expand a list of tag ids to include every sibling in each tag's group.
+/// Used when querying edge tables ("find all content with prereq X" must
+/// also find content with prereq on X's zh-sibling or alias-sibling).
+pub async fn expand_to_group(pool: &PgPool, tag_ids: &[String]) -> Result<Vec<String>> {
+    if tag_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT id FROM tags \
+         WHERE group_id IN (SELECT group_id FROM tags WHERE id = ANY($1))",
+    )
+    .bind(tag_ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
 }

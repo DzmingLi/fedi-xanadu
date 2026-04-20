@@ -13,11 +13,15 @@ pub struct Tag {
     pub id: String,
     pub name: String,
     #[ts(type = "Record<string, string>")]
-
     pub names: sqlx::types::Json<HashMap<String, String>>,
     pub description: Option<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
+    /// Alias/translation group this tag belongs to. All tags in a group
+    /// refer to the same concept and share taxonomy + prereq edges.
+    pub group_id: String,
+    /// Language of this particular label (ISO code).
+    pub lang: String,
 }
 
 // ---- Request ----

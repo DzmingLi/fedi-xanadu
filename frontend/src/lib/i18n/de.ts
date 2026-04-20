@@ -544,6 +544,12 @@ export default {
   'tags.aliasesLabel': 'Aliasse',
   'tags.addAlias': 'Alias hinzufügen',
   'tags.aliasPlaceholder': 'z. B. compsci',
+  'tags.groupLabel': 'Gruppen-Mitglieder',
+  'tags.groupHint': 'Tags in derselben Gruppe beziehen sich auf dasselbe Konzept und teilen Voraussetzungen + Taxonomie. Füge Übersetzungen oder Aliase hinzu, um die Gruppe zu erweitern.',
+  'tags.thisTag': 'dieses Tag',
+  'tags.addGroupMember': 'Zur Gruppe hinzufügen',
+  'tags.newMemberIdPlaceholder': 'slug, z. B. 集合论',
+  'tags.newMemberNamePlaceholder': 'Anzeigename',
 
   // Auth / Login
   'auth.loginHint': 'Melde dich mit deinem Bluesky-Handle und App-Passwort an',

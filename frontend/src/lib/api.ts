@@ -598,6 +598,14 @@ export const setAuthorNames = (
 ) =>
   put<any>(`/authors/${encodeURIComponent(id)}/names`, { original_names, translations });
 
+// Tag alias/translation groups
+export const listTagGroup = (tagId: string) =>
+  get<any[]>(`/tags/${encodeURIComponent(tagId)}/group`);
+export const addTagGroupMember = (tagId: string, member: { id: string; name: string; lang: string }) =>
+  post<any>(`/tags/${encodeURIComponent(tagId)}/group`, member);
+export const removeTagGroupMember = (anchorId: string, memberId: string) =>
+  del<void>(`/tags/${encodeURIComponent(anchorId)}/group/${encodeURIComponent(memberId)}`);
+
 // Authorship
 export interface ArticleAuthor { author_did: string | null; author_name: string | null; author_handle: string | null; author_display_name: string | null; author_avatar: string | null; author_reputation: number; position: number | null; role: string; is_corresponding: boolean; status: string; authorship_uri: string | null; }
 export const listArticleAuthors = (uri: string) =>

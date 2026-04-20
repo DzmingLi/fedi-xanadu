@@ -544,6 +544,12 @@ export default {
   'tags.aliasesLabel': '别名',
   'tags.addAlias': '添加别名',
   'tags.aliasPlaceholder': '如 compsci',
+  'tags.groupLabel': '同组标签',
+  'tags.groupHint': '同一组内的标签指向同一概念，共享前置和分类关系。添加翻译或别名以扩大组。',
+  'tags.thisTag': '当前',
+  'tags.addGroupMember': '加入组',
+  'tags.newMemberIdPlaceholder': 'slug, 如 集合论',
+  'tags.newMemberNamePlaceholder': '显示名',
 
   // Auth / Login
   'auth.loginHint': '使用你的 Bluesky handle 和 App Password 登录',

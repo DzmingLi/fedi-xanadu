@@ -50,6 +50,51 @@ pub async fn get_tag(
     Ok(Json(tag))
 }
 
+/// List every sibling tag in the alias/translation group that `id` belongs
+/// to. Returns all members including `id` itself, English-first.
+pub async fn list_group_siblings(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<Tag>>> {
+    let tags = tag_service::list_group_siblings(&state.pool, &id).await?;
+    Ok(Json(tags))
+}
+
+#[derive(serde::Deserialize)]
+pub struct AddGroupMemberInput {
+    /// Slug / id for the new tag. Must be unique across all tags.
+    pub id: String,
+    /// Display name; usually equals id for non-English tags.
+    pub name: String,
+    /// ISO locale code for this tag (e.g. "zh", "ja", "fr").
+    pub lang: String,
+}
+
+/// Add a sibling tag to the same group as `id`. Used when admin wants to
+/// add a translation or an alias for an existing tag.
+pub async fn add_group_member(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    crate::auth::Auth(user): crate::auth::Auth,
+    Json(input): Json<AddGroupMemberInput>,
+) -> ApiResult<Json<Tag>> {
+    let tag = tag_service::add_group_member(
+        &state.pool, &id, &input.id, &input.name, &input.lang, &user.did,
+    ).await?;
+    Ok(Json(tag))
+}
+
+/// Remove a tag from its group — the tag row is deleted. If the tag is the
+/// last remaining member of its group, the group row is also removed.
+pub async fn remove_group_member(
+    State(state): State<AppState>,
+    Path((_group_anchor, member_id)): Path<(String, String)>,
+    crate::auth::Auth(_user): crate::auth::Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    tag_service::remove_group_member(&state.pool, &member_id).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 pub async fn create_tag(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,

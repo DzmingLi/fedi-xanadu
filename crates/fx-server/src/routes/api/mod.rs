@@ -162,6 +162,10 @@ fn tag_routes() -> Router<AppState> {
             get(tags::list_aliases)
             .post(tags::add_alias)
             .delete(tags::remove_alias))
+        .route("/tags/{id}/group",
+            get(tags::list_group_siblings)
+            .post(tags::add_group_member))
+        .route("/tags/{id}/group/{member_id}", delete(tags::remove_group_member))
         .route("/tags/search", get(tags::search_tags))
         .route("/tags/teach", post(tags::set_teach))
         .route("/tag-parents", get(tag_hierarchy::list_tag_parents)
