@@ -174,6 +174,9 @@ export interface Book {
   rating_count?: number;
   reader_count?: number;
   tags?: string[];
+  /** Full topic closure: direct teach tags + their ancestors + explicit
+   * content_topics entries, group-expanded. Used by the field tabs. */
+  topics?: string[];
 }
 
 export interface PurchaseLink {

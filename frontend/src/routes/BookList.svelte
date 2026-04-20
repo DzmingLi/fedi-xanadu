@@ -16,18 +16,26 @@
   let activeField = $state('');
   let search = $state('');
 
-  // Derive unique fields from book tags
-  const FIELDS = ['math', 'cs', 'physics', 'economics'];
+  // Field tabs: a book lives under a field if its topic closure (which
+  // already expands group siblings and walks tag_parents) includes any
+  // of the field's anchor tag ids. Anchors cover both en + zh siblings
+  // so the tabs work regardless of which label was attached.
+  const FIELDS: { key: string; anchors: string[] }[] = [
+    { key: 'math',     anchors: ['Math', '数学', 'Mathematics'] },
+    { key: 'cs',       anchors: ['Computer Science', 'Cs', '计算机科学'] },
+    { key: 'physics',  anchors: ['Physics', '物理学'] },
+    { key: 'economics',anchors: ['Economics', '经济学'] },
+  ];
+  function bookInField(b: Book, fieldKey: string): boolean {
+    const f = FIELDS.find(x => x.key === fieldKey);
+    if (!f) return false;
+    const topics = b.topics || [];
+    return f.anchors.some(a => topics.includes(a));
+  }
   let fieldCounts = $derived.by(() => {
     const m = new Map<string, number>();
-    for (const b of books) {
-      for (const tag of (b.tags || [])) {
-        for (const f of FIELDS) {
-          if (tag === f || tag.startsWith(f + '-') || tag.startsWith(f + '/')) {
-            m.set(f, (m.get(f) || 0) + 1);
-          }
-        }
-      }
+    for (const f of FIELDS) {
+      m.set(f.key, books.filter(b => bookInField(b, f.key)).length);
     }
     return m;
   });
@@ -35,9 +43,7 @@
   let filteredBooks = $derived.by(() => {
     let list = books;
     if (activeField) {
-      list = list.filter(b => (b.tags || []).some(tag =>
-        tag === activeField || tag.startsWith(activeField + '-') || tag.startsWith(activeField + '/')
-      ));
+      list = list.filter(b => bookInField(b, activeField));
     }
     const q = search.trim().toLowerCase();
     if (!q) return list;
@@ -101,9 +107,9 @@
       {t('home.all')} <span class="tab-count">{books.length}</span>
     </button>
     {#each FIELDS as f}
-      {#if fieldCounts.get(f)}
-        <button class="field-tab" class:active={activeField === f} onclick={() => activeField = f}>
-          {FIELD_LABELS[f] || f} <span class="tab-count">{fieldCounts.get(f)}</span>
+      {#if fieldCounts.get(f.key)}
+        <button class="field-tab" class:active={activeField === f.key} onclick={() => activeField = f.key}>
+          {FIELD_LABELS[f.key] || f.key} <span class="tab-count">{fieldCounts.get(f.key)}</span>
         </button>
       {/if}
     {/each}
