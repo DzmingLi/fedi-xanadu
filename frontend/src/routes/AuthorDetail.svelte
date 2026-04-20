@@ -14,6 +14,7 @@
     affiliation: string | null;
     homepage: string | null;
     original_names?: Record<string, string> | null;
+    official_translations?: Record<string, string> | null;
     translations?: Record<string, string> | null;
   }
   interface AuthorBook {
@@ -39,9 +40,12 @@
   let loading = $state(true);
   let error = $state('');
 
-  // Name editing — two buckets: original_names (authoritative) vs translations.
+  // Name editing — three buckets in display priority:
+  //   original_names → official_translations → (fallback: canonical `name`)
+  // `translations` is a stored-but-not-displayed pool for search + "other".
   let showEdit = $state(false);
   let editOriginalNames = $state<Record<string, string>>({});
+  let editOfficialTranslations = $state<Record<string, string>>({});
   let editTranslations = $state<Record<string, string>>({});
   let editSaving = $state(false);
   let editError = $state('');
@@ -55,9 +59,11 @@
   function openEdit() {
     if (!detail) return;
     editOriginalNames = { ...(detail.author.original_names || {}) };
+    editOfficialTranslations = { ...(detail.author.official_translations || {}) };
     editTranslations = { ...(detail.author.translations || {}) };
     for (const l of LOCALES) {
       if (!(l.code in editOriginalNames)) editOriginalNames[l.code] = '';
+      if (!(l.code in editOfficialTranslations)) editOfficialTranslations[l.code] = '';
       if (!(l.code in editTranslations)) editTranslations[l.code] = '';
     }
     editError = '';
@@ -75,9 +81,14 @@
       const updated = await setAuthorNames(
         detail.author.id,
         clean(editOriginalNames),
+        clean(editOfficialTranslations),
         clean(editTranslations),
       );
-      detail = { ...detail, author: { ...detail.author, original_names: updated.original_names, translations: updated.translations } };
+      detail = { ...detail, author: { ...detail.author,
+        original_names: updated.original_names,
+        official_translations: updated.official_translations,
+        translations: updated.translations,
+      } };
       showEdit = false;
     } catch (e: any) {
       editError = e.message || 'Failed to save';
@@ -141,6 +152,14 @@
           <label class="edit-row">
             <span class="edit-label">{loc.label}</span>
             <input bind:value={editOriginalNames[loc.code]} placeholder={loc.code === 'en' ? detail.author.name : ''} />
+          </label>
+        {/each}
+
+        <p class="edit-section-hint">{t('authors.officialTranslationsHint')}</p>
+        {#each LOCALES as loc (loc.code)}
+          <label class="edit-row">
+            <span class="edit-label">{loc.label}</span>
+            <input bind:value={editOfficialTranslations[loc.code]} />
           </label>
         {/each}
 

@@ -4,15 +4,22 @@
 -- applies — conventionally the English form for authors who publish in
 -- English.
 --
--- `original_names` holds the author's own authoritative forms in other
--- languages. Example: Terence Tao publishes as both "Terence Tao" and
--- "陶哲轩"; both are originals. `original_names = {"zh": "陶哲轩"}` (the
--- English form lives in `name`).
+-- Three per-locale buckets, in display-priority order:
 --
--- `translations` holds transliterations / translated renderings that the
--- author does not use themselves. Example: Paul Krugman → 保罗·克鲁格曼.
--- `translations = {"zh": "保罗·克鲁格曼"}`.
+--   1. `original_names` — forms the author uses themselves in other
+--      languages. Terence Tao publishes as both "Terence Tao" and "陶哲轩";
+--      both are originals. `original_names = {"zh": "陶哲轩"}`.
 --
--- Resolution order for a locale L: original_names[L] → translations[L] → name.
-ALTER TABLE authors ADD COLUMN IF NOT EXISTS original_names JSONB NOT NULL DEFAULT '{}';
-ALTER TABLE authors ADD COLUMN IF NOT EXISTS translations   JSONB NOT NULL DEFAULT '{}';
+--   2. `official_translations` — widely-accepted translations the field has
+--      settled on; admin-curated. Shown automatically in matching locale.
+--      Example: Richard Feynman → 理查德·费曼; David Graeber → 大卫·格雷伯.
+--
+--   3. `translations` — other transliterations/variant renderings. Stored
+--      for search and display on the author's own page under "other
+--      translations", but NOT used as the default display anywhere else.
+--
+-- Resolution order for a locale L:
+--   original_names[L] → official_translations[L] → name.
+ALTER TABLE authors ADD COLUMN IF NOT EXISTS original_names        JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE authors ADD COLUMN IF NOT EXISTS official_translations JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE authors ADD COLUMN IF NOT EXISTS translations          JSONB NOT NULL DEFAULT '{}';

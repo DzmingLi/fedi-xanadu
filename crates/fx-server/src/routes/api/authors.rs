@@ -58,6 +58,8 @@ pub struct AuthorNamesInput {
     #[serde(default)]
     pub original_names: HashMap<String, String>,
     #[serde(default)]
+    pub official_translations: HashMap<String, String>,
+    #[serde(default)]
     pub translations: HashMap<String, String>,
 }
 
@@ -71,6 +73,7 @@ pub async fn set_author_names(
         &state.pool,
         &id,
         input.original_names,
+        input.official_translations,
         input.translations,
     ).await?;
     Ok(Json(author))

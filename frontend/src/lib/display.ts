@@ -114,23 +114,25 @@ export function tagName(
 type AuthorNameBag = {
   name: string;
   original_names?: Record<string, string> | null;
+  official_translations?: Record<string, string> | null;
   translations?: Record<string, string> | null;
 };
 
 /**
  * Author display name, resolved against the UI locale:
- *   original_names[uiLocale] → translations[uiLocale] → name (canonical).
+ *   original_names[uiLocale] → official_translations[uiLocale] → name.
  *
- * `original_names` holds forms the author uses themselves (e.g. Terence Tao
- * ↔ 陶哲轩 — both his own names). `translations` holds transliterations the
- * author doesn't use themselves (e.g. Paul Krugman → 保罗·克鲁格曼).
+ * `translations` is a lookup-only pool (search + "other translations"
+ * listing) and is NOT consulted for default display. Admin promotes a
+ * translation to `official_translations` when the field's consensus
+ * settles on it (e.g. Richard Feynman → 理查德·费曼).
  */
 export function authorDisplayName(a: AuthorNameBag): string {
   const l = getLocale();
   const orig = a.original_names;
   if (orig && orig[l]) return orig[l];
-  const tr = a.translations;
-  if (tr && tr[l]) return tr[l];
+  const official = a.official_translations;
+  if (official && official[l]) return official[l];
   return a.name;
 }
 
@@ -143,6 +145,7 @@ export function resolveAuthorName(
   plainName: string,
   linked: AuthorNameBag[] | null | undefined,
 ): string {
+  // typecheck — bag shape is documented above.
   if (linked) {
     const hit = linked.find(a => a.name === plainName);
     if (hit) return authorDisplayName(hit);

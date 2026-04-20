@@ -152,6 +152,17 @@ async fn resync_bsky_profiles(
     let mut count = 0;
     for did in dids {
         let Ok(bsky) = at_client.get_public_profile(&did).await else { continue };
+
+        // Bluesky's public AppView returns handle="handle.invalid" for DIDs
+        // whose data it can't verify — notably accounts on PDSes it doesn't
+        // federate with (e.g. our pds.nightbo.at). Skip the handle+display
+        // overwrite in that case so we don't clobber the good DB value with
+        // AppView's ignorance.
+        if bsky.handle == "handle.invalid" {
+            tracing::debug!("resync: skipping {did} (AppView returned handle.invalid)");
+            continue;
+        }
+
         let cached = match bsky.avatar.as_deref() {
             Some(remote) => avatar_cache::cache_remote_avatar(data_dir, &did, remote).await,
             None => None,

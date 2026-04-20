@@ -15,8 +15,14 @@ pub struct Author {
     /// e.g. Terence Tao also signs as 陶哲轩 → `{"zh": "陶哲轩"}`.
     #[ts(type = "Record<string, string>")]
     pub original_names: sqlx::types::Json<HashMap<String, String>>,
-    /// Transliterations / translations that the author does not use themselves.
-    /// e.g. Paul Krugman → 保罗·克鲁格曼 → `{"zh": "保罗·克鲁格曼"}`.
+    /// Widely-accepted translations admin has marked as official. Shown as
+    /// the default display when the UI locale matches.
+    /// e.g. Richard Feynman → 理查德·费曼 → `{"zh": "理查德·费曼"}`.
+    #[ts(type = "Record<string, string>")]
+    pub official_translations: sqlx::types::Json<HashMap<String, String>>,
+    /// Variant renderings the author does not use themselves and that aren't
+    /// authoritative enough to display by default. Stored for search and for
+    /// an "other translations" list on the author's own page.
     #[ts(type = "Record<string, string>")]
     pub translations: sqlx::types::Json<HashMap<String, String>>,
 }
@@ -63,7 +69,7 @@ pub async fn list_courses_by_author(
 /// Get author by ID.
 pub async fn get_author(pool: &PgPool, id: &str) -> crate::Result<Author> {
     sqlx::query_as::<_, Author>(
-        "SELECT id, name, did, orcid, affiliation, homepage, original_names, translations FROM authors WHERE id = $1",
+        "SELECT id, name, did, orcid, affiliation, homepage, original_names, official_translations, translations FROM authors WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -74,7 +80,7 @@ pub async fn get_author(pool: &PgPool, id: &str) -> crate::Result<Author> {
 /// Get author by name (exact match).
 pub async fn get_author_by_name(pool: &PgPool, name: &str) -> crate::Result<Option<Author>> {
     let row = sqlx::query_as::<_, Author>(
-        "SELECT id, name, did, orcid, affiliation, homepage, original_names, translations FROM authors WHERE name = $1",
+        "SELECT id, name, did, orcid, affiliation, homepage, original_names, official_translations, translations FROM authors WHERE name = $1",
     )
     .bind(name)
     .fetch_optional(pool)
@@ -85,8 +91,8 @@ pub async fn get_author_by_name(pool: &PgPool, name: &str) -> crate::Result<Opti
 /// Search authors by name prefix.
 pub async fn search_authors(pool: &PgPool, query: &str, limit: i64) -> crate::Result<Vec<Author>> {
     let rows = sqlx::query_as::<_, Author>(
-        "SELECT id, name, did, orcid, affiliation, homepage, original_names, translations FROM authors \
-         WHERE name ILIKE $1 OR original_names::text ILIKE $1 OR translations::text ILIKE $1 \
+        "SELECT id, name, did, orcid, affiliation, homepage, original_names, official_translations, translations FROM authors \
+         WHERE name ILIKE $1 OR original_names::text ILIKE $1 OR official_translations::text ILIKE $1 OR translations::text ILIKE $1 \
          ORDER BY name LIMIT $2",
     )
     .bind(format!("%{query}%"))
@@ -169,34 +175,39 @@ pub async fn update_author(
 
 /// Replace the author's per-locale name variants.
 ///
-/// `original_names` holds the author's own authoritative forms in other
-/// languages; `translations` holds transliterations/translations the author
-/// does not use themselves. Empty values are dropped. `name` (canonical) is
-/// unchanged.
+/// Three buckets in display priority: `original_names` (author's own forms) →
+/// `official_translations` (admin-curated widely-accepted translation) →
+/// `translations` (other variants; stored but not default-displayed).
+/// Empty values are dropped. `name` (canonical) is unchanged.
 pub async fn set_author_names(
     pool: &PgPool,
     id: &str,
     original_names: HashMap<String, String>,
+    official_translations: HashMap<String, String>,
     translations: HashMap<String, String>,
 ) -> crate::Result<Author> {
     let clean = |m: HashMap<String, String>| -> HashMap<String, String> {
         m.into_iter().filter(|(_, v)| !v.trim().is_empty()).collect()
     };
     let o = serde_json::to_value(clean(original_names)).unwrap_or(serde_json::json!({}));
+    let f = serde_json::to_value(clean(official_translations)).unwrap_or(serde_json::json!({}));
     let t = serde_json::to_value(clean(translations)).unwrap_or(serde_json::json!({}));
-    sqlx::query("UPDATE authors SET original_names = $2, translations = $3 WHERE id = $1")
-        .bind(id)
-        .bind(o)
-        .bind(t)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "UPDATE authors SET original_names = $2, official_translations = $3, translations = $4 WHERE id = $1",
+    )
+    .bind(id)
+    .bind(o)
+    .bind(f)
+    .bind(t)
+    .execute(pool)
+    .await?;
     get_author(pool, id).await
 }
 
 /// List authors for a book (ordered by position).
 pub async fn list_book_authors(pool: &PgPool, book_id: &str) -> crate::Result<Vec<Author>> {
     let rows = sqlx::query_as::<_, Author>(
-        "SELECT a.id, a.name, a.did, a.orcid, a.affiliation, a.homepage, a.original_names, a.translations \
+        "SELECT a.id, a.name, a.did, a.orcid, a.affiliation, a.homepage, a.original_names, a.official_translations, a.translations \
          FROM book_authors ba \
          JOIN authors a ON ba.author_id = a.id \
          WHERE ba.book_id = $1 \
