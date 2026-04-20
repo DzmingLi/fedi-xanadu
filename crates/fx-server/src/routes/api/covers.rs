@@ -117,7 +117,24 @@ pub async fn get_cover(
         return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
     };
 
-    // Preferred path: DB cover_file points to an arbitrary file in the repo.
+    // Preferred path for series: meta.yaml `cover` field — survives fork/clone.
+    if kind == "s" {
+        if let Some(rel) = fx_core::meta::read_series_meta(&repo).and_then(|m| m.cover) {
+            if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
+                let ext = ext_of(&rel);
+                if let Ok(data) = tokio::fs::read(repo.join(&rel)).await {
+                    return Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, content_type_for_ext(&ext))
+                        .header(header::CACHE_CONTROL, "public, max-age=300")
+                        .body(Body::from(data))
+                        .unwrap();
+                }
+            }
+        }
+    }
+
+    // Next: DB cover_file (articles, or legacy series rows without meta).
     if let Some(rel) = lookup_cover_file(&state.pool, kind, node_id).await {
         if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
             let ext = ext_of(&rel);
@@ -199,6 +216,14 @@ async fn write_cover_to_repo(
     let cover_path = repo_path.join(format!("{COVER_STEM}.{ext}"));
     tokio::fs::write(&cover_path, data).await?;
 
+    // Persist the cover selection into meta.yaml for series so fork/clone
+    // preserves it without needing the database.
+    if is_series {
+        if let Err(e) = fx_core::meta::set_series_meta_cover(repo_path, Some(format!("{COVER_STEM}.{ext}"))) {
+            tracing::warn!("update series meta cover failed: {e}");
+        }
+    }
+
     // Mirror to knot if the user has one configured (articles only — series
     // knot flow isn't currently wired up for writes).
     if !is_series {
@@ -233,6 +258,13 @@ async fn remove_cover_from_repo(
     is_series: bool,
 ) {
     let mut removed_any = false;
+    if is_series {
+        if let Err(e) = fx_core::meta::set_series_meta_cover(repo_path, None) {
+            tracing::warn!("clear series meta cover failed: {e}");
+        } else {
+            removed_any = true;
+        }
+    }
     for ext in UPLOAD_EXTENSIONS {
         if tokio::fs::remove_file(repo_path.join(format!("{COVER_STEM}.{ext}"))).await.is_ok() {
             removed_any = true;
@@ -439,6 +471,20 @@ async fn set_series_cover_reference_inner(
             format!("cover file not found in repo: {file}"),
         )));
     }
+
+    // meta.yaml is the source of truth; write it before the DB update and
+    // record a patch so fork/clone inherits the selection.
+    let owner_did: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
+        .bind(series_id).fetch_optional(&state.pool).await?;
+    if let Err(e) = fx_core::meta::set_series_meta_cover(&repo_path, Some(file.to_string())) {
+        tracing::warn!("update series meta cover failed: {e}");
+    }
+    if let Some(d) = owner_did {
+        if let Err(e) = state.pijul_record_series(node_id.clone(), "Set cover".into(), Some(d)).await {
+            tracing::warn!("pijul record series cover ref failed: {e}");
+        }
+    }
+
     let cover_url = format!("/api/covers/s-{node_id}");
     sqlx::query("UPDATE series SET cover_url = $1, cover_file = $2 WHERE id = $3")
         .bind(&cover_url).bind(file).bind(series_id).execute(&state.pool).await?;

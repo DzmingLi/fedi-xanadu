@@ -71,6 +71,18 @@ pub struct SeriesMeta {
     /// and derive chapters from heading splits at runtime.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chapters: Vec<String>,
+    /// Relative path (within the repo) to the cover image. Authoritative —
+    /// surviving fork/clone — so a cloned series keeps its cover selection
+    /// without needing the original database.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover: Option<String>,
+}
+
+/// Read meta.yaml, set (or clear) the cover field, write it back.
+pub fn set_series_meta_cover(dir: &std::path::Path, cover: Option<String>) -> std::io::Result<()> {
+    let mut meta = read_series_meta(dir).unwrap_or_default();
+    meta.cover = cover;
+    write_series_meta(dir, &meta)
 }
 
 pub fn read_series_meta(dir: &std::path::Path) -> Option<SeriesMeta> {

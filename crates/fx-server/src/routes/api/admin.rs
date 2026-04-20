@@ -1231,6 +1231,7 @@ async fn write_series_meta_from_db(
         topics,
         split_level: Some(split_level as u32),
         chapters,
+        cover: None,
     };
 
     if let Err(e) = fx_core::meta::write_series_meta(series_repo, &meta) {

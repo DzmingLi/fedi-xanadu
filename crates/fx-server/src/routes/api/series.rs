@@ -104,6 +104,7 @@ pub async fn create_series(
             topics: topics.clone(),
             split_level: None,
             chapters: Vec::new(),
+            cover: None,
         };
         let repo_path = state.pijul.series_repo_path(node);
         if let Err(e) = fx_core::meta::write_series_meta(&repo_path, &meta) {
