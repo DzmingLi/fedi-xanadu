@@ -71,7 +71,7 @@ END $$;
 -- course_session_prereqs has composite (session, group, prereq_type)
 DELETE FROM course_session_prereqs a USING (
     SELECT ctid FROM (
-        SELECT ctid, ROW_NUMBER() OVER (PARTITION BY course_session_id, group_id, prereq_type ORDER BY tag_id) AS rn
+        SELECT ctid, ROW_NUMBER() OVER (PARTITION BY session_id, group_id, prereq_type ORDER BY tag_id) AS rn
         FROM course_session_prereqs
     ) s WHERE rn > 1
 ) d WHERE a.ctid = d.ctid;
@@ -92,9 +92,9 @@ ALTER TABLE listing_required_tags  ALTER COLUMN group_id SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_course_tags_group
     ON course_tags (course_id, group_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_course_session_tags_group
-    ON course_session_tags (course_session_id, group_id);
+    ON course_session_tags (session_id, group_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_course_session_prereqs_group
-    ON course_session_prereqs (course_session_id, group_id, prereq_type);
+    ON course_session_prereqs (session_id, group_id, prereq_type);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_listing_preferred_tags_group
     ON listing_preferred_tags (listing_id, group_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_listing_required_tags_group
