@@ -326,31 +326,26 @@ pub async fn get_content_format(pool: &PgPool, uri: &str) -> crate::Result<Strin
 }
 
 pub async fn get_article_prereqs(pool: &PgPool, uri: &str, locale: &str) -> crate::Result<Vec<ArticlePrereqRow>> {
-    // Dedup by (group, prereq_type). Within each group the displayed
-    // sibling is chosen by a 4-level priority:
-    //   0. matches UI locale AND is the group's representative
-    //   1. matches UI locale (any same-lang sibling)
-    //   2. is the group's representative (locale miss → rep as fallback)
-    //   3. anything (last resort)
+    // Dedup by group; pick the admin-chosen representative for the UI
+    // locale, falling back to the en representative.
+    //   display_tag = tag_group_representatives[group, locale]
+    //              ?? tag_group_representatives[group, 'en']
+    //              ?? content_prereqs.tag_id  (raw fallback)
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
         "SELECT DISTINCT ON (t.group_id, cp.prereq_type) \
-             sib.id AS tag_id, \
+             COALESCE(rep_loc.tag_id, rep_en.tag_id, cp.tag_id) AS tag_id, \
              cp.prereq_type, \
-             sib.name AS tag_name, \
-             sib.names AS tag_names \
+             display.name AS tag_name, \
+             display.names AS tag_names \
          FROM content_prereqs cp \
          JOIN tags t ON t.id = cp.tag_id \
-         JOIN tag_groups g ON g.id = t.group_id \
-         JOIN tags sib ON sib.group_id = t.group_id \
+         LEFT JOIN tag_group_representatives rep_loc \
+             ON rep_loc.group_id = t.group_id AND rep_loc.lang = $2 \
+         LEFT JOIN tag_group_representatives rep_en \
+             ON rep_en.group_id = t.group_id AND rep_en.lang = 'en' \
+         JOIN tags display ON display.id = COALESCE(rep_loc.tag_id, rep_en.tag_id, cp.tag_id) \
          WHERE cp.content_uri = $1 \
-         ORDER BY t.group_id, cp.prereq_type, \
-                  (CASE \
-                    WHEN sib.lang = $2 AND sib.id = g.representative_tag_id THEN 0 \
-                    WHEN sib.lang = $2 THEN 1 \
-                    WHEN sib.id = g.representative_tag_id THEN 2 \
-                    ELSE 3 \
-                   END), \
-                  sib.id",
+         ORDER BY t.group_id, cp.prereq_type",
     )
     .bind(uri)
     .bind(locale)

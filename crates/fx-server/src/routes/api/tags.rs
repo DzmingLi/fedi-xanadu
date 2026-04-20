@@ -53,24 +53,21 @@ pub async fn get_tag(
 #[derive(serde::Serialize)]
 pub struct GroupView {
     pub members: Vec<Tag>,
-    pub representative_tag_id: Option<String>,
+    /// Map of lang → member id. Admin picks one rep per language; the
+    /// frontend shows ★ next to each lang's rep and the UI picks its
+    /// display label with `representatives[uiLocale] ?? representatives.en`.
+    pub representatives: std::collections::HashMap<String, String>,
 }
 
 /// List every sibling tag in the alias/translation group that `id` belongs
-/// to, plus which member is the group's representative.
+/// to, plus the per-language representatives.
 pub async fn list_group_siblings(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<GroupView>> {
     let tags = tag_service::list_group_siblings(&state.pool, &id).await?;
-    let rep: Option<String> = sqlx::query_scalar(
-        "SELECT g.representative_tag_id FROM tag_groups g \
-         JOIN tags t ON t.group_id = g.id WHERE t.id = $1",
-    )
-    .bind(&id)
-    .fetch_optional(&state.pool)
-    .await?;
-    Ok(Json(GroupView { members: tags, representative_tag_id: rep }))
+    let representatives = tag_service::list_group_representatives(&state.pool, &id).await?;
+    Ok(Json(GroupView { members: tags, representatives }))
 }
 
 #[derive(serde::Deserialize)]

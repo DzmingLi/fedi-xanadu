@@ -611,10 +611,18 @@ pub async fn list_chapters_with_tags(pool: &PgPool, book_id: &str) -> crate::Res
     #[derive(sqlx::FromRow)]
     struct TeachRow { content_uri: String, tag_id: String }
     let teaches_rows = sqlx::query_as::<_, TeachRow>(
-        "SELECT DISTINCT ON (ct.content_uri, t.group_id) ct.content_uri, ct.tag_id \
-         FROM content_teaches ct JOIN tags t ON t.id = ct.tag_id \
+        // Dedup by group; pick the en representative (book service is
+        // not yet locale-aware — a later caller will thread locale
+        // through if we want chapter tag badges localized).
+        "SELECT DISTINCT ON (ct.content_uri, t.group_id) \
+             ct.content_uri, \
+             COALESCE(rep_en.tag_id, ct.tag_id) AS tag_id \
+         FROM content_teaches ct \
+         JOIN tags t ON t.id = ct.tag_id \
+         LEFT JOIN tag_group_representatives rep_en \
+             ON rep_en.group_id = t.group_id AND rep_en.lang = 'en' \
          WHERE ct.content_uri = ANY($1) \
-         ORDER BY ct.content_uri, t.group_id, (t.lang = 'en') DESC, ct.tag_id",
+         ORDER BY ct.content_uri, t.group_id, ct.tag_id",
     )
     .bind(&uris)
     .fetch_all(pool)
@@ -622,15 +630,18 @@ pub async fn list_chapters_with_tags(pool: &PgPool, book_id: &str) -> crate::Res
 
     #[derive(sqlx::FromRow)]
     struct PrereqRow { content_uri: String, tag_id: String, prereq_type: String }
-    // De-dupe by (content_uri, tag group, prereq_type) so the same concept
-    // doesn't render twice when the book has both the English and Chinese
-    // label on a chapter.
+    // Dedup by group; pick the en rep. (Book view isn't locale-aware yet.)
     let prereq_rows = sqlx::query_as::<_, PrereqRow>(
         "SELECT DISTINCT ON (cp.content_uri, t.group_id, cp.prereq_type) \
-             cp.content_uri, cp.tag_id, cp.prereq_type \
-         FROM content_prereqs cp JOIN tags t ON t.id = cp.tag_id \
+             cp.content_uri, \
+             COALESCE(rep_en.tag_id, cp.tag_id) AS tag_id, \
+             cp.prereq_type \
+         FROM content_prereqs cp \
+         JOIN tags t ON t.id = cp.tag_id \
+         LEFT JOIN tag_group_representatives rep_en \
+             ON rep_en.group_id = t.group_id AND rep_en.lang = 'en' \
          WHERE cp.content_uri = ANY($1) \
-         ORDER BY cp.content_uri, t.group_id, cp.prereq_type, (t.lang = 'en') DESC, cp.tag_id",
+         ORDER BY cp.content_uri, t.group_id, cp.prereq_type, cp.tag_id",
     )
     .bind(&uris)
     .fetch_all(pool)

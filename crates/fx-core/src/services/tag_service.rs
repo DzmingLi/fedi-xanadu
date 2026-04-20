@@ -425,17 +425,18 @@ pub async fn dedupe_by_group(pool: &PgPool, tag_ids: &[String]) -> Result<Vec<St
     Ok(out)
 }
 
-/// Set which tag in a group is the "representative" — the single label
-/// used when the UI needs to pick one for display (prereqs, teaches, skill
-/// mastery badges, etc.). Must be a tag that's already in the group.
+/// Set a group's representative for the given member's language. Promoting
+/// sibling X makes X the canonical label for lang(X) in this group — the
+/// UI will display it whenever a reader's locale matches lang(X). Other
+/// languages' reps are untouched.
 pub async fn set_group_representative(
     pool: &PgPool,
     anchor_tag_id: &str,
     member_id: &str,
 ) -> Result<()> {
-    // Verify both tags exist and share the same group.
-    let same_group: Option<String> = sqlx::query_scalar(
-        "SELECT anchor.group_id \
+    // Validate both tags are in the same group; read member's lang.
+    let row: Option<(String, String)> = sqlx::query_as(
+        "SELECT anchor.group_id, m.lang \
          FROM tags anchor JOIN tags m ON m.group_id = anchor.group_id \
          WHERE anchor.id = $1 AND m.id = $2",
     )
@@ -443,18 +444,38 @@ pub async fn set_group_representative(
     .bind(member_id)
     .fetch_optional(pool)
     .await?;
-    let group_id = same_group.ok_or_else(|| crate::Error::Validation(vec![
+    let (group_id, lang) = row.ok_or_else(|| crate::Error::Validation(vec![
         crate::validation::ValidationError {
             field: "member_id".into(),
             message: "member is not in the same group as anchor".into(),
         }
     ]))?;
-    sqlx::query("UPDATE tag_groups SET representative_tag_id = $2 WHERE id = $1")
-        .bind(&group_id)
-        .bind(member_id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "INSERT INTO tag_group_representatives (group_id, lang, tag_id) VALUES ($1, $2, $3) \
+         ON CONFLICT (group_id, lang) DO UPDATE SET tag_id = EXCLUDED.tag_id",
+    )
+    .bind(&group_id)
+    .bind(&lang)
+    .bind(member_id)
+    .execute(pool)
+    .await?;
     Ok(())
+}
+
+/// Fetch the (lang → representative tag id) mapping for a group, keyed
+/// off any member.
+pub async fn list_group_representatives(
+    pool: &PgPool,
+    anchor_tag_id: &str,
+) -> Result<std::collections::HashMap<String, String>> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT r.lang, r.tag_id FROM tag_group_representatives r \
+         WHERE r.group_id = (SELECT group_id FROM tags WHERE id = $1)",
+    )
+    .bind(anchor_tag_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().collect())
 }
 
 /// Add a sibling tag to the same alias/translation group as an existing
@@ -483,6 +504,18 @@ pub async fn add_group_member(
     .bind(created_by)
     .bind(lang)
     .bind(&group_id)
+    .execute(pool)
+    .await?;
+    // If this lang has no representative yet, the new tag is the only
+    // candidate — mark it as the rep automatically. Admin can later
+    // promote a different sibling if they add a better label.
+    sqlx::query(
+        "INSERT INTO tag_group_representatives (group_id, lang, tag_id) \
+         VALUES ($1, $2, $3) ON CONFLICT (group_id, lang) DO NOTHING",
+    )
+    .bind(&group_id)
+    .bind(lang)
+    .bind(new_id)
     .execute(pool)
     .await?;
     get_tag(pool, new_id).await

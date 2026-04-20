@@ -33,7 +33,8 @@
 
   // Group siblings — all tags in the same alias/translation group.
   let siblings = $state<Tag[]>([]);
-  let representativeId = $state<string | null>(null);
+  // Map: lang → member id that is the representative for that language.
+  let representatives = $state<Record<string, string>>({});
   let newMemberId = $state('');
   let newMemberName = $state('');
   let newMemberLang = $state('zh');
@@ -54,14 +55,14 @@
     listTagAliases(id).then(a => aliases = a).catch(() => {});
     listTagGroup(id).then((g: any) => {
       siblings = g.members ?? g;
-      representativeId = g.representative_tag_id ?? null;
+      representatives = g.representatives ?? {};
     }).catch(() => {});
   }
 
-  async function promoteRepresentative(memberId: string) {
+  async function promoteRepresentative(memberId: string, memberLang: string) {
     try {
       await setTagGroupRepresentative(id, memberId);
-      representativeId = memberId;
+      representatives = { ...representatives, [memberLang]: memberId };
     } catch (err: any) {
       editError = err.message ?? String(err);
     }
@@ -237,16 +238,17 @@
       <p class="hint">{t('tags.groupHint')}</p>
       <div class="sibling-list">
         {#each siblings as s (s.id)}
+          {@const isRepForLang = representatives[s.lang] === s.id}
           <div class="sibling-row">
             <button
               class="rep-star"
-              class:is-rep={s.id === representativeId}
-              title={s.id === representativeId ? t('tags.currentRep') : t('tags.makeRep')}
-              onclick={() => { if (s.id !== representativeId) promoteRepresentative(s.id); }}
+              class:is-rep={isRepForLang}
+              title={isRepForLang ? t('tags.currentRep') : t('tags.makeRep')}
+              onclick={() => { if (!isRepForLang) promoteRepresentative(s.id, s.lang); }}
             >★</button>
             <span class="sibling-lang">{s.lang}</span>
             <a class="sibling-id" href="/tag?id={encodeURIComponent(s.id)}">{s.id}</a>
-            {#if s.id !== id && s.id !== representativeId}
+            {#if s.id !== id && !isRepForLang}
               <button class="sibling-rm" onclick={() => removeGroupMember(s.id)}>×</button>
             {:else if s.id === id}
               <span class="sibling-self">{t('tags.thisTag')}</span>
