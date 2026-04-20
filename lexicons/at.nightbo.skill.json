@@ -1,0 +1,21 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.skill",
+  "description": "A user's self-declared mastery of a tag (topic). One record per (user, tag); rkey is the tag id. `status` distinguishes mastery levels. Deleting the record = the user no longer claims this skill.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:{tagId}",
+      "record": {
+        "type": "object",
+        "required": ["tagId", "status", "createdAt"],
+        "properties": {
+          "tagId":     { "type": "string", "maxLength": 64 },
+          "status":    { "type": "string", "enum": ["mastered", "learning", "interested", "want"] },
+          "createdAt": { "type": "string", "format": "datetime" },
+          "updatedAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

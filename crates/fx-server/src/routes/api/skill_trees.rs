@@ -7,9 +7,47 @@ use fx_core::services::skill_tree_service;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use crate::auth::{WriteAuth, MaybeAuth};
-use fx_core::util::tid;
+use crate::auth::{WriteAuth, MaybeAuth, pds_put_record, pds_delete_record};
+use fx_core::util::{tid, now_rfc3339};
 use super::UriQuery;
+
+/// Rebuild the full PDS record for a skill tree from current DB state and
+/// put it under the owner's repo. Called after create/fork and any edge or
+/// prereq mutation so external consumers see a consistent snapshot.
+async fn publish_skill_tree(state: &AppState, token: &str, tree_uri: &str) {
+    let Ok(tree) = skill_tree_service::get_skill_tree(&state.pool, tree_uri).await else {
+        return;
+    };
+    let Some(rkey) = tree_uri.rsplit('/').next().map(str::to_string) else { return; };
+
+    let edges: Vec<(String, String)> = sqlx::query_as(
+        "SELECT parent_tag, child_tag FROM skill_tree_edges WHERE tree_uri = $1",
+    )
+    .bind(tree_uri)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+    let prereqs: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT from_tag, to_tag, prereq_type FROM skill_tree_prereqs WHERE tree_uri = $1",
+    )
+    .bind(tree_uri)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut record = serde_json::json!({
+        "$type": fx_atproto::lexicon::SKILL_TREE,
+        "title": tree.title,
+        "edges": edges.iter().map(|(p, c)| serde_json::json!({"parent": p, "child": c})).collect::<Vec<_>>(),
+        "prereqs": prereqs.iter().map(|(f, t, pt)| serde_json::json!({"from": f, "to": t, "prereqType": pt})).collect::<Vec<_>>(),
+        "createdAt": tree.created_at,
+    });
+    if let Some(d) = tree.description { record["description"] = serde_json::Value::String(d); }
+    if let Some(t) = tree.tag_id      { record["tagId"]       = serde_json::Value::String(t); }
+    if let Some(f) = tree.forked_from { record["forkedFrom"]  = serde_json::Value::String(f); }
+
+    pds_put_record(state, token, fx_atproto::lexicon::SKILL_TREE, rkey, record, "publish skill tree").await;
+}
 
 #[derive(serde::Deserialize)]
 pub struct ListSkillTreesQuery {
@@ -71,6 +109,7 @@ pub async fn create_skill_tree(
     };
 
     let row = skill_tree_service::create_skill_tree(&state.pool, &at_uri, &user.did, &svc_input).await?;
+    publish_skill_tree(&state, &user.token, &at_uri).await;
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -94,6 +133,7 @@ pub async fn fork_skill_tree(
 ) -> ApiResult<(StatusCode, Json<skill_tree_service::SkillTreeRow>)> {
     let new_uri = format!("at://{}/at.nightbo.skilltree/{}", user.did, tid());
     let row = skill_tree_service::fork_skill_tree(&state.pool, &input.uri, &new_uri, &user.did).await?;
+    publish_skill_tree(&state, &user.token, &new_uri).await;
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -110,6 +150,7 @@ pub async fn add_skill_tree_edge(
     Json(input): Json<SkillTreeEdgeInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::add_edge(&state.pool, &input.tree_uri, &user.did, &input.parent_tag, &input.child_tag).await?;
+    publish_skill_tree(&state, &user.token, &input.tree_uri).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -119,6 +160,7 @@ pub async fn remove_skill_tree_edge(
     Json(input): Json<SkillTreeEdgeInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::remove_edge(&state.pool, &input.tree_uri, &user.did, &input.parent_tag, &input.child_tag).await?;
+    publish_skill_tree(&state, &user.token, &input.tree_uri).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -151,6 +193,7 @@ pub async fn add_skill_tree_prereq(
     Json(input): Json<SkillTreePrereqInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::add_prereq(&state.pool, &input.tree_uri, &user.did, &input.from_tag, &input.to_tag, &input.prereq_type).await?;
+    publish_skill_tree(&state, &user.token, &input.tree_uri).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -160,6 +203,7 @@ pub async fn remove_skill_tree_prereq(
     Json(input): Json<SkillTreePrereqInput>,
 ) -> ApiResult<StatusCode> {
     skill_tree_service::remove_prereq(&state.pool, &input.tree_uri, &user.did, &input.from_tag, &input.to_tag).await?;
+    publish_skill_tree(&state, &user.token, &input.tree_uri).await;
     Ok(StatusCode::NO_CONTENT)
 }
 

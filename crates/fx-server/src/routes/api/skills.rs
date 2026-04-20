@@ -9,7 +9,8 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use crate::auth::{Auth, WriteAuth, MaybeAuth};
+use crate::auth::{Auth, WriteAuth, MaybeAuth, pds_put_record, pds_delete_record};
+use fx_core::util::now_rfc3339;
 use super::TagIdQuery;
 
 pub async fn list_user_skills(
@@ -38,6 +39,16 @@ pub async fn light_skill(
 
     let status = input.status.as_deref().unwrap_or("mastered");
     skill_service::light_skill(&state.pool, &user.did, &input.tag_id, status).await?;
+
+    let record = serde_json::json!({
+        "$type": fx_atproto::lexicon::SKILL,
+        "tagId": input.tag_id,
+        "status": status,
+        "createdAt": now_rfc3339(),
+        "updatedAt": now_rfc3339(),
+    });
+    pds_put_record(&state, &user.token, fx_atproto::lexicon::SKILL, input.tag_id.clone(), record, "light skill").await;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -51,6 +62,7 @@ pub async fn delete_skill(
     }
 
     skill_service::delete_skill(&state.pool, &user.did, &input.tag_id).await?;
+    pds_delete_record(&state, &user.token, fx_atproto::lexicon::SKILL, input.tag_id.clone(), "unlight skill").await;
     Ok(StatusCode::NO_CONTENT)
 }
 
