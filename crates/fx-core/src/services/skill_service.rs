@@ -12,7 +12,9 @@ pub struct TagTreeEntry {
 
 pub async fn list_user_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<UserSkill>> {
     let skills = sqlx::query_as::<_, UserSkill>(
-        "SELECT did, tag_id, status, lit_at FROM user_skills WHERE did = $1 ORDER BY lit_at DESC",
+        "SELECT us.did, us.tag_id, us.status, us.lit_at, t.group_id \
+         FROM user_skills us LEFT JOIN tags t ON t.id = us.tag_id \
+         WHERE us.did = $1 ORDER BY us.lit_at DESC",
     )
     .bind(did)
     .fetch_all(pool)

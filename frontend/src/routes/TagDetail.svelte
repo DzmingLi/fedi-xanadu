@@ -13,7 +13,14 @@
   let voteMap = $state(new Map<string, number>());
   let loading = $state(true);
 
-  let isLit = $derived(skills.some(s => s.tag_id === id));
+  // A skill is considered lit when any sibling in the same group is lit,
+  // since the group represents one concept across languages and aliases.
+  let isLit = $derived(
+    skills.some(s =>
+      s.tag_id === id ||
+      (tag && s.group_id != null && s.group_id === tag.group_id)
+    )
+  );
   let isLoggedIn = $derived(!!getAuth());
 
   // Edit state

@@ -27,6 +27,10 @@ pub struct UserSkill {
     pub tag_id: String,
     pub status: String,
     pub lit_at: DateTime<Utc>,
+    /// Group the lit tag belongs to. Two skills in the same group count
+    /// as the same concept being lit (frontend checks by group_id so
+    /// lighting "calculus" also marks "高等数学" as lit).
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]

@@ -189,19 +189,29 @@ pub async fn get_related_questions(pool: &PgPool, mode: InstanceMode, uri: &str,
 }
 
 pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
-    let descendant_tags: Vec<String> = sqlx::query_scalar(
-        "WITH RECURSIVE descendants(tag) AS ( \
-           SELECT $1::TEXT \
+    // Resolve the tag to its concept — the query tag PLUS every sibling
+    // in the same alias/translation group, PLUS every descendant in the
+    // skill-tree taxonomy (and the groups those descendants belong to).
+    // This way an article teaching "calculus" shows up on "高等数学"'s
+    // page too, and descendants of one language label pull in descendants
+    // of its siblings as well.
+    let tag_ids: Vec<String> = sqlx::query_scalar(
+        "WITH RECURSIVE seed AS ( \
+             SELECT id FROM tags WHERE group_id = (SELECT group_id FROM tags WHERE id = $1) \
+         ), \
+         descendants(tag) AS ( \
+           SELECT id FROM seed \
            UNION \
            SELECT e.child_tag FROM skill_tree_edges e JOIN descendants d ON e.parent_tag = d.tag \
          ) \
-         SELECT tag FROM descendants",
+         SELECT DISTINCT id FROM tags \
+         WHERE group_id IN (SELECT group_id FROM tags WHERE id IN (SELECT tag FROM descendants))",
     )
     .bind(tag_id)
     .fetch_all(pool)
     .await?;
 
-    if descendant_tags.is_empty() {
+    if tag_ids.is_empty() {
         return Ok(vec![]);
     }
 
@@ -211,7 +221,7 @@ pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str
          ) ORDER BY a.created_at DESC LIMIT $2",
         visible(mode)
     ))
-    .bind(&descendant_tags)
+    .bind(&tag_ids)
     .bind(limit)
     .fetch_all(pool)
     .await?;
