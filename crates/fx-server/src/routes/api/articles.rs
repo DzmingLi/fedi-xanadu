@@ -27,6 +27,26 @@ pub(super) async fn get_user_knot_url(pool: &sqlx::PgPool, did: &str) -> Option<
         .filter(|u| !u.is_empty())
 }
 
+/// Resolve the public knot URL hosting a user's repo: the user's per-account
+/// override if set, otherwise the server's default. Returns None when neither
+/// is configured — callers should treat that as "this record cannot be
+/// published portably."
+pub(super) async fn effective_knot_url(state: &AppState, did: &str) -> Option<String> {
+    if let Some(u) = get_user_knot_url(&state.pool, did).await {
+        return Some(u);
+    }
+    let d = state.default_knot_url.trim();
+    if d.is_empty() { None } else { Some(d.to_string()) }
+}
+
+/// Build the public repo URL for a pijul node on the user's effective knot.
+/// Returns None if no knot is configured.
+pub(super) async fn pijul_repo_url(state: &AppState, did: &str, node_id: &str) -> Option<String> {
+    let knot = effective_knot_url(state, did).await?;
+    let base = knot.trim_end_matches('/');
+    Some(format!("{base}/{did}/{node_id}"))
+}
+
 /// Pre-compiled regex for extracting anchor IDs from HTML.
 static ANCHOR_ID_RE: std::sync::LazyLock<regex_lite::Regex> =
     std::sync::LazyLock::new(|| regex_lite::Regex::new(r##"id="([^"]+)""##).unwrap());
@@ -928,18 +948,25 @@ pub async fn create_article(
         series_service::add_series_article(&state.pool, sid, &at_uri, Some(&default_path)).await?;
     }
 
-    // Skip PDS sync for restricted articles — content stays server-local only
-    if !input.restricted.unwrap_or(false) {
-        let record = serde_json::json!({
-            "$type": fx_atproto::lexicon::ARTICLE,
-            "title": input.title,
-            "description": input.summary.as_deref().unwrap_or(""),
-            "contentFormat": input.content_format,
-            "tags": input.tags,
-            "createdAt": now_rfc3339(),
-        });
-        let rkey = at_uri.rsplit('/').next().map(str::to_string);
-        pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, rkey, "create article").await;
+    // Skip PDS sync for restricted articles or series chapters. Series chapters
+    // are addressed via the series record + sectionRef, not per-chapter records.
+    if !input.restricted.unwrap_or(false) && input.series_id.is_none() {
+        let node_id = uri_to_node_id(&at_uri);
+        if let Some(repo_url) = pijul_repo_url(&state, &user.did, &node_id).await {
+            let record = serde_json::json!({
+                "$type": fx_atproto::lexicon::ARTICLE,
+                "title": input.title,
+                "description": input.summary.as_deref().unwrap_or(""),
+                "contentFormat": input.content_format,
+                "tags": input.tags,
+                "pijulRepoUrl": repo_url,
+                "createdAt": now_rfc3339(),
+            });
+            let rkey = at_uri.rsplit('/').next().map(str::to_string);
+            pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, rkey, "create article").await;
+        } else {
+            tracing::warn!("no knot configured; skipping PDS article record for {at_uri}");
+        }
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
@@ -950,15 +977,21 @@ pub async fn create_article(
     // Save category-specific metadata
     save_category_metadata(&state, &at_uri, &input).await;
 
-    // Add creator as verified author (position 0) with PDS authorship record
-    let authorship_record = serde_json::json!({
-        "$type": fx_atproto::lexicon::AUTHORSHIP,
-        "article": at_uri,
-        "createdAt": now_rfc3339(),
-    });
-    let authorship_uri = pds_create_record(
-        &state, &user.token, fx_atproto::lexicon::AUTHORSHIP, authorship_record, None, "creator authorship",
-    ).await;
+    // Add creator as verified author (position 0). PDS authorship record is
+    // only meaningful for standalone articles — series chapters live under
+    // the series record, so there's no per-chapter record to authorize.
+    let authorship_uri = if input.series_id.is_none() {
+        let authorship_record = serde_json::json!({
+            "$type": fx_atproto::lexicon::AUTHORSHIP,
+            "article": at_uri,
+            "createdAt": now_rfc3339(),
+        });
+        pds_create_record(
+            &state, &user.token, fx_atproto::lexicon::AUTHORSHIP, authorship_record, None, "creator authorship",
+        ).await
+    } else {
+        None
+    };
     let _ = authorship_service::add_author(&state.pool, &at_uri, &user.did, &user.did, Some(0)).await;
     if let Some(ref uri) = authorship_uri {
         let _ = authorship_service::verify_authorship(&state.pool, &at_uri, &user.did, Some(uri)).await;
@@ -1085,17 +1118,23 @@ pub async fn create_article_multipart(
         series_service::add_series_article(&state.pool, sid, &at_uri, Some(&default_path)).await?;
     }
 
-    if !input.restricted.unwrap_or(false) {
-        let record = serde_json::json!({
-            "$type": fx_atproto::lexicon::ARTICLE,
-            "title": input.title,
-            "description": input.summary.as_deref().unwrap_or(""),
-            "contentFormat": input.content_format,
-            "tags": input.tags,
-            "createdAt": now_rfc3339(),
-        });
-        let rkey = at_uri.rsplit('/').next().map(str::to_string);
-        pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, rkey, "create article").await;
+    if !input.restricted.unwrap_or(false) && input.series_id.is_none() {
+        let node_id = uri_to_node_id(&at_uri);
+        if let Some(repo_url) = pijul_repo_url(&state, &user.did, &node_id).await {
+            let record = serde_json::json!({
+                "$type": fx_atproto::lexicon::ARTICLE,
+                "title": input.title,
+                "description": input.summary.as_deref().unwrap_or(""),
+                "contentFormat": input.content_format,
+                "tags": input.tags,
+                "pijulRepoUrl": repo_url,
+                "createdAt": now_rfc3339(),
+            });
+            let rkey = at_uri.rsplit('/').next().map(str::to_string);
+            pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, rkey, "create article").await;
+        } else {
+            tracing::warn!("no knot configured; skipping PDS article record for {at_uri}");
+        }
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;

@@ -13,6 +13,7 @@ pub const BOOKMARK: &str = "at.nightbo.bookmark";
 pub const BOOK_RATING: &str = "at.nightbo.book.rating";
 pub const BOOK_READING_STATUS: &str = "at.nightbo.book.readingstatus";
 pub const COURSE_RATING: &str = "at.nightbo.course.rating";
+pub const SERIES: &str = "at.nightbo.series";
 pub const SKILL: &str = "at.nightbo.skill";
 pub const WANT_LEARN: &str = "at.nightbo.wantlearn";
 pub const TAG: &str = "at.nightbo.tag";

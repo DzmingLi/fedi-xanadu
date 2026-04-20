@@ -45,6 +45,11 @@
               default = "";
               description = "Public URL of this instance (for OAuth client_id and callback). e.g. https://nightboat.dzming.li";
             };
+            defaultKnotUrl = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Default knot (pijul hosting) URL embedded in at.nightbo.article / at.nightbo.series records for users who have not configured their own. e.g. https://knot.dzming.li";
+            };
             adminSecretFile = lib.mkOption {
               type = lib.types.nullOr lib.types.path;
               default = null;
@@ -108,6 +113,8 @@
                 RUST_LOG = "info";
               } // lib.optionalAttrs (cfg.publicUrl != "") {
                 FX_PUBLIC_URL = cfg.publicUrl;
+              } // lib.optionalAttrs (cfg.defaultKnotUrl != "") {
+                FX_DEFAULT_KNOT_URL = cfg.defaultKnotUrl;
               } // lib.optionalAttrs (cfg.corsOrigins != []) {
                 FX_CORS_ORIGINS = lib.concatStringsSep "," cfg.corsOrigins;
               };

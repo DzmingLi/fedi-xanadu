@@ -25,6 +25,12 @@ pub struct Config {
     /// e.g. "https://xanadu.example.com". Set via FX_PUBLIC_URL env var.
     #[serde(default)]
     pub public_url: String,
+    /// Default knot (pijul hosting) URL used when a user has not configured
+    /// their own `user_settings.knot_url`. Embedded into at.nightbo.article
+    /// and at.nightbo.series records so external AppViews can clone the source.
+    /// Set via FX_DEFAULT_KNOT_URL. e.g. "https://knot.dzming.li".
+    #[serde(default)]
+    pub default_knot_url: String,
     /// ORCID OAuth client ID. Register at https://orcid.org/developer-tools
     #[serde(default)]
     pub orcid_client_id: Option<String>,
@@ -45,6 +51,7 @@ impl Default for Config {
             admin_secret: None,
             instance_mode: String::new(),
             public_url: String::new(),
+            default_knot_url: String::new(),
             orcid_client_id: None,
             orcid_client_secret: None,
         }

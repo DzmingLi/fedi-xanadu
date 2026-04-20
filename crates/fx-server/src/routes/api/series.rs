@@ -10,8 +10,9 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
-use crate::auth::WriteAuth;
-use fx_core::util::tid;
+use crate::auth::{WriteAuth, pds_create_record};
+use crate::routes::api::articles::pijul_repo_url;
+use fx_core::util::{tid, now_rfc3339};
 use super::UriQuery;
 
 #[derive(serde::Deserialize)]
@@ -113,6 +114,28 @@ pub async fn create_series(
 
     // Register creator as owner collaborator
     let _ = collaboration_service::register_owner(&state.pool, &id, &user.did).await;
+
+    // Publish the series record to PDS (rkey = series id). pijulRepoUrl is
+    // the authoritative source; external AppViews clone it to read chapters.
+    if let Some(ref node) = pijul_node_id {
+        if let Some(repo_url) = pijul_repo_url(&state, &user.did, node).await {
+            let mut record = serde_json::json!({
+                "$type": fx_atproto::lexicon::SERIES,
+                "seriesId": id,
+                "title": input.title,
+                "lang": lang,
+                "category": category,
+                "topics": topics,
+                "pijulRepoUrl": repo_url,
+                "createdAt": now_rfc3339(),
+            });
+            if let Some(ref s) = input.summary { record["summary"] = serde_json::Value::String(s.clone()); }
+            if let Some(ref ld) = input.long_description { record["longDescription"] = serde_json::Value::String(ld.clone()); }
+            pds_create_record(&state, &user.token, fx_atproto::lexicon::SERIES, record, Some(id.clone()), "create series").await;
+        } else {
+            tracing::warn!("no knot configured; skipping PDS series record for {id}");
+        }
+    }
 
     Ok((StatusCode::CREATED, Json(row)))
 }

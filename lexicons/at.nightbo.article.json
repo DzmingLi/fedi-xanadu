@@ -1,0 +1,23 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.article",
+  "description": "A standalone knowledge article (or question/answer/thought). Each standalone article is backed by its own pijul repository; `pijulRepoUrl` is the knot-hosted location so external consumers can clone the authoritative source. Chapters of a series are NOT published as at.nightbo.article records — the series record describes the whole work and the repo's chapter files are the authoritative structure.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["title", "contentFormat", "pijulRepoUrl", "createdAt"],
+        "properties": {
+          "title":         { "type": "string", "maxLength": 500 },
+          "description":   { "type": "string", "maxLength": 10000, "description": "Short summary / lede." },
+          "contentFormat": { "type": "string", "enum": ["markdown", "typst", "html"] },
+          "tags":          { "type": "array", "items": { "type": "string" } },
+          "pijulRepoUrl":  { "type": "string", "format": "uri", "description": "Public knot URL hosting the article's pijul repo, e.g. https://knot.example.com/did:web:alice/at___did_web_alice_at.nightbo.article_<tid>" },
+          "createdAt":     { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

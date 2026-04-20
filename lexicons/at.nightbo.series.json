@@ -1,0 +1,27 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.series",
+  "description": "A multi-chapter work (book, lecture notes, tutorial) whose content lives in a single pijul repository. Chapter division and order come from the repo's layout (`chapters/*.{typ,md,...}`) — there are no per-chapter at-protocol records. External AppViews clone `pijulRepoUrl` to get the complete series plus version history. Interactions on individual chapters (vote, bookmark, comment) reference the series URI plus a `sectionRef` (chapter TID) to retain per-chapter granularity without fragmenting PDS writes.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:{seriesId}",
+      "record": {
+        "type": "object",
+        "required": ["seriesId", "title", "pijulRepoUrl", "createdAt"],
+        "properties": {
+          "seriesId":        { "type": "string", "maxLength": 64, "description": "Stable series id, used as the rkey." },
+          "title":           { "type": "string", "maxLength": 500 },
+          "summary":         { "type": "string", "maxLength": 5000, "description": "Short description / blurb." },
+          "longDescription": { "type": "string", "maxLength": 50000 },
+          "lang":            { "type": "string", "maxLength": 10 },
+          "category":        { "type": "string", "maxLength": 20 },
+          "topics":          { "type": "array", "items": { "type": "string" } },
+          "coverUrl":        { "type": "string", "format": "uri" },
+          "pijulRepoUrl":    { "type": "string", "format": "uri", "description": "Public knot URL hosting the series repo, e.g. https://knot.example.com/did:web:alice/series_<seriesId>" },
+          "createdAt":       { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}
