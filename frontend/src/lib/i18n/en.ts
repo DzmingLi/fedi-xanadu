@@ -552,6 +552,10 @@ export default {
   'tags.newMemberNamePlaceholder': 'display name',
   'tags.currentRep': 'Current representative',
   'tags.makeRep': 'Make representative',
+  'tags.mergeGroup': 'Merge groups',
+  'tags.mergePlaceholder': 'Another tag id',
+  'tags.mergeHint': 'Merge another tag\'s group into this one (aliases + translations collapse together). Members move here; this group\'s per-lang representatives take precedence.',
+  'tags.confirmMerge': 'Merge the group containing {0} into {1}? This fuses every member, alias, and translation across the two groups.',
 
   // Auth / Login
   'auth.loginHint': 'Log in with your Bluesky handle and App Password',

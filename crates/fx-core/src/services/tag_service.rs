@@ -462,6 +462,56 @@ pub async fn set_group_representative(
     Ok(())
 }
 
+/// Merge the group containing `drop_tag_id` into the group containing
+/// `keep_tag_id`. All members of the drop-group move to the keep-group;
+/// representatives merge (keep-group's per-lang reps take precedence,
+/// drop-group's reps fill in missing langs). The emptied group row is
+/// deleted.
+pub async fn merge_groups(pool: &PgPool, keep_tag_id: &str, drop_tag_id: &str) -> Result<()> {
+    let keep_group: String = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+        .bind(keep_tag_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: keep_tag_id.to_string() })?;
+    let drop_group: String = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+        .bind(drop_tag_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: drop_tag_id.to_string() })?;
+    if keep_group == drop_group {
+        return Ok(()); // already siblings; no-op
+    }
+
+    let mut tx = pool.begin().await?;
+    // Move every member of drop_group into keep_group.
+    sqlx::query("UPDATE tags SET group_id = $1 WHERE group_id = $2")
+        .bind(&keep_group)
+        .bind(&drop_group)
+        .execute(&mut *tx)
+        .await?;
+    // Keep-group's per-lang reps win; drop-group's fill in where keep
+    // didn't have one.
+    sqlx::query(
+        "INSERT INTO tag_group_representatives (group_id, lang, tag_id) \
+         SELECT $1, lang, tag_id FROM tag_group_representatives WHERE group_id = $2 \
+         ON CONFLICT (group_id, lang) DO NOTHING",
+    )
+    .bind(&keep_group)
+    .bind(&drop_group)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM tag_group_representatives WHERE group_id = $1")
+        .bind(&drop_group)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM tag_groups WHERE id = $1")
+        .bind(&drop_group)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Fetch the (lang → representative tag id) mapping for a group, keyed
 /// off any member.
 pub async fn list_group_representatives(

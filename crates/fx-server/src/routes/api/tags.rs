@@ -106,6 +106,22 @@ pub async fn remove_group_member(
 }
 
 #[derive(serde::Deserialize)]
+pub struct MergeInput { pub member_id: String }
+
+/// Merge another tag's alias/translation group into this tag's group.
+/// The other group's members all move here; reps merge with this
+/// group's reps winning per-lang ties.
+pub async fn merge_groups(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    crate::auth::Auth(_user): crate::auth::Auth,
+    Json(input): Json<MergeInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    tag_service::merge_groups(&state.pool, &id, &input.member_id).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(serde::Deserialize)]
 pub struct RepresentativeInput { pub member_id: String }
 
 /// Mark one of the group's members as the representative — the single

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative } from '../lib/api';
+  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative, mergeTagGroups } from '../lib/api';
   import { authorName, tagName } from '../lib/display';
   import { t, LOCALES } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
@@ -38,6 +38,7 @@
   let newMemberId = $state('');
   let newMemberName = $state('');
   let newMemberLang = $state('zh');
+  let mergeTargetId = $state('');
 
   function openEdit() {
     if (!tag) return;
@@ -57,6 +58,21 @@
       siblings = g.members ?? g;
       representatives = g.representatives ?? {};
     }).catch(() => {});
+  }
+
+  async function submitMergeGroup() {
+    const other = mergeTargetId.trim();
+    if (!other || other === id) return;
+    if (!confirm(t('tags.confirmMerge').replace('{0}', other).replace('{1}', id))) return;
+    try {
+      await mergeTagGroups(id, other);
+      mergeTargetId = '';
+      const g: any = await listTagGroup(id);
+      siblings = g.members ?? g;
+      representatives = g.representatives ?? {};
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    }
   }
 
   async function promoteRepresentative(memberId: string, memberLang: string) {
@@ -267,6 +283,13 @@
         <button class="btn" onclick={submitAddGroupMember}>{t('tags.addGroupMember')}</button>
       </div>
 
+      <div class="sibling-add merge-row">
+        <input class="sm-input" bind:value={mergeTargetId} placeholder={t('tags.mergePlaceholder')}
+          onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitMergeGroup(); } }} />
+        <button class="btn" onclick={submitMergeGroup} disabled={!mergeTargetId.trim()}>{t('tags.mergeGroup')}</button>
+      </div>
+      <p class="hint">{t('tags.mergeHint')}</p>
+
       <h4 style="margin-top:18px">{t('tags.translationsLabel')}</h4>
       {#each [...LOCALES].sort((a, b) => (a.code === 'en' ? -1 : b.code === 'en' ? 1 : 0)) as loc (loc.code)}
         <label class="inline-label">
@@ -449,6 +472,7 @@
   .sibling-add { display: flex; gap: 4px; margin-top: 6px; }
   .sibling-add .sm-input { flex: 1; padding: 4px 6px; font-size: 12px; border: 1px solid var(--border); border-radius: 3px; }
   .sibling-add select.sm-input { flex: 0 0 64px; }
+  .merge-row { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
   .alias-add { display: flex; gap: 6px; }
   .alias-add input { margin-bottom: 0; flex: 1; }
   .error-msg { background: #fee; color: #c00; padding: 6px 10px; border-radius: 4px; font-size: 13px; }

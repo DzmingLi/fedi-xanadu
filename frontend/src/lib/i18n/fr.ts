@@ -552,6 +552,10 @@ export default {
   'tags.newMemberNamePlaceholder': 'nom d\'affichage',
   'tags.currentRep': 'Représentant actuel',
   'tags.makeRep': 'Définir comme représentant',
+  'tags.mergeGroup': 'Fusionner les groupes',
+  'tags.mergePlaceholder': 'Id d\'un autre tag',
+  'tags.mergeHint': 'Fusionner le groupe d\'un autre tag dans celui-ci (alias + traductions réunis). Les membres rejoignent ce groupe ; les représentants par langue de ce groupe-ci l\'emportent.',
+  'tags.confirmMerge': 'Fusionner le groupe contenant {0} dans {1} ? Cela combine tous les membres, alias et traductions des deux groupes.',
 
   // Auth / Login
   'auth.loginHint': 'Connectez-vous avec votre identifiant Bluesky et votre mot de passe d\'application',

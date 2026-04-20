@@ -552,6 +552,10 @@ export default {
   'tags.newMemberNamePlaceholder': '显示名',
   'tags.currentRep': '当前代表',
   'tags.makeRep': '设为代表',
+  'tags.mergeGroup': '合并组',
+  'tags.mergePlaceholder': '另一个 tag 的 id',
+  'tags.mergeHint': '把另一个 tag 所在的组合并到本组（别名/译名归并）。成员全部并入，per-lang 代表以本组优先。',
+  'tags.confirmMerge': '把 {0} 所在的组合并进 {1}？这个动作会把两个组的所有成员、别名、翻译合到一起。',
 
   // Auth / Login
   'auth.loginHint': '使用你的 Bluesky handle 和 App Password 登录',
