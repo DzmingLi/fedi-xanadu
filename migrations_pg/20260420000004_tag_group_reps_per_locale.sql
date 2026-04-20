@@ -11,12 +11,24 @@ CREATE TABLE IF NOT EXISTS tag_group_representatives (
     PRIMARY KEY (group_id, lang)
 );
 
--- Backfill: promote the current single representative to be the rep for
--- its own language (usually 'en' after the earlier heuristic backfill).
-INSERT INTO tag_group_representatives (group_id, lang, tag_id)
-SELECT g.id, t.lang, t.id
-FROM tag_groups g JOIN tags t ON t.id = g.representative_tag_id
-ON CONFLICT (group_id, lang) DO NOTHING;
+-- Backfill: promote the previous single representative to be the rep for
+-- its own language. Gated on the legacy column still existing — sqlx
+-- may re-run this migration after the manual psql apply, in which case
+-- the column is already dropped and this block is a no-op.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tag_groups' AND column_name = 'representative_tag_id'
+    ) THEN
+        EXECUTE $q$
+            INSERT INTO tag_group_representatives (group_id, lang, tag_id)
+            SELECT g.id, t.lang, t.id
+            FROM tag_groups g JOIN tags t ON t.id = g.representative_tag_id
+            ON CONFLICT (group_id, lang) DO NOTHING
+        $q$;
+    END IF;
+END $$;
 
 -- Also seed a rep for every OTHER locale in each group — take any
 -- member of that locale. Admin can re-pick later if they have multiple
