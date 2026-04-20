@@ -50,6 +50,11 @@
               default = "";
               description = "Default knot (pijul hosting) URL embedded in at.nightbo.article / at.nightbo.series records for users who have not configured their own. e.g. https://knot.dzming.li";
             };
+            pdsUrl = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "URL of the ATProto PDS this instance treats as its home PDS — new signups are created there and password logins go through it. e.g. https://pds.nightbo.at";
+            };
             adminSecretFile = lib.mkOption {
               type = lib.types.nullOr lib.types.path;
               default = null;
@@ -115,6 +120,8 @@
                 FX_PUBLIC_URL = cfg.publicUrl;
               } // lib.optionalAttrs (cfg.defaultKnotUrl != "") {
                 FX_DEFAULT_KNOT_URL = cfg.defaultKnotUrl;
+              } // lib.optionalAttrs (cfg.pdsUrl != "") {
+                FX_PDS_URL = cfg.pdsUrl;
               } // lib.optionalAttrs (cfg.corsOrigins != []) {
                 FX_CORS_ORIGINS = lib.concatStringsSep "," cfg.corsOrigins;
               };

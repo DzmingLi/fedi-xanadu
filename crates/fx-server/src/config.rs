@@ -31,6 +31,12 @@ pub struct Config {
     /// Set via FX_DEFAULT_KNOT_URL. e.g. "https://knot.dzming.li".
     #[serde(default)]
     pub default_knot_url: String,
+    /// URL of the ATProto PDS this instance treats as its home PDS — new
+    /// signups are created there and password logins proxy to its
+    /// `com.atproto.server.createSession`. Empty means register / local
+    /// password login are disabled. Set via FX_PDS_URL.
+    #[serde(default)]
+    pub pds_url: String,
     /// ORCID OAuth client ID. Register at https://orcid.org/developer-tools
     #[serde(default)]
     pub orcid_client_id: Option<String>,
@@ -52,6 +58,7 @@ impl Default for Config {
             instance_mode: String::new(),
             public_url: String::new(),
             default_knot_url: String::new(),
+            pds_url: String::new(),
             orcid_client_id: None,
             orcid_client_secret: None,
         }

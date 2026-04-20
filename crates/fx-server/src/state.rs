@@ -19,6 +19,7 @@ pub struct AppState {
     pub series_resolver: Arc<dyn PadProjectResolver>,
     pub public_url: String,
     pub default_knot_url: String,
+    pub pds_url: String,
     pub orcid_client_id: Option<String>,
     pub orcid_client_secret: Option<String>,
 }
@@ -84,6 +85,7 @@ impl AppState {
             series_resolver,
             public_url: config.public_url.clone(),
             default_knot_url: config.default_knot_url.clone(),
+            pds_url: config.pds_url.clone(),
             orcid_client_id: config.orcid_client_id.clone(),
             orcid_client_secret: config.orcid_client_secret.clone(),
         })
