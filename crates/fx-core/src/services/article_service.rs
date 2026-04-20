@@ -189,39 +189,35 @@ pub async fn get_related_questions(pool: &PgPool, mode: InstanceMode, uri: &str,
 }
 
 pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
-    // Resolve the tag to its concept — the query tag PLUS every sibling
-    // in the same alias/translation group, PLUS every descendant in the
-    // skill-tree taxonomy (and the groups those descendants belong to).
-    // This way an article teaching "calculus" shows up on "高等数学"'s
-    // page too, and descendants of one language label pull in descendants
-    // of its siblings as well.
-    let tag_ids: Vec<String> = sqlx::query_scalar(
-        "WITH RECURSIVE seed AS ( \
-             SELECT id FROM tags WHERE group_id = (SELECT group_id FROM tags WHERE id = $1) \
-         ), \
-         descendants(tag) AS ( \
-           SELECT id FROM seed \
-           UNION \
-           SELECT e.child_tag FROM skill_tree_edges e JOIN descendants d ON e.parent_tag = d.tag \
-         ) \
-         SELECT DISTINCT id FROM tags \
-         WHERE group_id IN (SELECT group_id FROM tags WHERE id IN (SELECT tag FROM descendants))",
+    // Resolve the query tag to its group, then walk the skill-tree
+    // taxonomy down through group ids. Edge-tables now carry group_id
+    // directly (Phase B) so the query filters by that column — no
+    // sibling expansion needed at this layer.
+    let group_ids: Vec<String> = sqlx::query_scalar(
+        "WITH RECURSIVE descendants(gid) AS ( \
+             SELECT (SELECT group_id FROM tags WHERE id = $1) \
+             UNION \
+             SELECT child_t.group_id \
+             FROM skill_tree_edges e \
+             JOIN descendants d ON d.gid = (SELECT group_id FROM tags WHERE id = e.parent_tag) \
+             JOIN tags child_t ON child_t.id = e.child_tag \
+         ) SELECT gid FROM descendants WHERE gid IS NOT NULL",
     )
     .bind(tag_id)
     .fetch_all(pool)
     .await?;
 
-    if tag_ids.is_empty() {
+    if group_ids.is_empty() {
         return Ok(vec![]);
     }
 
     let rows = sqlx::query_as::<_, Article>(&format!(
         "{} AND a.at_uri IN (\
-            SELECT ct.content_uri FROM content_teaches ct WHERE ct.tag_id = ANY($1)\
+            SELECT ct.content_uri FROM content_teaches ct WHERE ct.group_id = ANY($1)\
          ) ORDER BY a.created_at DESC LIMIT $2",
         visible(mode)
     ))
-    .bind(&tag_ids)
+    .bind(&group_ids)
     .bind(limit)
     .fetch_all(pool)
     .await?;
@@ -325,30 +321,18 @@ pub async fn get_content_format(pool: &PgPool, uri: &str) -> crate::Result<Strin
         .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() })
 }
 
-pub async fn get_article_prereqs(pool: &PgPool, uri: &str, locale: &str) -> crate::Result<Vec<ArticlePrereqRow>> {
-    // Dedup by group; pick the admin-chosen representative for the UI
-    // locale, falling back to the en representative.
-    //   display_tag = tag_group_representatives[group, locale]
-    //              ?? tag_group_representatives[group, 'en']
-    //              ?? content_prereqs.tag_id  (raw fallback)
+pub async fn get_article_prereqs(pool: &PgPool, uri: &str, _locale: &str) -> crate::Result<Vec<ArticlePrereqRow>> {
+    // Edges are group-canonical (Phase B): each (content_uri, group_id,
+    // prereq_type) has at most one row. Return rows as-is; the frontend
+    // tagStore maps each tag_id to the UI locale by group sibling
+    // lookup, so the locale parameter is no longer used server-side.
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
-        "SELECT DISTINCT ON (t.group_id, cp.prereq_type) \
-             COALESCE(rep_loc.tag_id, rep_en.tag_id, cp.tag_id) AS tag_id, \
-             cp.prereq_type, \
-             display.name AS tag_name, \
-             display.names AS tag_names \
-         FROM content_prereqs cp \
-         JOIN tags t ON t.id = cp.tag_id \
-         LEFT JOIN tag_group_representatives rep_loc \
-             ON rep_loc.group_id = t.group_id AND rep_loc.lang = $2 \
-         LEFT JOIN tag_group_representatives rep_en \
-             ON rep_en.group_id = t.group_id AND rep_en.lang = 'en' \
-         JOIN tags display ON display.id = COALESCE(rep_loc.tag_id, rep_en.tag_id, cp.tag_id) \
+        "SELECT cp.tag_id, cp.prereq_type, t.name AS tag_name, t.names AS tag_names \
+         FROM content_prereqs cp JOIN tags t ON t.id = cp.tag_id \
          WHERE cp.content_uri = $1 \
-         ORDER BY t.group_id, cp.prereq_type",
+         ORDER BY cp.prereq_type, t.id",
     )
     .bind(uri)
-    .bind(locale)
     .fetch_all(pool)
     .await?;
     Ok(rows)

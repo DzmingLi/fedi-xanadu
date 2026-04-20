@@ -11,19 +11,13 @@ pub struct TagTreeEntry {
 }
 
 pub async fn list_user_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<UserSkill>> {
-    // Return one row per (user, group member) — if the user lit "calculus"
-    // we emit rows for "calculus" and for every sibling in the same
-    // alias/translation group (e.g. "高等数学"). A `skillMap` built on
-    // tag_id in the frontend then correctly marks every language label of
-    // a mastered concept as mastered, without callers needing to know
-    // about groups.
+    // user_skills now carries group_id directly (Phase B). One row per
+    // (user, group) — every language label resolves to the same row
+    // through the group, so the frontend can use a simple skillMap
+    // keyed on tag_id by checking the group.
     let skills = sqlx::query_as::<_, UserSkill>(
-        "SELECT us.did, sib.id AS tag_id, us.status, us.lit_at, sib.group_id \
-         FROM user_skills us \
-         JOIN tags anchor ON anchor.id = us.tag_id \
-         JOIN tags sib   ON sib.group_id = anchor.group_id \
-         WHERE us.did = $1 \
-         ORDER BY us.lit_at DESC",
+        "SELECT us.did, us.tag_id, us.status, us.lit_at, us.group_id \
+         FROM user_skills us WHERE us.did = $1 ORDER BY us.lit_at DESC",
     )
     .bind(did)
     .fetch_all(pool)
