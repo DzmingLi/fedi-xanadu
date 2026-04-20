@@ -1,17 +1,18 @@
 {
   "lexicon": 1,
   "id": "at.nightbo.learned",
-  "description": "A reader's mark that they have completed / read a given article. One record per (reader, article) pair. `rkey` is the article's TID so lookup/unmark is O(1).",
+  "description": "A reader's mark that they have completed / read something. `subject` is a standalone article's at-uri OR a series at-uri; for a series chapter, `sectionRef` carries the chapter's TID. rkey is the chapter/article TID.",
   "defs": {
     "main": {
       "type": "record",
       "key": "tid",
       "record": {
         "type": "object",
-        "required": ["article", "learnedAt"],
+        "required": ["subject", "learnedAt"],
         "properties": {
-          "article":   { "type": "string", "format": "at-uri", "description": "The article that was learned." },
-          "learnedAt": { "type": "string", "format": "datetime" }
+          "subject":    { "type": "string", "format": "at-uri", "description": "Article or series the reader completed." },
+          "sectionRef": { "type": "string", "maxLength": 64, "description": "When subject is a series, the chapter TID completed." },
+          "learnedAt":  { "type": "string", "format": "datetime" }
         }
       }
     }

@@ -25,11 +25,14 @@ pub async fn mark_learned(
 
     // rkey = article's TID so unmark can target it directly without an index lookup.
     let rkey = input.article_uri.rsplit('/').next().map(str::to_string);
-    let record = serde_json::json!({
+    let (subject, section_ref) =
+        crate::routes::api::articles::resolve_subject_ref(&state.pool, &input.article_uri).await;
+    let mut record = serde_json::json!({
         "$type": fx_atproto::lexicon::LEARNED,
-        "article": input.article_uri,
+        "subject": subject,
         "learnedAt": now_rfc3339(),
     });
+    if let Some(sr) = section_ref { record["sectionRef"] = serde_json::Value::String(sr); }
     pds_create_record(&state, &user.token, fx_atproto::lexicon::LEARNED, record, rkey, "mark learned").await;
 
     Ok(StatusCode::NO_CONTENT)

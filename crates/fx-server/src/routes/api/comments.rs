@@ -80,16 +80,22 @@ pub async fn create_comment(
     } else {
         None
     };
+    let (subject, chapter_ref) =
+        crate::routes::api::articles::resolve_subject_ref(&state.pool, &input.content_uri).await;
     let mut record = serde_json::json!({
         "$type": fx_atproto::lexicon::COMMENT,
-        "subject": input.content_uri,
+        "subject": subject,
         "body": input.body,
         "createdAt": now_rfc3339(),
     });
     if let Some(t) = title { record["title"] = serde_json::Value::String(t.to_string()); }
     if let Some(p) = parent_at_uri { record["parent"] = serde_json::Value::String(p); }
     if let Some(q) = input.quote_text.as_deref() { record["quoteText"] = serde_json::Value::String(q.to_string()); }
-    if let Some(s) = input.section_ref.as_deref() { record["sectionRef"] = serde_json::Value::String(s.to_string()); }
+    // Explicit section_ref (paragraph anchor) from the request wins over the
+    // chapter-level ref; otherwise carry the chapter tid so the comment stays
+    // attached to its chapter when served under the series record.
+    let section = input.section_ref.as_deref().map(str::to_string).or(chapter_ref);
+    if let Some(s) = section { record["sectionRef"] = serde_json::Value::String(s); }
     pds_create_record(&state, &user.token, fx_atproto::lexicon::COMMENT, record, Some(id.clone()), "create comment").await;
 
     // Notify content author
@@ -144,9 +150,11 @@ pub async fn update_comment(
     let comment = comment_service::update_comment(&state.pool, &id, &input.body).await?;
 
     // Overwrite the record on PDS with refreshed body + updatedAt.
+    let (subject, chapter_ref) =
+        crate::routes::api::articles::resolve_subject_ref(&state.pool, &comment.content_uri).await;
     let mut record = serde_json::json!({
         "$type": fx_atproto::lexicon::COMMENT,
-        "subject": comment.content_uri,
+        "subject": subject,
         "body": comment.body,
         "createdAt": comment.created_at,
         "updatedAt": now_rfc3339(),
@@ -160,7 +168,8 @@ pub async fn update_comment(
         }
     }
     if let Some(ref q) = comment.quote_text { record["quoteText"] = serde_json::Value::String(q.clone()); }
-    if let Some(ref s) = comment.section_ref { record["sectionRef"] = serde_json::Value::String(s.clone()); }
+    let section = comment.section_ref.clone().or(chapter_ref);
+    if let Some(s) = section { record["sectionRef"] = serde_json::Value::String(s); }
     pds_put_record(&state, &user.token, fx_atproto::lexicon::COMMENT, id.clone(), record, "update comment").await;
 
     Ok(Json(comment))

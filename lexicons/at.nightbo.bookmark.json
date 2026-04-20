@@ -1,16 +1,17 @@
 {
   "lexicon": 1,
   "id": "at.nightbo.bookmark",
-  "description": "A reader's saved-for-later mark on an article. One record per (reader, article) pair; rkey is the article's TID so add/remove/move are O(1).",
+  "description": "A reader's saved-for-later mark. `subject` is a standalone article's at-uri OR a series at-uri; for a series chapter, the extra `sectionRef` carries the chapter's TID. rkey is the chapter/article TID so add/remove/move are O(1).",
   "defs": {
     "main": {
       "type": "record",
       "key": "tid",
       "record": {
         "type": "object",
-        "required": ["article", "folderPath", "createdAt"],
+        "required": ["subject", "folderPath", "createdAt"],
         "properties": {
-          "article":    { "type": "string", "format": "at-uri" },
+          "subject":    { "type": "string", "format": "at-uri", "description": "Article or series being bookmarked." },
+          "sectionRef": { "type": "string", "maxLength": 64, "description": "When subject is a series, the chapter TID identifying which chapter was bookmarked." },
           "folderPath": { "type": "string", "maxLength": 255, "description": "User-defined folder, e.g. '/' or '/to-read'." },
           "createdAt":  { "type": "string", "format": "datetime" }
         }

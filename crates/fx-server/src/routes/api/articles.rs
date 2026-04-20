@@ -47,6 +47,36 @@ pub(super) async fn pijul_repo_url(state: &AppState, did: &str, node_id: &str) -
     Some(format!("{base}/{did}/{node_id}"))
 }
 
+/// For an article URI, resolve the PDS-facing `(subject, sectionRef)` pair.
+/// - Standalone article: `(article_uri, None)`
+/// - Series chapter:     `(series_at_uri, Some(chapter_tid))`
+///
+/// Uses the series's `created_by` as the owning DID when building the series
+/// at-uri, matching how create_series writes the record.
+pub(super) async fn resolve_subject_ref(
+    pool: &sqlx::PgPool,
+    article_uri: &str,
+) -> (String, Option<String>) {
+    let series_info: Option<(String, String)> = sqlx::query_as(
+        "SELECT s.id, s.created_by \
+         FROM series s JOIN series_articles sa ON sa.series_id = s.id \
+         WHERE sa.article_uri = $1 \
+         LIMIT 1",
+    )
+    .bind(article_uri)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some((series_id, owner_did)) = series_info {
+        let chapter_tid = article_uri.rsplit('/').next().unwrap_or("").to_string();
+        let series_uri = format!("at://{owner_did}/{}/{series_id}", fx_atproto::lexicon::SERIES);
+        (series_uri, Some(chapter_tid))
+    } else {
+        (article_uri.to_string(), None)
+    }
+}
+
 /// Pre-compiled regex for extracting anchor IDs from HTML.
 static ANCHOR_ID_RE: std::sync::LazyLock<regex_lite::Regex> =
     std::sync::LazyLock::new(|| regex_lite::Regex::new(r##"id="([^"]+)""##).unwrap());

@@ -47,12 +47,15 @@ pub async fn add_bookmark(
     bookmark_service::add_bookmark(&state.pool, &user.did, &input.article_uri, &folder).await?;
 
     if let Some(rkey) = article_rkey(&input.article_uri) {
-        let record = serde_json::json!({
+        let (subject, section_ref) =
+            crate::routes::api::articles::resolve_subject_ref(&state.pool, &input.article_uri).await;
+        let mut record = serde_json::json!({
             "$type": fx_atproto::lexicon::BOOKMARK,
-            "article": input.article_uri,
+            "subject": subject,
             "folderPath": folder,
             "createdAt": now_rfc3339(),
         });
+        if let Some(sr) = section_ref { record["sectionRef"] = serde_json::Value::String(sr); }
         pds_put_record(&state, &user.token, fx_atproto::lexicon::BOOKMARK, rkey, record, "bookmark add").await;
     }
 
@@ -97,12 +100,15 @@ pub async fn move_bookmark(
         .await?;
 
     if let Some(rkey) = article_rkey(&input.article_uri) {
-        let record = serde_json::json!({
+        let (subject, section_ref) =
+            crate::routes::api::articles::resolve_subject_ref(&state.pool, &input.article_uri).await;
+        let mut record = serde_json::json!({
             "$type": fx_atproto::lexicon::BOOKMARK,
-            "article": input.article_uri,
+            "subject": subject,
             "folderPath": input.folder_path,
             "createdAt": now_rfc3339(),
         });
+        if let Some(sr) = section_ref { record["sectionRef"] = serde_json::Value::String(sr); }
         pds_put_record(&state, &user.token, fx_atproto::lexicon::BOOKMARK, rkey, record, "bookmark move").await;
     }
 

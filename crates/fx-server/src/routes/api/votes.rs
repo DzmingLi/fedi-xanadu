@@ -73,12 +73,15 @@ pub async fn cast_vote(
 
     // Publish the new vote record (only for non-zero votes)
     if value != 0 {
-        let record = serde_json::json!({
+        let (subject, section_ref) =
+            crate::routes::api::articles::resolve_subject_ref(&state.pool, &input.target_uri).await;
+        let mut record = serde_json::json!({
             "$type": fx_atproto::lexicon::VOTE,
-            "subject": input.target_uri,
+            "subject": subject,
             "value": value,
             "createdAt": now_rfc3339(),
         });
+        if let Some(sr) = section_ref { record["sectionRef"] = serde_json::Value::String(sr); }
         let rkey = new_vote_uri.rsplit('/').next().map(str::to_string);
         pds_create_record(&state, &user.token, fx_atproto::lexicon::VOTE, record, rkey, "create vote").await;
     }

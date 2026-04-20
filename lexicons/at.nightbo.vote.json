@@ -1,0 +1,21 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.vote",
+  "description": "An upvote or downvote on an article, series chapter, or comment. `subject` is the voted-on at-uri (article or series); for a series chapter, `sectionRef` carries the chapter's TID.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subject", "value", "createdAt"],
+        "properties": {
+          "subject":    { "type": "string", "format": "at-uri" },
+          "sectionRef": { "type": "string", "maxLength": 64, "description": "When subject is a series, the chapter TID that was voted on." },
+          "value":      { "type": "integer", "minimum": -1, "maximum": 1 },
+          "createdAt":  { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}
