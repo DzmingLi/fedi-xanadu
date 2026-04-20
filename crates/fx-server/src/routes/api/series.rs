@@ -811,6 +811,18 @@ pub async fn compile_series(
         if let Some(meta) = metadata {
             sync_typst_chapter_metadata(&state, &series_id, &slices, &meta).await;
         }
+
+        // Also sync series-level <nbt-series> back to DB: title, summary,
+        // cover, lang, category, topics. The typst source is authoritative
+        // for typst series; the DB row is a read-path cache.
+        let repo = series_repo.clone();
+        let summary = tokio::task::spawn_blocking(move || {
+            let config = fx_renderer::fx_render_config();
+            fx_renderer::extract_typst_series_summary(&repo, &config)
+        }).await.ok().flatten();
+        if let Some(s) = summary {
+            sync_typst_series_summary(&state, &series_id, &s).await;
+        }
     }
 
     Ok(Json(CompileResult {
@@ -818,6 +830,46 @@ pub async fn compile_series(
         articles_updated: updated,
         total_headings: headings.len(),
     }))
+}
+
+/// Push series-level summary metadata (from `<nbt-series>`) into the `series`
+/// DB row. Only fields that the label actually sets are overwritten — absent
+/// fields are left untouched so author-side deletes don't nuke the cache
+/// accidentally.
+async fn sync_typst_series_summary(
+    state: &AppState,
+    series_id: &str,
+    meta: &fx_renderer::SeriesSummaryMeta,
+) {
+    if let Some(ref t) = meta.title {
+        let _ = sqlx::query("UPDATE series SET title = $1 WHERE id = $2")
+            .bind(t).bind(series_id).execute(&state.pool).await;
+    }
+    if let Some(ref d) = meta.description {
+        let html = crate::summary::render_summary_inline(
+            "typst", d, &state.pijul.series_repo_path(&format!("series_{series_id}")),
+        ).unwrap_or_default();
+        let _ = sqlx::query("UPDATE series SET summary = $1, summary_html = $2 WHERE id = $3")
+            .bind(d).bind(&html).bind(series_id).execute(&state.pool).await;
+    }
+    if let Some(ref ld) = meta.long_description {
+        let _ = sqlx::query("UPDATE series SET long_description = $1 WHERE id = $2")
+            .bind(ld).bind(series_id).execute(&state.pool).await;
+    }
+    if let Some(ref c) = meta.cover {
+        let node_id = format!("series_{series_id}");
+        let cover_url = format!("/api/covers/s-{node_id}");
+        let _ = sqlx::query("UPDATE series SET cover_file = $1, cover_url = $2 WHERE id = $3")
+            .bind(c).bind(&cover_url).bind(series_id).execute(&state.pool).await;
+    }
+    if let Some(ref l) = meta.lang {
+        let _ = sqlx::query("UPDATE series SET lang = $1 WHERE id = $2")
+            .bind(l).bind(series_id).execute(&state.pool).await;
+    }
+    if let Some(ref cat) = meta.category {
+        let _ = sqlx::query("UPDATE series SET category = $1 WHERE id = $2")
+            .bind(cat).bind(series_id).execute(&state.pool).await;
+    }
 }
 
 /// Pair the ordered `<nbt-chapter>` / `<nbt-summary>` extractor results
