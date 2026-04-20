@@ -552,6 +552,7 @@ export default {
   'auth.hasAccount': '已有账号？',
   'auth.noAccountLocal': '没有账号？',
   'auth.oauthHint': '将跳转到你的 PDS 进行授权。',
+  'auth.byoHint': '已有 Bluesky 或其他 PDS 账号？输入完整 handle（如 alice.bsky.social）用 OAuth 登录。',
   'auth.handle': '用户名',
   'auth.password': '密码',
 

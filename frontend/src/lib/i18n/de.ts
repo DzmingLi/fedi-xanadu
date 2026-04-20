@@ -554,6 +554,7 @@ export default {
   'auth.hasAccount': 'Schon ein Konto?',
   'auth.noAccountLocal': 'Noch kein Konto?',
   'auth.oauthHint': 'Du wirst zu deinem PDS weitergeleitet, um die Autorisierung zu erteilen.',
+  'auth.byoHint': 'Schon auf Bluesky oder einem anderen PDS? Gib deinen vollständigen Handle ein (z. B. alice.bsky.social), um dich per OAuth anzumelden.',
 
   // Keybindings
   'kb.title': 'Tastaturkürzel',

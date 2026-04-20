@@ -70,11 +70,11 @@
             type="text"
             bind:value={handle}
             onkeydown={onKeydown}
-            placeholder="alice"
+            placeholder={isRegister ? 'alice' : 'alice 或 alice.bsky.social'}
             disabled={loading}
             autocomplete="username"
           />
-          {#if !isExternalHandle}
+          {#if !isExternalHandle && !handle.includes('.')}
             <span class="handle-suffix">.nightbo.at</span>
           {/if}
         </div>
@@ -82,7 +82,13 @@
 
       {#if isExternalHandle}
         <p class="hint small">{t('auth.oauthHint')}</p>
-      {:else}
+      {:else if !isRegister}
+        <p class="hint small byo-hint">
+          {t('auth.byoHint')}
+        </p>
+      {/if}
+
+      {#if !isExternalHandle}
         {#if isRegister}
           <label>
             {t('auth.displayName')}
@@ -219,7 +225,9 @@
     color: var(--text-hint);
     white-space: nowrap;
     margin-top: 4px;
+    opacity: 0.6;
   }
+  .byo-hint { color: var(--text-hint); }
   .actions {
     display: flex;
     gap: 8px;

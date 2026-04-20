@@ -554,6 +554,7 @@ export default {
   'auth.hasAccount': 'Already have an account?',
   'auth.noAccountLocal': "Don't have an account?",
   'auth.oauthHint': 'You will be redirected to your PDS to authorize.',
+  'auth.byoHint': 'Already on Bluesky or another PDS? Enter your full handle (e.g. alice.bsky.social) to sign in with OAuth.',
 
   // Keybindings
   'kb.title': 'Keyboard Shortcuts',
