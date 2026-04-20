@@ -1,0 +1,22 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.book.readingstatus",
+  "description": "A reader's shelf status for a book (want_to_read / reading / finished / dropped). One record per (reader, book); rkey is the book_id.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:{bookId}",
+      "record": {
+        "type": "object",
+        "required": ["bookId", "status", "updatedAt"],
+        "properties": {
+          "bookId":             { "type": "string", "maxLength": 64 },
+          "status":             { "type": "string", "enum": ["want_to_read", "reading", "finished", "dropped"] },
+          "progress":           { "type": "integer", "minimum": 0, "maximum": 100, "description": "Percentage read, 0-100." },
+          "preferredEditionId": { "type": "string", "maxLength": 64 },
+          "updatedAt":          { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

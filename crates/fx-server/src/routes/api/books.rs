@@ -8,8 +8,8 @@ use fx_core::services::{author_service, book_service, skill_service, tag_service
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use crate::auth::{Auth, MaybeAuth, WriteAuth};
-use fx_core::util::tid;
+use crate::auth::{Auth, MaybeAuth, WriteAuth, pds_put_record, pds_delete_record};
+use fx_core::util::{tid, now_rfc3339};
 
 // --- List books ---
 
@@ -340,6 +340,16 @@ pub async fn rate_book(
     }
     let _ = book_service::get_book(&state.pool, &book_id).await?;
     book_service::rate_book(&state.pool, &book_id, &user.did, input.rating).await?;
+
+    let record = serde_json::json!({
+        "$type": fx_atproto::lexicon::BOOK_RATING,
+        "bookId": book_id,
+        "rating": input.rating,
+        "createdAt": now_rfc3339(),
+        "updatedAt": now_rfc3339(),
+    });
+    pds_put_record(&state, &user.token, fx_atproto::lexicon::BOOK_RATING, book_id.clone(), record, "book rate").await;
+
     let stats = book_service::get_rating_stats(&state.pool, &book_id).await?;
     Ok(Json(stats))
 }
@@ -350,6 +360,9 @@ pub async fn unrate_book(
     Auth(user): Auth,
 ) -> ApiResult<Json<book_service::BookRatingStats>> {
     book_service::unrate_book(&state.pool, &book_id, &user.did).await?;
+
+    pds_delete_record(&state, &user.token, fx_atproto::lexicon::BOOK_RATING, book_id.clone(), "book unrate").await;
+
     let stats = book_service::get_rating_stats(&state.pool, &book_id).await?;
     Ok(Json(stats))
 }
@@ -384,6 +397,18 @@ pub async fn set_reading_status(
             .bind(eid).bind(&book_id).bind(&user.did).execute(&state.pool).await?;
     }
 
+    let mut record = serde_json::json!({
+        "$type": fx_atproto::lexicon::BOOK_READING_STATUS,
+        "bookId": book_id,
+        "status": input.status,
+        "progress": progress,
+        "updatedAt": now_rfc3339(),
+    });
+    if let Some(ref eid) = input.edition_id {
+        record["preferredEditionId"] = serde_json::Value::String(eid.clone());
+    }
+    pds_put_record(&state, &user.token, fx_atproto::lexicon::BOOK_READING_STATUS, book_id.clone(), record, "book reading status").await;
+
     // Auto-learn: when finished, mark book's teaches tags as mastered
     if input.status == "finished" {
         let content_uri = format!("book:{}", book_id);
@@ -411,6 +436,7 @@ pub async fn remove_reading_status(
     Auth(user): Auth,
 ) -> ApiResult<StatusCode> {
     book_service::remove_reading_status(&state.pool, &book_id, &user.did).await?;
+    pds_delete_record(&state, &user.token, fx_atproto::lexicon::BOOK_READING_STATUS, book_id, "book reading status remove").await;
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -8,8 +8,13 @@ use fx_core::validation;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use crate::auth::{Auth, WriteAuth};
+use crate::auth::{Auth, WriteAuth, pds_put_record, pds_delete_record};
+use fx_core::util::now_rfc3339;
 use super::DidQuery;
+
+fn article_rkey(uri: &str) -> Option<String> {
+    uri.rsplit('/').next().map(str::to_string)
+}
 
 #[derive(serde::Deserialize)]
 pub struct AddBookmarkInput {
@@ -40,6 +45,17 @@ pub async fn add_bookmark(
     }
 
     bookmark_service::add_bookmark(&state.pool, &user.did, &input.article_uri, &folder).await?;
+
+    if let Some(rkey) = article_rkey(&input.article_uri) {
+        let record = serde_json::json!({
+            "$type": fx_atproto::lexicon::BOOKMARK,
+            "article": input.article_uri,
+            "folderPath": folder,
+            "createdAt": now_rfc3339(),
+        });
+        pds_put_record(&state, &user.token, fx_atproto::lexicon::BOOKMARK, rkey, record, "bookmark add").await;
+    }
+
     Ok(StatusCode::CREATED)
 }
 
@@ -54,6 +70,11 @@ pub async fn remove_bookmark(
     Json(input): Json<RemoveBookmarkInput>,
 ) -> ApiResult<StatusCode> {
     bookmark_service::remove_bookmark(&state.pool, &user.did, &input.uri).await?;
+
+    if let Some(rkey) = article_rkey(&input.uri) {
+        pds_delete_record(&state, &user.token, fx_atproto::lexicon::BOOKMARK, rkey, "bookmark remove").await;
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -74,6 +95,17 @@ pub async fn move_bookmark(
 
     bookmark_service::move_bookmark(&state.pool, &user.did, &input.article_uri, &input.folder_path)
         .await?;
+
+    if let Some(rkey) = article_rkey(&input.article_uri) {
+        let record = serde_json::json!({
+            "$type": fx_atproto::lexicon::BOOKMARK,
+            "article": input.article_uri,
+            "folderPath": input.folder_path,
+            "createdAt": now_rfc3339(),
+        });
+        pds_put_record(&state, &user.token, fx_atproto::lexicon::BOOKMARK, rkey, record, "bookmark move").await;
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 

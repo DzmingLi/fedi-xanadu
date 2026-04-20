@@ -1,0 +1,21 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.course.rating",
+  "description": "A learner's numeric rating for a course (1–10 half-stars). rkey is the course_id so one rating per (user, course).",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:{courseId}",
+      "record": {
+        "type": "object",
+        "required": ["courseId", "rating", "createdAt"],
+        "properties": {
+          "courseId":  { "type": "string", "maxLength": 64 },
+          "rating":    { "type": "integer", "minimum": 1, "maximum": 10 },
+          "createdAt": { "type": "string", "format": "datetime" },
+          "updatedAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

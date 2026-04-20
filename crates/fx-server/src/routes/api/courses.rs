@@ -1,10 +1,10 @@
 use axum::{extract::{Path, Query, State}, http::StatusCode, Json};
 use fx_core::services::course_service::{self, CourseRow, CourseListRow, CourseSessionRow, CourseDetailResponse, CourseRatingStats, CourseReviewRow, CreateCourse, UpdateCourse, CreateSession, UpdateSession};
 use fx_core::services::patch_service;
-use fx_core::util::tid;
+use fx_core::util::{tid, now_rfc3339};
 use serde::Deserialize;
 
-use crate::auth::{WriteAuth, MaybeAuth};
+use crate::auth::{WriteAuth, MaybeAuth, pds_put_record, pds_delete_record};
 use crate::state::AppState;
 use crate::error::{ApiResult, AppError};
 
@@ -275,6 +275,16 @@ pub async fn rate_course(
         return Err(AppError(fx_core::Error::BadRequest("rating must be 1-10".into())));
     }
     let stats = course_service::rate_course(&state.pool, &id, &user.did, input.rating).await?;
+
+    let record = serde_json::json!({
+        "$type": fx_atproto::lexicon::COURSE_RATING,
+        "courseId": id,
+        "rating": input.rating,
+        "createdAt": now_rfc3339(),
+        "updatedAt": now_rfc3339(),
+    });
+    pds_put_record(&state, &user.token, fx_atproto::lexicon::COURSE_RATING, id.clone(), record, "course rate").await;
+
     Ok(Json(stats))
 }
 
@@ -284,6 +294,9 @@ pub async fn unrate_course(
     Path(id): Path<String>,
 ) -> ApiResult<Json<CourseRatingStats>> {
     let stats = course_service::unrate_course(&state.pool, &id, &user.did).await?;
+
+    pds_delete_record(&state, &user.token, fx_atproto::lexicon::COURSE_RATING, id.clone(), "course unrate").await;
+
     Ok(Json(stats))
 }
 
