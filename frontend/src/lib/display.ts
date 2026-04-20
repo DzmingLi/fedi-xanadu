@@ -117,6 +117,14 @@ type AuthorNameBag = {
   translations?: Record<string, string> | null;
 };
 
+/**
+ * Author display name, resolved against the UI locale:
+ *   original_names[uiLocale] → translations[uiLocale] → name (canonical).
+ *
+ * `original_names` holds forms the author uses themselves (e.g. Terence Tao
+ * ↔ 陶哲轩 — both his own names). `translations` holds transliterations the
+ * author doesn't use themselves (e.g. Paul Krugman → 保罗·克鲁格曼).
+ */
 export function authorDisplayName(a: AuthorNameBag): string {
   const l = getLocale();
   const orig = a.original_names;

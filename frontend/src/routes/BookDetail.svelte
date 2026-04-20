@@ -93,7 +93,7 @@
   });
 
   // Q&A
-  import { authorName } from '../lib/display';
+  import { authorName, authorDisplayName } from '../lib/display';
   import type { Article, ContentFormat } from '../lib/types';
   let bookQuestions = $state<Article[]>([]);
   let showAskForm = $state(false);
@@ -596,7 +596,7 @@
           <p class="authors">
             {#if detail.linked_authors.length > 0}
               {#each detail.linked_authors as a, i}
-                <a href="/author?id={encodeURIComponent(a.id)}">{a.name}</a>{#if i < detail.linked_authors.length - 1}, {/if}
+                <a href="/author?id={encodeURIComponent(a.id)}">{authorDisplayName(a)}</a>{#if i < detail.linked_authors.length - 1}, {/if}
               {/each}
             {:else}
               {detail.book.authors.join(', ')}
