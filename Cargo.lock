@@ -2004,6 +2004,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "atproto-auth",
+ "atproto-identity",
  "atproto-oauth",
  "axum",
  "base64",

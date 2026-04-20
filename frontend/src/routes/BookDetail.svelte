@@ -226,10 +226,13 @@
   let editAuthorsInput = $state('');
   let editBookTeaches = $state<string[]>([]);
   let editBookPrereqs = $state<string[]>([]);
+  let editBookTopics = $state<string[]>([]);
   let editBookTagInput = $state('');
   let editBookTagSuggestions = $state<{id:string,name:string}[]>([]);
   let editBookPrereqInput = $state('');
   let editBookPrereqSuggestions = $state<{id:string,name:string}[]>([]);
+  let editBookTopicInput = $state('');
+  let editBookTopicSuggestions = $state<{id:string,name:string}[]>([]);
 
   let editBookTagTimeout: ReturnType<typeof setTimeout>;
   $effect(() => {
@@ -264,6 +267,24 @@
   }
   function removeBookPrereq(tagId: string) {
     editBookPrereqs = editBookPrereqs.filter(t => t !== tagId);
+  }
+
+  let editBookTopicTimeout: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    clearTimeout(editBookTopicTimeout);
+    const q = editBookTopicInput.trim();
+    if (!q) { editBookTopicSuggestions = []; return; }
+    editBookTopicTimeout = setTimeout(async () => {
+      editBookTopicSuggestions = await searchTags(q).catch(() => []);
+    }, 150);
+  });
+  function addBookTopic(tagId: string) {
+    if (!editBookTopics.includes(tagId)) editBookTopics = [...editBookTopics, tagId];
+    editBookTopicInput = '';
+    editBookTopicSuggestions = [];
+  }
+  function removeBookTopic(tagId: string) {
+    editBookTopics = editBookTopics.filter(t => t !== tagId);
   }
 
   // Edition edit modal state
@@ -1166,6 +1187,9 @@
           <div class="edition-top">
             <strong>{editionFullTitle(ed)}</strong>
             <span class="edition-lang">{langLabel(ed.lang)}</span>
+            {#if (ed as any).status === 'draft'}
+              <span class="edition-draft-badge">{t('books.editionDraft')}</span>
+            {/if}
           </div>
           <div class="edition-details">
             {#if ed.isbn}<span>ISBN: {ed.isbn}</span>{/if}
@@ -1750,6 +1774,16 @@
     border-radius: 3px;
     background: var(--bg-dim);
     color: var(--text-hint);
+  }
+  .edition-draft-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--warning-bg, #fff4d9);
+    color: var(--warning-fg, #8a5a00);
+    border: 1px solid var(--warning-border, #e6c77a);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
   .edition-details {
     display: flex;

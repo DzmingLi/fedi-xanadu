@@ -66,6 +66,7 @@ pub struct BookEdition {
     
     pub purchase_links: sqlx::types::Json<Vec<PurchaseLink>>,
     pub cover_url: Option<String>,
+    pub status: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -84,6 +85,9 @@ pub struct CreateEdition {
     pub translators: Vec<String>,
     pub purchase_links: Vec<PurchaseLink>,
     pub cover_url: Option<String>,
+    /// 'draft' or 'published'. Defaults to 'published' when omitted.
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 pub async fn create_book(
@@ -332,9 +336,10 @@ pub async fn create_edition(
     }
 
     let links_json = sqlx::types::Json(&input.purchase_links);
+    let status = input.status.as_deref().unwrap_or("published");
     sqlx::query(
-        "INSERT INTO book_editions (id, book_id, edition_name, title, subtitle, lang, isbn, publisher, year, translators, purchase_links, cover_url) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+        "INSERT INTO book_editions (id, book_id, edition_name, title, subtitle, lang, isbn, publisher, year, translators, purchase_links, cover_url, status) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
     )
     .bind(id)
     .bind(book_id)
@@ -348,6 +353,7 @@ pub async fn create_edition(
     .bind(&input.translators)
     .bind(&links_json)
     .bind(&input.cover_url)
+    .bind(status)
     .execute(pool)
     .await?;
 
@@ -368,11 +374,13 @@ pub async fn update_edition(
     let links_json = sqlx::types::Json(&input.purchase_links);
     // cover_url is managed by POST /books/{id}/editions/{eid}/cover, not by
     // this metadata-update path. Preserve it when the request omits it so
-    // an unrelated edit can't silently orphan the file on disk.
+    // an unrelated edit can't silently orphan the file on disk. status is
+    // likewise preserved when the caller omits it.
     sqlx::query(
         "UPDATE book_editions SET edition_name = $1, title = $2, subtitle = $3, lang = $4, isbn = $5, publisher = $6, \
-         year = $7, translators = $8, purchase_links = $9, cover_url = COALESCE($10, cover_url) \
-         WHERE id = $11",
+         year = $7, translators = $8, purchase_links = $9, cover_url = COALESCE($10, cover_url), \
+         status = COALESCE($11, status) \
+         WHERE id = $12",
     )
     .bind(&input.edition_name)
     .bind(&input.title)
@@ -384,6 +392,7 @@ pub async fn update_edition(
     .bind(&input.translators)
     .bind(&links_json)
     .bind(&input.cover_url)
+    .bind(&input.status)
     .bind(edition_id)
     .execute(pool)
     .await?;

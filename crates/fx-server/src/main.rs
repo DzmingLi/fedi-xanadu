@@ -34,7 +34,17 @@ async fn main() -> Result<()> {
     } else {
         config.public_url.clone()
     };
-    let oauth_config = atproto_auth::OAuthConfig::new_dev(&public_url, &config.instance_name)?;
+    // Signing key must persist across restarts — otherwise every redeploy
+    // invalidates in-flight OAuth flows (PDS signs client_assertion with
+    // one key, we verify with a different key → invalid_client).
+    let oauth_config = load_or_create_oauth_config(
+        &public_url,
+        &config.instance_name,
+        &std::path::PathBuf::from(&config.pijul_store_path)
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("oauth-signing-key"),
+    )?;
     tracing::info!("OAuth client_id: {}", oauth_config.client_id());
 
     let oauth_request_store: std::sync::Arc<dyn atproto_oauth::storage::OAuthRequestStorage> =
@@ -126,6 +136,36 @@ async fn shutdown_signal() {
         .await
         .expect("failed to listen for ctrl+c");
     tracing::info!("shutting down");
+}
+
+fn load_or_create_oauth_config(
+    public_url: &str,
+    client_name: &str,
+    key_path: &std::path::Path,
+) -> Result<atproto_auth::OAuthConfig> {
+    use atproto_identity::key::{KeyType, generate_key, identify_key};
+
+    if key_path.exists() {
+        let stored = std::fs::read_to_string(key_path)?;
+        let key = identify_key(stored.trim())
+            .map_err(|e| anyhow::anyhow!("parse stored oauth key: {e}"))?;
+        tracing::info!("OAuth signing key: loaded from {}", key_path.display());
+        return Ok(atproto_auth::OAuthConfig::new(public_url, client_name, key));
+    }
+
+    let key = generate_key(KeyType::P256Private)
+        .map_err(|e| anyhow::anyhow!("generate oauth key: {e}"))?;
+    if let Some(parent) = key_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(key_path, format!("{}", key))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(key_path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    tracing::info!("OAuth signing key: generated and saved to {}", key_path.display());
+    Ok(atproto_auth::OAuthConfig::new(public_url, client_name, key))
 }
 
 /// Re-fetch every AT Proto user's profile from the Bluesky public API and

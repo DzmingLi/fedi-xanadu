@@ -674,6 +674,9 @@ enum BookCommand {
         /// Cover image URL for this edition
         #[arg(long)]
         cover_url: Option<String>,
+        /// Publication status: 'draft' or 'published' (default)
+        #[arg(long)]
+        status: Option<String>,
     },
     /// Update an existing edition's info (only supplied fields change)
     #[command(name = "update-edition")]
@@ -714,6 +717,9 @@ enum BookCommand {
         /// Cover image URL for this edition
         #[arg(long)]
         cover_url: Option<String>,
+        /// Publication status: 'draft' or 'published'
+        #[arg(long)]
+        status: Option<String>,
     },
     /// Show a book's detail
     Show {
@@ -1734,7 +1740,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
             println!("Updated book {id}");
         }
 
-        BookCommand::AddEdition { book_id, title, subtitle, edition_name, lang, isbn, publisher, year, translators, purchase_links, cover_url } => {
+        BookCommand::AddEdition { book_id, title, subtitle, edition_name, lang, isbn, publisher, year, translators, purchase_links, cover_url, status } => {
             let links: Vec<serde_json::Value> = if let Some(ref pl) = purchase_links {
                 serde_json::from_str(pl).context("Invalid JSON for --purchase-links")?
             } else {
@@ -1754,6 +1760,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
                 "translators": translators,
                 "purchase_links": links,
                 "cover_url": cover_url,
+                "status": status,
             });
 
             let resp: serde_json::Value = client()
@@ -1771,7 +1778,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
 
         BookCommand::UpdateEdition {
             book_id, edition_id, title, subtitle, edition_name, lang,
-            isbn, publisher, year, translators, purchase_links, cover_url,
+            isbn, publisher, year, translators, purchase_links, cover_url, status,
         } => {
             let current: serde_json::Value = client()
                 .get(format!("{base}/books/{book_id}"))
@@ -1804,6 +1811,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
                 None => ed["purchase_links"].clone(),
             };
 
+            let status = status.or_else(|| ed["status"].as_str().map(String::from));
             let body = serde_json::json!({
                 "title": title,
                 "subtitle": subtitle,
@@ -1815,6 +1823,7 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
                 "translators": translators,
                 "purchase_links": purchase_links,
                 "cover_url": cover_url,
+                "status": status,
             });
 
             client()

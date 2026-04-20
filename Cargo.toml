@@ -75,3 +75,4 @@ figment = { version = "0.10", features = ["toml", "env"] }
 # AT Protocol OAuth
 atproto-auth = { git = "https://github.com/DzmingLi/atproto-auth.git" }
 atproto-oauth = "0.14"
+atproto-identity = "0.14"

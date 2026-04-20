@@ -556,9 +556,9 @@ export const createBook = (data: { title: Record<string, string>; authors: strin
   post<Book>('/books', data);
 export const updateBook = (id: string, data: { title?: Record<string, string>; subtitle?: Record<string, string>; description?: Record<string, string>; abbreviation?: string; authors?: string[]; tags?: string[]; prereqs?: string[]; edit_summary?: string }) =>
   put<Book>(`/books/${encodeURIComponent(id)}`, data);
-export const addBookEdition = (book_id: string, edition: { edition_name?: string; title: string; subtitle?: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
+export const addBookEdition = (book_id: string, edition: { edition_name?: string; title: string; subtitle?: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string; status?: string }) =>
   post<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions`, edition);
-export const updateBookEdition = (book_id: string, edition_id: string, edition: { edition_name?: string; title: string; subtitle?: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string }) =>
+export const updateBookEdition = (book_id: string, edition_id: string, edition: { edition_name?: string; title: string; subtitle?: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string; status?: string }) =>
   put<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions/${encodeURIComponent(edition_id)}`, edition);
 export const uploadEditionCover = async (book_id: string, edition_id: string, file: File): Promise<string> => {
   const form = new FormData();
@@ -829,6 +829,12 @@ export const removeCourseLearningStatus = (id: string) =>
   del<void>(`/courses/${encodeURIComponent(id)}/learning-status`);
 export const setSessionProgress = (id: string, session_id: string, completed: boolean) =>
   post<import('./types').CourseLearningStatus | null>(`/courses/${encodeURIComponent(id)}/session-progress`, { session_id, completed });
+export const createCourseSession = (id: string, input: { topic?: string; date?: string; sort_order?: number }) =>
+  post<import('./types').CourseSession>(`/courses/${encodeURIComponent(id)}/sessions`, input);
+export const updateCourseSession = (id: string, session_id: string, input: { topic?: string; date?: string; sort_order?: number }) =>
+  put<import('./types').CourseSession>(`/courses/${encodeURIComponent(id)}/sessions/${encodeURIComponent(session_id)}`, input);
+export const deleteCourseSession = (id: string, session_id: string) =>
+  del<void>(`/courses/${encodeURIComponent(id)}/sessions/${encodeURIComponent(session_id)}`);
 export const addCourseSeries = (id: string, series_id: string, role?: string, sort_order?: number) =>
   post<void>(`/courses/${encodeURIComponent(id)}/series`, { series_id, role, sort_order });
 export const removeCourseSeries = (id: string, series_id: string) =>

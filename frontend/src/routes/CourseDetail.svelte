@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getCourseDetail, rateCourse, unrateCourse, setCourseLearningStatus, removeCourseLearningStatus, setSessionProgress } from '../lib/api';
+  import { getCourseDetail, rateCourse, unrateCourse, setCourseLearningStatus, removeCourseLearningStatus, setSessionProgress, createCourseSession, updateCourseSession, deleteCourseSession } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
 
