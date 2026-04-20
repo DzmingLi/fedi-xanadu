@@ -280,7 +280,7 @@ async fn resolve_profile(pool: &PgPool, did: &str, raw_query: &str) -> Option<Pa
 
 async fn resolve_tag(pool: &PgPool, id: &str, raw_query: &str) -> Option<PageMeta> {
     let row: (String, Option<String>) = sqlx::query_as(
-        "SELECT name, description FROM tags WHERE id = $1",
+        "SELECT name, description FROM tag_labels WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)

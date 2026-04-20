@@ -120,7 +120,7 @@ pub async fn create_book(
     // Tags via content_teaches with uri = book:<id>
     for tag_id in &input.tags {
         sqlx::query(
-            "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO tag_labels (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
         )
         .bind(tag_id).bind(tag_id).bind(created_by)
         .execute(&mut *tx).await?;
@@ -135,7 +135,7 @@ pub async fn create_book(
     // Prereq tags
     for tag_id in &input.prereqs {
         sqlx::query(
-            "INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO tag_labels (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
         )
         .bind(tag_id).bind(tag_id).bind(created_by)
         .execute(&mut *tx).await?;
@@ -274,15 +274,15 @@ pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64
                      UNION \
                      SELECT tag_id FROM content_topics  WHERE content_uri = 'book:' || b.id \
                  ) seed \
-                 JOIN tags s1 ON s1.id = seed.tag_id \
-                 JOIN tags s2 ON s2.group_id = s1.group_id \
+                 JOIN tag_labels s1 ON s1.id = seed.tag_id \
+                 JOIN tag_labels s2 ON s2.group_id = s1.group_id \
                  UNION \
                  SELECT tp.parent_tag FROM tag_parents tp \
                  JOIN closure c ON tp.child_tag = c.tag_id \
              ) \
              SELECT jsonb_agg(DISTINCT s2.id) FROM closure c \
-             JOIN tags s1 ON s1.id = c.tag_id \
-             JOIN tags s2 ON s2.group_id = s1.group_id \
+             JOIN tag_labels s1 ON s1.id = c.tag_id \
+             JOIN tag_labels s2 ON s2.group_id = s1.group_id \
          ), '[]'::jsonb) AS topics \
          FROM books b \
          LEFT JOIN (SELECT book_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM book_ratings GROUP BY book_id) r ON r.book_id = b.id \
@@ -710,13 +710,13 @@ pub async fn create_chapter(
         .bind(&content_uri).execute(&mut *tx).await?;
 
     for tag_id in &input.teaches {
-        sqlx::query("INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
+        sqlx::query("INSERT INTO tag_labels (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
             .bind(tag_id).bind(tag_id).bind(created_by).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
             .bind(&content_uri).bind(tag_id).execute(&mut *tx).await?;
     }
     for p in &input.prereqs {
-        sqlx::query("INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
+        sqlx::query("INSERT INTO tag_labels (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
             .bind(&p.tag_id).bind(&p.tag_id).bind(created_by).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
             .bind(&content_uri).bind(&p.tag_id).bind(&p.prereq_type).execute(&mut *tx).await?;
@@ -747,7 +747,7 @@ pub async fn set_chapter_tags(
     sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
         .bind(&content_uri).execute(&mut *tx).await?;
     for tag_id in teaches {
-        sqlx::query("INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
+        sqlx::query("INSERT INTO tag_labels (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
             .bind(tag_id).bind(tag_id).bind(created_by).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
             .bind(&content_uri).bind(tag_id).execute(&mut *tx).await?;
@@ -757,7 +757,7 @@ pub async fn set_chapter_tags(
     sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
         .bind(&content_uri).execute(&mut *tx).await?;
     for p in prereqs {
-        sqlx::query("INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
+        sqlx::query("INSERT INTO tag_labels (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
             .bind(&p.tag_id).bind(&p.tag_id).bind(created_by).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
             .bind(&content_uri).bind(&p.tag_id).bind(&p.prereq_type).execute(&mut *tx).await?;

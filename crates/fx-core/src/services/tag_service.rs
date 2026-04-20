@@ -7,7 +7,7 @@ use crate::Result;
 
 pub async fn list_tags(pool: &PgPool, limit: i64) -> Result<Vec<Tag>> {
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tags WHERE removed_at IS NULL ORDER BY name LIMIT $1",
+        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tag_labels WHERE removed_at IS NULL ORDER BY name LIMIT $1",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -17,7 +17,7 @@ pub async fn list_tags(pool: &PgPool, limit: i64) -> Result<Vec<Tag>> {
 
 pub async fn get_tag(pool: &PgPool, id: &str) -> Result<Tag> {
     sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tags WHERE id = $1",
+        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tag_labels WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -35,7 +35,7 @@ pub async fn create_tag(pool: &PgPool, input: &CreateTag, created_by: &str) -> R
     .unwrap_or_default();
 
     sqlx::query(
-        "INSERT INTO tags (id, name, names, description, created_by) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO tag_labels (id, name, names, description, created_by) VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(&input.id)
     .bind(&input.name)
@@ -80,7 +80,7 @@ pub async fn ensure_tag(
     created_by: &str,
 ) -> Result<()> {
     // Fast path: tag already exists.
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1)")
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tag_labels WHERE id = $1)")
         .bind(tag_id)
         .fetch_one(&mut *conn)
         .await?;
@@ -92,12 +92,12 @@ pub async fn ensure_tag(
     // (skill-tree import builds edges in one tx), so we just run
     // sequentially instead of opening a nested one.
     let group_id: String = sqlx::query_scalar(
-        "INSERT INTO tag_groups DEFAULT VALUES RETURNING id",
+        "INSERT INTO tags DEFAULT VALUES RETURNING id",
     )
     .fetch_one(&mut *conn)
     .await?;
     let inserted = sqlx::query(
-        "INSERT INTO tags (id, name, created_by, lang, group_id, names) \
+        "INSERT INTO tag_labels (id, name, created_by, lang, group_id, names) \
          VALUES ($1, $2, $3, $4, $5, jsonb_build_object($4::text, $2::text)) \
          ON CONFLICT (id) DO NOTHING",
     )
@@ -111,7 +111,7 @@ pub async fn ensure_tag(
     .rows_affected();
     if inserted > 0 {
         sqlx::query(
-            "INSERT INTO tag_group_representatives (group_id, lang, tag_id) \
+            "INSERT INTO tag_representatives (group_id, lang, tag_id) \
              VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
         .bind(&group_id)
@@ -122,7 +122,7 @@ pub async fn ensure_tag(
     } else {
         // Race: some other inserter put the tag in between our check
         // and our INSERT. Clean up the stray group row.
-        sqlx::query("DELETE FROM tag_groups WHERE id = $1")
+        sqlx::query("DELETE FROM tags WHERE id = $1")
             .bind(&group_id)
             .execute(&mut *conn)
             .await?;
@@ -146,7 +146,7 @@ pub async fn get_tag_names(
     }
 
     let rows = sqlx::query_as::<_, TagName>(
-        "SELECT id, name FROM tags WHERE id = ANY($1)",
+        "SELECT id, name FROM tag_labels WHERE id = ANY($1)",
     )
     .bind(tag_ids)
     .fetch_all(pool)
@@ -170,7 +170,7 @@ pub async fn update_tag_names(
     names: &HashMap<String, String>,
 ) -> Result<Tag> {
     let names_json = serde_json::to_value(names).unwrap_or_default();
-    sqlx::query("UPDATE tags SET names = $1 WHERE id = $2")
+    sqlx::query("UPDATE tag_labels SET names = $1 WHERE id = $2")
         .bind(&names_json)
         .bind(tag_id)
         .execute(pool)
@@ -295,7 +295,7 @@ pub async fn merge_tag(pool: &PgPool, from_id: &str, into_id: &str) -> Result<()
         .await?;
 
     // Delete the source tag
-    sqlx::query("DELETE FROM tags WHERE id = $1")
+    sqlx::query("DELETE FROM tag_labels WHERE id = $1")
         .bind(from_id)
         .execute(&mut *tx)
         .await?;
@@ -316,7 +316,7 @@ pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<T
     // label they want to use.
     let tags = sqlx::query_as::<_, Tag>(
         "SELECT t.id, t.name, t.names, t.description, t.created_by, t.created_at, t.group_id, t.lang \
-         FROM tags t \
+         FROM tag_labels t \
          WHERE t.removed_at IS NULL AND ( \
              t.id ILIKE $1 OR t.name ILIKE $1 OR t.names::text ILIKE $1 \
              OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.tag_id = t.id AND a.alias ILIKE $1) \
@@ -351,7 +351,7 @@ pub async fn get_tag_names_i18n(
     }
 
     let rows = sqlx::query_as::<_, Row>(
-        "SELECT id, names FROM tags WHERE id = ANY($1)",
+        "SELECT id, names FROM tag_labels WHERE id = ANY($1)",
     )
     .bind(tag_ids)
     .fetch_all(pool)
@@ -412,7 +412,7 @@ pub async fn derive_topics(pool: &PgPool, content_uri: &str) -> Result<Vec<Strin
 /// Resolve a tag ID or alias to the canonical tag ID.
 pub async fn resolve_tag(pool: &PgPool, id_or_alias: &str) -> crate::Result<String> {
     // First check if it's a direct tag ID
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1)")
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tag_labels WHERE id = $1)")
         .bind(id_or_alias).fetch_one(pool).await?;
     if exists {
         return Ok(id_or_alias.to_string());
@@ -430,7 +430,7 @@ pub async fn resolve_tag(pool: &PgPool, id_or_alias: &str) -> crate::Result<Stri
 /// tags as a single unit when querying edge tables.
 pub async fn list_group_members(pool: &PgPool, tag_id: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT id FROM tags WHERE group_id = (SELECT group_id FROM tags WHERE id = $1) \
+        "SELECT id FROM tag_labels WHERE group_id = (SELECT group_id FROM tag_labels WHERE id = $1) \
          ORDER BY (lang = 'en') DESC, lang, id",
     )
     .bind(tag_id)
@@ -443,8 +443,8 @@ pub async fn list_group_members(pool: &PgPool, tag_id: &str) -> Result<Vec<Strin
 /// English-first, then by locale. Useful for UI that shows the full group.
 pub async fn list_group_siblings(pool: &PgPool, tag_id: &str) -> Result<Vec<Tag>> {
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tags \
-         WHERE group_id = (SELECT group_id FROM tags WHERE id = $1) \
+        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tag_labels \
+         WHERE group_id = (SELECT group_id FROM tag_labels WHERE id = $1) \
          ORDER BY (lang = 'en') DESC, lang, id",
     )
     .bind(tag_id)
@@ -461,7 +461,7 @@ pub async fn dedupe_by_group(pool: &PgPool, tag_ids: &[String]) -> Result<Vec<St
         return Ok(Vec::new());
     }
     let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT id, group_id FROM tags WHERE id = ANY($1)",
+        "SELECT id, group_id FROM tag_labels WHERE id = ANY($1)",
     )
     .bind(tag_ids)
     .fetch_all(pool)
@@ -499,7 +499,7 @@ pub async fn set_group_representative(
     // Validate both tags are in the same group; read member's lang.
     let row: Option<(String, String)> = sqlx::query_as(
         "SELECT anchor.group_id, m.lang \
-         FROM tags anchor JOIN tags m ON m.group_id = anchor.group_id \
+         FROM tag_labels anchor JOIN tag_labels m ON m.group_id = anchor.group_id \
          WHERE anchor.id = $1 AND m.id = $2",
     )
     .bind(anchor_tag_id)
@@ -513,7 +513,7 @@ pub async fn set_group_representative(
         }
     ]))?;
     sqlx::query(
-        "INSERT INTO tag_group_representatives (group_id, lang, tag_id) VALUES ($1, $2, $3) \
+        "INSERT INTO tag_representatives (group_id, lang, tag_id) VALUES ($1, $2, $3) \
          ON CONFLICT (group_id, lang) DO UPDATE SET tag_id = EXCLUDED.tag_id",
     )
     .bind(&group_id)
@@ -661,7 +661,7 @@ async fn hard_delete_tag(
             .await?;
     }
 
-    let group_id: Option<String> = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+    let group_id: Option<String> = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
         .bind(tag_id)
         .fetch_optional(&mut **tx)
         .await?;
@@ -669,7 +669,7 @@ async fn hard_delete_tag(
     // Delete the tag — cascading FKs (tag_parents, tag_aliases,
     // tag_group_representatives, course_session_*, tag_deletion_requests)
     // clean themselves up.
-    sqlx::query("DELETE FROM tags WHERE id = $1")
+    sqlx::query("DELETE FROM tag_labels WHERE id = $1")
         .bind(tag_id)
         .execute(&mut **tx)
         .await?;
@@ -678,13 +678,13 @@ async fn hard_delete_tag(
     // cascaded from the tag row).
     if let Some(g) = group_id {
         let remaining: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tags WHERE group_id = $1",
+            "SELECT COUNT(*) FROM tag_labels WHERE group_id = $1",
         )
         .bind(&g)
         .fetch_one(&mut **tx)
         .await?;
         if remaining == 0 {
-            sqlx::query("DELETE FROM tag_groups WHERE id = $1")
+            sqlx::query("DELETE FROM tags WHERE id = $1")
                 .bind(&g)
                 .execute(&mut **tx)
                 .await?;
@@ -718,12 +718,12 @@ pub async fn reject_tag_deletion(
 /// drop-group's reps fill in missing langs). The emptied group row is
 /// deleted.
 pub async fn merge_groups(pool: &PgPool, keep_tag_id: &str, drop_tag_id: &str) -> Result<()> {
-    let keep_group: String = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+    let keep_group: String = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
         .bind(keep_tag_id)
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: keep_tag_id.to_string() })?;
-    let drop_group: String = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+    let drop_group: String = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
         .bind(drop_tag_id)
         .fetch_optional(pool)
         .await?
@@ -734,7 +734,7 @@ pub async fn merge_groups(pool: &PgPool, keep_tag_id: &str, drop_tag_id: &str) -
 
     let mut tx = pool.begin().await?;
     // Move every member of drop_group into keep_group.
-    sqlx::query("UPDATE tags SET group_id = $1 WHERE group_id = $2")
+    sqlx::query("UPDATE tag_labels SET group_id = $1 WHERE group_id = $2")
         .bind(&keep_group)
         .bind(&drop_group)
         .execute(&mut *tx)
@@ -742,19 +742,19 @@ pub async fn merge_groups(pool: &PgPool, keep_tag_id: &str, drop_tag_id: &str) -
     // Keep-group's per-lang reps win; drop-group's fill in where keep
     // didn't have one.
     sqlx::query(
-        "INSERT INTO tag_group_representatives (group_id, lang, tag_id) \
-         SELECT $1, lang, tag_id FROM tag_group_representatives WHERE group_id = $2 \
+        "INSERT INTO tag_representatives (group_id, lang, tag_id) \
+         SELECT $1, lang, tag_id FROM tag_representatives WHERE group_id = $2 \
          ON CONFLICT (group_id, lang) DO NOTHING",
     )
     .bind(&keep_group)
     .bind(&drop_group)
     .execute(&mut *tx)
     .await?;
-    sqlx::query("DELETE FROM tag_group_representatives WHERE group_id = $1")
+    sqlx::query("DELETE FROM tag_representatives WHERE group_id = $1")
         .bind(&drop_group)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("DELETE FROM tag_groups WHERE id = $1")
+    sqlx::query("DELETE FROM tags WHERE id = $1")
         .bind(&drop_group)
         .execute(&mut *tx)
         .await?;
@@ -769,8 +769,8 @@ pub async fn list_group_representatives(
     anchor_tag_id: &str,
 ) -> Result<std::collections::HashMap<String, String>> {
     let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT r.lang, r.tag_id FROM tag_group_representatives r \
-         WHERE r.group_id = (SELECT group_id FROM tags WHERE id = $1)",
+        "SELECT r.lang, r.tag_id FROM tag_representatives r \
+         WHERE r.group_id = (SELECT group_id FROM tag_labels WHERE id = $1)",
     )
     .bind(anchor_tag_id)
     .fetch_all(pool)
@@ -789,14 +789,14 @@ pub async fn add_group_member(
     lang: &str,
     created_by: &str,
 ) -> Result<Tag> {
-    let group_id: String = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+    let group_id: String = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
         .bind(anchor_tag_id)
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: anchor_tag_id.to_string() })?;
 
     sqlx::query(
-        "INSERT INTO tags (id, name, created_by, lang, group_id, names) \
+        "INSERT INTO tag_labels (id, name, created_by, lang, group_id, names) \
          VALUES ($1, $2, $3, $4, $5, jsonb_build_object($4::text, $2::text))",
     )
     .bind(new_id)
@@ -810,7 +810,7 @@ pub async fn add_group_member(
     // candidate — mark it as the rep automatically. Admin can later
     // promote a different sibling if they add a better label.
     sqlx::query(
-        "INSERT INTO tag_group_representatives (group_id, lang, tag_id) \
+        "INSERT INTO tag_representatives (group_id, lang, tag_id) \
          VALUES ($1, $2, $3) ON CONFLICT (group_id, lang) DO NOTHING",
     )
     .bind(&group_id)
@@ -824,20 +824,20 @@ pub async fn add_group_member(
 /// Remove a tag from its group (deletes the tag row). If the group becomes
 /// empty, drop the group row too.
 pub async fn remove_group_member(pool: &PgPool, tag_id: &str) -> Result<()> {
-    let group_id: Option<String> = sqlx::query_scalar("SELECT group_id FROM tags WHERE id = $1")
+    let group_id: Option<String> = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
         .bind(tag_id)
         .fetch_optional(pool)
         .await?;
-    sqlx::query("DELETE FROM tags WHERE id = $1").bind(tag_id).execute(pool).await?;
+    sqlx::query("DELETE FROM tag_labels WHERE id = $1").bind(tag_id).execute(pool).await?;
     if let Some(g) = group_id {
         let still_populated: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tags WHERE group_id = $1",
+            "SELECT COUNT(*) FROM tag_labels WHERE group_id = $1",
         )
         .bind(&g)
         .fetch_one(pool)
         .await?;
         if still_populated == 0 {
-            sqlx::query("DELETE FROM tag_groups WHERE id = $1").bind(&g).execute(pool).await?;
+            sqlx::query("DELETE FROM tags WHERE id = $1").bind(&g).execute(pool).await?;
         }
     }
     Ok(())
@@ -851,8 +851,8 @@ pub async fn expand_to_group(pool: &PgPool, tag_ids: &[String]) -> Result<Vec<St
         return Ok(Vec::new());
     }
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT id FROM tags \
-         WHERE group_id IN (SELECT group_id FROM tags WHERE id = ANY($1))",
+        "SELECT DISTINCT id FROM tag_labels \
+         WHERE group_id IN (SELECT group_id FROM tag_labels WHERE id = ANY($1))",
     )
     .bind(tag_ids)
     .fetch_all(pool)

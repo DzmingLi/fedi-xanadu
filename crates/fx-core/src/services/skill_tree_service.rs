@@ -82,7 +82,7 @@ pub async fn list_skill_trees(pool: &PgPool, limit: i64) -> Result<Vec<SkillTree
          (SELECT COUNT(*) FROM skill_tree_edges e WHERE e.tree_uri = st.at_uri) AS edge_count, \
          (SELECT COUNT(*) FROM user_active_tree ua WHERE ua.tree_uri = st.at_uri) AS adopt_count \
          FROM skill_trees st LEFT JOIN profiles p ON st.did = p.did \
-         LEFT JOIN tags ft ON st.tag_id = ft.id \
+         LEFT JOIN tag_labels ft ON st.tag_id = ft.id \
          ORDER BY score DESC, st.created_at DESC LIMIT $1",
     )
     .bind(limit)

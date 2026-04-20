@@ -32,7 +32,7 @@ pub struct GraphData {
 /// Build the knowledge graph using a SQL JOIN instead of O(n²) Rust loop.
 pub async fn build_knowledge_graph(pool: &PgPool, did: Option<&str>) -> crate::Result<GraphData> {
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tags ORDER BY name",
+        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tag_labels ORDER BY name",
     )
     .fetch_all(pool)
     .await?;

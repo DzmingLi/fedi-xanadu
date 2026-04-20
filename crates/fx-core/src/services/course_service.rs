@@ -279,13 +279,13 @@ pub async fn get_course_detail(pool: &PgPool, id: &str, viewer_did: Option<&str>
     for row in session_rows {
         let tags = sqlx::query_as::<_, CourseTagRow>(
             "SELECT cst.tag_id, t.name AS tag_name \
-             FROM course_session_tags cst JOIN tags t ON t.id = cst.tag_id \
+             FROM course_session_tags cst JOIN tag_labels t ON t.id = cst.tag_id \
              WHERE cst.session_id = $1 ORDER BY t.name",
         ).bind(&row.id).fetch_all(pool).await?;
 
         let prereqs = sqlx::query_as::<_, CourseTagRow>(
             "SELECT csp.tag_id, t.name AS tag_name \
-             FROM course_session_prereqs csp JOIN tags t ON t.id = csp.tag_id \
+             FROM course_session_prereqs csp JOIN tag_labels t ON t.id = csp.tag_id \
              WHERE csp.session_id = $1 ORDER BY t.name",
         ).bind(&row.id).fetch_all(pool).await?;
 
@@ -294,7 +294,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str, viewer_did: Option<&str>
 
     let tags = sqlx::query_as::<_, CourseTagRow>(
         "SELECT ct.tag_id, t.name AS tag_name \
-         FROM course_tags ct JOIN tags t ON t.id = ct.tag_id \
+         FROM course_tags ct JOIN tag_labels t ON t.id = ct.tag_id \
          WHERE ct.course_id = $1 ORDER BY t.name",
     ).bind(id).fetch_all(pool).await?;
 

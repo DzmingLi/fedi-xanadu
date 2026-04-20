@@ -195,7 +195,7 @@ pub async fn publish_to_article(
     .await?;
 
     for tag_id in &tags {
-        sqlx::query("INSERT INTO tags (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
+        sqlx::query("INSERT INTO tag_labels (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
             .bind(tag_id)
             .bind(tag_id)
             .bind(&draft.did)
