@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias, listTagGroup, addTagGroupMember, removeTagGroupMember } from '../lib/api';
+  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative } from '../lib/api';
   import { authorName, tagName } from '../lib/display';
   import { t, LOCALES } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
@@ -33,6 +33,7 @@
 
   // Group siblings — all tags in the same alias/translation group.
   let siblings = $state<Tag[]>([]);
+  let representativeId = $state<string | null>(null);
   let newMemberId = $state('');
   let newMemberName = $state('');
   let newMemberLang = $state('zh');
@@ -51,7 +52,19 @@
     editError = '';
     showEdit = true;
     listTagAliases(id).then(a => aliases = a).catch(() => {});
-    listTagGroup(id).then(s => siblings = s).catch(() => {});
+    listTagGroup(id).then((g: any) => {
+      siblings = g.members ?? g;
+      representativeId = g.representative_tag_id ?? null;
+    }).catch(() => {});
+  }
+
+  async function promoteRepresentative(memberId: string) {
+    try {
+      await setTagGroupRepresentative(id, memberId);
+      representativeId = memberId;
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    }
   }
 
   async function submitAddGroupMember() {
@@ -225,11 +238,17 @@
       <div class="sibling-list">
         {#each siblings as s (s.id)}
           <div class="sibling-row">
+            <button
+              class="rep-star"
+              class:is-rep={s.id === representativeId}
+              title={s.id === representativeId ? t('tags.currentRep') : t('tags.makeRep')}
+              onclick={() => { if (s.id !== representativeId) promoteRepresentative(s.id); }}
+            >★</button>
             <span class="sibling-lang">{s.lang}</span>
             <a class="sibling-id" href="/tag?id={encodeURIComponent(s.id)}">{s.id}</a>
-            {#if s.id !== id}
+            {#if s.id !== id && s.id !== representativeId}
               <button class="sibling-rm" onclick={() => removeGroupMember(s.id)}>×</button>
-            {:else}
+            {:else if s.id === id}
               <span class="sibling-self">{t('tags.thisTag')}</span>
             {/if}
           </div>
@@ -421,6 +440,10 @@
   .sibling-self { font-size: 11px; color: var(--text-hint); font-style: italic; }
   .sibling-rm { background: none; border: none; color: var(--text-hint); cursor: pointer; font-size: 14px; padding: 0 4px; }
   .sibling-rm:hover { color: #c00; }
+  .rep-star { background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; color: var(--border); }
+  .rep-star:hover { color: #d97706; }
+  .rep-star.is-rep { color: #d97706; cursor: default; }
+  .rep-star.is-rep:hover { color: #d97706; }
   .sibling-add { display: flex; gap: 4px; margin-top: 6px; }
   .sibling-add .sm-input { flex: 1; padding: 4px 6px; font-size: 12px; border: 1px solid var(--border); border-radius: 3px; }
   .sibling-add select.sm-input { flex: 0 0 64px; }

@@ -550,6 +550,8 @@ export default {
   'tags.addGroupMember': 'Ajouter au groupe',
   'tags.newMemberIdPlaceholder': 'slug, p. ex. 集合论',
   'tags.newMemberNamePlaceholder': 'nom d\'affichage',
+  'tags.currentRep': 'Représentant actuel',
+  'tags.makeRep': 'Définir comme représentant',
 
   // Auth / Login
   'auth.loginHint': 'Connectez-vous avec votre identifiant Bluesky et votre mot de passe d\'application',

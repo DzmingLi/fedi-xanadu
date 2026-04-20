@@ -325,19 +325,35 @@ pub async fn get_content_format(pool: &PgPool, uri: &str) -> crate::Result<Strin
         .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() })
 }
 
-pub async fn get_article_prereqs(pool: &PgPool, uri: &str) -> crate::Result<Vec<ArticlePrereqRow>> {
-    // De-dupe prereqs by tag group. If an article has content_prereqs rows
-    // for both "calculus" and "高等数学" (same concept in different
-    // languages), return one row per group, English-preferred so the
-    // display label is the canonical one.
+pub async fn get_article_prereqs(pool: &PgPool, uri: &str, locale: &str) -> crate::Result<Vec<ArticlePrereqRow>> {
+    // Dedup by (group, prereq_type). Within each group the displayed
+    // sibling is chosen by a 4-level priority:
+    //   0. matches UI locale AND is the group's representative
+    //   1. matches UI locale (any same-lang sibling)
+    //   2. is the group's representative (locale miss → rep as fallback)
+    //   3. anything (last resort)
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
         "SELECT DISTINCT ON (t.group_id, cp.prereq_type) \
-             cp.tag_id, cp.prereq_type, t.name AS tag_name, t.names AS tag_names \
-         FROM content_prereqs cp JOIN tags t ON t.id = cp.tag_id \
+             sib.id AS tag_id, \
+             cp.prereq_type, \
+             sib.name AS tag_name, \
+             sib.names AS tag_names \
+         FROM content_prereqs cp \
+         JOIN tags t ON t.id = cp.tag_id \
+         JOIN tag_groups g ON g.id = t.group_id \
+         JOIN tags sib ON sib.group_id = t.group_id \
          WHERE cp.content_uri = $1 \
-         ORDER BY t.group_id, cp.prereq_type, (t.lang = 'en') DESC, t.id",
+         ORDER BY t.group_id, cp.prereq_type, \
+                  (CASE \
+                    WHEN sib.lang = $2 AND sib.id = g.representative_tag_id THEN 0 \
+                    WHEN sib.lang = $2 THEN 1 \
+                    WHEN sib.id = g.representative_tag_id THEN 2 \
+                    ELSE 3 \
+                   END), \
+                  sib.id",
     )
     .bind(uri)
+    .bind(locale)
     .fetch_all(pool)
     .await?;
     Ok(rows)

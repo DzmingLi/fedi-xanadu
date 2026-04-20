@@ -115,7 +115,9 @@ export const getTag = (id: string) => get<Tag>(`/tags/${encodeURIComponent(id)}`
 export const listArticles = () => get<Article[]>('/articles');
 export const getArticle = (uri: string) => get<Article>(`/articles/by-uri?uri=${encodeURIComponent(uri)}`);
 export const getArticleContent = (uri: string) => get<ArticleContent>(`/articles/by-uri/content?uri=${encodeURIComponent(uri)}`);
-export const getArticlePrereqs = (uri: string) => get<ArticlePrereqRow[]>(`/articles/by-uri/prereqs?uri=${encodeURIComponent(uri)}`);
+import { getLocale as currentLocale } from './i18n/index.svelte';
+export const getArticlePrereqs = (uri: string) =>
+  get<ArticlePrereqRow[]>(`/articles/by-uri/prereqs?uri=${encodeURIComponent(uri)}&locale=${encodeURIComponent(currentLocale())}`);
 export const getArticleForks = (uri: string) => get<ForkWithTitle[]>(`/articles/by-uri/forks?uri=${encodeURIComponent(uri)}`);
 export const getForkAhead = (forkUri: string, originalUri: string) =>
   get<string[]>(`/articles/by-uri/fork-ahead?fork_uri=${encodeURIComponent(forkUri)}&original_uri=${encodeURIComponent(originalUri)}`);
@@ -125,7 +127,8 @@ export const getAllArticlePrereqs = () => get<ContentPrereqBulkRow[]>('/articles
 export const getArticlesByTag = (tagId: string) => get<Article[]>(`/articles/by-tag?tag_id=${encodeURIComponent(tagId)}`);
 export const getArticlesByDid = (did: string) => get<Article[]>(`/articles/by-did?did=${encodeURIComponent(did)}`);
 export const getTranslations = (uri: string) => get<Article[]>(`/articles/translations?uri=${encodeURIComponent(uri)}`);
-export const getArticleFull = (uri: string) => get<ArticleFullResponse>(`/articles/full?uri=${encodeURIComponent(uri)}`);
+export const getArticleFull = (uri: string) =>
+  get<ArticleFullResponse>(`/articles/full?uri=${encodeURIComponent(uri)}&locale=${encodeURIComponent(currentLocale())}`);
 
 // Version history
 export const getArticleHistory = (uri: string) => get<ArticleVersionInfo[]>(`/articles/by-uri/history?uri=${encodeURIComponent(uri)}`);
@@ -603,6 +606,8 @@ export const listTagGroup = (tagId: string) =>
   get<any[]>(`/tags/${encodeURIComponent(tagId)}/group`);
 export const addTagGroupMember = (tagId: string, member: { id: string; name: string; lang: string }) =>
   post<any>(`/tags/${encodeURIComponent(tagId)}/group`, member);
+export const setTagGroupRepresentative = (anchorId: string, memberId: string) =>
+  put<{ ok: boolean }>(`/tags/${encodeURIComponent(anchorId)}/group/representative`, { member_id: memberId });
 export const removeTagGroupMember = (anchorId: string, memberId: string) =>
   del<void>(`/tags/${encodeURIComponent(anchorId)}/group/${encodeURIComponent(memberId)}`);
 

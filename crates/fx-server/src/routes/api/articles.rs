@@ -584,11 +584,19 @@ pub(super) fn render_content(format: &str, source: &str, repo_path: &std::path::
         .map_err(|e| { tracing::warn!("render error: {e}"); AppError(fx_core::Error::Render(e.to_string())) })
 }
 
+#[derive(serde::Deserialize)]
+pub struct PrereqsQuery {
+    pub uri: String,
+    #[serde(default)]
+    pub locale: Option<String>,
+}
+
 pub async fn get_article_prereqs(
     State(state): State<AppState>,
-    Query(UriQuery { uri }): Query<UriQuery>,
+    Query(q): Query<PrereqsQuery>,
 ) -> ApiResult<Json<Vec<ArticlePrereqRow>>> {
-    let prereqs = article_service::get_article_prereqs(&state.pool, &uri).await?;
+    let locale = q.locale.as_deref().unwrap_or("en");
+    let prereqs = article_service::get_article_prereqs(&state.pool, &q.uri, locale).await?;
     Ok(Json(prereqs))
 }
 
@@ -1260,14 +1268,16 @@ struct ArticleVoteSummary {
 pub async fn get_article_full(
     State(state): State<AppState>,
     crate::auth::MaybeAuth(user): crate::auth::MaybeAuth,
-    Query(UriQuery { uri }): Query<UriQuery>,
+    Query(q): Query<PrereqsQuery>,
 ) -> ApiResult<Json<ArticleFullResponse>> {
     use fx_core::services::{vote_service, bookmark_service, series_service, learned_service};
+    let uri = q.uri.clone();
+    let locale = q.locale.as_deref().unwrap_or("en").to_string();
 
     let mode = state.instance_mode;
     let (article, prereqs, forks, vote_summary, series_ctx, translations) = tokio::try_join!(
         article_service::get_article(&state.pool, mode, &uri),
-        article_service::get_article_prereqs(&state.pool, &uri),
+        article_service::get_article_prereqs(&state.pool, &uri, &locale),
         article_service::get_article_forks(&state.pool, &uri),
         vote_service::get_vote_summary(&state.pool, &uri),
         series_service::get_series_context(&state.pool, &uri),

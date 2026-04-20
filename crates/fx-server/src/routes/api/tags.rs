@@ -50,14 +50,27 @@ pub async fn get_tag(
     Ok(Json(tag))
 }
 
+#[derive(serde::Serialize)]
+pub struct GroupView {
+    pub members: Vec<Tag>,
+    pub representative_tag_id: Option<String>,
+}
+
 /// List every sibling tag in the alias/translation group that `id` belongs
-/// to. Returns all members including `id` itself, English-first.
+/// to, plus which member is the group's representative.
 pub async fn list_group_siblings(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> ApiResult<Json<Vec<Tag>>> {
+) -> ApiResult<Json<GroupView>> {
     let tags = tag_service::list_group_siblings(&state.pool, &id).await?;
-    Ok(Json(tags))
+    let rep: Option<String> = sqlx::query_scalar(
+        "SELECT g.representative_tag_id FROM tag_groups g \
+         JOIN tags t ON t.group_id = g.id WHERE t.id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(Json(GroupView { members: tags, representative_tag_id: rep }))
 }
 
 #[derive(serde::Deserialize)]
@@ -92,6 +105,22 @@ pub async fn remove_group_member(
     crate::auth::Auth(_user): crate::auth::Auth,
 ) -> ApiResult<Json<serde_json::Value>> {
     tag_service::remove_group_member(&state.pool, &member_id).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct RepresentativeInput { pub member_id: String }
+
+/// Mark one of the group's members as the representative — the single
+/// label the UI picks for display when it needs one (prereqs, mastery
+/// badges, teach tags, etc.).
+pub async fn set_group_representative(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    crate::auth::Auth(_user): crate::auth::Auth,
+    Json(input): Json<RepresentativeInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    tag_service::set_group_representative(&state.pool, &id, &input.member_id).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 

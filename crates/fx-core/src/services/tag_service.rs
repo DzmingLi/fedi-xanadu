@@ -425,6 +425,38 @@ pub async fn dedupe_by_group(pool: &PgPool, tag_ids: &[String]) -> Result<Vec<St
     Ok(out)
 }
 
+/// Set which tag in a group is the "representative" — the single label
+/// used when the UI needs to pick one for display (prereqs, teaches, skill
+/// mastery badges, etc.). Must be a tag that's already in the group.
+pub async fn set_group_representative(
+    pool: &PgPool,
+    anchor_tag_id: &str,
+    member_id: &str,
+) -> Result<()> {
+    // Verify both tags exist and share the same group.
+    let same_group: Option<String> = sqlx::query_scalar(
+        "SELECT anchor.group_id \
+         FROM tags anchor JOIN tags m ON m.group_id = anchor.group_id \
+         WHERE anchor.id = $1 AND m.id = $2",
+    )
+    .bind(anchor_tag_id)
+    .bind(member_id)
+    .fetch_optional(pool)
+    .await?;
+    let group_id = same_group.ok_or_else(|| crate::Error::Validation(vec![
+        crate::validation::ValidationError {
+            field: "member_id".into(),
+            message: "member is not in the same group as anchor".into(),
+        }
+    ]))?;
+    sqlx::query("UPDATE tag_groups SET representative_tag_id = $2 WHERE id = $1")
+        .bind(&group_id)
+        .bind(member_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Add a sibling tag to the same alias/translation group as an existing
 /// tag. The new tag gets its own id/name/lang but shares group_id with the
 /// anchor.
