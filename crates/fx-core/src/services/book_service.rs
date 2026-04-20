@@ -756,22 +756,44 @@ pub struct ChapterProgress {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
+/// Result of toggling chapter progress. Includes the final reading status and
+/// the full set of chapter ids whose progress was written — the toggled chapter
+/// plus all of its descendants (since toggling a parent cascades to children).
+pub struct ChapterProgressResult {
+    pub status: Option<ReadingStatus>,
+    pub affected_chapter_ids: Vec<String>,
+}
+
 pub async fn set_chapter_progress(
     pool: &PgPool,
     book_id: &str,
     chapter_id: &str,
     user_did: &str,
     completed: bool,
-) -> crate::Result<Option<ReadingStatus>> {
+) -> crate::Result<ChapterProgressResult> {
     let mut tx = pool.begin().await?;
+
+    // Toggle the chapter AND all its descendants. A parent-level check/uncheck
+    // should propagate to every sub-chapter below it in the tree.
+    let affected_chapter_ids: Vec<String> = sqlx::query_scalar(
+        "WITH RECURSIVE subtree(id) AS ( \
+             SELECT id FROM book_chapters WHERE id = $1 \
+             UNION ALL \
+             SELECT c.id FROM book_chapters c JOIN subtree s ON c.parent_id = s.id \
+         ) SELECT id FROM subtree",
+    )
+    .bind(chapter_id)
+    .fetch_all(&mut *tx)
+    .await?;
 
     sqlx::query(
         "INSERT INTO book_chapter_progress (book_id, chapter_id, user_did, completed, completed_at) \
-         VALUES ($1, $2, $3, $4, CASE WHEN $4 THEN NOW() ELSE NULL END) \
+         SELECT $1, c.id, $3, $4, CASE WHEN $4 THEN NOW() ELSE NULL END \
+         FROM unnest($2::text[]) AS c(id) \
          ON CONFLICT (chapter_id, user_did) DO UPDATE SET completed = $4, \
          completed_at = CASE WHEN $4 THEN COALESCE(book_chapter_progress.completed_at, NOW()) ELSE NULL END",
     )
-    .bind(book_id).bind(chapter_id).bind(user_did).bind(completed)
+    .bind(book_id).bind(&affected_chapter_ids).bind(user_did).bind(completed)
     .execute(&mut *tx).await?;
 
     // Auto-transition into 'reading' when user completes a chapter from an
@@ -817,7 +839,7 @@ pub async fn set_chapter_progress(
     ).bind(book_id).bind(user_did).fetch_optional(&mut *tx).await?;
 
     tx.commit().await?;
-    Ok(status)
+    Ok(ChapterProgressResult { status, affected_chapter_ids })
 }
 
 pub async fn list_chapter_progress(

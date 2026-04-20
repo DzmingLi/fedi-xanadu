@@ -40,6 +40,7 @@
     for (const loc of LOCALES) {
       if (!(loc.code in names)) names[loc.code] = '';
     }
+    if (!names.en?.trim()) names.en = id;
     editNames = names;
     editAliases = [];
     try {

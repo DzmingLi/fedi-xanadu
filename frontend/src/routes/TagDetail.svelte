@@ -30,6 +30,7 @@
     for (const loc of LOCALES) {
       if (!(loc.code in editNames)) editNames[loc.code] = '';
     }
+    if (!editNames.en?.trim()) editNames.en = tag.id;
     newAlias = '';
     editError = '';
     showEdit = true;

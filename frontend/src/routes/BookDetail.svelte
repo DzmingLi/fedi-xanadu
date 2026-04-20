@@ -103,9 +103,26 @@
   let askSubmitting = $state(false);
 
   async function toggleChapter(chapterId: string) {
+    if (!detail) return;
     const next = !chapterDone.get(chapterId);
-    chapterDone.set(chapterId, next);
-    chapterDone = new Map(chapterDone); // trigger reactivity
+
+    // Collect every descendant id so the UI mirrors the backend cascade.
+    const descendantIds: string[] = [];
+    const walk = (parent: string) => {
+      for (const c of detail!.chapters) {
+        if (c.parent_id === parent) {
+          descendantIds.push(c.id);
+          walk(c.id);
+        }
+      }
+    };
+    walk(chapterId);
+    const touched = [chapterId, ...descendantIds];
+    const prior = new Map(touched.map(id => [id, chapterDone.get(id) ?? false]));
+
+    for (const cid of touched) chapterDone.set(cid, next);
+    chapterDone = new Map(chapterDone);
+
     try {
       const status = await setChapterProgress(id, chapterId, next);
       if (status) {
@@ -113,7 +130,7 @@
         readingProgress = status.progress;
       }
     } catch {
-      chapterDone.set(chapterId, !next);
+      for (const [cid, was] of prior) chapterDone.set(cid, was);
       chapterDone = new Map(chapterDone);
     }
   }
@@ -1320,14 +1337,16 @@
               <span class="tag-chip">{tag} <button type="button" onclick={() => removeBookTag(tag)}>×</button></span>
             {/each}
           </div>
-          <input bind:value={editBookTagInput} placeholder={t('books.tagsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookTagInput.trim()) { e.preventDefault(); addBookTag(editBookTagInput.trim()); } }} />
-          {#if editBookTagSuggestions.length > 0}
-            <div class="tag-suggestions">
-              {#each editBookTagSuggestions as s}
-                <button type="button" class="tag-suggest" onclick={() => addBookTag(s.id)}>{s.name}</button>
-              {/each}
-            </div>
-          {/if}
+          <div class="tag-input-wrap">
+            <input class="tag-input" bind:value={editBookTagInput} placeholder={t('books.tagsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookTagInput.trim()) { e.preventDefault(); addBookTag(editBookTagInput.trim()); } }} />
+            {#if editBookTagSuggestions.length > 0}
+              <ul class="tag-suggestions">
+                {#each editBookTagSuggestions as s}
+                  <li><button type="button" onclick={() => addBookTag(s.id)}>{s.name || s.id}</button></li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
         </div>
 
         <div class="form-group">
@@ -1337,14 +1356,16 @@
               <span class="tag-chip prereq">{tag} <button type="button" onclick={() => removeBookPrereq(tag)}>×</button></span>
             {/each}
           </div>
-          <input bind:value={editBookPrereqInput} placeholder={t('books.prereqsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookPrereqInput.trim()) { e.preventDefault(); addBookPrereq(editBookPrereqInput.trim()); } }} />
-          {#if editBookPrereqSuggestions.length > 0}
-            <div class="tag-suggestions">
-              {#each editBookPrereqSuggestions as s}
-                <button type="button" class="tag-suggest" onclick={() => addBookPrereq(s.id)}>{s.name}</button>
-              {/each}
-            </div>
-          {/if}
+          <div class="tag-input-wrap">
+            <input class="tag-input" bind:value={editBookPrereqInput} placeholder={t('books.prereqsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookPrereqInput.trim()) { e.preventDefault(); addBookPrereq(editBookPrereqInput.trim()); } }} />
+            {#if editBookPrereqSuggestions.length > 0}
+              <ul class="tag-suggestions">
+                {#each editBookPrereqSuggestions as s}
+                  <li><button type="button" onclick={() => addBookPrereq(s.id)}>{s.name || s.id}</button></li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
         </div>
 
         <div class="form-group">

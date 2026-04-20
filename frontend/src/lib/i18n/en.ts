@@ -757,6 +757,10 @@ export default {
   'books.resourceKind.slides': 'Slides',
   'books.resourceKind.errata': 'Errata',
   'books.resourceKind.code': 'Code',
+  'books.resourceKind.online': 'Online',
+  'books.resourceKind.pdf': 'PDF',
+  'books.resourceKind.paper': 'Paper',
+  'books.resourceKind.source': 'Source',
   'books.resourceKind.other': 'Other',
 
   // Book edition form

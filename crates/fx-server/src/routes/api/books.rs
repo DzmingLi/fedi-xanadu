@@ -532,17 +532,23 @@ pub async fn set_chapter_progress(
     Auth(user): Auth,
     Json(input): Json<ChapterProgressInput>,
 ) -> ApiResult<Json<Option<book_service::ReadingStatus>>> {
-    let status = book_service::set_chapter_progress(
+    let result = book_service::set_chapter_progress(
         &state.pool, &book_id, &input.chapter_id, &user.did, input.completed,
     ).await?;
 
-    // Auto-learn: when chapter completed, light up chapter's teaches tags
-    if input.completed {
-        let content_uri = format!("chapter:{}", input.chapter_id);
+    // Auto-learn: when chapters are completed, light up each chapter's
+    // teaches tags as mastered. Covers the toggled chapter and every
+    // descendant that was cascaded.
+    if input.completed && !result.affected_chapter_ids.is_empty() {
+        let content_uris: Vec<String> = result
+            .affected_chapter_ids
+            .iter()
+            .map(|id| format!("chapter:{}", id))
+            .collect();
         let tag_ids: Vec<String> = sqlx::query_scalar(
-            "SELECT tag_id FROM content_teaches WHERE content_uri = $1",
+            "SELECT DISTINCT tag_id FROM content_teaches WHERE content_uri = ANY($1)",
         )
-        .bind(&content_uri)
+        .bind(&content_uris)
         .fetch_all(&state.pool)
         .await
         .unwrap_or_default();
@@ -552,12 +558,12 @@ pub async fn set_chapter_progress(
         }
     }
 
-    Ok(Json(status))
+    Ok(Json(result.status))
 }
 
 // --- Book cover: serve & upload ---
 
-const COVER_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const COVER_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif"];
 const MAX_COVER_SIZE: usize = 5 * 1024 * 1024; // 5 MB
 
 /// Serve a book cover image from local storage.
@@ -576,6 +582,7 @@ pub async fn get_cover(
             let content_type = match *ext {
                 "png" => "image/png",
                 "webp" => "image/webp",
+                "gif" => "image/gif",
                 _ => "image/jpeg",
             };
             match tokio::fs::read(&path).await {
@@ -626,7 +633,7 @@ pub async fn upload_edition_cover(
     let ext = std::path::Path::new(file_name.as_deref().unwrap_or(""))
         .extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_else(|| "jpg".into());
     if !COVER_EXTENSIONS.contains(&ext.as_str()) {
-        return Err(AppError(fx_core::Error::BadRequest("Use jpg, png, or webp".into())));
+        return Err(AppError(fx_core::Error::BadRequest("Use jpg, png, webp, or gif".into())));
     }
 
     let safe_id: String = edition_id.chars()

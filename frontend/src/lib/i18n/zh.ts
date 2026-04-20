@@ -757,6 +757,10 @@ export default {
   'books.resourceKind.slides': '课件',
   'books.resourceKind.errata': '勘误',
   'books.resourceKind.code': '代码',
+  'books.resourceKind.online': '网页资源',
+  'books.resourceKind.pdf': 'PDF',
+  'books.resourceKind.paper': '论文',
+  'books.resourceKind.source': '源码',
   'books.resourceKind.other': '其他',
 
   // Book edition form
