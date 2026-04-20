@@ -55,11 +55,21 @@ WITH
 -- User context CTEs (empty for anonymous → graceful degradation)
 -- ══════════════════════════════════════════════════════════════
 user_mastered AS (
-    SELECT tag_id FROM user_skills WHERE did = $1 AND status = 'mastered'
+    -- Include every tag in the same alias/translation group as a lit one
+    -- so "lit calculus" also treats 高等数学 as mastered.
+    SELECT DISTINCT t2.id AS tag_id
+    FROM user_skills us
+    JOIN tags t1 ON t1.id = us.tag_id
+    JOIN tags t2 ON t2.group_id = t1.group_id
+    WHERE us.did = $1 AND us.status = 'mastered'
 ),
 user_interest_descendants AS (
     WITH RECURSIVE desc_tags(tag) AS (
-        SELECT tag_id FROM user_interests WHERE did = $1
+        -- Seed with every group member of each directly-interested tag.
+        SELECT t2.id FROM user_interests ui
+        JOIN tags t1 ON t1.id = ui.tag_id
+        JOIN tags t2 ON t2.group_id = t1.group_id
+        WHERE ui.did = $1
         UNION
         SELECT tp.child_tag FROM tag_parents tp
         JOIN desc_tags d ON tp.parent_tag = d.tag
@@ -359,7 +369,7 @@ pub async fn get_recommended_questions(
         r#"
 WITH
 user_mastered AS (
-    SELECT tag_id FROM user_skills WHERE did = $1 AND status = 'mastered'
+    SELECT DISTINCT t2.id AS tag_id FROM user_skills us JOIN tags t1 ON t1.id = us.tag_id JOIN tags t2 ON t2.group_id = t1.group_id WHERE us.did = $1 AND us.status = 'mastered'
 ),
 questions AS (
     SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation,
@@ -439,7 +449,7 @@ pub async fn get_frontier_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<
     let rows = sqlx::query_as::<_, FrontierSkill>(
         r#"
 WITH user_mastered AS (
-    SELECT tag_id FROM user_skills WHERE did = $1 AND status = 'mastered'
+    SELECT DISTINCT t2.id AS tag_id FROM user_skills us JOIN tags t1 ON t1.id = us.tag_id JOIN tags t2 ON t2.group_id = t1.group_id WHERE us.did = $1 AND us.status = 'mastered'
 ),
 frontier_tags AS (
     SELECT DISTINCT utp.to_tag AS tag_id

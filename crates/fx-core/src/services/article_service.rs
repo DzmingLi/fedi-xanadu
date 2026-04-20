@@ -326,10 +326,16 @@ pub async fn get_content_format(pool: &PgPool, uri: &str) -> crate::Result<Strin
 }
 
 pub async fn get_article_prereqs(pool: &PgPool, uri: &str) -> crate::Result<Vec<ArticlePrereqRow>> {
+    // De-dupe prereqs by tag group. If an article has content_prereqs rows
+    // for both "calculus" and "高等数学" (same concept in different
+    // languages), return one row per group, English-preferred so the
+    // display label is the canonical one.
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
-        "SELECT cp.tag_id, cp.prereq_type, t.name as tag_name, t.names as tag_names \
+        "SELECT DISTINCT ON (t.group_id, cp.prereq_type) \
+             cp.tag_id, cp.prereq_type, t.name AS tag_name, t.names AS tag_names \
          FROM content_prereqs cp JOIN tags t ON t.id = cp.tag_id \
-         WHERE cp.content_uri = $1",
+         WHERE cp.content_uri = $1 \
+         ORDER BY t.group_id, cp.prereq_type, (t.lang = 'en') DESC, t.id",
     )
     .bind(uri)
     .fetch_all(pool)

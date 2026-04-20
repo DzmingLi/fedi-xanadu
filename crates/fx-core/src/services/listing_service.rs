@@ -236,7 +236,7 @@ pub async fn match_for_user(pool: &PgPool, did: &str, limit: i64) -> Result<Vec<
     let sql = format!(
         r#"
 WITH user_mastered AS (
-    SELECT tag_id FROM user_skills WHERE did = $1 AND status = 'mastered'
+    SELECT DISTINCT t2.id AS tag_id FROM user_skills us JOIN tags t1 ON t1.id = us.tag_id JOIN tags t2 ON t2.group_id = t1.group_id WHERE us.did = $1 AND us.status = 'mastered'
 ),
 scored AS (
     SELECT l.id,

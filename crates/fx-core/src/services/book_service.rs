@@ -611,7 +611,10 @@ pub async fn list_chapters_with_tags(pool: &PgPool, book_id: &str) -> crate::Res
     #[derive(sqlx::FromRow)]
     struct TeachRow { content_uri: String, tag_id: String }
     let teaches_rows = sqlx::query_as::<_, TeachRow>(
-        "SELECT content_uri, tag_id FROM content_teaches WHERE content_uri = ANY($1) ORDER BY tag_id",
+        "SELECT DISTINCT ON (ct.content_uri, t.group_id) ct.content_uri, ct.tag_id \
+         FROM content_teaches ct JOIN tags t ON t.id = ct.tag_id \
+         WHERE ct.content_uri = ANY($1) \
+         ORDER BY ct.content_uri, t.group_id, (t.lang = 'en') DESC, ct.tag_id",
     )
     .bind(&uris)
     .fetch_all(pool)
@@ -619,8 +622,15 @@ pub async fn list_chapters_with_tags(pool: &PgPool, book_id: &str) -> crate::Res
 
     #[derive(sqlx::FromRow)]
     struct PrereqRow { content_uri: String, tag_id: String, prereq_type: String }
+    // De-dupe by (content_uri, tag group, prereq_type) so the same concept
+    // doesn't render twice when the book has both the English and Chinese
+    // label on a chapter.
     let prereq_rows = sqlx::query_as::<_, PrereqRow>(
-        "SELECT content_uri, tag_id, prereq_type FROM content_prereqs WHERE content_uri = ANY($1) ORDER BY tag_id",
+        "SELECT DISTINCT ON (cp.content_uri, t.group_id, cp.prereq_type) \
+             cp.content_uri, cp.tag_id, cp.prereq_type \
+         FROM content_prereqs cp JOIN tags t ON t.id = cp.tag_id \
+         WHERE cp.content_uri = ANY($1) \
+         ORDER BY cp.content_uri, t.group_id, cp.prereq_type, (t.lang = 'en') DESC, cp.tag_id",
     )
     .bind(&uris)
     .fetch_all(pool)
