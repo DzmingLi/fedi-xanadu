@@ -5,13 +5,37 @@
     updateTagNames, listTagAliases, addTagAlias, removeTagAlias,
   } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
-  import { t, LOCALES } from '../lib/i18n/index.svelte';
+  import { t, LOCALES, getLocale } from '../lib/i18n/index.svelte';
   import { tagName } from '../lib/display';
   import type { Tag } from '../lib/types';
 
   function displayTagId(id: string, map: Map<string, Tag>): string {
     const t = map.get(id);
     return t ? tagName(t.names as any, t.name, t.id) : id;
+  }
+
+  /**
+   * For each group pick one canonical tag: the member matching the UI
+   * locale, then the en member, then any. Returns Map<tagId, canonical-tagId>.
+   * Tag ids outside this mapping (orphan edges referencing a deleted tag)
+   * fall through unchanged via callers' `?? id` defaults.
+   */
+  function buildGroupCanon(tags: Tag[], locale: string): Map<string, string> {
+    const byGroup = new Map<string, Tag[]>();
+    for (const t of tags) {
+      const arr = byGroup.get(t.group_id) ?? [];
+      arr.push(t);
+      byGroup.set(t.group_id, arr);
+    }
+    const canon = new Map<string, string>();
+    for (const members of byGroup.values()) {
+      const pick =
+        members.find(m => m.lang === locale) ??
+        members.find(m => m.lang === 'en') ??
+        members[0];
+      for (const m of members) canon.set(m.id, pick.id);
+    }
+    return canon;
   }
 
   type Edge = { parent_tag: string; child_tag: string };
@@ -193,24 +217,50 @@
     }
   }
 
-  // Group edges by parent for display
+  // Canonical-per-group resolver: every tag id (including edge endpoints)
+  // is mapped to one representative picked for the UI locale. Group
+  // siblings collapse to one chip so zh UI doesn't show "数学" twice
+  // just because there happens to be both `Mathematics` (en) and `数学`
+  // (zh) as group members.
+  let groupCanon = $derived.by(() => buildGroupCanon(tags, getLocale()));
+
+  // Group edges by parent (after canonicalizing both ends to the group
+  // rep). Duplicate edges that collapse to the same (p, c) are deduped.
   let groupedByParent = $derived.by(() => {
-    const m = new Map<string, string[]>();
+    const m = new Map<string, Set<string>>();
     for (const e of edges) {
-      const arr = m.get(e.parent_tag) ?? [];
-      arr.push(e.child_tag);
-      m.set(e.parent_tag, arr);
+      const p = groupCanon.get(e.parent_tag) ?? e.parent_tag;
+      const c = groupCanon.get(e.child_tag) ?? e.child_tag;
+      if (p === c) continue;
+      const set = m.get(p) ?? new Set<string>();
+      set.add(c);
+      m.set(p, set);
     }
     return Array.from(m.entries())
-      .map(([parent, children]) => ({ parent, children: children.sort() }))
+      .map(([parent, children]) => ({ parent, children: [...children].sort() }))
       .sort((a, b) => a.parent.localeCompare(b.parent));
   });
 
-  // All tags that are not a child of any edge — includes tags that have
-  // children in the hierarchy AND isolated tags that were just created.
+  // Orphans: one entry per group, representative only. A tag has no
+  // parent if no *group member* of it is a child in any edge.
   let orphans = $derived.by(() => {
-    const hasParent = new Set(edges.map(e => e.child_tag));
-    return tags.map(tg => tg.id).filter(id => !hasParent.has(id)).sort();
+    const parentedGroups = new Set<string>();
+    for (const e of edges) {
+      const childTag = tagById.get(e.child_tag);
+      if (childTag) parentedGroups.add(childTag.group_id);
+    }
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const tg of tags) {
+      if (parentedGroups.has(tg.group_id)) continue;
+      if (seen.has(tg.group_id)) continue;
+      const canonId = groupCanon.get(tg.id) ?? tg.id;
+      if (canonId === tg.id) {
+        seen.add(tg.group_id);
+        out.push(tg.id);
+      }
+    }
+    return out.sort();
   });
 </script>
 
