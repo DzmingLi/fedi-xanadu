@@ -106,6 +106,29 @@ pub async fn remove_group_member(
 }
 
 #[derive(serde::Deserialize)]
+pub struct DeletionRequestInput { pub reason: String }
+
+/// User-initiated tag deletion request. An admin must later approve
+/// before the tag is actually soft-deleted.
+pub async fn request_tag_deletion(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    crate::auth::Auth(user): crate::auth::Auth,
+    Json(input): Json<DeletionRequestInput>,
+) -> ApiResult<Json<tag_service::TagDeletionRequest>> {
+    if input.reason.trim().is_empty() {
+        return Err(AppError(fx_core::Error::Validation(vec![
+            fx_core::validation::ValidationError {
+                field: "reason".into(),
+                message: "reason is required".into(),
+            }
+        ])));
+    }
+    let req = tag_service::request_tag_deletion(&state.pool, &id, &user.did, input.reason.trim()).await?;
+    Ok(Json(req))
+}
+
+#[derive(serde::Deserialize)]
 pub struct MergeInput { pub member_id: String }
 
 /// Merge another tag's alias/translation group into this tag's group.

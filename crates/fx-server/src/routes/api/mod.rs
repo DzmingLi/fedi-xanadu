@@ -168,6 +168,7 @@ fn tag_routes() -> Router<AppState> {
         .route("/tags/{id}/group/{member_id}", delete(tags::remove_group_member))
         .route("/tags/{id}/group/representative", put(tags::set_group_representative))
         .route("/tags/{id}/group/merge", post(tags::merge_groups))
+        .route("/tags/{id}/deletion-requests", post(tags::request_tag_deletion))
         .route("/tags/search", get(tags::search_tags))
         .route("/tags/teach", post(tags::set_teach))
         .route("/tag-parents", get(tag_hierarchy::list_tag_parents)
@@ -461,6 +462,9 @@ fn admin_routes() -> Router<AppState> {
         .route("/admin/credentials/revoke", post(admin::admin_revoke_credentials))
         .route("/admin/books/revert-edit", post(admin::admin_revert_book_edit))
         .route("/admin/books/default-edition", put(admin::admin_set_default_edition))
+        .route("/admin/tag-deletion-requests", get(admin::admin_list_tag_deletion_requests))
+        .route("/admin/tag-deletion-requests/approve", post(admin::admin_approve_tag_deletion))
+        .route("/admin/tag-deletion-requests/reject",  post(admin::admin_reject_tag_deletion))
 }
 
 fn ad_routes() -> Router<AppState> {

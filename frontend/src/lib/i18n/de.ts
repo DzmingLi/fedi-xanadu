@@ -556,6 +556,11 @@ export default {
   'tags.mergePlaceholder': 'ID eines anderen Tags',
   'tags.mergeHint': 'Die Gruppe eines anderen Tags in diese einfügen (Aliase + Übersetzungen werden vereint). Mitglieder wechseln hierher; die Sprach-Repräsentanten dieser Gruppe haben Vorrang.',
   'tags.confirmMerge': 'Die Gruppe mit {0} in {1} zusammenführen? Dies vereint alle Mitglieder, Aliase und Übersetzungen beider Gruppen.',
+  'tags.deleteTitle': 'Löschung anfordern',
+  'tags.deleteHint': 'Sendet eine Löschanfrage. Ein Admin prüft; bei Zustimmung wird das Tag soft-gelöscht (Zeile bleibt, wird nicht mehr angezeigt).',
+  'tags.deleteReasonPlaceholder': 'Grund (erforderlich)',
+  'tags.requestDelete': 'Senden',
+  'tags.deleteSubmitted': 'Gesendet. Warten auf Admin-Prüfung.',
 
   // Auth / Login
   'auth.loginHint': 'Melde dich mit deinem Bluesky-Handle und App-Passwort an',

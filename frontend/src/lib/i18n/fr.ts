@@ -556,6 +556,11 @@ export default {
   'tags.mergePlaceholder': 'Id d\'un autre tag',
   'tags.mergeHint': 'Fusionner le groupe d\'un autre tag dans celui-ci (alias + traductions réunis). Les membres rejoignent ce groupe ; les représentants par langue de ce groupe-ci l\'emportent.',
   'tags.confirmMerge': 'Fusionner le groupe contenant {0} dans {1} ? Cela combine tous les membres, alias et traductions des deux groupes.',
+  'tags.deleteTitle': 'Demander la suppression',
+  'tags.deleteHint': 'Envoie une demande de suppression. Un admin examine ; si approuvée, le tag est supprimé de manière logicielle (la ligne reste, ne s\'affiche plus).',
+  'tags.deleteReasonPlaceholder': 'Raison (obligatoire)',
+  'tags.requestDelete': 'Envoyer',
+  'tags.deleteSubmitted': 'Envoyé. En attente de l\'examen par l\'admin.',
 
   // Auth / Login
   'auth.loginHint': 'Connectez-vous avec votre identifiant Bluesky et votre mot de passe d\'application',

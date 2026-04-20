@@ -610,6 +610,8 @@ export const setTagGroupRepresentative = (anchorId: string, memberId: string) =>
   put<{ ok: boolean }>(`/tags/${encodeURIComponent(anchorId)}/group/representative`, { member_id: memberId });
 export const mergeTagGroups = (anchorId: string, otherMemberId: string) =>
   post<{ ok: boolean }>(`/tags/${encodeURIComponent(anchorId)}/group/merge`, { member_id: otherMemberId });
+export const requestTagDeletion = (tagId: string, reason: string) =>
+  post<any>(`/tags/${encodeURIComponent(tagId)}/deletion-requests`, { reason });
 export const removeTagGroupMember = (anchorId: string, memberId: string) =>
   del<void>(`/tags/${encodeURIComponent(anchorId)}/group/${encodeURIComponent(memberId)}`);
 

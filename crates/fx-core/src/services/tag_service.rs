@@ -7,7 +7,7 @@ use crate::Result;
 
 pub async fn list_tags(pool: &PgPool, limit: i64) -> Result<Vec<Tag>> {
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tags ORDER BY name LIMIT $1",
+        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tags WHERE removed_at IS NULL ORDER BY name LIMIT $1",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -317,8 +317,10 @@ pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<T
     let tags = sqlx::query_as::<_, Tag>(
         "SELECT t.id, t.name, t.names, t.description, t.created_by, t.created_at, t.group_id, t.lang \
          FROM tags t \
-         WHERE t.id ILIKE $1 OR t.name ILIKE $1 OR t.names::text ILIKE $1 \
-            OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.tag_id = t.id AND a.alias ILIKE $1) \
+         WHERE t.removed_at IS NULL AND ( \
+             t.id ILIKE $1 OR t.name ILIKE $1 OR t.names::text ILIKE $1 \
+             OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.tag_id = t.id AND a.alias ILIKE $1) \
+         ) \
          ORDER BY \
              CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END, \
              t.name \
@@ -517,6 +519,97 @@ pub async fn set_group_representative(
     .bind(&group_id)
     .bind(&lang)
     .bind(member_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+// ── Deletion requests ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct TagDeletionRequest {
+    pub id: String,
+    pub tag_id: String,
+    pub requester_did: String,
+    pub reason: String,
+    pub status: String,
+    pub reviewer_did: Option<String>,
+    pub review_note: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Record a user's request to remove a tag. Admin must later approve
+/// or reject; the tag isn't touched until approval.
+pub async fn request_tag_deletion(
+    pool: &PgPool,
+    tag_id: &str,
+    requester_did: &str,
+    reason: &str,
+) -> Result<TagDeletionRequest> {
+    let row = sqlx::query_as::<_, TagDeletionRequest>(
+        "INSERT INTO tag_deletion_requests (tag_id, requester_did, reason) \
+         VALUES ($1, $2, $3) RETURNING *",
+    )
+    .bind(tag_id)
+    .bind(requester_did)
+    .bind(reason)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn list_pending_tag_deletions(pool: &PgPool) -> Result<Vec<TagDeletionRequest>> {
+    let rows = sqlx::query_as::<_, TagDeletionRequest>(
+        "SELECT * FROM tag_deletion_requests WHERE status = 'pending' ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn approve_tag_deletion(
+    pool: &PgPool,
+    request_id: &str,
+    reviewer_did: &str,
+    note: Option<&str>,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    let tag_id: String = sqlx::query_scalar(
+        "UPDATE tag_deletion_requests \
+         SET status = 'approved', reviewer_did = $2, review_note = $3, reviewed_at = NOW() \
+         WHERE id = $1 AND status = 'pending' RETURNING tag_id",
+    )
+    .bind(request_id)
+    .bind(reviewer_did)
+    .bind(note)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| crate::Error::NotFound { entity: "tag_deletion_request", id: request_id.to_string() })?;
+
+    // Soft delete: flip `removed_at`. Read paths filter this out.
+    sqlx::query("UPDATE tags SET removed_at = NOW() WHERE id = $1")
+        .bind(&tag_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn reject_tag_deletion(
+    pool: &PgPool,
+    request_id: &str,
+    reviewer_did: &str,
+    note: Option<&str>,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE tag_deletion_requests \
+         SET status = 'rejected', reviewer_did = $2, review_note = $3, reviewed_at = NOW() \
+         WHERE id = $1 AND status = 'pending'",
+    )
+    .bind(request_id)
+    .bind(reviewer_did)
+    .bind(note)
     .execute(pool)
     .await?;
     Ok(())

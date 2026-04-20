@@ -556,6 +556,11 @@ export default {
   'tags.mergePlaceholder': '另一个 tag 的 id',
   'tags.mergeHint': '把另一个 tag 所在的组合并到本组（别名/译名归并）。成员全部并入，per-lang 代表以本组优先。',
   'tags.confirmMerge': '把 {0} 所在的组合并进 {1}？这个动作会把两个组的所有成员、别名、翻译合到一起。',
+  'tags.deleteTitle': '请求删除',
+  'tags.deleteHint': '提交删除请求，管理员审核后执行软删除（标签仍保留在 DB 里，但不再显示）。',
+  'tags.deleteReasonPlaceholder': '删除理由（必填）',
+  'tags.requestDelete': '提交请求',
+  'tags.deleteSubmitted': '已提交，等待管理员处理。',
 
   // Auth / Login
   'auth.loginHint': '使用你的 Bluesky handle 和 App Password 登录',

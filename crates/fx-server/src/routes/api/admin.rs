@@ -699,6 +699,42 @@ pub async fn admin_post_answer(
     Ok((StatusCode::CREATED, Json(article)))
 }
 
+// --- Tag deletion review ---
+
+pub async fn admin_list_tag_deletion_requests(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+) -> ApiResult<Json<Vec<tag_service::TagDeletionRequest>>> {
+    let rows = tag_service::list_pending_tag_deletions(&state.pool).await?;
+    Ok(Json(rows))
+}
+
+#[derive(serde::Deserialize)]
+pub struct TagDeletionReviewInput {
+    pub request_id: String,
+    pub note: Option<String>,
+}
+
+pub async fn admin_approve_tag_deletion(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    Json(input): Json<TagDeletionReviewInput>,
+) -> ApiResult<StatusCode> {
+    // AdminAuth doesn't carry a DID; record the system as reviewer for
+    // audit. Admin is authenticated by shared secret.
+    tag_service::approve_tag_deletion(&state.pool, &input.request_id, "admin", input.note.as_deref()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn admin_reject_tag_deletion(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    Json(input): Json<TagDeletionReviewInput>,
+) -> ApiResult<StatusCode> {
+    tag_service::reject_tag_deletion(&state.pool, &input.request_id, "admin", input.note.as_deref()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // --- Revert book edit ---
 
 #[derive(serde::Deserialize)]

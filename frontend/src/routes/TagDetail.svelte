@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative, mergeTagGroups } from '../lib/api';
+  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative, mergeTagGroups, requestTagDeletion } from '../lib/api';
   import { authorName, tagName } from '../lib/display';
   import { t, LOCALES } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
@@ -39,6 +39,9 @@
   let newMemberName = $state('');
   let newMemberLang = $state('zh');
   let mergeTargetId = $state('');
+  let deleteReason = $state('');
+  let deleteSubmitting = $state(false);
+  let deleteSubmitted = $state(false);
 
   function openEdit() {
     if (!tag) return;
@@ -58,6 +61,21 @@
       siblings = g.members ?? g;
       representatives = g.representatives ?? {};
     }).catch(() => {});
+  }
+
+  async function submitDeletionRequest() {
+    const reason = deleteReason.trim();
+    if (!reason) return;
+    deleteSubmitting = true;
+    try {
+      await requestTagDeletion(id, reason);
+      deleteSubmitted = true;
+      deleteReason = '';
+    } catch (err: any) {
+      editError = err.message ?? String(err);
+    } finally {
+      deleteSubmitting = false;
+    }
   }
 
   async function submitMergeGroup() {
@@ -312,6 +330,19 @@
           onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitAddAlias(); } }} />
         <button class="btn" onclick={submitAddAlias}>{t('tags.addAlias')}</button>
       </div>
+
+      <h4 style="margin-top:18px">{t('tags.deleteTitle')}</h4>
+      <p class="hint">{t('tags.deleteHint')}</p>
+      {#if deleteSubmitted}
+        <p class="hint" style="color: var(--accent)">{t('tags.deleteSubmitted')}</p>
+      {:else}
+        <div class="sibling-add">
+          <input class="sm-input" bind:value={deleteReason} placeholder={t('tags.deleteReasonPlaceholder')} style="flex:1" />
+          <button class="btn" style="color:#c00;border-color:#c00" onclick={submitDeletionRequest} disabled={!deleteReason.trim() || deleteSubmitting}>
+            {deleteSubmitting ? t('common.saving') : t('tags.requestDelete')}
+          </button>
+        </div>
+      {/if}
 
       <div class="modal-actions">
         <button class="btn" onclick={() => showEdit = false}>{t('common.close')}</button>
