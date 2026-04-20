@@ -75,8 +75,15 @@ pub async fn delete_skill(pool: &PgPool, did: &str, tag_id: &str) -> crate::Resu
 pub async fn get_user_tag_tree(pool: &PgPool, _did: &str) -> crate::Result<Vec<TagTreeEntry>> {
     // Belongs-to hierarchy is now a single global source of truth. The
     // `did` parameter is retained for API-signature stability.
+    //
+    // Dedupe by concept pair: tag_parents may carry both "Computer Science"
+    // (en) and "计算机科学" (zh) label rows for the same group edge. We
+    // want one row per (parent_group, child_group); the frontend localizes
+    // whichever label we pick.
     let tree = sqlx::query_as::<_, TagTreeEntry>(
-        "SELECT parent_tag, child_tag FROM tag_parents ORDER BY parent_tag, child_tag",
+        "SELECT DISTINCT ON (parent_group, child_group) parent_tag, child_tag \
+         FROM tag_parents \
+         ORDER BY parent_group, child_group, parent_tag",
     )
     .fetch_all(pool)
     .await?;
