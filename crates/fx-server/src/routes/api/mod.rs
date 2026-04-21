@@ -208,6 +208,7 @@ fn article_routes() -> Router<AppState> {
         .route("/articles/all-teaches", get(articles::get_all_article_teaches))
         .route("/articles/all-prereqs", get(articles::get_all_article_prereqs))
         .route("/articles/by-tag", get(articles::get_articles_by_tag))
+        .route("/articles/related-by-tag", get(articles::get_articles_related_by_tag))
         .route("/articles/by-did", get(articles::get_articles_by_did))
         .route("/articles/translations", get(articles::get_translations))
         // Version history

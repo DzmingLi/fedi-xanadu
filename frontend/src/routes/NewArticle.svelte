@@ -46,6 +46,7 @@
   let bookEditions = $state<BookEdition[]>([]);
   let selectedTags = $state<string[]>([]);
   let prereqs = $state<Array<{ tag_id: string; prereq_type: PrereqType }>>([]);
+  let relatedTags = $state<string[]>([]);
   let submitting = $state(false);
   let error = $state('');
   let forkSource = $state('');
@@ -125,6 +126,7 @@
           edition_id: editionId || undefined,
           tags: selectedTags,
           prereqs,
+          related: relatedTags,
         });
         savedArticleUri = article.at_uri;
         lastSavedContent = content;
@@ -356,6 +358,11 @@
     prereqs = prereqs.filter(p => p.tag_id !== tagId);
   }
 
+  function toggleRelated(id: string) {
+    if (relatedTags.includes(id)) relatedTags = relatedTags.filter(t => t !== id);
+    else relatedTags = [...relatedTags, id];
+  }
+
   function getTagName(id: string): string {
     return tags.find(t => t.id === id)?.name ?? id;
   }
@@ -387,6 +394,7 @@
           edition_id: editionId || undefined,
           tags: selectedTags,
           prereqs,
+          related: relatedTags,
         });
         savedArticleUri = article.at_uri;
         lastSavedContent = content;
@@ -433,6 +441,7 @@
         edition_id: editionId || undefined,
         tags: selectedTags,
         prereqs,
+        related: relatedTags,
       });
       savedArticleUri = article.at_uri;
       lastSavedContent = content;
@@ -531,6 +540,7 @@
         license: license || undefined,
         tags: selectedTags,
         prereqs,
+        related: relatedTags,
       };
       if (currentDraftId) {
         await apiUpdateDraft(currentDraftId, data);
@@ -588,6 +598,7 @@
           edition_id: editionId || undefined,
           tags: selectedTags,
           prereqs,
+          related: relatedTags,
         });
 
         for (const lv of extraLangs) {
@@ -605,6 +616,7 @@
               book_id: bookId || undefined,
               tags: selectedTags,
               prereqs,
+              related: relatedTags,
             });
           } catch (e: any) {
             console.warn(`Failed to create ${lv.lang} translation:`, e);
@@ -888,6 +900,23 @@
                   <button class="tag" onclick={() => toggleTag(t.id)}>{t.name}</button>
                 {/each}
               </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>{t('newArticle.relatedLabel')}</summary>
+            <p class="sb-hint">{t('newArticle.relatedHint')}</p>
+            {#if relatedTags.length > 0}
+              <div class="selected-tags">
+                {#each relatedTags as tagId}
+                  <span class="tag lit">{getTagName(tagId)} <button class="tag-remove" onclick={() => toggleRelated(tagId)}>&times;</button></span>
+                {/each}
+              </div>
+            {/if}
+            <div class="tag-picker">
+              {#each tags.filter(t => !relatedTags.includes(t.id)).slice(0, 15) as t}
+                <button class="tag" onclick={() => toggleRelated(t.id)}>{t.name}</button>
+              {/each}
             </div>
           </details>
 

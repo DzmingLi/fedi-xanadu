@@ -1,6 +1,6 @@
 <script lang="ts">
   import {
-    getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes,
+    getTag, getArticlesByTag, getArticlesRelatedByTag, listSkills, lightSkill, unlightSkill, getArticleVotes,
     listTagGroup, addTagName, removeTagName,
     mergeTagGroups, deleteTag, setMyNamePref, clearMyNamePref,
     listTagHistory, type TagAuditEntry,
@@ -19,6 +19,7 @@
 
   let tag = $state<Tag | null>(null);
   let articles = $state<Article[]>([]);
+  let relatedArticles = $state<Article[]>([]);
   let skills = $state<UserSkill[]>([]);
   let voteMap = $state(new Map<string, number>());
   let loading = $state(true);
@@ -222,10 +223,11 @@
 
   $effect(() => {
     loading = true;
-    Promise.all([getTag(id), getArticlesByTag(id), listSkills()]).then(async ([resp, arts, sk]) => {
+    Promise.all([getTag(id), getArticlesByTag(id), getArticlesRelatedByTag(id), listSkills()]).then(async ([resp, arts, rel, sk]) => {
       tag = resp as any;
       document.title = `${resp.name} — NightBoat`;
       articles = arts;
+      relatedArticles = rel;
       skills = sk;
 
       const votes = await Promise.all(arts.map(a => getArticleVotes(a.at_uri).catch(() => ({ score: 0 }) as VoteSummary)));
@@ -270,8 +272,10 @@
     <p class="tag-meta">{articles.length} {t('tags.articles')}</p>
   </div>
 
-  {#if articles.length === 0}
+  {#if articles.length === 0 && relatedArticles.length === 0}
     <p class="meta">{t('tags.empty')}</p>
+  {:else if articles.length === 0}
+    <!-- teaches empty but related non-empty: just show related section below -->
   {:else}
     <div class="columns">
       <div class="column">
@@ -306,6 +310,24 @@
         {/each}
       </div>
     </div>
+  {/if}
+
+  {#if relatedArticles.length > 0}
+    <section class="related-section">
+      <h2>{t('tags.relatedContent')}</h2>
+      <p class="hint">{t('tags.relatedContentHint')}</p>
+      {#each relatedArticles as a}
+        <a href={contentHref(a.at_uri, a.kind, a.question_uri)} class="article-item">
+          <div class="article-info">
+            <span class="article-title">{a.title}</span>
+            {#if a.summary}
+              <span class="article-desc">{a.summary}</span>
+            {/if}
+            <span class="article-meta">{authorName(a)} &middot; {a.created_at.split(' ')[0]}</span>
+          </div>
+        </a>
+      {/each}
+    </section>
   {/if}
 {/if}
 
@@ -440,6 +462,9 @@
 
   .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
   @media (max-width: 700px) { .columns { grid-template-columns: 1fr; } }
+  .related-section { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px dashed var(--border); }
+  .related-section h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1rem; margin: 0 0 0.25rem; }
+  .related-section .hint { color: var(--text-secondary); font-size: 13px; margin: 0 0 0.75rem; }
   .column h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1rem; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; margin-top: 0; }
 
   .article-score { font-size: 14px; font-weight: 600; color: var(--text-hint); min-width: 28px; text-align: center; flex-shrink: 0; }

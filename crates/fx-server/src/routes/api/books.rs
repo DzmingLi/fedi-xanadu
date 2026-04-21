@@ -58,6 +58,11 @@ pub struct BookDetail {
     /// pre-populates from this so saving doesn't re-materialize the
     /// derived topics as explicit rows.
     pub explicit_topics: Vec<String>,
+    /// Tag ids this book touches on (discusses, application domain,
+    /// historical connection) without teaching or requiring them.
+    /// Distinct from topic (field) — e.g. DFW's "Everything and More"
+    /// is related to 微积分 but its topic is 数学.
+    pub related: Vec<String>,
     /// Series this book is part of. Rendered as "属于系列 X · 第 n 册" pills
     /// on the book detail page.
     pub series_badges: Vec<book_series_service::BookSeriesRef>,
@@ -134,6 +139,12 @@ pub async fn get_book(
         derived.into_iter().chain(explicit_topics.iter().cloned())
             .filter(|t| seen.insert(t.clone())).collect()
     };
+    let related: Vec<String> = sqlx::query_scalar(
+        "SELECT tag_id FROM content_related WHERE content_uri = $1 ORDER BY tag_id",
+    )
+    .bind(&content_uri)
+    .fetch_all(&state.pool)
+    .await?;
     let series_badges = book_series_service::list_series_badges_for_book(&state.pool, &id).await?;
     let my_short_review = if let Some(ref u) = user {
         short_review_service::get_my_book_short_review(&state.pool, &u.did, &id).await?
@@ -145,7 +156,7 @@ pub async fn get_book(
     Ok(Json(BookDetail {
         book, linked_authors, editions, chapters, reviews, notes, review_count,
         rating, my_rating, my_reading_status, my_chapter_progress,
-        tags, prereqs, topics, explicit_topics,
+        tags, prereqs, topics, explicit_topics, related,
         series_badges, my_short_review, recent_short_reviews, short_review_count,
     }))
 }
@@ -214,6 +225,10 @@ pub struct UpdateBookInput {
     /// content_topics for this book. Feeds the field filter / topic
     /// closure but NOT skill-mastery inference.
     pub topics: Option<Vec<String>>,
+    /// Tag ids for concepts the book touches but does not teach
+    /// (e.g. a popular-science book about calculus without being a
+    /// textbook). When present, replaces content_related.
+    pub related: Option<Vec<String>>,
     pub edit_summary: Option<String>,
 }
 
@@ -309,6 +324,20 @@ pub async fn update_book(
             fx_core::services::tag_service::require_tag_id(t)?;
             sqlx::query(
                 "INSERT INTO content_topics (content_uri, tag_id) \
+                 VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
+        }
+    }
+    if let Some(ref related) = input.related {
+        let content_uri = format!("book:{}", input.id);
+        sqlx::query("DELETE FROM content_related WHERE content_uri = $1")
+            .bind(&content_uri).execute(&state.pool).await?;
+        for tag_id in related {
+            let t = tag_id.trim();
+            if t.is_empty() { continue; }
+            fx_core::services::tag_service::require_tag_id(t)?;
+            sqlx::query(
+                "INSERT INTO content_related (content_uri, tag_id) \
                  VALUES ($1, $2) ON CONFLICT DO NOTHING",
             ).bind(&content_uri).bind(t).execute(&state.pool).await?;
         }

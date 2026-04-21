@@ -223,6 +223,25 @@ pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str
     Ok(rows)
 }
 
+/// Articles that flag this tag as "related" (mentioned but not taught).
+/// Used on the tag page alongside the teaches list. Unlike
+/// `get_articles_by_tag` this does not walk taxonomy descendants —
+/// related is a specific-concept pointer, so we match only the tag
+/// itself.
+pub async fn get_articles_related_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
+    let rows = sqlx::query_as::<_, Article>(&format!(
+        "{} AND a.at_uri IN (\
+            SELECT cr.content_uri FROM content_related cr WHERE cr.tag_id = $1\
+         ) ORDER BY a.created_at DESC LIMIT $2",
+        visible(mode)
+    ))
+    .bind(tag_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn get_articles_by_did(pool: &PgPool, mode: InstanceMode, did: &str, limit: i64) -> crate::Result<Vec<Article>> {
     let rows = sqlx::query_as::<_, Article>(&format!(
         "{} AND a.kind = 'article' AND a.did = $1 ORDER BY a.created_at DESC LIMIT $2", visible(mode)
@@ -332,6 +351,18 @@ pub async fn get_article_prereqs(pool: &PgPool, uri: &str, _locale: &str) -> cra
          FROM content_prereqs cp \
          WHERE cp.content_uri = $1 \
          ORDER BY cp.prereq_type, cp.tag_id",
+    )
+    .bind(uri)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// Concepts this article touches without teaching (see content_related).
+/// Returns just tag_ids; the frontend localizes via tagStore.
+pub async fn get_article_related(pool: &PgPool, uri: &str) -> crate::Result<Vec<String>> {
+    let rows = sqlx::query_scalar::<_, String>(
+        "SELECT tag_id FROM content_related WHERE content_uri = $1 ORDER BY tag_id",
     )
     .bind(uri)
     .fetch_all(pool)
@@ -496,6 +527,16 @@ pub async fn create_article(
              VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
         .bind(at_uri).bind(&tag_id).bind(prereq.prereq_type.as_str())
+        .execute(&mut *tx).await?;
+    }
+
+    for input_ref in &input.related {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, did).await?;
+        sqlx::query(
+            "INSERT INTO content_related (content_uri, tag_id) \
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(at_uri).bind(&tag_id)
         .execute(&mut *tx).await?;
     }
 

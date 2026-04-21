@@ -1353,6 +1353,8 @@ pub struct ArticleFullResponse {
     article: Article,
     content: ArticleContent,
     prereqs: Vec<ArticlePrereqRow>,
+    /// Tag ids this article mentions without teaching (content_related).
+    related: Vec<String>,
     forks: Vec<ForkWithTitle>,
     fork_source: Option<fx_core::services::article_service::ForkSourceInfo>,
     votes: ArticleVoteSummary,
@@ -1385,9 +1387,10 @@ pub async fn get_article_full(
     let locale = q.locale.as_deref().unwrap_or("en").to_string();
 
     let mode = state.instance_mode;
-    let (article, prereqs, forks, vote_summary, series_ctx, translations) = tokio::try_join!(
+    let (article, prereqs, related, forks, vote_summary, series_ctx, translations) = tokio::try_join!(
         article_service::get_article(&state.pool, mode, &uri),
         article_service::get_article_prereqs(&state.pool, &uri, &locale),
+        article_service::get_article_related(&state.pool, &uri),
         article_service::get_article_forks(&state.pool, &uri),
         vote_service::get_vote_summary(&state.pool, &uri),
         series_service::get_series_context(&state.pool, &uri),
@@ -1437,6 +1440,7 @@ pub async fn get_article_full(
         article,
         content,
         prereqs,
+        related,
         forks,
         fork_source,
         votes: ArticleVoteSummary {
@@ -1495,6 +1499,18 @@ pub async fn get_articles_by_tag(
         return Ok(Json(vec![]));
     };
     let articles = article_service::get_articles_by_tag(&state.pool, state.instance_mode, &tag_id, limit).await?;
+    Ok(Json(articles))
+}
+
+pub async fn get_articles_related_by_tag(
+    State(state): State<AppState>,
+    Query(q): Query<TagArticlesQuery>,
+) -> ApiResult<Json<Vec<Article>>> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 100);
+    let Some(tag_id) = fx_core::services::tag_service::lookup_tag_id(&state.pool, &q.tag_id).await? else {
+        return Ok(Json(vec![]));
+    };
+    let articles = article_service::get_articles_related_by_tag(&state.pool, state.instance_mode, &tag_id, limit).await?;
     Ok(Json(articles))
 }
 
@@ -2338,6 +2354,20 @@ pub(super) async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_pa
                         "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
                          VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
                     ).bind(article_uri).bind(&tag_id).bind(p.kind()).execute(&mut *conn).await;
+                }
+            }
+        }
+    }
+    if !fm.related.is_empty() {
+        let _ = sqlx::query("DELETE FROM content_related WHERE content_uri = $1")
+            .bind(article_uri).execute(&state.pool).await;
+        for input_ref in &fm.related {
+            if let Ok(mut conn) = state.pool.acquire().await {
+                if let Ok(tag_id) = fx_core::services::tag_service::resolve_tag_id(&mut conn, input_ref, &creator_did).await {
+                    let _ = sqlx::query(
+                        "INSERT INTO content_related (content_uri, tag_id) \
+                         VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                    ).bind(article_uri).bind(&tag_id).execute(&mut *conn).await;
                 }
             }
         }

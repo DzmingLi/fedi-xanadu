@@ -355,6 +355,10 @@ export interface BookDetail {
    * editor pre-populates from this so saving doesn't re-materialize
    * derived topics as explicit entries. */
   explicit_topics: string[];
+  /** Tag ids the book touches without teaching (content_related).
+   * Distinct from topic — the book is ABOUT calculus but not a calculus
+   * textbook, so `related` covers the concept while `topic` stays broad. */
+  related: string[];
 }
 
 export interface SeriesArticle {

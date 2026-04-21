@@ -121,6 +121,11 @@ pub struct Frontmatter {
     pub teaches: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prereqs: Vec<PrereqEntry>,
+    /// Concepts the article touches without teaching — application
+    /// domains, historical context, tangential references. Feeds the
+    /// tag page's "related" list but not skill inference.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<String>,
 }
 
 /// Rewrite a markdown source so its frontmatter `cover` field matches `cover`.

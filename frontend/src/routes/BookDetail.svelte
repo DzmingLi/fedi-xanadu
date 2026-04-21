@@ -256,6 +256,9 @@
   let editBookPrereqSuggestions = $state<{id:string,name:string}[]>([]);
   let editBookTopicInput = $state('');
   let editBookTopicSuggestions = $state<{id:string,name:string}[]>([]);
+  let editBookRelated = $state<string[]>([]);
+  let editBookRelatedInput = $state('');
+  let editBookRelatedSuggestions = $state<{id:string,name:string}[]>([]);
 
   let editBookTagTimeout: ReturnType<typeof setTimeout>;
   $effect(() => {
@@ -283,7 +286,7 @@
    * page to mint the concept with a proper parent first. Editor
    * state only ever contains tag_ids.
    */
-  async function appendTagId(slot: 'teaches' | 'prereqs' | 'topics', input: string) {
+  async function appendTagId(slot: 'teaches' | 'prereqs' | 'topics' | 'related', input: string) {
     const s = input.trim();
     if (!s) return;
     let tagId: string;
@@ -307,9 +310,12 @@
         editBookPrereqs = [...editBookPrereqs, { tag_id: tagId, prereq_type: 'required' }];
       }
       editBookPrereqInput = ''; editBookPrereqSuggestions = [];
-    } else {
+    } else if (slot === 'topics') {
       if (!editBookTopics.includes(tagId)) editBookTopics = [...editBookTopics, tagId];
       editBookTopicInput = ''; editBookTopicSuggestions = [];
+    } else {
+      if (!editBookRelated.includes(tagId)) editBookRelated = [...editBookRelated, tagId];
+      editBookRelatedInput = ''; editBookRelatedSuggestions = [];
     }
   }
   function removeBookTag(tagId: string) {
@@ -337,6 +343,19 @@
   });
   function removeBookTopic(tagId: string) {
     editBookTopics = editBookTopics.filter(t => t !== tagId);
+  }
+
+  let editBookRelatedTimeout: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    clearTimeout(editBookRelatedTimeout);
+    const q = editBookRelatedInput.trim();
+    if (!q) { editBookRelatedSuggestions = []; return; }
+    editBookRelatedTimeout = setTimeout(async () => {
+      editBookRelatedSuggestions = await searchTags(q).catch(() => []);
+    }, 150);
+  });
+  function removeBookRelated(tagId: string) {
+    editBookRelated = editBookRelated.filter(t => t !== tagId);
   }
 
   // Edition edit modal state
@@ -458,9 +477,11 @@
     // only manages the explicit ones — derived topics auto-appear
     // from teach-tag ancestors and shouldn't be persisted as rows.
     editBookTopics = [...detail.explicit_topics];
+    editBookRelated = [...(detail.related ?? [])];
     editBookTagInput = '';
     editBookPrereqInput = '';
     editBookTopicInput = '';
+    editBookRelatedInput = '';
     showEdit = true;
   }
 
@@ -485,6 +506,7 @@
         tags: editBookTeaches,
         prereqs: editBookPrereqs,
         topics: editBookTopics,
+        related: editBookRelated,
         edit_summary: editSummary.trim() || undefined,
       });
       showEdit = false;
@@ -716,6 +738,14 @@
                    class="tag-badge prereq {prereq.prereq_type === 'recommended' ? 'recommended' : ''}"
                    title={prereq.prereq_type === 'required' ? t('books.prereqRequired') : t('books.prereqRecommended')}
                 >{localTag(prereq.tag_id)}</a>
+              {/each}
+            </div>
+          {/if}
+          {#if detail.related && detail.related.length > 0}
+            <div class="book-tag-row">
+              <span class="book-tag-row-label" title={t('books.relatedTooltip')}>{t('books.relatedRowLabel')}</span>
+              {#each detail.related as tag}
+                <a href="/tag?id={encodeURIComponent(tag)}" class="tag-badge related">{localTag(tag)}</a>
               {/each}
             </div>
           {/if}
@@ -1508,6 +1538,26 @@
               <ul class="tag-suggestions">
                 {#each editBookTopicSuggestions as s}
                   <li><button type="button" onclick={() => appendTagId('topics', s.tag_id)}>{s.name || s.id}</button></li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>{t('books.relatedLabel')}</label>
+          <div class="form-hint">{t('books.relatedHint')}</div>
+          <div class="tag-chip-row">
+            {#each editBookRelated as tag}
+              <span class="tag-chip related">{localTag(tag)} <button type="button" onclick={() => removeBookRelated(tag)}>×</button></span>
+            {/each}
+          </div>
+          <div class="tag-input-wrap">
+            <input class="tag-input" bind:value={editBookRelatedInput} placeholder={t('books.relatedPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookRelatedInput.trim()) { e.preventDefault(); appendTagId('related', editBookRelatedInput); } }} />
+            {#if editBookRelatedSuggestions.length > 0}
+              <ul class="tag-suggestions">
+                {#each editBookRelatedSuggestions as s}
+                  <li><button type="button" onclick={() => appendTagId('related', s.tag_id)}>{s.name || s.id}</button></li>
                 {/each}
               </ul>
             {/if}

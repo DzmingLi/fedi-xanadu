@@ -319,6 +319,7 @@ mod tests {
             invites: vec![],
             tags: vec!["rust".into()],
             prereqs: vec![],
+            related: vec![],
             series_id: None,
         };
         assert!(validate_create_article(&input).is_ok());
@@ -342,6 +343,7 @@ mod tests {
             invites: vec![],
             tags: vec!["".into()],
             prereqs: vec![],
+            related: vec![],
             series_id: None,
         };
         match validate_create_article(&input) {

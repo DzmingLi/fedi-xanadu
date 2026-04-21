@@ -105,6 +105,10 @@ pub struct CreateArticle {
     pub category: Option<String>,
     pub tags: Vec<String>,
     pub prereqs: Vec<ArticlePrereq>,
+    /// Tag ids for concepts the article touches but does not teach.
+    /// Mirrors `teaches` but carries no skill-mastery weight.
+    #[serde(default)]
+    pub related: Vec<String>,
     /// If set, the article belongs to this series and its source is stored in the series repo.
     pub series_id: Option<String>,
     /// Co-author DIDs (the creator is always included automatically).
