@@ -932,6 +932,8 @@ export default {
   'course.supplementary': 'Ergänzende Lektüre',
   'course.resources': 'Ressourcen',
   'course.source': 'Quelle',
+  'course.addTagPlaceholder': 'Tag hinzufügen (Name oder tag-id)',
+  'course.removeTag': 'Diesen Tag entfernen',
   'course.license': 'Lizenz',
   'course.language': 'Sprache',
   'course.myRating': 'Meine Bewertung',

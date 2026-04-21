@@ -932,6 +932,8 @@ export default {
   'course.supplementary': '补充阅读',
   'course.resources': '补充资源',
   'course.source': '来源',
+  'course.addTagPlaceholder': '给课程加标签（名字或 tag-id）',
+  'course.removeTag': '移除此标签',
   'course.license': '许可证',
   'course.language': '语言',
   'course.myRating': '我的评分',

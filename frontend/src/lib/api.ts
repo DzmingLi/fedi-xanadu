@@ -952,6 +952,10 @@ export const removeCourseSeries = (id: string, series_id: string) =>
   del<void>(`/courses/${encodeURIComponent(id)}/series?series_id=${encodeURIComponent(series_id)}`);
 export const addCourseSkillTree = (id: string, tree_uri: string, role?: string) =>
   post<void>(`/courses/${encodeURIComponent(id)}/skill-trees`, { tree_uri, role });
+export const addCourseTag = (id: string, tag_id: string) =>
+  post<void>(`/courses/${encodeURIComponent(id)}/tags`, { tag_id });
+export const removeCourseTag = (id: string, tag_id: string) =>
+  del<void>(`/courses/${encodeURIComponent(id)}/tags?tag_id=${encodeURIComponent(tag_id)}`);
 export const listCourseReviews = (id: string, limit = 30, offset = 0) =>
   get<import('./types').PagedCourseReviews>(`/courses/${encodeURIComponent(id)}/reviews?limit=${limit}&offset=${offset}`);
 export const listCourseNotes = (id: string, limit = 30, offset = 0) =>

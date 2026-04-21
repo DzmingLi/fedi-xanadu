@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { getCourseDetail, rateCourse, unrateCourse, setCourseLearningStatus, removeCourseLearningStatus, setSessionProgress, createCourseSession, updateCourseSession, deleteCourseSession } from '../lib/api';
+  import { getCourseDetail, rateCourse, unrateCourse, setCourseLearningStatus, removeCourseLearningStatus, setSessionProgress, createCourseSession, updateCourseSession, deleteCourseSession, addCourseTag, removeCourseTag, lookupTag, searchTags } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
+  import { tagStore } from '../lib/tagStore.svelte';
+  $effect(() => { tagStore.ensure(); });
 
   /** Resolve a localized field (Record<string, string>) to the current locale with fallback. */
   function loc(field: Record<string, string> | null | undefined): string {
@@ -28,6 +30,54 @@
   let learningStatus = $state('');
   let learningProgress = $state(0);
   let sessionDone = $state(new Map<string, boolean>());
+
+  // Course-level tag editor state
+  let tagInput = $state('');
+  let tagSuggestions = $state<{ tag_id: string; name: string; id: string }[]>([]);
+  let tagSaving = $state(false);
+  let tagError = $state('');
+  let tagSuggestTimer: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    clearTimeout(tagSuggestTimer);
+    const q = tagInput.trim();
+    if (!q || q.startsWith('tg-')) { tagSuggestions = []; return; }
+    tagSuggestTimer = setTimeout(async () => {
+      try { tagSuggestions = (await searchTags(q)) as any; } catch { tagSuggestions = []; }
+    }, 150);
+  });
+
+  async function asTagId(input: string): Promise<string | null> {
+    const s = input.trim();
+    if (!s) return null;
+    if (s.startsWith('tg-')) return s;
+    try { return (await lookupTag(s)).tag_id; }
+    catch { tagError = t('books.tagNotFound').replace('{name}', s); return null; }
+  }
+
+  async function submitAddTag(fromSuggestion?: string) {
+    if (!detail) return;
+    tagError = '';
+    const id = fromSuggestion ?? await asTagId(tagInput);
+    if (!id) return;
+    if (detail.tags.some(t => t.tag_id === id)) { tagInput = ''; tagSuggestions = []; return; }
+    tagSaving = true;
+    try {
+      await addCourseTag(detail.course.id, id);
+      // Refresh so tag_name comes back from server
+      detail = await getCourseDetail(detail.course.id);
+      tagInput = '';
+      tagSuggestions = [];
+    } catch (e: any) { tagError = e.message ?? String(e); }
+    finally { tagSaving = false; }
+  }
+
+  async function submitRemoveTag(tagId: string) {
+    if (!detail) return;
+    try {
+      await removeCourseTag(detail.course.id, tagId);
+      detail = await getCourseDetail(detail.course.id);
+    } catch (e: any) { tagError = e.message ?? String(e); }
+  }
 
   $effect(() => {
     if (!id) return;
@@ -225,13 +275,38 @@
         {#if c.description}
           <p class="course-desc">{c.description}</p>
         {/if}
-        {#if detail.tags.length > 0}
-          <div class="course-tags">
-            {#each detail.tags as tag}
-              <a href="/tag?id={encodeURIComponent(tag.tag_id)}" class="course-tag">{tag.tag_name}</a>
-            {/each}
-          </div>
-        {/if}
+        <div class="course-tags">
+          {#each detail.tags as tag}
+            <span class="course-tag">
+              <a href="/tag?id={encodeURIComponent(tag.tag_id)}">{tag.tag_name}</a>
+              {#if isOwner}
+                <button class="tag-rm" title={t('course.removeTag')} onclick={() => submitRemoveTag(tag.tag_id)}>×</button>
+              {/if}
+            </span>
+          {/each}
+          {#if isOwner}
+            <div class="course-tag-add">
+              <input
+                class="tag-add-input"
+                bind:value={tagInput}
+                placeholder={t('course.addTagPlaceholder')}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitAddTag(); } }}
+                disabled={tagSaving}
+              />
+              <button class="tag-add-btn" onclick={() => submitAddTag()} disabled={tagSaving || !tagInput.trim()}>
+                {tagSaving ? t('common.saving') : t('common.add')}
+              </button>
+              {#if tagSuggestions.length > 0}
+                <div class="tag-suggest-list">
+                  {#each tagSuggestions.slice(0, 8) as s}
+                    <button type="button" onclick={() => submitAddTag(s.tag_id)}>{s.name}</button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+        {#if tagError}<p class="tag-error">{tagError}</p>{/if}
         {#if c.source_url}
           <a href={c.source_url} target="_blank" rel="noopener" class="source-link">
             {t('course.source')}: {c.source_url}
@@ -661,9 +736,20 @@
   .course-authors a { color: var(--text-primary); text-decoration: none; }
   .course-authors a:hover { color: var(--accent); }
   .course-desc { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin: 12px 0; }
-  .course-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
-  .course-tag { font-size: 12px; padding: 3px 10px; border-radius: 3px; background: rgba(95,155,101,0.1); color: var(--accent); text-decoration: none; transition: background 0.15s; }
-  .course-tag:hover { background: rgba(95,155,101,0.2); text-decoration: none; }
+  .course-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; align-items: center; }
+  .course-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; padding: 3px 10px; border-radius: 3px; background: rgba(95,155,101,0.1); color: var(--accent); transition: background 0.15s; }
+  .course-tag a { color: inherit; text-decoration: none; }
+  .course-tag:hover { background: rgba(95,155,101,0.2); }
+  .tag-rm { background: none; border: none; cursor: pointer; color: var(--accent); font-size: 14px; line-height: 1; padding: 0 2px; opacity: 0.6; }
+  .tag-rm:hover { opacity: 1; color: #c00; }
+  .course-tag-add { position: relative; display: inline-flex; gap: 4px; }
+  .tag-add-input { padding: 2px 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-white); color: var(--text-primary); min-width: 140px; }
+  .tag-add-btn { padding: 2px 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-white); color: var(--text-primary); cursor: pointer; }
+  .tag-add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .tag-suggest-list { position: absolute; top: 100%; left: 0; background: var(--bg-white); border: 1px solid var(--border); border-radius: 3px; z-index: 10; min-width: 160px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+  .tag-suggest-list button { display: block; width: 100%; text-align: left; padding: 4px 10px; border: none; background: none; color: var(--text-primary); font-size: 13px; cursor: pointer; }
+  .tag-suggest-list button:hover { background: var(--bg-hover); }
+  .tag-error { font-size: 12px; color: #c00; margin: 4px 0; }
   .source-link { font-size: 12px; color: var(--text-hint); text-decoration: none; word-break: break-all; }
   .source-link:hover { color: var(--accent); }
   .attribution { font-size: 12px; color: var(--text-hint); font-style: italic; margin: 4px 0; }

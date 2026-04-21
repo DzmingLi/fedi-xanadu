@@ -1,0 +1,1 @@
+import{bW as b,bX as c,bY as o,bZ as i,b_ as d}from"./index-C9mSo4qT.js";function u(e,n,f){b(()=>{var r=c(()=>n(e,f==null?void 0:f())||{});if(f&&(r!=null&&r.update)){var a=!1,t={};o(()=>{var s=f();i(s),a&&d(t,s)&&(t=s,r.update(s))}),a=!0}if(r!=null&&r.destroy)return()=>r.destroy()})}export{u as a};

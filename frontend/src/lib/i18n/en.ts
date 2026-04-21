@@ -932,6 +932,8 @@ export default {
   'course.supplementary': 'Supplementary',
   'course.resources': 'Resources',
   'course.source': 'Source',
+  'course.addTagPlaceholder': 'Add a tag (name or tag-id)',
+  'course.removeTag': 'Remove this tag',
   'course.license': 'License',
   'course.language': 'Language',
   'course.myRating': 'My rating',
