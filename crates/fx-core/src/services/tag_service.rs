@@ -16,14 +16,41 @@ pub async fn list_tags(pool: &PgPool, limit: i64) -> Result<Vec<Tag>> {
     Ok(tags)
 }
 
+/// Resolve a tag by either a label id ("Abstract Algebra") or a
+/// concept tag_id ("tg-…"). For concept ids, pick the representative
+/// label in `lang` → en → any sibling.
 pub async fn get_tag(pool: &PgPool, id: &str) -> Result<Tag> {
-    sqlx::query_as::<_, Tag>(
-        "SELECT id, name, tag_label_map(tag_id) AS names, description, created_by, created_at, tag_id, lang FROM tag_labels WHERE id = $1",
+    get_tag_with_lang(pool, id, "en").await
+}
+
+pub async fn get_tag_with_lang(pool: &PgPool, id: &str, preferred_lang: &str) -> Result<Tag> {
+    // Fast path: `id` is a label id.
+    if let Some(tag) = sqlx::query_as::<_, Tag>(
+        "SELECT id, name, tag_label_map(tag_id) AS names, description, created_by, created_at, tag_id, lang \
+         FROM tag_labels WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?
-    .ok_or_else(|| crate::Error::NotFound {
+    {
+        return Ok(tag);
+    }
+    // Slow path: treat `id` as a concept tag_id, resolve to best sibling label.
+    if let Some(tag) = sqlx::query_as::<_, Tag>(
+        "SELECT id, name, tag_label_map(tag_id) AS names, description, created_by, created_at, tag_id, lang \
+         FROM tag_labels \
+         WHERE tag_id = $1 \
+         ORDER BY (lang = $2) DESC, (lang = 'en') DESC, id \
+         LIMIT 1",
+    )
+    .bind(id)
+    .bind(preferred_lang)
+    .fetch_optional(pool)
+    .await?
+    {
+        return Ok(tag);
+    }
+    Err(crate::Error::NotFound {
         entity: "tag",
         id: id.to_string(),
     })
