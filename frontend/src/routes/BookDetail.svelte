@@ -421,10 +421,16 @@
     editAuthorsInput = (detail.linked_authors.length > 0
       ? detail.linked_authors.map(a => a.name)
       : detail.book.authors).join(', ');
-    editBookTeaches = [...detail.tags];
-    editBookPrereqs = [...detail.prereqs];
+    // Edges are stored as concept tag_ids; the save endpoint expects
+    // label ids. Convert to label ids in the current locale so the
+    // chips are readable AND the save round-trip preserves the concept
+    // linkage instead of fabricating new labels.
+    editBookTeaches = detail.tags.map(c => tagStore.conceptToLabelId(c));
+    editBookPrereqs = detail.prereqs.map(c => tagStore.conceptToLabelId(c));
+    editBookTopics = detail.topics.map(c => tagStore.conceptToLabelId(c));
     editBookTagInput = '';
     editBookPrereqInput = '';
+    editBookTopicInput = '';
     showEdit = true;
   }
 
@@ -448,6 +454,7 @@
         authors,
         tags: editBookTeaches,
         prereqs: editBookPrereqs,
+        topics: editBookTopics,
         edit_summary: editSummary.trim() || undefined,
       });
       showEdit = false;
@@ -1439,7 +1446,7 @@
           <label>{t('books.tagsLabel')}</label>
           <div class="tag-chip-row">
             {#each editBookTeaches as tag}
-              <span class="tag-chip">{tag} <button type="button" onclick={() => removeBookTag(tag)}>×</button></span>
+              <span class="tag-chip">{localTag(tag)} <button type="button" onclick={() => removeBookTag(tag)}>×</button></span>
             {/each}
           </div>
           <div class="tag-input-wrap">
@@ -1455,10 +1462,30 @@
         </div>
 
         <div class="form-group">
+          <label>{t('books.topicsLabel')}</label>
+          <div class="form-hint">{t('books.topicsHint')}</div>
+          <div class="tag-chip-row">
+            {#each editBookTopics as tag}
+              <span class="tag-chip topic">{localTag(tag)} <button type="button" onclick={() => removeBookTopic(tag)}>×</button></span>
+            {/each}
+          </div>
+          <div class="tag-input-wrap">
+            <input class="tag-input" bind:value={editBookTopicInput} placeholder={t('books.topicsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookTopicInput.trim()) { e.preventDefault(); addBookTopic(editBookTopicInput.trim()); } }} />
+            {#if editBookTopicSuggestions.length > 0}
+              <ul class="tag-suggestions">
+                {#each editBookTopicSuggestions as s}
+                  <li><button type="button" onclick={() => addBookTopic(s.id)}>{s.name || s.id}</button></li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        </div>
+
+        <div class="form-group">
           <label>{t('books.prereqsLabel')}</label>
           <div class="tag-chip-row">
             {#each editBookPrereqs as tag}
-              <span class="tag-chip prereq">{tag} <button type="button" onclick={() => removeBookPrereq(tag)}>×</button></span>
+              <span class="tag-chip prereq">{localTag(tag)} <button type="button" onclick={() => removeBookPrereq(tag)}>×</button></span>
             {/each}
           </div>
           <div class="tag-input-wrap">
@@ -2261,6 +2288,8 @@
     font-size: 12px; color: var(--text-primary);
   }
   .tag-chip.prereq { border-color: var(--warn, #d97706); color: var(--warn, #d97706); }
+  .tag-chip.topic  { border-color: var(--accent, #6b7280); color: var(--accent, #6b7280); }
+  .form-hint { font-size: 12px; color: var(--text-muted, #888); margin-bottom: 6px; }
   .tag-chip button {
     background: none; border: none; cursor: pointer; color: inherit;
     font-size: 14px; padding: 0; line-height: 1;

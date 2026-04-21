@@ -550,7 +550,7 @@ export const getBook = (id: string) =>
   get<BookDetail>(`/books/${encodeURIComponent(id)}`);
 export const createBook = (data: { title: Record<string, string>; authors: string[]; description?: Record<string, string>; tags: string[]; prereqs?: string[] }) =>
   post<Book>('/books', data);
-export const updateBook = (id: string, data: { title?: Record<string, string>; subtitle?: Record<string, string>; description?: Record<string, string>; abbreviation?: string; authors?: string[]; tags?: string[]; prereqs?: string[]; edit_summary?: string }) =>
+export const updateBook = (id: string, data: { title?: Record<string, string>; subtitle?: Record<string, string>; description?: Record<string, string>; abbreviation?: string; authors?: string[]; tags?: string[]; prereqs?: string[]; topics?: string[]; edit_summary?: string }) =>
   put<Book>(`/books/${encodeURIComponent(id)}`, data);
 export const addBookEdition = (book_id: string, edition: { edition_name?: string; title: string; subtitle?: string; lang: string; isbn?: string; publisher?: string; year?: string; translators?: string[]; purchase_links?: { label: string; url: string }[]; cover_url?: string; status?: string }) =>
   post<BookEdition>(`/books/${encodeURIComponent(book_id)}/editions`, edition);
