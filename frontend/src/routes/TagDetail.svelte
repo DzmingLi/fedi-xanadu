@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative, mergeTagGroups, requestTagDeletion } from '../lib/api';
+  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative, mergeTagGroups, requestTagDeletion } from '../lib/api';
   import { authorName, tagName } from '../lib/display';
   import { tagStore } from '../lib/tagStore.svelte';
   $effect(() => { tagStore.ensure(); });
@@ -27,8 +27,6 @@
 
   // Edit state
   let showEdit = $state(false);
-  let editNames = $state<Record<string, string>>({});
-  let editSaving = $state(false);
   let editError = $state('');
 
   // Group siblings — all tags in the same alias/translation group.
@@ -46,11 +44,6 @@
 
   function openEdit() {
     if (!tag) return;
-    editNames = { ...tag.names };
-    for (const loc of LOCALES) {
-      if (!(loc.code in editNames)) editNames[loc.code] = '';
-    }
-    if (!editNames.en?.trim()) editNames.en = tag.id;
     newMemberId = '';
     newMemberName = '';
     newMemberLang = 'zh';
@@ -124,20 +117,6 @@
       siblings = await listTagGroup(id);
     } catch (err: any) {
       editError = err.message ?? String(err);
-    }
-  }
-
-  async function saveNames() {
-    editSaving = true;
-    editError = '';
-    try {
-      const cleaned = Object.fromEntries(Object.entries(editNames).filter(([_, v]) => v.trim()));
-      const updated = await updateTagNames(id, cleaned);
-      tag = updated;
-    } catch (err: any) {
-      editError = err.message ?? String(err);
-    } finally {
-      editSaving = false;
     }
   }
 
@@ -292,17 +271,6 @@
         <button class="btn" onclick={submitMergeGroup} disabled={!mergeTargetId.trim()}>{t('tags.mergeGroup')}</button>
       </div>
       <p class="hint">{t('tags.mergeHint')}</p>
-
-      <h4 style="margin-top:18px">{t('tags.translationsLabel')}</h4>
-      {#each [...LOCALES].sort((a, b) => (a.code === 'en' ? -1 : b.code === 'en' ? 1 : 0)) as loc (loc.code)}
-        <label class="inline-label">
-          {loc.label}{#if loc.code === 'en'} <span class="primary-marker">· {t('tags.primaryLocale')}</span>{/if}
-        </label>
-        <input bind:value={editNames[loc.code]} placeholder={loc.code === 'en' ? 'English name' : ''} />
-      {/each}
-      <button class="btn btn-primary" onclick={saveNames} disabled={editSaving}>
-        {editSaving ? t('common.saving') : t('common.save')}
-      </button>
 
       <h4 style="margin-top:18px">{t('tags.deleteTitle')}</h4>
       {#if pendingDeletion}

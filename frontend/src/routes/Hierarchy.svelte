@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import {
     listTagParents, addTagParent, removeTagParent, listTags, searchTags, createTagInline,
-    updateTagNames, requestTagDeletion,
+    requestTagDeletion,
   } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, LOCALES, getLocale } from '../lib/i18n/index.svelte';
@@ -259,16 +259,6 @@
       <button class="btn-ghost" onclick={() => (editingTag = null)}>{t('common.close')}</button>
     </div>
     {#if editError}<p class="error-msg">{editError}</p>{/if}
-    <div class="te-section">
-      <div class="te-label">{t('tags.translationsLabel')}</div>
-      {#each LOCALES as loc}
-        <label class="inline-label">{loc.label}</label>
-        <input bind:value={editNames[loc.code]} placeholder={loc.code === 'en' ? 'English name' : ''} />
-      {/each}
-      <button class="btn btn-primary" onclick={saveEditNames} disabled={editSaving}>
-        {editSaving ? t('common.saving') : t('common.save')}
-      </button>
-    </div>
     <div class="te-section">
       <a class="btn" href="/tag?id={encodeURIComponent(id)}">{t('hierarchy.openTagPage')} →</a>
     </div>
