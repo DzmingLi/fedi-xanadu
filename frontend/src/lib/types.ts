@@ -10,9 +10,9 @@ export interface Tag {
   description: string | null;
   created_by: string;
   created_at: string;
-  /** Alias/translation group this tag belongs to. Same group_id means
-   * same concept; siblings differ in language or spelling. */
-  group_id: string;
+  /** The tag (concept) this label belongs to. Labels in the same `tag_id`
+   * refer to the same concept; they may differ in language or spelling. */
+  tag_id: string;
   /** Language code (ISO) of this specific label. */
   lang: string;
 }

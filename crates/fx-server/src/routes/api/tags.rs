@@ -201,44 +201,6 @@ pub async fn update_tag_names(
     Ok(Json(tag))
 }
 
-// Aliases — global, any logged-in user can add/remove.
-
-#[derive(serde::Deserialize)]
-pub struct AliasInput {
-    pub alias: String,
-}
-
-pub async fn list_aliases(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<Json<Vec<String>>> {
-    let aliases = tag_service::list_aliases(&state.pool, &id).await?;
-    Ok(Json(aliases))
-}
-
-pub async fn add_alias(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    crate::auth::Auth(_user): crate::auth::Auth,
-    Json(input): Json<AliasInput>,
-) -> ApiResult<Json<serde_json::Value>> {
-    tag_service::add_alias(&state.pool, input.alias.trim(), &id).await?;
-    Ok(Json(serde_json::json!({ "ok": true })))
-}
-
-pub async fn remove_alias(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    crate::auth::Auth(_user): crate::auth::Auth,
-    Json(input): Json<AliasInput>,
-) -> ApiResult<Json<serde_json::Value>> {
-    // id is accepted in the path for RESTful symmetry but the alias is the
-    // unique key — tag_id association lives alongside it.
-    let _ = id;
-    tag_service::remove_alias(&state.pool, input.alias.trim()).await?;
-    Ok(Json(serde_json::json!({ "ok": true })))
-}
-
 // --- Set content teaches ---
 
 #[derive(serde::Deserialize)]

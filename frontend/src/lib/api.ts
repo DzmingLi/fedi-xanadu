@@ -523,11 +523,6 @@ export const searchArticles = (q: string, limit = 20) =>
 export const searchTags = (q: string) => get<Tag[]>(`/tags/search?q=${encodeURIComponent(q)}`);
 export const updateTagNames = (id: string, names: Record<string, string>) =>
   put<Tag>(`/tags/${encodeURIComponent(id)}/names`, { names });
-export const listTagAliases = (id: string) => get<string[]>(`/tags/${encodeURIComponent(id)}/aliases`);
-export const addTagAlias = (id: string, alias: string) =>
-  post<{ ok: true }>(`/tags/${encodeURIComponent(id)}/aliases`, { alias });
-export const removeTagAlias = (id: string, alias: string) =>
-  del<{ ok: true }>(`/tags/${encodeURIComponent(id)}/aliases`, { alias });
 export const listTagParents = () => get<{ parent_tag: string; child_tag: string }[]>('/tag-parents');
 export const addTagParent = (parent_tag: string, child_tag: string) =>
   post<{ ok: true }>('/tag-parents', { parent_tag, child_tag });

@@ -158,10 +158,6 @@ fn tag_routes() -> Router<AppState> {
         .route("/tags", get(tags::list_tags).post(tags::create_tag))
         .route("/tags/{id}", get(tags::get_tag))
         .route("/tags/{id}/names", put(tags::update_tag_names))
-        .route("/tags/{id}/aliases",
-            get(tags::list_aliases)
-            .post(tags::add_alias)
-            .delete(tags::remove_alias))
         .route("/tags/{id}/group",
             get(tags::list_group_siblings)
             .post(tags::add_group_member))

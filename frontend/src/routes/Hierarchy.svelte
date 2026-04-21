@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import {
     listTagParents, addTagParent, removeTagParent, listTags, searchTags, createTagInline,
-    updateTagNames, listTagAliases, addTagAlias, removeTagAlias, requestTagDeletion,
+    updateTagNames, requestTagDeletion,
   } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, LOCALES, getLocale } from '../lib/i18n/index.svelte';
@@ -21,9 +21,9 @@
   function buildGroupCanon(tags: Tag[], locale: string): Map<string, string> {
     const byGroup = new Map<string, Tag[]>();
     for (const t of tags) {
-      const arr = byGroup.get(t.group_id) ?? [];
+      const arr = byGroup.get(t.tag_id) ?? [];
       arr.push(t);
-      byGroup.set(t.group_id, arr);
+      byGroup.set(t.tag_id, arr);
     }
     const canon = new Map<string, string>();
     for (const members of byGroup.values()) {
@@ -47,8 +47,6 @@
   // Inline tag editor state (one tag open at a time)
   let editingTag = $state<string | null>(null);
   let editNames = $state<Record<string, string>>({});
-  let editAliases = $state<string[]>([]);
-  let newAlias = $state('');
   let editSaving = $state(false);
   let editError = $state('');
   let deleteReason = $state('');
@@ -80,7 +78,6 @@
     if (editingTag === id) { editingTag = null; return; }
     editingTag = id;
     editError = '';
-    newAlias = '';
     deleteReason = '';
     deleteSubmitted = false;
     const tg = tagById.get(id);
@@ -90,10 +87,6 @@
     }
     if (!names.en?.trim()) names.en = id;
     editNames = names;
-    editAliases = [];
-    try {
-      editAliases = await listTagAliases(id);
-    } catch {}
   }
 
   async function saveEditNames() {
@@ -110,29 +103,6 @@
       editError = err.message ?? String(err);
     } finally {
       editSaving = false;
-    }
-  }
-
-  async function submitAddAlias() {
-    if (!editingTag) return;
-    const a = newAlias.trim();
-    if (!a) return;
-    try {
-      await addTagAlias(editingTag, a);
-      newAlias = '';
-      editAliases = await listTagAliases(editingTag);
-    } catch (err: any) {
-      editError = err.message ?? String(err);
-    }
-  }
-
-  async function removeAliasEntry(alias: string) {
-    if (!editingTag) return;
-    try {
-      await removeTagAlias(editingTag, alias);
-      editAliases = await listTagAliases(editingTag);
-    } catch (err: any) {
-      editError = err.message ?? String(err);
     }
   }
 
@@ -265,16 +235,16 @@
     const parentedGroups = new Set<string>();
     for (const e of edges) {
       const childTag = tagById.get(e.child_tag);
-      if (childTag) parentedGroups.add(childTag.group_id);
+      if (childTag) parentedGroups.add(childTag.tag_id);
     }
     const seen = new Set<string>();
     const out: string[] = [];
     for (const tg of tags) {
-      if (parentedGroups.has(tg.group_id)) continue;
-      if (seen.has(tg.group_id)) continue;
+      if (parentedGroups.has(tg.tag_id)) continue;
+      if (seen.has(tg.tag_id)) continue;
       const canonId = groupCanon.get(tg.id) ?? tg.id;
       if (canonId === tg.id) {
-        seen.add(tg.group_id);
+        seen.add(tg.tag_id);
         out.push(tg.id);
       }
     }

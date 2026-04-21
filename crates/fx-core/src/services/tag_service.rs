@@ -325,7 +325,6 @@ pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<T
          WHERE t.removed_at IS NULL AND ( \
              t.id ILIKE $1 OR t.name ILIKE $1 \
              OR EXISTS (SELECT 1 FROM tag_labels sib WHERE sib.tag_id = t.tag_id AND sib.name ILIKE $1) \
-             OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.label_id = t.id AND a.alias ILIKE $1) \
          ) \
          ORDER BY \
              CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END, \
@@ -368,27 +367,6 @@ pub async fn get_tag_names_i18n(
     Ok(rows.into_iter().map(|r| (r.id, r.names.0)).collect())
 }
 
-// ── Aliases ────────────────────────────────────────────────────────────
-
-pub async fn add_alias(pool: &PgPool, alias: &str, label_id: &str) -> crate::Result<()> {
-    sqlx::query("INSERT INTO tag_aliases (alias, label_id) VALUES ($1, $2) ON CONFLICT (alias) DO UPDATE SET label_id = $2")
-        .bind(alias).bind(label_id)
-        .execute(pool).await?;
-    Ok(())
-}
-
-pub async fn remove_alias(pool: &PgPool, alias: &str) -> crate::Result<()> {
-    sqlx::query("DELETE FROM tag_aliases WHERE alias = $1")
-        .bind(alias).execute(pool).await?;
-    Ok(())
-}
-
-pub async fn list_aliases(pool: &PgPool, label_id: &str) -> crate::Result<Vec<String>> {
-    let rows: Vec<(String,)> = sqlx::query_as("SELECT alias FROM tag_aliases WHERE label_id = $1 ORDER BY alias")
-        .bind(label_id).fetch_all(pool).await?;
-    Ok(rows.into_iter().map(|r| r.0).collect())
-}
-
 /// Derive the set of "topic" tags for a content — the transitive closure
 /// of parents (in the global `tag_parents` hierarchy) of the content's
 /// teach tags. Result excludes the teach tags themselves.
@@ -417,18 +395,19 @@ pub async fn derive_topics(pool: &PgPool, content_uri: &str) -> Result<Vec<Strin
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
-/// Resolve a label id or alias to a canonical label id.
-pub async fn resolve_tag(pool: &PgPool, id_or_alias: &str) -> crate::Result<String> {
-    // First check if it's a direct label id
+/// Confirm a label id exists. Aliases are just labels now, so resolution
+/// is a straight lookup — kept for call sites that want the NotFound
+/// error semantics.
+pub async fn resolve_tag(pool: &PgPool, label_id: &str) -> crate::Result<String> {
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tag_labels WHERE id = $1)")
-        .bind(id_or_alias).fetch_one(pool).await?;
+        .bind(label_id)
+        .fetch_one(pool)
+        .await?;
     if exists {
-        return Ok(id_or_alias.to_string());
+        Ok(label_id.to_string())
+    } else {
+        Err(crate::Error::NotFound { entity: "tag", id: label_id.to_string() })
     }
-    // Then check aliases
-    let canonical: Option<String> = sqlx::query_scalar("SELECT label_id FROM tag_aliases WHERE alias = $1")
-        .bind(id_or_alias).fetch_optional(pool).await?;
-    canonical.ok_or_else(|| crate::Error::NotFound { entity: "tag", id: id_or_alias.to_string() })
 }
 
 // ── Alias / translation groups ────────────────────────────────────────

@@ -185,8 +185,21 @@ ALTER TABLE user_tag_prereqs ADD PRIMARY KEY (did, from_tag, to_tag, prereq_type
 -- tag_labels: the label's own concept FK.
 ALTER TABLE tag_labels RENAME COLUMN group_id TO tag_id;
 
--- tag_aliases: aliases are per-label.
-ALTER TABLE tag_aliases RENAME COLUMN tag_id TO label_id;
+-- tag_aliases merges into tag_labels: each alias becomes another label
+-- row in the same tag. Existing aliases inherit lang from their anchor
+-- label (English default for whatever reason). Rows whose anchor is
+-- already gone are skipped.
+INSERT INTO tag_labels (id, name, lang, tag_id, created_by)
+SELECT a.alias,
+       a.alias,
+       COALESCE(anchor.lang, 'en'),
+       anchor.tag_id,
+       anchor.created_by
+FROM tag_aliases a
+JOIN tag_labels anchor ON anchor.id = a.tag_id
+WHERE NOT EXISTS (SELECT 1 FROM tag_labels e WHERE e.id = a.alias);
+
+DROP TABLE tag_aliases;
 
 -- tag_representatives (tag_id, lang, label_id)
 ALTER TABLE tag_representatives DROP CONSTRAINT tag_group_representatives_pkey;

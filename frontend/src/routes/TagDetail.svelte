@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagAliases, addTagAlias, removeTagAlias, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative, mergeTagGroups, requestTagDeletion } from '../lib/api';
+  import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, updateTagNames, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative, mergeTagGroups, requestTagDeletion } from '../lib/api';
   import { authorName, tagName } from '../lib/display';
   import { tagStore } from '../lib/tagStore.svelte';
   $effect(() => { tagStore.ensure(); });
@@ -20,7 +20,7 @@
   let isLit = $derived(
     skills.some(s =>
       s.tag_id === id ||
-      (tag && s.group_id != null && s.group_id === tag.group_id)
+      (tag && s.tag_id != null && s.tag_id === tag.tag_id)
     )
   );
   let isLoggedIn = $derived(!!getAuth());
@@ -28,8 +28,6 @@
   // Edit state
   let showEdit = $state(false);
   let editNames = $state<Record<string, string>>({});
-  let aliases = $state<string[]>([]);
-  let newAlias = $state('');
   let editSaving = $state(false);
   let editError = $state('');
 
@@ -53,13 +51,11 @@
       if (!(loc.code in editNames)) editNames[loc.code] = '';
     }
     if (!editNames.en?.trim()) editNames.en = tag.id;
-    newAlias = '';
     newMemberId = '';
     newMemberName = '';
     newMemberLang = 'zh';
     editError = '';
     showEdit = true;
-    listTagAliases(id).then(a => aliases = a).catch(() => {});
     listTagGroup(id).then((g: any) => {
       siblings = g.members ?? g;
       representatives = g.representatives ?? {};
@@ -142,27 +138,6 @@
       editError = err.message ?? String(err);
     } finally {
       editSaving = false;
-    }
-  }
-
-  async function submitAddAlias() {
-    const a = newAlias.trim();
-    if (!a) return;
-    try {
-      await addTagAlias(id, a);
-      newAlias = '';
-      aliases = await listTagAliases(id);
-    } catch (err: any) {
-      editError = err.message ?? String(err);
-    }
-  }
-
-  async function removeAlias(alias: string) {
-    try {
-      await removeTagAlias(id, alias);
-      aliases = await listTagAliases(id);
-    } catch (err: any) {
-      editError = err.message ?? String(err);
     }
   }
 
@@ -328,18 +303,6 @@
       <button class="btn btn-primary" onclick={saveNames} disabled={editSaving}>
         {editSaving ? t('common.saving') : t('common.save')}
       </button>
-
-      <h4 style="margin-top:18px">{t('tags.aliasesLabel')}</h4>
-      <div class="alias-chips">
-        {#each aliases as a}
-          <span class="alias-chip">{a} <button onclick={() => removeAlias(a)}>×</button></span>
-        {/each}
-      </div>
-      <div class="alias-add">
-        <input bind:value={newAlias} placeholder={t('tags.aliasPlaceholder')}
-          onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitAddAlias(); } }} />
-        <button class="btn" onclick={submitAddAlias}>{t('tags.addAlias')}</button>
-      </div>
 
       <h4 style="margin-top:18px">{t('tags.deleteTitle')}</h4>
       {#if pendingDeletion}

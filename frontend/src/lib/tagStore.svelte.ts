@@ -3,10 +3,10 @@ import { getLocale } from './i18n/index.svelte';
 import type { Tag } from './types';
 
 /**
- * Singleton-ish tag lookup used to render tag chips in the user's UI
- * locale. Every Tag row is its own identifier (no `name` / `names`
- * JSONB); localization happens by looking up the same group's sibling
- * in the target locale.
+ * Singleton-ish label lookup used to render tag chips in the user's UI
+ * locale. Each `Tag` row here is one *label* (per-language display);
+ * labels sharing the same `tag_id` name the same concept. Localization
+ * picks the sibling whose `lang` matches the UI locale.
  *
  * Usage from a component:
  *   import { tagStore } from '../lib/tagStore.svelte';
@@ -15,25 +15,25 @@ import type { Tag } from './types';
  */
 class TagStore {
   #byId = $state(new Map<string, Tag>());
-  #byGroup = $state(new Map<string, Map<string, string>>()); // group → lang → tag_id
+  #byTag = $state(new Map<string, Map<string, string>>()); // tag_id → lang → label_id
   #loaded = $state(false);
   #loading = $state(false);
 
-  /** Fetch the tag list once (no-op if already loaded/loading). */
+  /** Fetch the label list once (no-op if already loaded/loading). */
   async ensure(limit = 500): Promise<void> {
     if (this.#loaded || this.#loading) return;
     this.#loading = true;
     try {
       const tags = await listTags(limit);
       const byId = new Map<string, Tag>();
-      const byGroup = new Map<string, Map<string, string>>();
+      const byTag = new Map<string, Map<string, string>>();
       for (const t of tags) {
         byId.set(t.id, t);
-        if (t.group_id) {
-          let g = byGroup.get(t.group_id);
+        if (t.tag_id) {
+          let g = byTag.get(t.tag_id);
           if (!g) {
             g = new Map();
-            byGroup.set(t.group_id, g);
+            byTag.set(t.tag_id, g);
           }
           // First writer wins per lang — listTags is sorted by name, so
           // this is arbitrary; representative-aware lookup would require
@@ -42,32 +42,32 @@ class TagStore {
         }
       }
       this.#byId = byId;
-      this.#byGroup = byGroup;
+      this.#byTag = byTag;
       this.#loaded = true;
     } finally {
       this.#loading = false;
     }
   }
 
-  /** Force a re-fetch — call after creating/renaming a tag. */
+  /** Force a re-fetch — call after creating/renaming a label. */
   async refresh(limit = 500): Promise<void> {
     this.#loaded = false;
     await this.ensure(limit);
   }
 
   /**
-   * Return the display string for a tag id in the current UI locale.
+   * Return the display string for a label id in the current UI locale.
    * Resolution: find sibling matching UI locale → sibling in en →
-   * the tag's own id (which already IS the display for its lang).
+   * the label's own id (which already IS the display for its lang).
    */
   localize(id: string): string {
     const locale = getLocale();
     const tag = this.#byId.get(id);
     if (!tag) return id;
     if (tag.lang === locale) return tag.id;
-    const group = this.#byGroup.get(tag.group_id);
-    if (group) {
-      const match = group.get(locale) ?? group.get('en');
+    const siblings = this.#byTag.get(tag.tag_id);
+    if (siblings) {
+      const match = siblings.get(locale) ?? siblings.get('en');
       if (match) return match;
     }
     return tag.id;
