@@ -163,18 +163,73 @@ pub async fn get_tag_names(
     Ok(map)
 }
 
-/// Update the i18n names for a tag.
+/// Update the i18n names for a tag by materializing each per-language
+/// entry as a sibling tag_labels row in the same group (and refreshing
+/// the legacy `names` jsonb cache on every row in the group so existing
+/// bulk-read paths stay consistent until they migrate off it).
 pub async fn update_tag_names(
     pool: &PgPool,
     tag_id: &str,
     names: &HashMap<String, String>,
 ) -> Result<Tag> {
-    let names_json = serde_json::to_value(names).unwrap_or_default();
-    sqlx::query("UPDATE tag_labels SET names = $1 WHERE id = $2")
-        .bind(&names_json)
-        .bind(tag_id)
-        .execute(pool)
+    let origin = get_tag(pool, tag_id).await?;
+    let mut tx = pool.begin().await?;
+
+    for (lang, name) in names.iter() {
+        let name = name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        if lang == &origin.lang {
+            // Rename the origin row's display name in place; keep its id.
+            sqlx::query("UPDATE tag_labels SET name = $1 WHERE id = $2")
+                .bind(name)
+                .bind(tag_id)
+                .execute(&mut *tx)
+                .await?;
+            continue;
+        }
+        let sibling_id: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM tag_labels WHERE group_id = $1 AND lang = $2 LIMIT 1",
+        )
+        .bind(&origin.group_id)
+        .bind(lang)
+        .fetch_optional(&mut *tx)
         .await?;
+        if let Some(sid) = sibling_id {
+            sqlx::query("UPDATE tag_labels SET name = $1 WHERE id = $2")
+                .bind(name)
+                .bind(&sid)
+                .execute(&mut *tx)
+                .await?;
+        } else {
+            sqlx::query(
+                "INSERT INTO tag_labels (id, name, lang, group_id, created_by, names) \
+                 VALUES ($1, $1, $2, $3, $4, jsonb_build_object($2::text, $1::text)) \
+                 ON CONFLICT (id) DO NOTHING",
+            )
+            .bind(name)
+            .bind(lang)
+            .bind(&origin.group_id)
+            .bind(&origin.created_by)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
+    // Rebuild the jsonb cache from current sibling state so every row in
+    // the group advertises the same translation map.
+    sqlx::query(
+        "UPDATE tag_labels SET names = sub.map FROM ( \
+             SELECT jsonb_object_agg(lang, name) AS map \
+             FROM tag_labels WHERE group_id = $1 \
+         ) sub WHERE group_id = $1",
+    )
+    .bind(&origin.group_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
     get_tag(pool, tag_id).await
 }
 
