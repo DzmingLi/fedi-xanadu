@@ -267,7 +267,7 @@
           {#if parentSuggest.length > 0}
             <div class="suggest-list">
               {#each parentSuggest.slice(0, 8) as s}
-                <button type="button" onclick={() => { newParent = s.tag_id; parentSuggest = []; }}>{s.name}</button>
+                <button type="button" onclick={() => { newParent = s.name; parentSuggest = []; }}>{s.name}</button>
               {/each}
             </div>
           {/if}
@@ -279,7 +279,7 @@
           {#if childSuggest.length > 0}
             <div class="suggest-list">
               {#each childSuggest.slice(0, 8) as s}
-                <button type="button" onclick={() => { newChild = s.tag_id; childSuggest = []; }}>{s.name}</button>
+                <button type="button" onclick={() => { newChild = s.name; childSuggest = []; }}>{s.name}</button>
               {/each}
             </div>
           {/if}

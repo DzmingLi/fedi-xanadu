@@ -232,6 +232,7 @@ export default {
   'newArticle.formatLabel': 'Format',
   'newArticle.descLabel': 'Zusammenfassung',
   'newArticle.descPlaceholder': 'Eine Zeile zum Inhalt',
+  'newArticle.loadFailed': 'Artikel konnte nicht geladen werden: {err}. Seite neu laden oder Login prüfen.',
   'newArticle.contentLabel': 'Inhalt',
   'newArticle.tagsLabel': 'Tags (zum Auswählen anklicken)',
   'newArticle.prereqsLabel': 'Voraussetzungen',

@@ -232,6 +232,7 @@ export default {
   'newArticle.formatLabel': 'Format',
   'newArticle.descLabel': 'Résumé',
   'newArticle.descPlaceholder': 'Résumé en une phrase de ce dont il s\'agit',
+  'newArticle.loadFailed': 'Échec du chargement de l\'article : {err}. Rafraîchissez la page ou vérifiez votre connexion.',
   'newArticle.contentLabel': 'Contenu',
   'newArticle.tagsLabel': 'Tags (cliquer pour sélectionner)',
   'newArticle.prereqsLabel': 'Prérequis',

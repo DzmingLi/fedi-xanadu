@@ -232,6 +232,7 @@ export default {
   'newArticle.formatLabel': '格式',
   'newArticle.descLabel': '简介 / 摘要',
   'newArticle.descPlaceholder': '一句话说明这篇内容讲什么',
+  'newArticle.loadFailed': '加载文章失败：{err}。刷新页面重试，或检查登录状态。',
   'newArticle.contentLabel': '正文',
   'newArticle.tagsLabel': '标签（点击选择）',
   'newArticle.prereqsLabel': '前置知识',

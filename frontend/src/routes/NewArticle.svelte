@@ -302,6 +302,9 @@
         contentFormat = a.content_format;
         lang = a.lang || 'zh';
         license = a.license || 'CC-BY-SA-4.0';
+      }).catch(err => {
+        console.error('Failed to load article for edit:', err);
+        error = t('newArticle.loadFailed').replace('{err}', err?.message ?? String(err));
       });
       loadHistory();
       // Load channels for collaboration

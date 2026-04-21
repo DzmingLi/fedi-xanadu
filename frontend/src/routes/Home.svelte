@@ -134,11 +134,16 @@
     articles.filter(a => !seriesArticleUris.has(a.at_uri))
   );
 
-  function buildFeed(arts: Article[]): FeedItem[] {
+  /**
+   * Build a mixed feed of standalone articles + series cards.
+   * `categoryTags`: if provided, only series whose member articles
+   * teach a concept in the set are included. Undefined = no filter
+   * (the "全部" tab).
+   */
+  function buildFeed(arts: Article[], categoryTags?: Set<string>): FeedItem[] {
     const items: FeedItem[] = [];
-    const artUriSet = new Set(arts.map(a => a.at_uri));
 
-    // Add standalone articles (not in any series)
+    // Add standalone articles (not in any series).
     for (const a of arts) {
       if (!seriesArticleUris.has(a.at_uri)) {
         items.push({
@@ -149,11 +154,21 @@
       }
     }
 
-    // Add series cards — always show all series, sorted by creation date
+    // Add series cards. When a category tab is active, a series only
+    // qualifies if at least one of its member articles teaches a
+    // concept inside that category's descendant set.
     const dedupedSeries = deduplicateSeriesByTranslation(allSeries, locale);
     for (const s of dedupedSeries) {
       const allMemberUris = seriesArticleMap.get(s.id) || [];
       if (allMemberUris.length === 0) continue;
+
+      if (categoryTags) {
+        const anyInCategory = allMemberUris.some(uri => {
+          const tags = articleTeaches.get(uri) || [];
+          return tags.some(t => categoryTags.has(t.tag_id));
+        });
+        if (!anyInCategory) continue;
+      }
 
       const seriesAge = Math.max(1, (Date.now() - new Date(s.created_at).getTime()) / (1000 * 60 * 60));
       const sortKey = 1 / Math.pow(seriesAge, 0.5);
@@ -172,11 +187,13 @@
   // Filtered feed items for current tab
   let filteredFeed = $derived.by(() => {
     let candidateArticles: Article[];
+    let categoryTags: Set<string> | undefined;
     if (activeTab === 'all') {
       candidateArticles = [...articles]; // Already sorted by recommendation engine
     } else {
       const desc = categoryDescendants.get(activeTab);
       if (!desc) return [];
+      categoryTags = desc;
       candidateArticles = articles.filter(a => {
         const tags = articleTeaches.get(a.at_uri) || [];
         return tags.some(t => desc.has(t.tag_id));
@@ -184,7 +201,7 @@
     }
     // Deduplicate translations: show only the locale-preferred version
     candidateArticles = deduplicateByTranslation(candidateArticles, locale);
-    return buildFeed(candidateArticles);
+    return buildFeed(candidateArticles, categoryTags);
   });
 
   // Tabs to show: selected interests

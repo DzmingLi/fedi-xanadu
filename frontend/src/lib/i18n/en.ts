@@ -232,6 +232,7 @@ export default {
   'newArticle.formatLabel': 'Format',
   'newArticle.descLabel': 'Summary',
   'newArticle.descPlaceholder': 'One-line summary of what this is about',
+  'newArticle.loadFailed': 'Failed to load article: {err}. Refresh the page or check your login.',
   'newArticle.contentLabel': 'Content',
   'newArticle.tagsLabel': 'Tags (click to select)',
   'newArticle.prereqsLabel': 'Prerequisites',
