@@ -32,11 +32,13 @@
     error = '';
 
     const idx = versions.indexOf(v);
-    if (idx <= 0) return; // first version has no previous to diff against
+    // First version has no predecessor — use from=0 (empty baseline)
+    // so its dialog shows the initial content as additions.
+    const fromId = idx <= 0 ? 0 : versions[idx - 1].id;
 
     loadingDiff = true;
     try {
-      diff = await getArticleDiff(uri, versions[idx - 1].id, v.id);
+      diff = await getArticleDiff(uri, fromId, v.id);
     } catch (e: any) {
       error = e.message;
     } finally {

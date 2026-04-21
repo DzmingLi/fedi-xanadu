@@ -700,8 +700,11 @@
             onFetchDiff={async (v) => {
               const idx = versionHistory.findIndex(h => h.id === v.id);
               const prev = idx + 1 < versionHistory.length ? versionHistory[idx + 1] : null;
-              if (!prev) return [];
-              const diff = await getArticleDiff(savedArticleUri, prev.id, v.id);
+              // from=0 is an "empty baseline" on the backend — used for
+              // the first version so its dialog shows all content as
+              // additions instead of an empty diff.
+              const fromId = prev ? prev.id : 0;
+              const diff = await getArticleDiff(savedArticleUri, fromId, v.id);
               return diff.hunks.flatMap(h => h.lines.map(l => ({
                 type: l.kind === 'add' ? 'add' as const : l.kind === 'remove' ? 'del' as const : 'same' as const,
                 text: l.content,

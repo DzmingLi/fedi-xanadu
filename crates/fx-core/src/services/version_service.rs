@@ -134,10 +134,17 @@ pub async fn diff_versions(
     from_id: i32,
     to_id: i32,
 ) -> crate::Result<VersionDiff> {
-    let from = get_version(pool, article_uri, from_id).await?;
+    // from_id = 0 is the "empty baseline" — used by the UI to show the
+    // initial version as all-additions (otherwise the first history
+    // entry shows an empty diff, which looks broken).
+    let from_text = if from_id == 0 {
+        String::new()
+    } else {
+        get_version(pool, article_uri, from_id).await?.source_text
+    };
     let to = get_version(pool, article_uri, to_id).await?;
 
-    let hunks = compute_diff(&from.source_text, &to.source_text);
+    let hunks = compute_diff(&from_text, &to.source_text);
 
     Ok(VersionDiff {
         from_version: from_id,
