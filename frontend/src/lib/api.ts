@@ -392,7 +392,10 @@ export const removeSkillTreePrereq = (tree_uri: string, from_tag: string, to_tag
   del<void>('/skill-trees/prereqs/remove', { tree_uri, from_tag, to_tag });
 export const adoptSkillTree = (tree_uri: string) => post<void>('/skill-trees/adopt', { tree_uri });
 export const getActiveTree = () => get<SkillTreeDetail | null>('/skill-trees/active');
-export const createTagInline = (id: string, name: string) => post<Tag>('/tags', { id, name });
+/** Create a new concept. `name` is the initial display string; the
+ * server mints a tag_id and a `tag_names` row. `lang` is autodetected
+ * from the name (CJK → zh, else en) unless provided. */
+export const createTagInline = (name: string) => post<Tag>('/tags', { name });
 
 // Follows
 export interface FollowedUser {

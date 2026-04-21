@@ -1,26 +1,29 @@
 <script lang="ts">
-  import { listSkills, listTags, getAllArticlePrereqs, getAllArticleTeaches, getRecommendedQuestions } from '../lib/api';
-  import { tagName as resolveTagName, authorName } from '../lib/display';
+  import { listSkills, getAllArticlePrereqs, getAllArticleTeaches, getRecommendedQuestions } from '../lib/api';
+  import { authorName } from '../lib/display';
+  import { tagStore } from '../lib/tagStore.svelte';
   import { t } from '../lib/i18n/index.svelte';
-  import type { Article, UserSkill, Tag, ContentPrereqBulkRow, ContentTeachRow } from '../lib/types';
+  import type { Article, UserSkill, ContentPrereqBulkRow, ContentTeachRow } from '../lib/types';
 
   let skills = $state<UserSkill[]>([]);
-  let tags = $state<Tag[]>([]);
   let allPrereqs = $state<ContentPrereqBulkRow[]>([]);
   let allArticleTeaches = $state<ContentTeachRow[]>([]);
   let loading = $state(true);
   let questions = $state<Article[]>([]);
   let questionsLoading = $state(true);
 
-  // Tags the user can explore: tags that appear on articles whose required prereqs are all satisfied
+  $effect(() => { tagStore.ensure(); });
+
+  // Tags the user can explore: concepts that appear on articles whose
+  // required prereqs are all satisfied by the viewer's lit skills.
+  // Displayed via tagStore.localize so names follow UI locale + user
+  // pref, not the raw tag_id.
   let explorableTags = $derived.by(() => {
     if (loading) return [];
 
     const litTagIds = new Set(skills.map(s => s.tag_id));
-    const tagMap = new Map(tags.map(t => [t.id, t]));
-    const tagNameMap = new Map(tags.map(t => [t.id, resolveTagName(t.names, t.name, t.id)]));
 
-    // Group prereqs by article
+    // Group prereqs by article.
     const articlePrereqMap = new Map<string, ContentPrereqBulkRow[]>();
     for (const p of allPrereqs) {
       const arr = articlePrereqMap.get(p.content_uri) || [];
@@ -28,20 +31,18 @@
       articlePrereqMap.set(p.content_uri, arr);
     }
 
-    // Find articles where all required prereqs are satisfied
+    // Articles whose required prereqs the viewer has met.
     const reachableArticles = new Set<string>();
-    // Get all unique article URIs (including those with no prereqs)
     const allArticleUris = new Set(allArticleTeaches.map(t => t.content_uri));
     for (const uri of allArticleUris) {
       const prereqs = articlePrereqMap.get(uri) || [];
       const requiredPrereqs = prereqs.filter(p => p.prereq_type === 'required');
       const allMet = requiredPrereqs.every(p => litTagIds.has(p.tag_id));
-      if (allMet) {
-        reachableArticles.add(uri);
-      }
+      if (allMet) reachableArticles.add(uri);
     }
 
-    // Collect tags from reachable articles, excluding already-lit tags
+    // Count concepts taught by reachable articles, excluding the
+    // viewer's already-lit skills.
     const tagCounts = new Map<string, number>();
     for (const t of allArticleTeaches) {
       if (reachableArticles.has(t.content_uri) && !litTagIds.has(t.tag_id)) {
@@ -49,18 +50,16 @@
       }
     }
 
-    // Sort by article count descending
     return Array.from(tagCounts.entries())
-      .map(([id, count]) => ({ id, name: tagNameMap.get(id) || id, count }))
+      .map(([tag_id, count]) => ({ tag_id, name: tagStore.localize(tag_id), count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 15);
   });
 
   $effect(() => {
-    Promise.all([listSkills(), listTags(), getAllArticlePrereqs(), getAllArticleTeaches()])
-      .then(([sk, tg, pr, at]) => {
+    Promise.all([listSkills(), getAllArticlePrereqs(), getAllArticleTeaches()])
+      .then(([sk, pr, at]) => {
         skills = sk;
-        tags = tg;
         allPrereqs = pr;
         allArticleTeaches = at;
         loading = false;
@@ -109,7 +108,7 @@
     {:else}
       <div class="explore-tags">
         {#each explorableTags as t}
-          <a href="/tag?id={encodeURIComponent(t.id)}" class="explore-tag">
+          <a href="/tag?id={encodeURIComponent(t.tag_id)}" class="explore-tag">
             <span class="explore-tag-name">{t.name}</span>
             <span class="explore-tag-count">{t.count}</span>
           </a>

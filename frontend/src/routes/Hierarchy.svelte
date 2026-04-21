@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
-    listTagParents, addTagParent, removeTagParent, listTags, searchTags, createTagInline,
+    listTagParents, addTagParent, removeTagParent, listTags, searchTags, createTagInline, resolveTag,
     requestTagDeletion,
   } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
@@ -156,15 +156,25 @@
     load();
   });
 
+  /** Input may be a tag_id (from autocomplete) or a typed name. Normalize
+   * to tag_id via /api/tags/resolve — names are created on the fly. */
+  async function asTagId(input: string): Promise<string> {
+    if (input.startsWith('tg-')) return input;
+    const { tag_id } = await resolveTag(input);
+    return tag_id;
+  }
+
   async function submitAdd() {
     const p = newParent.trim();
     const c = newChild.trim();
     if (!p || !c) { error = t('hierarchy.bothRequired'); return; }
-    if (p === c) { error = t('hierarchy.sameTag'); return; }
     submitting = true;
     error = '';
     try {
-      await addTagParent(p, c);
+      const parentId = await asTagId(p);
+      const childId = await asTagId(c);
+      if (parentId === childId) { error = t('hierarchy.sameTag'); return; }
+      await addTagParent(parentId, childId);
       newParent = '';
       newChild = '';
       parentSuggest = [];
@@ -178,13 +188,12 @@
   }
 
   async function submitCreateTag() {
-    const id = newTagId.trim();
-    const name = newTagName.trim() || id;
-    if (!id) return;
+    const name = newTagName.trim() || newTagId.trim();
+    if (!name) return;
     creatingTag = true;
     error = '';
     try {
-      await createTagInline(id, name);
+      await createTagInline(name);
       newTagId = '';
       newTagName = '';
       await load();
@@ -299,7 +308,7 @@
           {#if parentSuggest.length > 0}
             <div class="suggest-list">
               {#each parentSuggest.slice(0, 8) as s}
-                <button type="button" onclick={() => { newParent = s.id; parentSuggest = []; }}>{s.name}</button>
+                <button type="button" onclick={() => { newParent = s.tag_id; parentSuggest = []; }}>{s.name}</button>
               {/each}
             </div>
           {/if}
@@ -311,7 +320,7 @@
           {#if childSuggest.length > 0}
             <div class="suggest-list">
               {#each childSuggest.slice(0, 8) as s}
-                <button type="button" onclick={() => { newChild = s.id; childSuggest = []; }}>{s.name}</button>
+                <button type="button" onclick={() => { newChild = s.tag_id; childSuggest = []; }}>{s.name}</button>
               {/each}
             </div>
           {/if}
@@ -324,10 +333,6 @@
     <section class="add-form">
       <h2>{t('hierarchy.addRoot')}</h2>
       <div class="form-row">
-        <div class="field">
-          <label>{t('hierarchy.tagId')}</label>
-          <input bind:value={newTagId} placeholder={t('hierarchy.tagIdPlaceholder')} />
-        </div>
         <div class="field">
           <label>{t('hierarchy.tagName')}</label>
           <input bind:value={newTagName} placeholder={t('hierarchy.tagNamePlaceholder')} />
