@@ -279,19 +279,18 @@ async fn resolve_profile(pool: &PgPool, did: &str, raw_query: &str) -> Option<Pa
 }
 
 async fn resolve_tag(pool: &PgPool, id: &str, raw_query: &str) -> Option<PageMeta> {
-    let row: (String, Option<String>) = sqlx::query_as(
-        "SELECT name, description FROM tag_labels WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .ok()??;
-
-    let (name, description) = row;
-
+    // `id` may be a tag_id (`tg-…`) or a name_id (`tn-…`) — resolve to
+    // a concept and fetch its canonical display name.
+    let tag_id = fx_core::services::tag_service::lookup_tag_id(pool, id).await.ok().flatten()?;
+    let name: String = sqlx::query_scalar("SELECT tag_canonical_label($1)")
+        .bind(&tag_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()?;
     Some(PageMeta {
-        title: name,
-        description: description.unwrap_or_else(|| format!("Articles tagged with {}", id)),
+        title: name.clone(),
+        description: format!("Articles tagged with {name}"),
         og_type: "website",
         author: None,
         published_time: None,

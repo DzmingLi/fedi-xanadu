@@ -278,24 +278,24 @@ pub async fn get_course_detail(pool: &PgPool, id: &str, viewer_did: Option<&str>
     let mut sessions = Vec::with_capacity(session_rows.len());
     for row in session_rows {
         let tags = sqlx::query_as::<_, CourseTagRow>(
-            "SELECT cst.tag_id, t.name AS tag_name \
-             FROM course_session_tags cst JOIN tag_labels t ON t.id = cst.tag_id \
-             WHERE cst.session_id = $1 ORDER BY t.name",
+            "SELECT cst.tag_id, tag_canonical_label(cst.tag_id) AS tag_name \
+             FROM course_session_tags cst \
+             WHERE cst.session_id = $1 ORDER BY tag_name",
         ).bind(&row.id).fetch_all(pool).await?;
 
         let prereqs = sqlx::query_as::<_, CourseTagRow>(
-            "SELECT csp.tag_id, t.name AS tag_name \
-             FROM course_session_prereqs csp JOIN tag_labels t ON t.id = csp.tag_id \
-             WHERE csp.session_id = $1 ORDER BY t.name",
+            "SELECT csp.tag_id, tag_canonical_label(csp.tag_id) AS tag_name \
+             FROM course_session_prereqs csp \
+             WHERE csp.session_id = $1 ORDER BY tag_name",
         ).bind(&row.id).fetch_all(pool).await?;
 
         sessions.push(CourseSessionDetail { session: row, tags, prereqs });
     }
 
     let tags = sqlx::query_as::<_, CourseTagRow>(
-        "SELECT ct.tag_id, t.name AS tag_name \
-         FROM course_tags ct JOIN tag_labels t ON t.id = ct.tag_id \
-         WHERE ct.course_id = $1 ORDER BY t.name",
+        "SELECT ct.tag_id, tag_canonical_label(ct.tag_id) AS tag_name \
+         FROM course_tags ct \
+         WHERE ct.course_id = $1 ORDER BY tag_name",
     ).bind(id).fetch_all(pool).await?;
 
     let textbooks = sqlx::query_as::<_, CourseTextbookRow>(

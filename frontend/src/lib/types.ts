@@ -3,17 +3,18 @@ export type ContentKind = 'article' | 'question' | 'answer' | 'thought';
 export type Category = string;
 export type PrereqType = 'required' | 'recommended' | 'suggested';
 
+/** One name in some language attached to a concept (`tag_id`). A concept
+ * can have many names across languages and within one language
+ * (synonyms); none of them is "primary" — the one to display is a
+ * viewer decision (see `user_name_pref`, with earliest-added as the
+ * default). `names` is a derived `{lang → earliest-added name}` map
+ * populated server-side for display convenience. */
 export interface Tag {
-  id: string;
+  id: string;                         // tn-…
   name: string;
   names: Record<string, string>;
-  description: string | null;
-  created_by: string;
-  created_at: string;
-  /** The tag (concept) this label belongs to. Labels in the same `tag_id`
-   * refer to the same concept; they may differ in language or spelling. */
-  tag_id: string;
-  /** Language code (ISO) of this specific label. */
+  added_at: string;
+  tag_id: string;                     // tg-…
   lang: string;
 }
 

@@ -533,6 +533,26 @@ export const searchTags = (q: string) => get<Tag[]>(`/tags/search?q=${encodeURIC
  */
 export const resolveTag = (input: string) =>
   post<{ tag_id: string }>('/tags/resolve', { input });
+
+/** Viewer's name preferences: `{tag_id → name_id}`. */
+export const listMyNamePrefs = () =>
+  get<Record<string, string>>('/tags/name-prefs');
+
+/** Set viewer's preferred name for a tag. `id` accepts name_id or tag_id. */
+export const setMyNamePref = (id: string, name_id: string) =>
+  put<{ ok: boolean }>(`/tags/${encodeURIComponent(id)}/name-pref`, { name_id });
+
+/** Clear viewer's preferred name — revert to the default (earliest-added). */
+export const clearMyNamePref = (id: string) =>
+  del<{ ok: boolean }>(`/tags/${encodeURIComponent(id)}/name-pref`);
+
+/** Add a new name to an existing concept (any user can contribute). */
+export const addTagName = (id: string, name: string, lang: string) =>
+  post<Tag>(`/tags/${encodeURIComponent(id)}/group`, { name, lang });
+
+/** Remove a single name. If it was the last name, the concept is dropped. */
+export const removeTagName = (tag_id: string, name_id: string) =>
+  del<{ ok: boolean }>(`/tags/${encodeURIComponent(tag_id)}/group/${encodeURIComponent(name_id)}`);
 export const updateTagNames = (id: string, names: Record<string, string>) =>
   put<Tag>(`/tags/${encodeURIComponent(id)}/names`, { names });
 export const listTagParents = () => get<{ parent_tag: string; child_tag: string }[]>('/tag-parents');
@@ -608,19 +628,29 @@ export const setAuthorNames = (
 ) =>
   put<any>(`/authors/${encodeURIComponent(id)}/names`, { original_names, translations });
 
-// Tag alias/translation groups
+// Tag name management
 export const listTagGroup = (tagId: string) =>
-  get<any[]>(`/tags/${encodeURIComponent(tagId)}/group`);
-export const addTagGroupMember = (tagId: string, member: { id: string; name: string; lang: string }) =>
-  post<any>(`/tags/${encodeURIComponent(tagId)}/group`, member);
-export const setTagGroupRepresentative = (anchorId: string, memberId: string) =>
-  put<{ ok: boolean }>(`/tags/${encodeURIComponent(anchorId)}/group/representative`, { member_id: memberId });
-export const mergeTagGroups = (anchorId: string, otherMemberId: string) =>
-  post<{ ok: boolean }>(`/tags/${encodeURIComponent(anchorId)}/group/merge`, { member_id: otherMemberId });
+  get<{ members: Tag[] }>(`/tags/${encodeURIComponent(tagId)}/group`);
+export const mergeTagGroups = (anchorId: string, fromId: string) =>
+  post<{ ok: boolean }>(`/tags/${encodeURIComponent(anchorId)}/group/merge`, { from: fromId });
 export const requestTagDeletion = (tagId: string, reason: string) =>
   post<any>(`/tags/${encodeURIComponent(tagId)}/deletion-requests`, { reason });
-export const removeTagGroupMember = (anchorId: string, memberId: string) =>
-  del<void>(`/tags/${encodeURIComponent(anchorId)}/group/${encodeURIComponent(memberId)}`);
+
+/** Per-tag edit history — who added/removed/merged, newest first. */
+export interface TagAuditEntry {
+  id: number;
+  action: 'create_tag' | 'add_name' | 'remove_name' | 'merge_tag';
+  actor_did: string;
+  actor_handle: string | null;
+  actor_display_name: string | null;
+  tag_id: string | null;
+  name: string | null;
+  lang: string | null;
+  merged_into: string | null;
+  at: string;
+}
+export const listTagHistory = (id: string) =>
+  get<TagAuditEntry[]>(`/tags/${encodeURIComponent(id)}/history`);
 
 // Authorship
 export interface ArticleAuthor { author_did: string | null; author_name: string | null; author_handle: string | null; author_display_name: string | null; author_avatar: string | null; author_reputation: number; position: number | null; role: string; is_corresponding: boolean; status: string; authorship_uri: string | null; }

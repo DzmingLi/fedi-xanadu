@@ -41,11 +41,11 @@ pub async fn build_knowledge_graph(pool: &PgPool, did: Option<&str>) -> crate::R
 
     let tag_rows = sqlx::query_as::<_, TagRow>(
         "SELECT t.id AS tag_id, \
-                tag_canonical_label(t.id) AS label_id, \
-                (SELECT name FROM tag_labels WHERE id = tag_canonical_label(t.id)) AS name, \
+                t.id AS label_id, \
+                tag_canonical_label(t.id) AS name, \
                 tag_label_map(t.id) AS names \
          FROM tags t \
-         WHERE EXISTS (SELECT 1 FROM tag_labels l WHERE l.tag_id = t.id AND l.removed_at IS NULL) \
+         WHERE EXISTS (SELECT 1 FROM tag_names n WHERE n.tag_id = t.id) \
          ORDER BY name",
     )
     .fetch_all(pool)

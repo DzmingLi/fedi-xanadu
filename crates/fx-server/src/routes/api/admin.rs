@@ -245,7 +245,7 @@ pub async fn admin_merge_tag(
 ) -> ApiResult<StatusCode> {
 
 
-    tag_service::merge_tag(&state.pool, &input.from, &input.into).await?;
+    tag_service::merge_tag(&state.pool, &input.from, &input.into, "admin").await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

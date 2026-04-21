@@ -80,7 +80,7 @@ pub async fn list_skill_trees(pool: &PgPool, limit: i64) -> Result<Vec<SkillTree
     let rows = sqlx::query_as::<_, SkillTreeListRow>(
         "SELECT st.at_uri, st.did, p.handle AS author_handle, st.title, st.description, \
          tag_canonical_label(st.tag_id) AS tag_id, \
-         (SELECT name FROM tag_labels WHERE id = tag_canonical_label(st.tag_id)) AS tag_name, \
+         tag_canonical_label(st.tag_id) AS tag_name, \
          tag_label_map(st.tag_id) AS tag_names, \
          st.forked_from, st.created_at, \
          COALESCE((SELECT SUM(CASE WHEN v.value > 0 THEN 1 WHEN v.value < 0 THEN -1 ELSE 0 END) FROM votes v WHERE v.target_uri = st.at_uri), 0) AS score, \

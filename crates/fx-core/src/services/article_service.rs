@@ -327,7 +327,7 @@ pub async fn get_article_prereqs(pool: &PgPool, uri: &str, _locale: &str) -> cra
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
         "SELECT tag_canonical_label(cp.tag_id) AS tag_id, \
                 cp.prereq_type, \
-                (SELECT name FROM tag_labels WHERE id = tag_canonical_label(cp.tag_id)) AS tag_name, \
+                tag_canonical_label(cp.tag_id) AS tag_name, \
                 tag_label_map(cp.tag_id) AS tag_names \
          FROM content_prereqs cp \
          WHERE cp.content_uri = $1 \
@@ -393,7 +393,7 @@ pub async fn get_all_article_teaches(pool: &PgPool, limit: i64) -> crate::Result
     let rows = sqlx::query_as::<_, ContentTeachRow>(
         "SELECT ct.content_uri, \
                 tag_canonical_label(ct.tag_id) AS tag_id, \
-                (SELECT name FROM tag_labels WHERE id = tag_canonical_label(ct.tag_id)) AS tag_name, \
+                tag_canonical_label(ct.tag_id) AS tag_name, \
                 tag_label_map(ct.tag_id) as tag_names \
          FROM content_teaches ct \
          JOIN content c ON c.uri = ct.content_uri AND c.content_type = 'article' \
@@ -411,7 +411,7 @@ pub async fn get_all_article_prereqs(pool: &PgPool, limit: i64) -> crate::Result
         "SELECT cp.content_uri, \
                 tag_canonical_label(cp.tag_id) AS tag_id, \
                 cp.prereq_type, \
-                (SELECT name FROM tag_labels WHERE id = tag_canonical_label(cp.tag_id)) AS tag_name, \
+                tag_canonical_label(cp.tag_id) AS tag_name, \
                 tag_label_map(cp.tag_id) as tag_names \
          FROM content_prereqs cp \
          JOIN content c ON c.uri = cp.content_uri AND c.content_type = 'article' \
