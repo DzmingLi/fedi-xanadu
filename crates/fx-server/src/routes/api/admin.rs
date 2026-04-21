@@ -1161,20 +1161,29 @@ pub async fn admin_rebuild_series_index(
             }
         };
 
-        // Rewrite teaches/prereqs to match frontmatter.
+        // Rewrite teaches/prereqs to match frontmatter. The frontmatter
+        // holds label ids; resolve them to tags (creating a standalone
+        // tag when the label is brand new).
         let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
             .bind(&at_uri).execute(&state.pool).await;
-        for tag in &fm.teaches {
+        for label_id in &fm.teaches {
+            let mut conn = state.pool.acquire().await.expect("db conn");
+            let _ = fx_core::services::tag_service::ensure_tag(&mut conn, label_id, &did).await;
             let _ = sqlx::query(
-                "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            ).bind(&at_uri).bind(tag).execute(&state.pool).await;
+                "INSERT INTO content_teaches (content_uri, tag_id) \
+                 VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+                 ON CONFLICT DO NOTHING",
+            ).bind(&at_uri).bind(label_id).execute(&state.pool).await;
         }
         let _ = sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
             .bind(&at_uri).execute(&state.pool).await;
         for p in &fm.prereqs {
+            let mut conn = state.pool.acquire().await.expect("db conn");
+            let _ = fx_core::services::tag_service::ensure_tag(&mut conn, &p.tag, &did).await;
             let _ = sqlx::query(
                 "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-                 VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                 VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) \
+                 ON CONFLICT DO NOTHING",
             )
             .bind(&at_uri).bind(&p.tag).bind(p.kind())
             .execute(&state.pool).await;

@@ -899,15 +899,30 @@ async fn sync_typst_chapter_metadata(
     for (i, slice) in slices.iter().enumerate() {
         let Some(uri) = anchor_to_uri.get(&slice.heading_anchor) else { continue };
 
+        // Resolve the chapter's author so ensure_tag can stamp created_by
+        // on any brand-new label rows.
+        let chapter_did: String = sqlx::query_scalar::<_, String>("SELECT did FROM articles WHERE at_uri = $1")
+            .bind(uri)
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+
         if let Some(value) = meta.chapter_metadata.get(i) {
-            // teaches: array of tag ids
+            // teaches: array of label ids → resolved to their tags.
             if let Some(arr) = value.get("teaches").and_then(|v| v.as_array()) {
                 let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
                     .bind(uri).execute(&state.pool).await;
-                for tag in arr.iter().filter_map(|v| v.as_str()) {
+                for label_id in arr.iter().filter_map(|v| v.as_str()) {
+                    if let Ok(mut conn) = state.pool.acquire().await {
+                        let _ = fx_core::services::tag_service::ensure_tag(&mut conn, label_id, &chapter_did).await;
+                    }
                     let _ = sqlx::query(
-                        "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                    ).bind(uri).bind(tag).execute(&state.pool).await;
+                        "INSERT INTO content_teaches (content_uri, tag_id) \
+                         VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+                         ON CONFLICT DO NOTHING",
+                    ).bind(uri).bind(label_id).execute(&state.pool).await;
                 }
             }
             // prereqs: array of (tag, type) tuples — also accepts { tag, type } dict
@@ -915,7 +930,7 @@ async fn sync_typst_chapter_metadata(
                 let _ = sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
                     .bind(uri).execute(&state.pool).await;
                 for entry in arr {
-                    let (tag, kind) = match entry {
+                    let (label_id, kind) = match entry {
                         serde_json::Value::String(s) => (Some(s.as_str()), "required"),
                         serde_json::Value::Array(t) => (
                             t.first().and_then(|v| v.as_str()),
@@ -927,10 +942,15 @@ async fn sync_typst_chapter_metadata(
                         ),
                         _ => (None, "required"),
                     };
-                    if let Some(tag) = tag {
+                    if let Some(label_id) = label_id {
+                        if let Ok(mut conn) = state.pool.acquire().await {
+                            let _ = fx_core::services::tag_service::ensure_tag(&mut conn, label_id, &chapter_did).await;
+                        }
                         let _ = sqlx::query(
-                            "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                        ).bind(uri).bind(tag).bind(kind).execute(&state.pool).await;
+                            "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
+                             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) \
+                             ON CONFLICT DO NOTHING",
+                        ).bind(uri).bind(label_id).bind(kind).execute(&state.pool).await;
                     }
                 }
             }

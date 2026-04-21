@@ -74,15 +74,19 @@ pub struct CreateSkillTree {
 const TREE_SELECT: &str = "SELECT at_uri, did, title, description, tag_id, forked_from, created_at FROM skill_trees";
 
 pub async fn list_skill_trees(pool: &PgPool, limit: i64) -> Result<Vec<SkillTreeListRow>> {
+    // `skill_trees.tag_id` is a tag (concept); surface its canonical label
+    // id as the row's `tag_id` so the frontend (which routes via label
+    // ids) keeps working, and attach the full translation map.
     let rows = sqlx::query_as::<_, SkillTreeListRow>(
         "SELECT st.at_uri, st.did, p.handle AS author_handle, st.title, st.description, \
-         st.tag_id, ft.name AS tag_name, ft.names AS tag_names, \
+         tag_canonical_label(st.tag_id) AS tag_id, \
+         (SELECT name FROM tag_labels WHERE id = tag_canonical_label(st.tag_id)) AS tag_name, \
+         tag_label_map(st.tag_id) AS tag_names, \
          st.forked_from, st.created_at, \
          COALESCE((SELECT SUM(CASE WHEN v.value > 0 THEN 1 WHEN v.value < 0 THEN -1 ELSE 0 END) FROM votes v WHERE v.target_uri = st.at_uri), 0) AS score, \
          (SELECT COUNT(*) FROM skill_tree_edges e WHERE e.tree_uri = st.at_uri) AS edge_count, \
          (SELECT COUNT(*) FROM user_active_tree ua WHERE ua.tree_uri = st.at_uri) AS adopt_count \
          FROM skill_trees st LEFT JOIN profiles p ON st.did = p.did \
-         LEFT JOIN tag_labels ft ON st.tag_id = ft.id \
          ORDER BY score DESC, st.created_at DESC LIMIT $1",
     )
     .bind(limit)
@@ -128,7 +132,15 @@ pub async fn create_skill_tree(
 ) -> Result<SkillTreeRow> {
     let mut tx = pool.begin().await?;
 
-    sqlx::query("INSERT INTO skill_trees (at_uri, did, title, description, tag_id) VALUES ($1, $2, $3, $4, $5)")
+    // input.tag_id is a label id; skill_trees.tag_id is a tag (concept).
+    // Resolve via ensure_tag → subquery; if absent, the column stays NULL.
+    if let Some(ref label_id) = input.tag_id {
+        super::tag_service::ensure_tag(&mut *tx, label_id, did).await?;
+    }
+    sqlx::query(
+        "INSERT INTO skill_trees (at_uri, did, title, description, tag_id) \
+         VALUES ($1, $2, $3, $4, (SELECT tag_id FROM tag_labels WHERE id = $5))",
+    )
         .bind(at_uri)
         .bind(did)
         .bind(&input.title)
@@ -140,7 +152,13 @@ pub async fn create_skill_tree(
     for (parent, child) in &input.edges {
         super::tag_service::ensure_tag(&mut *tx, parent, did).await?;
         super::tag_service::ensure_tag(&mut *tx, child, did).await?;
-        sqlx::query("INSERT INTO skill_tree_edges (tree_uri, parent_tag, child_tag) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+        sqlx::query(
+            "INSERT INTO skill_tree_edges (tree_uri, parent_tag, child_tag) \
+             VALUES ($1, \
+                     (SELECT tag_id FROM tag_labels WHERE id = $2), \
+                     (SELECT tag_id FROM tag_labels WHERE id = $3)) \
+             ON CONFLICT DO NOTHING",
+        )
             .bind(at_uri)
             .bind(parent)
             .bind(child)
@@ -151,7 +169,14 @@ pub async fn create_skill_tree(
     for (from_tag, to_tag, prereq_type) in &input.prereqs {
         super::tag_service::ensure_tag(&mut *tx, from_tag, did).await?;
         super::tag_service::ensure_tag(&mut *tx, to_tag, did).await?;
-        sqlx::query("INSERT INTO skill_tree_prereqs (tree_uri, from_tag, to_tag, prereq_type) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
+        sqlx::query(
+            "INSERT INTO skill_tree_prereqs (tree_uri, from_tag, to_tag, prereq_type) \
+             VALUES ($1, \
+                     (SELECT tag_id FROM tag_labels WHERE id = $2), \
+                     (SELECT tag_id FROM tag_labels WHERE id = $3), \
+                     $4) \
+             ON CONFLICT DO NOTHING",
+        )
             .bind(at_uri)
             .bind(from_tag)
             .bind(to_tag)
@@ -211,20 +236,26 @@ pub async fn add_edge(
     pool: &PgPool,
     tree_uri: &str,
     did: &str,
-    parent_tag: &str,
-    child_tag: &str,
+    parent_label: &str,
+    child_label: &str,
 ) -> Result<()> {
     verify_owner(pool, tree_uri, did).await?;
 
     let mut conn = pool.acquire().await?;
-    super::tag_service::ensure_tag(&mut conn, parent_tag, did).await?;
-    super::tag_service::ensure_tag(&mut conn, child_tag, did).await?;
+    super::tag_service::ensure_tag(&mut conn, parent_label, did).await?;
+    super::tag_service::ensure_tag(&mut conn, child_label, did).await?;
     drop(conn);
 
-    sqlx::query("INSERT INTO skill_tree_edges (tree_uri, parent_tag, child_tag) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+    sqlx::query(
+        "INSERT INTO skill_tree_edges (tree_uri, parent_tag, child_tag) \
+         VALUES ($1, \
+                 (SELECT tag_id FROM tag_labels WHERE id = $2), \
+                 (SELECT tag_id FROM tag_labels WHERE id = $3)) \
+         ON CONFLICT DO NOTHING",
+    )
         .bind(tree_uri)
-        .bind(parent_tag)
-        .bind(child_tag)
+        .bind(parent_label)
+        .bind(child_label)
         .execute(pool)
         .await?;
     Ok(())
@@ -234,15 +265,20 @@ pub async fn remove_edge(
     pool: &PgPool,
     tree_uri: &str,
     did: &str,
-    parent_tag: &str,
-    child_tag: &str,
+    parent_label: &str,
+    child_label: &str,
 ) -> Result<()> {
     verify_owner(pool, tree_uri, did).await?;
 
-    sqlx::query("DELETE FROM skill_tree_edges WHERE tree_uri = $1 AND parent_tag = $2 AND child_tag = $3")
+    sqlx::query(
+        "DELETE FROM skill_tree_edges \
+         WHERE tree_uri = $1 \
+           AND parent_tag = (SELECT tag_id FROM tag_labels WHERE id = $2) \
+           AND child_tag  = (SELECT tag_id FROM tag_labels WHERE id = $3)",
+    )
         .bind(tree_uri)
-        .bind(parent_tag)
-        .bind(child_tag)
+        .bind(parent_label)
+        .bind(child_label)
         .execute(pool)
         .await?;
     Ok(())
@@ -252,21 +288,28 @@ pub async fn add_prereq(
     pool: &PgPool,
     tree_uri: &str,
     did: &str,
-    from_tag: &str,
-    to_tag: &str,
+    from_label: &str,
+    to_label: &str,
     prereq_type: &str,
 ) -> Result<()> {
     verify_owner(pool, tree_uri, did).await?;
 
     let mut conn = pool.acquire().await?;
-    super::tag_service::ensure_tag(&mut conn, from_tag, did).await?;
-    super::tag_service::ensure_tag(&mut conn, to_tag, did).await?;
+    super::tag_service::ensure_tag(&mut conn, from_label, did).await?;
+    super::tag_service::ensure_tag(&mut conn, to_label, did).await?;
     drop(conn);
 
-    sqlx::query("INSERT INTO skill_tree_prereqs (tree_uri, from_tag, to_tag, prereq_type) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING")
+    sqlx::query(
+        "INSERT INTO skill_tree_prereqs (tree_uri, from_tag, to_tag, prereq_type) \
+         VALUES ($1, \
+                 (SELECT tag_id FROM tag_labels WHERE id = $2), \
+                 (SELECT tag_id FROM tag_labels WHERE id = $3), \
+                 $4) \
+         ON CONFLICT DO NOTHING",
+    )
         .bind(tree_uri)
-        .bind(from_tag)
-        .bind(to_tag)
+        .bind(from_label)
+        .bind(to_label)
         .bind(prereq_type)
         .execute(pool)
         .await?;
@@ -277,15 +320,20 @@ pub async fn remove_prereq(
     pool: &PgPool,
     tree_uri: &str,
     did: &str,
-    from_tag: &str,
-    to_tag: &str,
+    from_label: &str,
+    to_label: &str,
 ) -> Result<()> {
     verify_owner(pool, tree_uri, did).await?;
 
-    sqlx::query("DELETE FROM skill_tree_prereqs WHERE tree_uri = $1 AND from_tag = $2 AND to_tag = $3")
+    sqlx::query(
+        "DELETE FROM skill_tree_prereqs \
+         WHERE tree_uri = $1 \
+           AND from_tag = (SELECT tag_id FROM tag_labels WHERE id = $2) \
+           AND to_tag   = (SELECT tag_id FROM tag_labels WHERE id = $3)",
+    )
         .bind(tree_uri)
-        .bind(from_tag)
-        .bind(to_tag)
+        .bind(from_label)
+        .bind(to_label)
         .execute(pool)
         .await?;
     Ok(())
@@ -349,8 +397,12 @@ pub async fn get_active_tree(pool: &PgPool, did: &str) -> Result<Option<SkillTre
 // --- Helpers ---
 
 async fn get_edges(pool: &PgPool, tree_uri: &str) -> Result<Vec<SkillTreeEdgeRow>> {
+    // Surface canonical labels so the frontend's label-keyed tagStore
+    // can resolve them without another round-trip.
     let edges = sqlx::query_as::<_, SkillTreeEdgeRow>(
-        "SELECT parent_tag, child_tag FROM skill_tree_edges WHERE tree_uri = $1",
+        "SELECT tag_canonical_label(parent_tag) AS parent_tag, \
+                tag_canonical_label(child_tag)  AS child_tag \
+         FROM skill_tree_edges WHERE tree_uri = $1",
     )
     .bind(tree_uri)
     .fetch_all(pool)
@@ -360,7 +412,10 @@ async fn get_edges(pool: &PgPool, tree_uri: &str) -> Result<Vec<SkillTreeEdgeRow
 
 async fn get_prereqs(pool: &PgPool, tree_uri: &str) -> Result<Vec<SkillTreePrereqRow>> {
     let prereqs = sqlx::query_as::<_, SkillTreePrereqRow>(
-        "SELECT from_tag, to_tag, prereq_type FROM skill_tree_prereqs WHERE tree_uri = $1",
+        "SELECT tag_canonical_label(from_tag) AS from_tag, \
+                tag_canonical_label(to_tag)   AS to_tag, \
+                prereq_type \
+         FROM skill_tree_prereqs WHERE tree_uri = $1",
     )
     .bind(tree_uri)
     .fetch_all(pool)

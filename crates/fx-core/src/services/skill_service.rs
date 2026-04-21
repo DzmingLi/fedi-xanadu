@@ -11,13 +11,12 @@ pub struct TagTreeEntry {
 }
 
 pub async fn list_user_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<UserSkill>> {
-    // user_skills now carries group_id directly (Phase B). One row per
-    // (user, group) — every language label resolves to the same row
-    // through the group, so the frontend can use a simple skillMap
-    // keyed on tag_id by checking the group.
+    // user_skills is keyed on (did, tag_id) — one row per (user, concept).
+    // The frontend resolves each tag_id to its canonical label per locale
+    // via `tagStore.localize`.
     let skills = sqlx::query_as::<_, UserSkill>(
-        "SELECT us.did, us.tag_id, us.status, us.lit_at, us.group_id \
-         FROM user_skills us WHERE us.did = $1 ORDER BY us.lit_at DESC",
+        "SELECT did, tag_id, status, lit_at \
+         FROM user_skills WHERE did = $1 ORDER BY lit_at DESC",
     )
     .bind(did)
     .fetch_all(pool)
@@ -28,7 +27,7 @@ pub async fn list_user_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<Use
 pub async fn light_skill(
     pool: &PgPool,
     did: &str,
-    tag_id: &str,
+    label_id: &str,
     status: &str,
 ) -> crate::Result<()> {
     let status = match status {
@@ -36,25 +35,47 @@ pub async fn light_skill(
         _ => "mastered",
     };
 
+    // user_skills is keyed on (did, tag_id); resolve the incoming label
+    // to its tag.
+    let tag_id: Option<String> = sqlx::query_scalar("SELECT tag_id FROM tag_labels WHERE id = $1")
+        .bind(label_id)
+        .fetch_optional(pool)
+        .await?;
+    let Some(tag_id) = tag_id else { return Ok(()); };
+
     sqlx::query(
         "INSERT INTO user_skills (did, tag_id, status) VALUES ($1, $2, $3) \
          ON CONFLICT(did, tag_id) DO UPDATE SET status = EXCLUDED.status, lit_at = NOW()",
     )
     .bind(did)
-    .bind(tag_id)
+    .bind(&tag_id)
     .bind(status)
     .execute(pool)
     .await?;
 
     if status == "mastered" {
-        let children = get_all_children(pool, did, tag_id).await;
-        for child_id in children {
+        // Descend through the tag (concept) taxonomy so lighting a
+        // parent tag auto-lights every descendant.
+        let children: Vec<String> = sqlx::query_scalar(
+            "WITH RECURSIVE descendants(tag) AS ( \
+               SELECT child_tag FROM tag_parents WHERE parent_tag = $1 \
+               UNION \
+               SELECT tp.child_tag FROM tag_parents tp \
+               JOIN descendants d ON tp.parent_tag = d.tag \
+             ) SELECT tag FROM descendants",
+        )
+        .bind(&tag_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        for child in children {
             let _ = sqlx::query(
                 "INSERT INTO user_skills (did, tag_id, status) VALUES ($1, $2, 'mastered') \
                  ON CONFLICT(did, tag_id) DO UPDATE SET status = 'mastered', lit_at = NOW()",
             )
             .bind(did)
-            .bind(&child_id)
+            .bind(&child)
             .execute(pool)
             .await;
         }
@@ -63,33 +84,27 @@ pub async fn light_skill(
     Ok(())
 }
 
-pub async fn delete_skill(pool: &PgPool, did: &str, tag_id: &str) -> crate::Result<()> {
-    sqlx::query("DELETE FROM user_skills WHERE did = $1 AND tag_id = $2")
+pub async fn delete_skill(pool: &PgPool, did: &str, label_id: &str) -> crate::Result<()> {
+    sqlx::query(
+        "DELETE FROM user_skills WHERE did = $1 \
+         AND tag_id = (SELECT tag_id FROM tag_labels WHERE id = $2)",
+    )
         .bind(did)
-        .bind(tag_id)
+        .bind(label_id)
         .execute(pool)
         .await?;
     Ok(())
 }
 
 pub async fn get_user_tag_tree(pool: &PgPool, _did: &str) -> crate::Result<Vec<TagTreeEntry>> {
-    // Belongs-to hierarchy is a single global source of truth. Edges in
-    // tag_parents are stored at the label level, so the same concept
-    // edge can appear under several labels (e.g. "Cs" and "Computer
-    // Science" both point at the same group). Resolve each group to a
-    // canonical label (English first, then alphabetical) so the tree
-    // renders one tab per concept rather than one per label alias.
+    // The belongs-to hierarchy is global and tag-level. For each edge,
+    // surface the canonical label on either side so the tree renders
+    // one node per concept rather than per-label alias.
     let tree = sqlx::query_as::<_, TagTreeEntry>(
-        "WITH canonical AS ( \
-           SELECT DISTINCT ON (group_id) group_id, id AS label \
-           FROM tag_labels \
-           ORDER BY group_id, (lang = 'en') DESC, id \
-         ) \
-         SELECT DISTINCT cp.label AS parent_tag, cc.label AS child_tag \
-         FROM tag_parents tp \
-         JOIN canonical cp ON cp.group_id = tp.parent_group \
-         JOIN canonical cc ON cc.group_id = tp.child_group \
-         ORDER BY cp.label, cc.label",
+        "SELECT tag_canonical_label(parent_tag) AS parent_tag, \
+                tag_canonical_label(child_tag)  AS child_tag \
+         FROM tag_parents \
+         ORDER BY 1, 2",
     )
     .fetch_all(pool)
     .await?;
@@ -128,18 +143,3 @@ pub async fn add_tag_child(
     crate::services::tag_hierarchy_service::add_edge(pool, parent_tag, child_tag, did).await
 }
 
-async fn get_all_children(pool: &PgPool, _did: &str, parent_tag: &str) -> Vec<String> {
-    sqlx::query_scalar(
-        "WITH RECURSIVE descendants(tag) AS ( \
-           SELECT child_tag FROM tag_parents WHERE parent_tag = $1 \
-           UNION \
-           SELECT tp.child_tag FROM tag_parents tp \
-           JOIN descendants d ON tp.parent_tag = d.tag \
-         ) \
-         SELECT tag FROM descendants",
-    )
-    .bind(parent_tag)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default()
-}

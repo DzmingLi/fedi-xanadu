@@ -46,10 +46,15 @@ pub async fn set_interests(
         .execute(&mut *tx)
         .await?;
 
-    for tag_id in &input.tag_ids {
-        sqlx::query("INSERT INTO user_interests (did, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+    for label_id in &input.tag_ids {
+        fx_core::services::tag_service::ensure_tag(&mut *tx, label_id, &user.did).await?;
+        sqlx::query(
+            "INSERT INTO user_interests (did, tag_id) \
+             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+             ON CONFLICT DO NOTHING",
+        )
             .bind(&user.did)
-            .bind(tag_id)
+            .bind(label_id)
             .execute(&mut *tx)
             .await?;
     }

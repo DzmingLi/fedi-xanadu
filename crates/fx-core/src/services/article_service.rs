@@ -143,14 +143,17 @@ pub async fn get_article(pool: &PgPool, mode: InstanceMode, uri: &str) -> crate:
         .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() })
 }
 
-pub async fn get_questions_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
+pub async fn get_questions_by_tag(pool: &PgPool, mode: InstanceMode, label_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
+    // Resolve the incoming label to its tag, then walk the skill-tree
+    // taxonomy down through tags (concepts).
     let descendant_tags: Vec<String> = sqlx::query_scalar(
         "WITH RECURSIVE descendants(tag) AS ( \
-           SELECT $1::TEXT UNION \
+           SELECT tag_id FROM tag_labels WHERE id = $1 \
+           UNION \
            SELECT e.child_tag FROM skill_tree_edges e JOIN descendants d ON e.parent_tag = d.tag \
-         ) SELECT tag FROM descendants",
+         ) SELECT tag FROM descendants WHERE tag IS NOT NULL",
     )
-    .bind(tag_id)
+    .bind(label_id)
     .fetch_all(pool)
     .await?;
 
@@ -188,36 +191,35 @@ pub async fn get_related_questions(pool: &PgPool, mode: InstanceMode, uri: &str,
     Ok(rows)
 }
 
-pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
-    // Resolve the query tag to its group, then walk the skill-tree
-    // taxonomy down through group ids. Edge-tables now carry group_id
-    // directly (Phase B) so the query filters by that column — no
-    // sibling expansion needed at this layer.
-    let group_ids: Vec<String> = sqlx::query_scalar(
-        "WITH RECURSIVE descendants(gid) AS ( \
-             SELECT (SELECT group_id FROM tag_labels WHERE id = $1) \
+pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, label_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
+    // Resolve the query label to its tag, then walk the skill-tree
+    // taxonomy down through tag ids. Edge-tables now carry tag_id
+    // directly so the query filters by that column — no sibling expansion
+    // needed at this layer.
+    let tag_ids: Vec<String> = sqlx::query_scalar(
+        "WITH RECURSIVE descendants(tid) AS ( \
+             SELECT (SELECT tag_id FROM tag_labels WHERE id = $1) \
              UNION \
-             SELECT child_t.group_id \
+             SELECT e.child_tag \
              FROM skill_tree_edges e \
-             JOIN descendants d ON d.gid = (SELECT group_id FROM tag_labels WHERE id = e.parent_tag) \
-             JOIN tag_labels child_t ON child_t.id = e.child_tag \
-         ) SELECT gid FROM descendants WHERE gid IS NOT NULL",
+             JOIN descendants d ON d.tid = e.parent_tag \
+         ) SELECT tid FROM descendants WHERE tid IS NOT NULL",
     )
-    .bind(tag_id)
+    .bind(label_id)
     .fetch_all(pool)
     .await?;
 
-    if group_ids.is_empty() {
+    if tag_ids.is_empty() {
         return Ok(vec![]);
     }
 
     let rows = sqlx::query_as::<_, Article>(&format!(
         "{} AND a.at_uri IN (\
-            SELECT ct.content_uri FROM content_teaches ct WHERE ct.group_id = ANY($1)\
+            SELECT ct.content_uri FROM content_teaches ct WHERE ct.tag_id = ANY($1)\
          ) ORDER BY a.created_at DESC LIMIT $2",
         visible(mode)
     ))
-    .bind(&group_ids)
+    .bind(&tag_ids)
     .bind(limit)
     .fetch_all(pool)
     .await?;
@@ -322,15 +324,17 @@ pub async fn get_content_format(pool: &PgPool, uri: &str) -> crate::Result<Strin
 }
 
 pub async fn get_article_prereqs(pool: &PgPool, uri: &str, _locale: &str) -> crate::Result<Vec<ArticlePrereqRow>> {
-    // Edges are group-canonical (Phase B): each (content_uri, group_id,
-    // prereq_type) has at most one row. Return rows as-is; the frontend
-    // tagStore maps each tag_id to the UI locale by group sibling
-    // lookup, so the locale parameter is no longer used server-side.
+    // Edges are tag-level: content_prereqs only stores tag_id (concept).
+    // For URL compatibility, we surface a canonical label id as `tag_id`
+    // — the frontend's `tagStore` handles per-locale sibling lookup.
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
-        "SELECT cp.tag_id, cp.prereq_type, t.name AS tag_name, t.names AS tag_names \
-         FROM content_prereqs cp JOIN tag_labels t ON t.id = cp.tag_id \
+        "SELECT tag_canonical_label(cp.tag_id) AS tag_id, \
+                cp.prereq_type, \
+                (SELECT name FROM tag_labels WHERE id = tag_canonical_label(cp.tag_id)) AS tag_name, \
+                tag_label_map(cp.tag_id) AS tag_names \
+         FROM content_prereqs cp \
          WHERE cp.content_uri = $1 \
-         ORDER BY cp.prereq_type, t.id",
+         ORDER BY cp.prereq_type, cp.tag_id",
     )
     .bind(uri)
     .fetch_all(pool)
@@ -385,12 +389,16 @@ pub async fn get_article_forks(pool: &PgPool, uri: &str) -> crate::Result<Vec<Fo
     Ok(rows)
 }
 
-/// Bulk-fetch all article-tag mappings (with safety limit).
+/// Bulk-fetch all article tag mappings (with safety limit). `tag_id` in
+/// the response is the canonical label id for each tag — the frontend
+/// uses it both to display (via `tagStore.localize`) and to navigate.
 pub async fn get_all_article_teaches(pool: &PgPool, limit: i64) -> crate::Result<Vec<ContentTeachRow>> {
     let rows = sqlx::query_as::<_, ContentTeachRow>(
-        "SELECT ct.content_uri, ct.tag_id, t.name as tag_name, t.names as tag_names \
+        "SELECT ct.content_uri, \
+                tag_canonical_label(ct.tag_id) AS tag_id, \
+                (SELECT name FROM tag_labels WHERE id = tag_canonical_label(ct.tag_id)) AS tag_name, \
+                tag_label_map(ct.tag_id) as tag_names \
          FROM content_teaches ct \
-         JOIN tag_labels t ON t.id = ct.tag_id \
          JOIN content c ON c.uri = ct.content_uri AND c.content_type = 'article' \
          ORDER BY ct.content_uri LIMIT $1",
     )
@@ -403,9 +411,12 @@ pub async fn get_all_article_teaches(pool: &PgPool, limit: i64) -> crate::Result
 /// Bulk-fetch all article prereqs (with safety limit).
 pub async fn get_all_article_prereqs(pool: &PgPool, limit: i64) -> crate::Result<Vec<ContentPrereqBulkRow>> {
     let rows = sqlx::query_as::<_, ContentPrereqBulkRow>(
-        "SELECT cp.content_uri, cp.tag_id, cp.prereq_type, t.name as tag_name, t.names as tag_names \
+        "SELECT cp.content_uri, \
+                tag_canonical_label(cp.tag_id) AS tag_id, \
+                cp.prereq_type, \
+                (SELECT name FROM tag_labels WHERE id = tag_canonical_label(cp.tag_id)) AS tag_name, \
+                tag_label_map(cp.tag_id) as tag_names \
          FROM content_prereqs cp \
-         JOIN tag_labels t ON t.id = cp.tag_id \
          JOIN content c ON c.uri = cp.content_uri AND c.content_type = 'article' \
          ORDER BY cp.content_uri LIMIT $1",
     )
@@ -471,23 +482,23 @@ pub async fn create_article(
     .execute(&mut *tx)
     .await?;
 
-    for tag_id in &input.tags {
+    for label_id in &input.tags {
+        crate::services::tag_service::ensure_tag(&mut *tx, label_id, did).await?;
         sqlx::query(
-            "INSERT INTO tag_labels (id, name, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO content_teaches (content_uri, tag_id) \
+             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+             ON CONFLICT DO NOTHING",
         )
-        .bind(tag_id).bind(tag_id).bind(did)
-        .execute(&mut *tx).await?;
-
-        sqlx::query(
-            "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        )
-        .bind(at_uri).bind(tag_id)
+        .bind(at_uri).bind(label_id)
         .execute(&mut *tx).await?;
     }
 
     for prereq in &input.prereqs {
+        crate::services::tag_service::ensure_tag(&mut *tx, &prereq.tag_id, did).await?;
         sqlx::query(
-            "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
+             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) \
+             ON CONFLICT DO NOTHING",
         )
         .bind(at_uri).bind(&prereq.tag_id).bind(prereq.prereq_type.as_str())
         .execute(&mut *tx).await?;
@@ -632,20 +643,23 @@ pub async fn update_article_batch(
     .execute(&mut *tx)
     .await?;
 
-    // Replace tags
+    // Replace tags — callers pass label ids; ensure the label exists
+    // (ensure_tag creates a standalone tag if it doesn't yet) and then
+    // link via the label's resolved tag_id.
     sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
         .bind(uri).execute(&mut *tx).await?;
-    for tag_id in &input.tags {
+    let updater_did: String = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
+        .bind(uri)
+        .fetch_one(&mut *tx)
+        .await?;
+    for label_id in &input.tags {
+        crate::services::tag_service::ensure_tag(&mut *tx, label_id, &updater_did).await?;
         sqlx::query(
-            "INSERT INTO tag_labels (id, name, created_by) VALUES ($1, $2, (SELECT did FROM articles WHERE at_uri = $3)) ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO content_teaches (content_uri, tag_id) \
+             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+             ON CONFLICT DO NOTHING",
         )
-        .bind(tag_id).bind(tag_id).bind(uri)
-        .execute(&mut *tx).await?;
-
-        sqlx::query(
-            "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        )
-        .bind(uri).bind(tag_id)
+        .bind(uri).bind(label_id)
         .execute(&mut *tx).await?;
     }
 

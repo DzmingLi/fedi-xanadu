@@ -55,21 +55,13 @@ WITH
 -- User context CTEs (empty for anonymous → graceful degradation)
 -- ══════════════════════════════════════════════════════════════
 user_mastered AS (
-    -- Include every tag in the same alias/translation group as a lit one
-    -- so "lit calculus" also treats 高等数学 as mastered.
-    SELECT DISTINCT t2.id AS tag_id
-    FROM user_skills us
-    JOIN tag_labels t1 ON t1.id = us.tag_id
-    JOIN tag_labels t2 ON t2.group_id = t1.group_id
-    WHERE us.did = $1 AND us.status = 'mastered'
+    -- user_skills is tag-level, so a single row covers every language
+    -- label of the same concept (lit "Calculus" = lit "高等数学").
+    SELECT tag_id FROM user_skills WHERE did = $1 AND status = 'mastered'
 ),
 user_interest_descendants AS (
     WITH RECURSIVE desc_tags(tag) AS (
-        -- Seed with every group member of each directly-interested tag.
-        SELECT t2.id FROM user_interests ui
-        JOIN tag_labels t1 ON t1.id = ui.tag_id
-        JOIN tag_labels t2 ON t2.group_id = t1.group_id
-        WHERE ui.did = $1
+        SELECT tag_id FROM user_interests WHERE did = $1
         UNION
         SELECT tp.child_tag FROM tag_parents tp
         JOIN desc_tags d ON tp.parent_tag = d.tag
@@ -376,7 +368,7 @@ pub async fn get_recommended_questions(
         r#"
 WITH
 user_mastered AS (
-    SELECT DISTINCT t2.id AS tag_id FROM user_skills us JOIN tag_labels t1 ON t1.id = us.tag_id JOIN tag_labels t2 ON t2.group_id = t1.group_id WHERE us.did = $1 AND us.status = 'mastered'
+    SELECT tag_id FROM user_skills WHERE did = $1 AND status = 'mastered'
 ),
 questions AS (
     SELECT a.at_uri, a.did, p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, COALESCE(p.reputation, 0) AS author_reputation,
@@ -456,7 +448,7 @@ pub async fn get_frontier_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<
     let rows = sqlx::query_as::<_, FrontierSkill>(
         r#"
 WITH user_mastered AS (
-    SELECT DISTINCT t2.id AS tag_id FROM user_skills us JOIN tag_labels t1 ON t1.id = us.tag_id JOIN tag_labels t2 ON t2.group_id = t1.group_id WHERE us.did = $1 AND us.status = 'mastered'
+    SELECT tag_id FROM user_skills WHERE did = $1 AND status = 'mastered'
 ),
 frontier_tags AS (
     SELECT DISTINCT utp.to_tag AS tag_id
@@ -477,10 +469,11 @@ frontier_tags AS (
             )
       )
 )
-SELECT ft.tag_id, t.name AS tag_name, t.names AS tag_names,
+SELECT tag_canonical_label(ft.tag_id) AS tag_id,
+       (SELECT name FROM tag_labels WHERE id = tag_canonical_label(ft.tag_id)) AS tag_name,
+       tag_label_map(ft.tag_id) AS tag_names,
        COALESCE(ct.cnt, 0) AS article_count
 FROM frontier_tags ft
-JOIN tag_labels t ON t.id = ft.tag_id
 LEFT JOIN (
     SELECT tag_id, COUNT(*) AS cnt FROM content_teaches GROUP BY tag_id
 ) ct ON ct.tag_id = ft.tag_id

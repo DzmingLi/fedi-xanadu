@@ -252,12 +252,15 @@ pub async fn set_teach(
     crate::auth::Auth(_user): crate::auth::Auth,
     Json(input): Json<SetTeachInput>,
 ) -> ApiResult<StatusCode> {
-    // Ensure tag exists
+    // Ensure the label exists (ensure_tag creates a standalone tag if
+    // the label is new), then link the content to that label's tag.
     let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
     tag_service::ensure_tag(&mut conn, &input.tag_id, &_user.did).await?;
     drop(conn);
     sqlx::query(
-        "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        "INSERT INTO content_teaches (content_uri, tag_id) \
+         VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+         ON CONFLICT DO NOTHING",
     )
     .bind(&input.content_uri)
     .bind(&input.tag_id)

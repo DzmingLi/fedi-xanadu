@@ -2280,21 +2280,41 @@ pub(super) async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_pa
             .unwrap_or_default();
         let _ = article_service::update_article_summary(&state.pool, article_uri, desc, &html).await;
     }
+    // Resolve the article's creator so ensure_tag can stamp created_by
+    // on any brand-new label rows.
+    let creator_did: String = sqlx::query_scalar::<_, String>("SELECT did FROM articles WHERE at_uri = $1")
+        .bind(article_uri)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+
     if !fm.teaches.is_empty() {
         let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
             .bind(article_uri).execute(&state.pool).await;
-        for tag_id in &fm.teaches {
+        for label_id in &fm.teaches {
+            if let Ok(mut conn) = state.pool.acquire().await {
+                let _ = fx_core::services::tag_service::ensure_tag(&mut conn, label_id, &creator_did).await;
+            }
             let _ = sqlx::query(
-                "INSERT INTO content_teaches (content_uri, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            ).bind(article_uri).bind(tag_id).execute(&state.pool).await;
+                "INSERT INTO content_teaches (content_uri, tag_id) \
+                 VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+                 ON CONFLICT DO NOTHING",
+            ).bind(article_uri).bind(label_id).execute(&state.pool).await;
         }
     }
     if !fm.prereqs.is_empty() {
         let _ = sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
             .bind(article_uri).execute(&state.pool).await;
         for p in &fm.prereqs {
+            if let Ok(mut conn) = state.pool.acquire().await {
+                let _ = fx_core::services::tag_service::ensure_tag(&mut conn, &p.tag, &creator_did).await;
+            }
             let _ = sqlx::query(
-                "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
+                 VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) \
+                 ON CONFLICT DO NOTHING",
             )
             .bind(article_uri).bind(&p.tag).bind(p.kind())
             .execute(&state.pool).await;

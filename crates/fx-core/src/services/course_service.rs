@@ -568,27 +568,41 @@ pub async fn delete_session(pool: &PgPool, session_id: &str) -> crate::Result<()
     Ok(())
 }
 
-pub async fn add_session_tag(pool: &PgPool, session_id: &str, tag_id: &str) -> crate::Result<()> {
-    sqlx::query("INSERT INTO course_session_tags (session_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
-        .bind(session_id).bind(tag_id).execute(pool).await?;
+pub async fn add_session_tag(pool: &PgPool, session_id: &str, label_id: &str) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO course_session_tags (session_id, tag_id) \
+         VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+         ON CONFLICT DO NOTHING",
+    )
+        .bind(session_id).bind(label_id).execute(pool).await?;
     Ok(())
 }
 
-pub async fn remove_session_tag(pool: &PgPool, session_id: &str, tag_id: &str) -> crate::Result<()> {
-    sqlx::query("DELETE FROM course_session_tags WHERE session_id = $1 AND tag_id = $2")
-        .bind(session_id).bind(tag_id).execute(pool).await?;
+pub async fn remove_session_tag(pool: &PgPool, session_id: &str, label_id: &str) -> crate::Result<()> {
+    sqlx::query(
+        "DELETE FROM course_session_tags WHERE session_id = $1 \
+         AND tag_id = (SELECT tag_id FROM tag_labels WHERE id = $2)",
+    )
+        .bind(session_id).bind(label_id).execute(pool).await?;
     Ok(())
 }
 
-pub async fn add_session_prereq(pool: &PgPool, session_id: &str, tag_id: &str) -> crate::Result<()> {
-    sqlx::query("INSERT INTO course_session_prereqs (session_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
-        .bind(session_id).bind(tag_id).execute(pool).await?;
+pub async fn add_session_prereq(pool: &PgPool, session_id: &str, label_id: &str) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO course_session_prereqs (session_id, tag_id) \
+         VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+         ON CONFLICT DO NOTHING",
+    )
+        .bind(session_id).bind(label_id).execute(pool).await?;
     Ok(())
 }
 
-pub async fn remove_session_prereq(pool: &PgPool, session_id: &str, tag_id: &str) -> crate::Result<()> {
-    sqlx::query("DELETE FROM course_session_prereqs WHERE session_id = $1 AND tag_id = $2")
-        .bind(session_id).bind(tag_id).execute(pool).await?;
+pub async fn remove_session_prereq(pool: &PgPool, session_id: &str, label_id: &str) -> crate::Result<()> {
+    sqlx::query(
+        "DELETE FROM course_session_prereqs WHERE session_id = $1 \
+         AND tag_id = (SELECT tag_id FROM tag_labels WHERE id = $2)",
+    )
+        .bind(session_id).bind(label_id).execute(pool).await?;
     Ok(())
 }
 
@@ -632,15 +646,22 @@ pub async fn remove_prerequisite(pool: &PgPool, course_id: &str, prereq_id: &str
 
 // ── Tags ────────────────────────────────────────────────────────────────
 
-pub async fn add_tag(pool: &PgPool, course_id: &str, tag_id: &str) -> crate::Result<()> {
-    sqlx::query("INSERT INTO course_tags (course_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
-        .bind(course_id).bind(tag_id).execute(pool).await?;
+pub async fn add_tag(pool: &PgPool, course_id: &str, label_id: &str) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO course_tags (course_id, tag_id) \
+         VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
+         ON CONFLICT DO NOTHING",
+    )
+        .bind(course_id).bind(label_id).execute(pool).await?;
     Ok(())
 }
 
-pub async fn remove_tag(pool: &PgPool, course_id: &str, tag_id: &str) -> crate::Result<()> {
-    sqlx::query("DELETE FROM course_tags WHERE course_id = $1 AND tag_id = $2")
-        .bind(course_id).bind(tag_id).execute(pool).await?;
+pub async fn remove_tag(pool: &PgPool, course_id: &str, label_id: &str) -> crate::Result<()> {
+    sqlx::query(
+        "DELETE FROM course_tags WHERE course_id = $1 \
+         AND tag_id = (SELECT tag_id FROM tag_labels WHERE id = $2)",
+    )
+        .bind(course_id).bind(label_id).execute(pool).await?;
     Ok(())
 }
 

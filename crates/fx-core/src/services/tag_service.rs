@@ -7,7 +7,8 @@ use crate::Result;
 
 pub async fn list_tags(pool: &PgPool, limit: i64) -> Result<Vec<Tag>> {
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tag_labels WHERE removed_at IS NULL ORDER BY name LIMIT $1",
+        "SELECT id, name, tag_label_map(tag_id) AS names, description, created_by, created_at, tag_id, lang \
+         FROM tag_labels WHERE removed_at IS NULL ORDER BY name LIMIT $1",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -17,7 +18,7 @@ pub async fn list_tags(pool: &PgPool, limit: i64) -> Result<Vec<Tag>> {
 
 pub async fn get_tag(pool: &PgPool, id: &str) -> Result<Tag> {
     sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tag_labels WHERE id = $1",
+        "SELECT id, name, tag_label_map(tag_id) AS names, description, created_by, created_at, tag_id, lang FROM tag_labels WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -29,22 +30,50 @@ pub async fn get_tag(pool: &PgPool, id: &str) -> Result<Tag> {
 }
 
 pub async fn create_tag(pool: &PgPool, input: &CreateTag, created_by: &str) -> Result<Tag> {
-    let names_json = serde_json::to_value(
-        input.names.as_ref().cloned().unwrap_or_default(),
-    )
-    .unwrap_or_default();
+    let own_lang = guess_lang_from_id(&input.id);
+    let mut tx = pool.begin().await?;
+
+    let new_tag_id: String = sqlx::query_scalar("INSERT INTO tags DEFAULT VALUES RETURNING id")
+        .fetch_one(&mut *tx)
+        .await?;
 
     sqlx::query(
-        "INSERT INTO tag_labels (id, name, names, description, created_by) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO tag_labels (id, name, description, created_by, lang, tag_id) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&input.id)
     .bind(&input.name)
-    .bind(&names_json)
     .bind(&input.description)
     .bind(created_by)
-    .execute(pool)
+    .bind(own_lang)
+    .bind(&new_tag_id)
+    .execute(&mut *tx)
     .await?;
 
+    // Each translation supplied by the client becomes a sibling label in
+    // the same tag. The origin lang is already covered above; skip
+    // entries whose value collides with an existing label id to keep the
+    // insert idempotent against concurrent writers.
+    if let Some(names) = &input.names {
+        for (lang, name) in names.iter() {
+            let name = name.trim();
+            if name.is_empty() || lang == own_lang {
+                continue;
+            }
+            sqlx::query(
+                "INSERT INTO tag_labels (id, name, created_by, lang, tag_id) \
+                 VALUES ($1, $1, $2, $3, $4) ON CONFLICT (id) DO NOTHING",
+            )
+            .bind(name)
+            .bind(created_by)
+            .bind(lang)
+            .bind(&new_tag_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
+    tx.commit().await?;
     get_tag(pool, &input.id).await
 }
 
@@ -68,62 +97,61 @@ fn guess_lang_from_id(id: &str) -> &'static str {
     "en"
 }
 
-/// Ensure a tag row exists for `tag_id`. If missing, create a fresh
-/// alias/translation group containing just this one tag, guess its lang
-/// from the id (CJK → `zh`, else `en`), and mark it as the group's rep
-/// for that lang. `INSERT ... ON CONFLICT DO NOTHING` still applies, so
-/// callers can safely invoke this for tags they suspect may already
-/// exist.
+/// Ensure a label row exists for `label_id`. If missing, create a fresh
+/// tag (alias group) containing just this one label, guess its lang from
+/// the id (CJK → `zh`, else `en`), and mark it as the tag's rep for that
+/// lang. `INSERT ... ON CONFLICT DO NOTHING` still applies, so callers
+/// can safely invoke this for labels they suspect may already exist.
 pub async fn ensure_tag(
     conn: &mut sqlx::PgConnection,
-    tag_id: &str,
+    label_id: &str,
     created_by: &str,
 ) -> Result<()> {
-    // Fast path: tag already exists.
+    // Fast path: label already exists.
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tag_labels WHERE id = $1)")
-        .bind(tag_id)
+        .bind(label_id)
         .fetch_one(&mut *conn)
         .await?;
     if exists {
         return Ok(());
     }
-    let lang = guess_lang_from_id(tag_id);
+    let lang = guess_lang_from_id(label_id);
     // Three statements — caller may already be inside a transaction
     // (skill-tree import builds edges in one tx), so we just run
     // sequentially instead of opening a nested one.
-    let group_id: String = sqlx::query_scalar(
+    let new_tag_id: String = sqlx::query_scalar(
         "INSERT INTO tags DEFAULT VALUES RETURNING id",
     )
     .fetch_one(&mut *conn)
     .await?;
     let inserted = sqlx::query(
-        "INSERT INTO tag_labels (id, name, created_by, lang, group_id, names) \
-         VALUES ($1, $2, $3, $4, $5, jsonb_build_object($4::text, $2::text)) \
+        "INSERT INTO tag_labels (id, name, created_by, lang, tag_id) \
+         VALUES ($1, $2, $3, $4, $5) \
          ON CONFLICT (id) DO NOTHING",
     )
-    .bind(tag_id)
-    .bind(tag_id)
+    .bind(label_id)
+    .bind(label_id)
     .bind(created_by)
     .bind(lang)
-    .bind(&group_id)
+    .bind(&new_tag_id)
     .execute(&mut *conn)
     .await?
     .rows_affected();
     if inserted > 0 {
         sqlx::query(
-            "INSERT INTO tag_representatives (group_id, lang, tag_id) \
+            "INSERT INTO tag_representatives (tag_id, lang, label_id) \
              VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
-        .bind(&group_id)
+        .bind(&new_tag_id)
         .bind(lang)
-        .bind(tag_id)
+        .bind(label_id)
         .execute(&mut *conn)
         .await?;
     } else {
-        // Race: some other inserter put the tag in between our check
-        // and our INSERT. Clean up the stray group row.
+        // Race: some other inserter put the label in between our check
+        // and our INSERT. Clean up the stray tag row.
         sqlx::query("DELETE FROM tags WHERE id = $1")
-            .bind(&group_id)
+            .bind(&new_tag_id)
             .execute(&mut *conn)
             .await?;
     }
@@ -163,16 +191,16 @@ pub async fn get_tag_names(
     Ok(map)
 }
 
-/// Update the i18n names for a tag by materializing each per-language
-/// entry as a sibling tag_labels row in the same group (and refreshing
-/// the legacy `names` jsonb cache on every row in the group so existing
-/// bulk-read paths stay consistent until they migrate off it).
+/// Update the translations for a label by materializing each per-language
+/// entry as a sibling label row in the same tag. The translation map is
+/// derived at read time via `tag_label_map`, so no jsonb cache needs
+/// updating.
 pub async fn update_tag_names(
     pool: &PgPool,
-    tag_id: &str,
+    label_id: &str,
     names: &HashMap<String, String>,
 ) -> Result<Tag> {
-    let origin = get_tag(pool, tag_id).await?;
+    let origin = get_tag(pool, label_id).await?;
     let mut tx = pool.begin().await?;
 
     for (lang, name) in names.iter() {
@@ -181,18 +209,18 @@ pub async fn update_tag_names(
             continue;
         }
         if lang == &origin.lang {
-            // Rename the origin row's display name in place; keep its id.
+            // Rename the origin label's display name in place; keep its id.
             sqlx::query("UPDATE tag_labels SET name = $1 WHERE id = $2")
                 .bind(name)
-                .bind(tag_id)
+                .bind(label_id)
                 .execute(&mut *tx)
                 .await?;
             continue;
         }
         let sibling_id: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM tag_labels WHERE group_id = $1 AND lang = $2 LIMIT 1",
+            "SELECT id FROM tag_labels WHERE tag_id = $1 AND lang = $2 LIMIT 1",
         )
-        .bind(&origin.group_id)
+        .bind(&origin.tag_id)
         .bind(lang)
         .fetch_optional(&mut *tx)
         .await?;
@@ -204,152 +232,74 @@ pub async fn update_tag_names(
                 .await?;
         } else {
             sqlx::query(
-                "INSERT INTO tag_labels (id, name, lang, group_id, created_by, names) \
-                 VALUES ($1, $1, $2, $3, $4, jsonb_build_object($2::text, $1::text)) \
+                "INSERT INTO tag_labels (id, name, lang, tag_id, created_by) \
+                 VALUES ($1, $1, $2, $3, $4) \
                  ON CONFLICT (id) DO NOTHING",
             )
             .bind(name)
             .bind(lang)
-            .bind(&origin.group_id)
+            .bind(&origin.tag_id)
             .bind(&origin.created_by)
             .execute(&mut *tx)
             .await?;
         }
     }
 
-    // Rebuild the jsonb cache from current sibling state so every row in
-    // the group advertises the same translation map.
-    sqlx::query(
-        "UPDATE tag_labels SET names = sub.map FROM ( \
-             SELECT jsonb_object_agg(lang, name) AS map \
-             FROM tag_labels WHERE group_id = $1 \
-         ) sub WHERE group_id = $1",
-    )
-    .bind(&origin.group_id)
-    .execute(&mut *tx)
-    .await?;
-
     tx.commit().await?;
-    get_tag(pool, tag_id).await
+    get_tag(pool, label_id).await
 }
 
-/// Merge tag `from_id` into `into_id`: migrate all references, then delete the source tag.
+/// Merge label `from_id` into label `into_id`. If the two labels belong
+/// to different tags, move `from_id`'s tag into `into_id`'s tag first
+/// (all content/edge FKs are tag-level, so they collapse automatically).
+/// Then delete the source label. If its tag ends up empty, drop the tag
+/// too (cascade deletes any remaining FKs).
 pub async fn merge_tag(pool: &PgPool, from_id: &str, into_id: &str) -> Result<()> {
     let mut tx = pool.begin().await?;
 
-    // content_teaches
-    sqlx::query(
-        "UPDATE content_teaches SET tag_id = $2 WHERE tag_id = $1 \
-         AND content_uri NOT IN (SELECT content_uri FROM content_teaches WHERE tag_id = $2)",
-    )
-    .bind(from_id)
-    .bind(into_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM content_teaches WHERE tag_id = $1")
+    let from_tag: String = sqlx::query_scalar("SELECT tag_id FROM tag_labels WHERE id = $1")
         .bind(from_id)
-        .execute(&mut *tx)
-        .await?;
-
-    // content_prereqs
-    sqlx::query(
-        "UPDATE content_prereqs SET tag_id = $2 WHERE tag_id = $1 \
-         AND content_uri NOT IN (SELECT content_uri FROM content_prereqs WHERE tag_id = $2)",
-    )
-    .bind(from_id)
-    .bind(into_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM content_prereqs WHERE tag_id = $1")
-        .bind(from_id)
-        .execute(&mut *tx)
-        .await?;
-
-    // content_topics
-    sqlx::query(
-        "UPDATE content_topics SET tag_id = $2 WHERE tag_id = $1 \
-         AND content_uri NOT IN (SELECT content_uri FROM content_topics WHERE tag_id = $2)",
-    )
-    .bind(from_id)
-    .bind(into_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM content_topics WHERE tag_id = $1")
-        .bind(from_id)
-        .execute(&mut *tx)
-        .await?;
-
-    // skill_tree_edges (both parent and child)
-    sqlx::query("UPDATE skill_tree_edges SET parent_tag = $2 WHERE parent_tag = $1")
-        .bind(from_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: from_id.to_string() })?;
+    let into_tag: String = sqlx::query_scalar("SELECT tag_id FROM tag_labels WHERE id = $1")
         .bind(into_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("UPDATE skill_tree_edges SET child_tag = $2 WHERE child_tag = $1")
-        .bind(from_id)
-        .bind(into_id)
-        .execute(&mut *tx)
-        .await?;
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: into_id.to_string() })?;
 
-    // user_skills
-    sqlx::query(
-        "UPDATE user_skills SET tag_id = $2 WHERE tag_id = $1 \
-         AND did NOT IN (SELECT did FROM user_skills WHERE tag_id = $2)",
-    )
-    .bind(from_id)
-    .bind(into_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM user_skills WHERE tag_id = $1")
-        .bind(from_id)
+    if from_tag != into_tag {
+        // Move every label of from_tag into into_tag.
+        sqlx::query("UPDATE tag_labels SET tag_id = $1 WHERE tag_id = $2")
+            .bind(&into_tag)
+            .bind(&from_tag)
+            .execute(&mut *tx)
+            .await?;
+        // Keep into_tag's per-lang reps; into_tag's rep wins, from_tag's
+        // fills in missing languages.
+        sqlx::query(
+            "INSERT INTO tag_representatives (tag_id, lang, label_id) \
+             SELECT $1, lang, label_id FROM tag_representatives WHERE tag_id = $2 \
+             ON CONFLICT (tag_id, lang) DO NOTHING",
+        )
+        .bind(&into_tag)
+        .bind(&from_tag)
         .execute(&mut *tx)
         .await?;
+        sqlx::query("DELETE FROM tag_representatives WHERE tag_id = $1")
+            .bind(&from_tag)
+            .execute(&mut *tx)
+            .await?;
+        // Delete the (now orphan) from_tag; tag_parents, user_tag_tree,
+        // skill_tree_edges, etc. cascade-clean since their tag_id FK
+        // references `tags(id) ON DELETE CASCADE`.
+        sqlx::query("DELETE FROM tags WHERE id = $1")
+            .bind(&from_tag)
+            .execute(&mut *tx)
+            .await?;
+    }
 
-    // tag_parents (global hierarchy) — rewrite both sides and drop self-loops
-    sqlx::query("DELETE FROM tag_parents WHERE parent_tag = $1 AND child_tag = $1")
-        .bind(from_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query(
-        "UPDATE tag_parents SET parent_tag = $2 WHERE parent_tag = $1 \
-         AND NOT EXISTS (SELECT 1 FROM tag_parents WHERE parent_tag = $2 AND child_tag = tag_parents.child_tag)",
-    )
-    .bind(from_id)
-    .bind(into_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM tag_parents WHERE parent_tag = $1")
-        .bind(from_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query(
-        "UPDATE tag_parents SET child_tag = $2 WHERE child_tag = $1 \
-         AND NOT EXISTS (SELECT 1 FROM tag_parents WHERE child_tag = $2 AND parent_tag = tag_parents.parent_tag)",
-    )
-    .bind(from_id)
-    .bind(into_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM tag_parents WHERE child_tag = $1")
-        .bind(from_id)
-        .execute(&mut *tx)
-        .await?;
-
-    // user_interests
-    sqlx::query(
-        "UPDATE user_interests SET tag_id = $2 WHERE tag_id = $1 \
-         AND did NOT IN (SELECT did FROM user_interests WHERE tag_id = $2)",
-    )
-    .bind(from_id)
-    .bind(into_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM user_interests WHERE tag_id = $1")
-        .bind(from_id)
-        .execute(&mut *tx)
-        .await?;
-
-    // Delete the source tag
+    // Delete the source label itself.
     sqlx::query("DELETE FROM tag_labels WHERE id = $1")
         .bind(from_id)
         .execute(&mut *tx)
@@ -370,11 +320,12 @@ pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<T
     // autocomplete will list each match separately — they pick the
     // label they want to use.
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT t.id, t.name, t.names, t.description, t.created_by, t.created_at, t.group_id, t.lang \
+        "SELECT t.id, t.name, tag_label_map(t.tag_id) AS names, t.description, t.created_by, t.created_at, t.tag_id, t.lang \
          FROM tag_labels t \
          WHERE t.removed_at IS NULL AND ( \
-             t.id ILIKE $1 OR t.name ILIKE $1 OR t.names::text ILIKE $1 \
-             OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.tag_id = t.id AND a.alias ILIKE $1) \
+             t.id ILIKE $1 OR t.name ILIKE $1 \
+             OR EXISTS (SELECT 1 FROM tag_labels sib WHERE sib.tag_id = t.tag_id AND sib.name ILIKE $1) \
+             OR EXISTS (SELECT 1 FROM tag_aliases a WHERE a.label_id = t.id AND a.alias ILIKE $1) \
          ) \
          ORDER BY \
              CASE WHEN t.id = $2 THEN 0 WHEN t.id ILIKE $3 THEN 1 ELSE 2 END, \
@@ -390,12 +341,14 @@ pub async fn search_tags(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<T
     Ok(tags)
 }
 
-/// Batch-fetch tag i18n names for a set of IDs. Returns id -> { locale -> name }.
+/// Batch-fetch per-label translation maps for a set of label IDs. Returns
+/// label_id -> { locale -> name }. Each label in a tag shares the same
+/// translation map (aggregated from the tag's siblings).
 pub async fn get_tag_names_i18n(
     pool: &PgPool,
-    tag_ids: &[String],
+    label_ids: &[String],
 ) -> Result<HashMap<String, HashMap<String, String>>> {
-    if tag_ids.is_empty() {
+    if label_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
@@ -406,9 +359,9 @@ pub async fn get_tag_names_i18n(
     }
 
     let rows = sqlx::query_as::<_, Row>(
-        "SELECT id, names FROM tag_labels WHERE id = ANY($1)",
+        "SELECT id, tag_label_map(tag_id) AS names FROM tag_labels WHERE id = ANY($1)",
     )
-    .bind(tag_ids)
+    .bind(label_ids)
     .fetch_all(pool)
     .await?;
 
@@ -417,9 +370,9 @@ pub async fn get_tag_names_i18n(
 
 // ── Aliases ────────────────────────────────────────────────────────────
 
-pub async fn add_alias(pool: &PgPool, alias: &str, tag_id: &str) -> crate::Result<()> {
-    sqlx::query("INSERT INTO tag_aliases (alias, tag_id) VALUES ($1, $2) ON CONFLICT (alias) DO UPDATE SET tag_id = $2")
-        .bind(alias).bind(tag_id)
+pub async fn add_alias(pool: &PgPool, alias: &str, label_id: &str) -> crate::Result<()> {
+    sqlx::query("INSERT INTO tag_aliases (alias, label_id) VALUES ($1, $2) ON CONFLICT (alias) DO UPDATE SET label_id = $2")
+        .bind(alias).bind(label_id)
         .execute(pool).await?;
     Ok(())
 }
@@ -430,15 +383,15 @@ pub async fn remove_alias(pool: &PgPool, alias: &str) -> crate::Result<()> {
     Ok(())
 }
 
-pub async fn list_aliases(pool: &PgPool, tag_id: &str) -> crate::Result<Vec<String>> {
-    let rows: Vec<(String,)> = sqlx::query_as("SELECT alias FROM tag_aliases WHERE tag_id = $1 ORDER BY alias")
-        .bind(tag_id).fetch_all(pool).await?;
+pub async fn list_aliases(pool: &PgPool, label_id: &str) -> crate::Result<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT alias FROM tag_aliases WHERE label_id = $1 ORDER BY alias")
+        .bind(label_id).fetch_all(pool).await?;
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
-/// Derive the set of "topic" tags for a content — the transitive closure of
-/// parents (in the global tag_parents hierarchy) of the content's teach
-/// tags. Result excludes the teach tags themselves.
+/// Derive the set of "topic" tags for a content — the transitive closure
+/// of parents (in the global `tag_parents` hierarchy) of the content's
+/// teach tags. Result excludes the teach tags themselves.
 pub async fn derive_topics(pool: &PgPool, content_uri: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"
@@ -464,114 +417,113 @@ pub async fn derive_topics(pool: &PgPool, content_uri: &str) -> Result<Vec<Strin
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
-/// Resolve a tag ID or alias to the canonical tag ID.
+/// Resolve a label id or alias to a canonical label id.
 pub async fn resolve_tag(pool: &PgPool, id_or_alias: &str) -> crate::Result<String> {
-    // First check if it's a direct tag ID
+    // First check if it's a direct label id
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tag_labels WHERE id = $1)")
         .bind(id_or_alias).fetch_one(pool).await?;
     if exists {
         return Ok(id_or_alias.to_string());
     }
     // Then check aliases
-    let canonical: Option<String> = sqlx::query_scalar("SELECT tag_id FROM tag_aliases WHERE alias = $1")
+    let canonical: Option<String> = sqlx::query_scalar("SELECT label_id FROM tag_aliases WHERE alias = $1")
         .bind(id_or_alias).fetch_optional(pool).await?;
     canonical.ok_or_else(|| crate::Error::NotFound { entity: "tag", id: id_or_alias.to_string() })
 }
 
 // ── Alias / translation groups ────────────────────────────────────────
 
-/// Return every tag id that lives in the same alias/translation group as
-/// the given tag (including the tag itself). Used to treat same-concept
-/// tags as a single unit when querying edge tables.
-pub async fn list_group_members(pool: &PgPool, tag_id: &str) -> Result<Vec<String>> {
+/// Return every label id that lives in the same tag (alias/translation
+/// group) as the given label, itself included. Used to treat same-concept
+/// labels as a single unit when querying edge tables.
+pub async fn list_group_members(pool: &PgPool, label_id: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT id FROM tag_labels WHERE group_id = (SELECT group_id FROM tag_labels WHERE id = $1) \
+        "SELECT id FROM tag_labels WHERE tag_id = (SELECT tag_id FROM tag_labels WHERE id = $1) \
          ORDER BY (lang = 'en') DESC, lang, id",
     )
-    .bind(tag_id)
+    .bind(label_id)
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
-/// Return every tag in the same group as `tag_id` with its lang. Ordered
-/// English-first, then by locale. Useful for UI that shows the full group.
-pub async fn list_group_siblings(pool: &PgPool, tag_id: &str) -> Result<Vec<Tag>> {
+/// Return every label sharing the same tag as `label_id`, with its lang.
+/// Ordered English-first, then by locale. Useful for UI that shows every
+/// language variant.
+pub async fn list_group_siblings(pool: &PgPool, label_id: &str) -> Result<Vec<Tag>> {
     let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tag_labels \
-         WHERE group_id = (SELECT group_id FROM tag_labels WHERE id = $1) \
+        "SELECT id, name, tag_label_map(tag_id) AS names, description, created_by, created_at, tag_id, lang \
+         FROM tag_labels \
+         WHERE tag_id = (SELECT tag_id FROM tag_labels WHERE id = $1) \
          ORDER BY (lang = 'en') DESC, lang, id",
     )
-    .bind(tag_id)
+    .bind(label_id)
     .fetch_all(pool)
     .await?;
     Ok(tags)
 }
 
-/// Given a list of tag ids (possibly containing same-group duplicates),
-/// return a deduplicated list — one representative per group. The
-/// representative is English-preferred, then the caller-supplied order.
-pub async fn dedupe_by_group(pool: &PgPool, tag_ids: &[String]) -> Result<Vec<String>> {
-    if tag_ids.is_empty() {
+/// Given a list of label ids (possibly sharing a tag), return a
+/// deduplicated list — one label per tag, preserving input order.
+pub async fn dedupe_by_group(pool: &PgPool, label_ids: &[String]) -> Result<Vec<String>> {
+    if label_ids.is_empty() {
         return Ok(Vec::new());
     }
     let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT id, group_id FROM tag_labels WHERE id = ANY($1)",
+        "SELECT id, tag_id FROM tag_labels WHERE id = ANY($1)",
     )
-    .bind(tag_ids)
+    .bind(label_ids)
     .fetch_all(pool)
     .await?;
 
-    // Keep the first id per group in input order, preferring the one
-    // whose input-position is smallest and whose lang is en if multiple.
     use std::collections::HashMap;
-    let mut group_of: HashMap<String, String> = HashMap::new();
-    for (id, g) in &rows { group_of.insert(id.clone(), g.clone()); }
-    let mut seen_groups: HashMap<String, String> = HashMap::new();
+    let mut tag_of: HashMap<String, String> = HashMap::new();
+    for (id, t) in &rows { tag_of.insert(id.clone(), t.clone()); }
+    let mut seen_tags: HashMap<String, String> = HashMap::new();
     let mut out = Vec::new();
-    for id in tag_ids {
-        if let Some(g) = group_of.get(id) {
-            if !seen_groups.contains_key(g) {
-                seen_groups.insert(g.clone(), id.clone());
+    for id in label_ids {
+        if let Some(t) = tag_of.get(id) {
+            if !seen_tags.contains_key(t) {
+                seen_tags.insert(t.clone(), id.clone());
                 out.push(id.clone());
             }
         } else {
-            out.push(id.clone()); // tag not found — keep as-is
+            out.push(id.clone()); // label not found — keep as-is
         }
     }
     Ok(out)
 }
 
-/// Set a group's representative for the given member's language. Promoting
-/// sibling X makes X the canonical label for lang(X) in this group — the
-/// UI will display it whenever a reader's locale matches lang(X). Other
-/// languages' reps are untouched.
+/// Set a tag's canonical label for the given sibling's language.
+/// Promoting sibling X makes X the canonical label for lang(X) — the UI
+/// will display it whenever a reader's locale matches. Other langs'
+/// reps are untouched.
 pub async fn set_group_representative(
     pool: &PgPool,
-    anchor_tag_id: &str,
+    anchor_label_id: &str,
     member_id: &str,
 ) -> Result<()> {
-    // Validate both tags are in the same group; read member's lang.
+    // Validate both labels are in the same tag; read member's lang.
     let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT anchor.group_id, m.lang \
-         FROM tag_labels anchor JOIN tag_labels m ON m.group_id = anchor.group_id \
+        "SELECT anchor.tag_id, m.lang \
+         FROM tag_labels anchor JOIN tag_labels m ON m.tag_id = anchor.tag_id \
          WHERE anchor.id = $1 AND m.id = $2",
     )
-    .bind(anchor_tag_id)
+    .bind(anchor_label_id)
     .bind(member_id)
     .fetch_optional(pool)
     .await?;
-    let (group_id, lang) = row.ok_or_else(|| crate::Error::Validation(vec![
+    let (tag_id, lang) = row.ok_or_else(|| crate::Error::Validation(vec![
         crate::validation::ValidationError {
             field: "member_id".into(),
-            message: "member is not in the same group as anchor".into(),
+            message: "member is not in the same tag as anchor".into(),
         }
     ]))?;
     sqlx::query(
-        "INSERT INTO tag_representatives (group_id, lang, tag_id) VALUES ($1, $2, $3) \
-         ON CONFLICT (group_id, lang) DO UPDATE SET tag_id = EXCLUDED.tag_id",
+        "INSERT INTO tag_representatives (tag_id, lang, label_id) VALUES ($1, $2, $3) \
+         ON CONFLICT (tag_id, lang) DO UPDATE SET label_id = EXCLUDED.label_id",
     )
-    .bind(&group_id)
+    .bind(&tag_id)
     .bind(&lang)
     .bind(member_id)
     .execute(pool)
@@ -584,7 +536,7 @@ pub async fn set_group_representative(
 #[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
 pub struct TagDeletionRequest {
     pub id: String,
-    pub tag_id: String,
+    pub label_id: String,
     pub requester_did: String,
     pub reason: String,
     pub status: String,
@@ -594,36 +546,36 @@ pub struct TagDeletionRequest {
     pub reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-/// Record a user's request to remove a tag. Admin must later approve
-/// or reject; the tag isn't touched until approval. Rejects if there's
-/// already a pending request on the tag (by any user) so a single
-/// pending review is the canonical "under review" state.
+/// Record a user's request to remove a label. Admin must later approve
+/// or reject; the label isn't touched until approval. Rejects if there's
+/// already a pending request on the same label so a single pending
+/// review is the canonical "under review" state.
 pub async fn request_tag_deletion(
     pool: &PgPool,
-    tag_id: &str,
+    label_id: &str,
     requester_did: &str,
     reason: &str,
 ) -> Result<TagDeletionRequest> {
     let existing: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM tag_deletion_requests \
-         WHERE tag_id = $1 AND status = 'pending')",
+         WHERE label_id = $1 AND status = 'pending')",
     )
-    .bind(tag_id)
+    .bind(label_id)
     .fetch_one(pool)
     .await?;
     if existing {
         return Err(crate::Error::Validation(vec![
             crate::validation::ValidationError {
-                field: "tag_id".into(),
-                message: "this tag already has a pending deletion request under review".into(),
+                field: "label_id".into(),
+                message: "this label already has a pending deletion request under review".into(),
             }
         ]));
     }
     let row = sqlx::query_as::<_, TagDeletionRequest>(
-        "INSERT INTO tag_deletion_requests (tag_id, requester_did, reason) \
+        "INSERT INTO tag_deletion_requests (label_id, requester_did, reason) \
          VALUES ($1, $2, $3) RETURNING *",
     )
-    .bind(tag_id)
+    .bind(label_id)
     .bind(requester_did)
     .bind(reason)
     .fetch_one(pool)
@@ -631,14 +583,14 @@ pub async fn request_tag_deletion(
     Ok(row)
 }
 
-/// Is there a pending deletion request on this tag? Used by the UI to
+/// Is there a pending deletion request on this label? Used by the UI to
 /// show an "under review" banner instead of the submit form.
-pub async fn has_pending_deletion(pool: &PgPool, tag_id: &str) -> Result<bool> {
+pub async fn has_pending_deletion(pool: &PgPool, label_id: &str) -> Result<bool> {
     let existing: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM tag_deletion_requests \
-         WHERE tag_id = $1 AND status = 'pending')",
+         WHERE label_id = $1 AND status = 'pending')",
     )
-    .bind(tag_id)
+    .bind(label_id)
     .fetch_one(pool)
     .await?;
     Ok(existing)
@@ -660,10 +612,10 @@ pub async fn approve_tag_deletion(
     note: Option<&str>,
 ) -> Result<()> {
     let mut tx = pool.begin().await?;
-    let tag_id: String = sqlx::query_scalar(
+    let label_id: String = sqlx::query_scalar(
         "UPDATE tag_deletion_requests \
          SET status = 'approved', reviewer_did = $2, review_note = $3, reviewed_at = NOW() \
-         WHERE id = $1 AND status = 'pending' RETURNING tag_id",
+         WHERE id = $1 AND status = 'pending' RETURNING label_id",
     )
     .bind(request_id)
     .bind(reviewer_did)
@@ -672,75 +624,41 @@ pub async fn approve_tag_deletion(
     .await?
     .ok_or_else(|| crate::Error::NotFound { entity: "tag_deletion_request", id: request_id.to_string() })?;
 
-    hard_delete_tag(&mut tx, &tag_id).await?;
+    hard_delete_tag(&mut tx, &label_id).await?;
     tx.commit().await?;
     Ok(())
 }
 
-/// Remove every reference to a tag from edge tables that don't have
-/// ON DELETE CASCADE wired up, then delete the tag row. If the tag was
-/// the last member of its group, the empty group row is dropped too.
+/// Delete the label row. If it was the last label in its tag, drop the
+/// tag too — which cascades to every tag-level FK (content_teaches,
+/// content_prereqs, tag_parents, skill_tree_edges, user_skills, …).
+/// Individual content/edge FKs point at the *tag*, so removing a single
+/// label while siblings remain is non-destructive: those FKs stay
+/// pointed at a still-valid tag.
 async fn hard_delete_tag(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    tag_id: &str,
+    label_id: &str,
 ) -> Result<()> {
-    // Non-cascading FK tables — clean up first.
-    for table in &[
-        "content_prereqs",
-        "content_teaches",
-        "content_topics",
-        "course_tags",
-        "listing_preferred_tags",
-        "listing_required_tags",
-        "user_interests",
-        "user_skills",
-        "skill_trees",
-    ] {
-        sqlx::query(&format!("DELETE FROM {table} WHERE tag_id = $1"))
-            .bind(tag_id)
-            .execute(&mut **tx)
-            .await?;
-    }
-    // parent/child pairs
-    for (table, cols) in &[
-        ("user_tag_tree", ("parent_tag", "child_tag")),
-        ("skill_tree_edges", ("parent_tag", "child_tag")),
-        ("tag_parent_edits", ("parent_tag", "child_tag")),
-        ("skill_tree_prereqs", ("from_tag", "to_tag")),
-        ("user_tag_prereqs", ("from_tag", "to_tag")),
-    ] {
-        let (a, b) = cols;
-        sqlx::query(&format!("DELETE FROM {table} WHERE {a} = $1 OR {b} = $1"))
-            .bind(tag_id)
-            .execute(&mut **tx)
-            .await?;
-    }
-
-    let group_id: Option<String> = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
-        .bind(tag_id)
+    let tag_id: Option<String> = sqlx::query_scalar("SELECT tag_id FROM tag_labels WHERE id = $1")
+        .bind(label_id)
         .fetch_optional(&mut **tx)
         .await?;
 
-    // Delete the tag — cascading FKs (tag_parents, tag_aliases,
-    // tag_group_representatives, course_session_*, tag_deletion_requests)
-    // clean themselves up.
     sqlx::query("DELETE FROM tag_labels WHERE id = $1")
-        .bind(tag_id)
+        .bind(label_id)
         .execute(&mut **tx)
         .await?;
 
-    // If group is now empty, drop it (and the stale rep FK that
-    // cascaded from the tag row).
-    if let Some(g) = group_id {
+    if let Some(t) = tag_id {
         let remaining: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tag_labels WHERE group_id = $1",
+            "SELECT COUNT(*) FROM tag_labels WHERE tag_id = $1",
         )
-        .bind(&g)
+        .bind(&t)
         .fetch_one(&mut **tx)
         .await?;
         if remaining == 0 {
             sqlx::query("DELETE FROM tags WHERE id = $1")
-                .bind(&g)
+                .bind(&t)
                 .execute(&mut **tx)
                 .await?;
         }
@@ -767,108 +685,107 @@ pub async fn reject_tag_deletion(
     Ok(())
 }
 
-/// Merge the group containing `drop_tag_id` into the group containing
-/// `keep_tag_id`. All members of the drop-group move to the keep-group;
-/// representatives merge (keep-group's per-lang reps take precedence,
-/// drop-group's reps fill in missing langs). The emptied group row is
+/// Merge the tag containing `drop_label_id` into the tag containing
+/// `keep_label_id`. All labels of the drop-tag move to the keep-tag;
+/// representatives merge (keep-tag's per-lang reps take precedence,
+/// drop-tag's reps fill in missing langs). The emptied tag row is
 /// deleted.
-pub async fn merge_groups(pool: &PgPool, keep_tag_id: &str, drop_tag_id: &str) -> Result<()> {
-    let keep_group: String = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
-        .bind(keep_tag_id)
+pub async fn merge_groups(pool: &PgPool, keep_label_id: &str, drop_label_id: &str) -> Result<()> {
+    let keep_tag: String = sqlx::query_scalar("SELECT tag_id FROM tag_labels WHERE id = $1")
+        .bind(keep_label_id)
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: keep_tag_id.to_string() })?;
-    let drop_group: String = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
-        .bind(drop_tag_id)
+        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: keep_label_id.to_string() })?;
+    let drop_tag: String = sqlx::query_scalar("SELECT tag_id FROM tag_labels WHERE id = $1")
+        .bind(drop_label_id)
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: drop_tag_id.to_string() })?;
-    if keep_group == drop_group {
+        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: drop_label_id.to_string() })?;
+    if keep_tag == drop_tag {
         return Ok(()); // already siblings; no-op
     }
 
     let mut tx = pool.begin().await?;
-    // Move every member of drop_group into keep_group.
-    sqlx::query("UPDATE tag_labels SET group_id = $1 WHERE group_id = $2")
-        .bind(&keep_group)
-        .bind(&drop_group)
+    // Move every label of drop_tag into keep_tag.
+    sqlx::query("UPDATE tag_labels SET tag_id = $1 WHERE tag_id = $2")
+        .bind(&keep_tag)
+        .bind(&drop_tag)
         .execute(&mut *tx)
         .await?;
-    // Keep-group's per-lang reps win; drop-group's fill in where keep
-    // didn't have one.
+    // Keep-tag's per-lang reps win; drop-tag's fill in where keep didn't
+    // have one.
     sqlx::query(
-        "INSERT INTO tag_representatives (group_id, lang, tag_id) \
-         SELECT $1, lang, tag_id FROM tag_representatives WHERE group_id = $2 \
-         ON CONFLICT (group_id, lang) DO NOTHING",
+        "INSERT INTO tag_representatives (tag_id, lang, label_id) \
+         SELECT $1, lang, label_id FROM tag_representatives WHERE tag_id = $2 \
+         ON CONFLICT (tag_id, lang) DO NOTHING",
     )
-    .bind(&keep_group)
-    .bind(&drop_group)
+    .bind(&keep_tag)
+    .bind(&drop_tag)
     .execute(&mut *tx)
     .await?;
-    sqlx::query("DELETE FROM tag_representatives WHERE group_id = $1")
-        .bind(&drop_group)
+    sqlx::query("DELETE FROM tag_representatives WHERE tag_id = $1")
+        .bind(&drop_tag)
         .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM tags WHERE id = $1")
-        .bind(&drop_group)
+        .bind(&drop_tag)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
     Ok(())
 }
 
-/// Fetch the (lang → representative tag id) mapping for a group, keyed
-/// off any member.
+/// Fetch the (lang → canonical label id) mapping for a tag, keyed off any
+/// label in that tag.
 pub async fn list_group_representatives(
     pool: &PgPool,
-    anchor_tag_id: &str,
+    anchor_label_id: &str,
 ) -> Result<std::collections::HashMap<String, String>> {
     let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT r.lang, r.tag_id FROM tag_representatives r \
-         WHERE r.group_id = (SELECT group_id FROM tag_labels WHERE id = $1)",
+        "SELECT r.lang, r.label_id FROM tag_representatives r \
+         WHERE r.tag_id = (SELECT tag_id FROM tag_labels WHERE id = $1)",
     )
-    .bind(anchor_tag_id)
+    .bind(anchor_label_id)
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().collect())
 }
 
-/// Add a sibling tag to the same alias/translation group as an existing
-/// tag. The new tag gets its own id/name/lang but shares group_id with the
-/// anchor.
+/// Add a sibling label to the same tag as an existing label. The new label
+/// gets its own id/name/lang but shares tag_id with the anchor.
 pub async fn add_group_member(
     pool: &PgPool,
-    anchor_tag_id: &str,
+    anchor_label_id: &str,
     new_id: &str,
     new_name: &str,
     lang: &str,
     created_by: &str,
 ) -> Result<Tag> {
-    let group_id: String = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
-        .bind(anchor_tag_id)
+    let tag_id: String = sqlx::query_scalar("SELECT tag_id FROM tag_labels WHERE id = $1")
+        .bind(anchor_label_id)
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: anchor_tag_id.to_string() })?;
+        .ok_or_else(|| crate::Error::NotFound { entity: "tag", id: anchor_label_id.to_string() })?;
 
     sqlx::query(
-        "INSERT INTO tag_labels (id, name, created_by, lang, group_id, names) \
-         VALUES ($1, $2, $3, $4, $5, jsonb_build_object($4::text, $2::text))",
+        "INSERT INTO tag_labels (id, name, created_by, lang, tag_id) \
+         VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(new_id)
     .bind(new_name)
     .bind(created_by)
     .bind(lang)
-    .bind(&group_id)
+    .bind(&tag_id)
     .execute(pool)
     .await?;
-    // If this lang has no representative yet, the new tag is the only
+    // If this lang has no representative yet, the new label is the only
     // candidate — mark it as the rep automatically. Admin can later
     // promote a different sibling if they add a better label.
     sqlx::query(
-        "INSERT INTO tag_representatives (group_id, lang, tag_id) \
-         VALUES ($1, $2, $3) ON CONFLICT (group_id, lang) DO NOTHING",
+        "INSERT INTO tag_representatives (tag_id, lang, label_id) \
+         VALUES ($1, $2, $3) ON CONFLICT (tag_id, lang) DO NOTHING",
     )
-    .bind(&group_id)
+    .bind(&tag_id)
     .bind(lang)
     .bind(new_id)
     .execute(pool)
@@ -876,40 +793,39 @@ pub async fn add_group_member(
     get_tag(pool, new_id).await
 }
 
-/// Remove a tag from its group (deletes the tag row). If the group becomes
-/// empty, drop the group row too.
-pub async fn remove_group_member(pool: &PgPool, tag_id: &str) -> Result<()> {
-    let group_id: Option<String> = sqlx::query_scalar("SELECT group_id FROM tag_labels WHERE id = $1")
-        .bind(tag_id)
+/// Remove a label from its tag. If the tag becomes empty, drop it too.
+pub async fn remove_group_member(pool: &PgPool, label_id: &str) -> Result<()> {
+    let tag_id: Option<String> = sqlx::query_scalar("SELECT tag_id FROM tag_labels WHERE id = $1")
+        .bind(label_id)
         .fetch_optional(pool)
         .await?;
-    sqlx::query("DELETE FROM tag_labels WHERE id = $1").bind(tag_id).execute(pool).await?;
-    if let Some(g) = group_id {
+    sqlx::query("DELETE FROM tag_labels WHERE id = $1").bind(label_id).execute(pool).await?;
+    if let Some(t) = tag_id {
         let still_populated: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tag_labels WHERE group_id = $1",
+            "SELECT COUNT(*) FROM tag_labels WHERE tag_id = $1",
         )
-        .bind(&g)
+        .bind(&t)
         .fetch_one(pool)
         .await?;
         if still_populated == 0 {
-            sqlx::query("DELETE FROM tags WHERE id = $1").bind(&g).execute(pool).await?;
+            sqlx::query("DELETE FROM tags WHERE id = $1").bind(&t).execute(pool).await?;
         }
     }
     Ok(())
 }
 
-/// Expand a list of tag ids to include every sibling in each tag's group.
+/// Expand a list of label ids to include every sibling in each label's tag.
 /// Used when querying edge tables ("find all content with prereq X" must
 /// also find content with prereq on X's zh-sibling or alias-sibling).
-pub async fn expand_to_group(pool: &PgPool, tag_ids: &[String]) -> Result<Vec<String>> {
-    if tag_ids.is_empty() {
+pub async fn expand_to_group(pool: &PgPool, label_ids: &[String]) -> Result<Vec<String>> {
+    if label_ids.is_empty() {
         return Ok(Vec::new());
     }
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT DISTINCT id FROM tag_labels \
-         WHERE group_id IN (SELECT group_id FROM tag_labels WHERE id = ANY($1))",
+         WHERE tag_id IN (SELECT tag_id FROM tag_labels WHERE id = ANY($1))",
     )
-    .bind(tag_ids)
+    .bind(label_ids)
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())

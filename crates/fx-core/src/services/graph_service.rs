@@ -2,8 +2,6 @@ use std::collections::{HashMap, HashSet};
 
 use sqlx::PgPool;
 
-use crate::models::Tag;
-
 #[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct GraphNode {
@@ -29,16 +27,32 @@ pub struct GraphData {
     pub edges: Vec<GraphEdge>,
 }
 
-/// Build the knowledge graph using a SQL JOIN instead of O(n²) Rust loop.
+/// Build the knowledge graph. Nodes are tags (concepts); each node's `id`
+/// is the tag's canonical label id so front-end routing keeps working,
+/// and `names` carries the per-language translation map.
 pub async fn build_knowledge_graph(pool: &PgPool, did: Option<&str>) -> crate::Result<GraphData> {
-    let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, names, description, created_by, created_at, group_id, lang FROM tag_labels ORDER BY name",
+    #[derive(sqlx::FromRow)]
+    struct TagRow {
+        tag_id: String,
+        label_id: String,
+        name: String,
+        names: sqlx::types::Json<HashMap<String, String>>,
+    }
+
+    let tag_rows = sqlx::query_as::<_, TagRow>(
+        "SELECT t.id AS tag_id, \
+                tag_canonical_label(t.id) AS label_id, \
+                (SELECT name FROM tag_labels WHERE id = tag_canonical_label(t.id)) AS name, \
+                tag_label_map(t.id) AS names \
+         FROM tags t \
+         WHERE EXISTS (SELECT 1 FROM tag_labels l WHERE l.tag_id = t.id AND l.removed_at IS NULL) \
+         ORDER BY name",
     )
     .fetch_all(pool)
     .await?;
 
-    // Derive skills from learned_marks + article_teaches, unioned with manual user_skills
-    let skills: HashSet<String> = if let Some(did) = did {
+    // Skills are stored at tag level. Build a HashSet of lit tag_ids.
+    let lit_tags: HashSet<String> = if let Some(did) = did {
         sqlx::query_scalar(
             "SELECT DISTINCT tag_id FROM ( \
                  SELECT ct.tag_id FROM learned_marks lm \
@@ -58,7 +72,13 @@ pub async fn build_knowledge_graph(pool: &PgPool, did: Option<&str>) -> crate::R
         HashSet::new()
     };
 
-    // Compute edges via SQL JOIN instead of O(n²) nested loop
+    // Map tag_id → canonical label id for edge endpoints.
+    let tag_to_label: HashMap<String, String> = tag_rows
+        .iter()
+        .map(|r| (r.tag_id.clone(), r.label_id.clone()))
+        .collect();
+
+    // Edges: two tags X → Y when some content teaches Y and requires X.
     #[derive(sqlx::FromRow)]
     struct EdgeRow {
         from_tag: String,
@@ -75,25 +95,24 @@ pub async fn build_knowledge_graph(pool: &PgPool, did: Option<&str>) -> crate::R
     .await
     .unwrap_or_default();
 
-    // Deduplicate edges (same from→to with same type)
     let mut seen = HashSet::new();
     let edges: Vec<GraphEdge> = edge_rows
         .into_iter()
         .filter(|e| seen.insert((e.from_tag.clone(), e.to_tag.clone(), e.prereq_type.clone())))
-        .map(|e| GraphEdge {
-            from: e.from_tag,
-            to: e.to_tag,
-            edge_type: e.prereq_type,
+        .filter_map(|e| {
+            let from = tag_to_label.get(&e.from_tag)?.clone();
+            let to = tag_to_label.get(&e.to_tag)?.clone();
+            Some(GraphEdge { from, to, edge_type: e.prereq_type })
         })
         .collect();
 
-    let nodes = tags
-        .iter()
-        .map(|t| GraphNode {
-            id: t.id.clone(),
-            name: t.name.clone(),
-            names: t.names.0.clone(),
-            lit: skills.contains(&t.id),
+    let nodes = tag_rows
+        .into_iter()
+        .map(|r| GraphNode {
+            lit: lit_tags.contains(&r.tag_id),
+            id: r.label_id,
+            name: r.name,
+            names: r.names.0,
         })
         .collect();
 
