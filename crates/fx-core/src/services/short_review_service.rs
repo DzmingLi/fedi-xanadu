@@ -127,7 +127,7 @@ pub async fn get_my_book_short_review(
                 sr.lang, sr.visibility, sr.created_at, sr.updated_at, \
                 pu.handle AS author_handle, pu.display_name AS author_display_name, pu.avatar_url AS author_avatar \
            FROM book_short_reviews sr \
-           LEFT JOIN platform_users pu ON pu.did = sr.did \
+           LEFT JOIN profiles pu ON pu.did = sr.did \
           WHERE sr.did = $1 AND sr.book_id = $2",
     )
     .bind(did).bind(book_id)
@@ -151,7 +151,7 @@ pub async fn list_book_short_reviews(
                 sr.lang, sr.visibility, sr.created_at, sr.updated_at, \
                 pu.handle AS author_handle, pu.display_name AS author_display_name, pu.avatar_url AS author_avatar \
            FROM book_short_reviews sr \
-           LEFT JOIN platform_users pu ON pu.did = sr.did \
+           LEFT JOIN profiles pu ON pu.did = sr.did \
           WHERE sr.book_id = $1 \
             AND ( \
                   sr.visibility = 'public' \
@@ -231,7 +231,7 @@ pub async fn get_my_series_short_review(
                 sr.visibility, sr.created_at, sr.updated_at, \
                 pu.handle AS author_handle, pu.display_name AS author_display_name, pu.avatar_url AS author_avatar \
            FROM book_series_short_reviews sr \
-           LEFT JOIN platform_users pu ON pu.did = sr.did \
+           LEFT JOIN profiles pu ON pu.did = sr.did \
           WHERE sr.did = $1 AND sr.series_id = $2",
     )
     .bind(did).bind(series_id)
@@ -251,7 +251,7 @@ pub async fn list_series_short_reviews(
                 sr.visibility, sr.created_at, sr.updated_at, \
                 pu.handle AS author_handle, pu.display_name AS author_display_name, pu.avatar_url AS author_avatar \
            FROM book_series_short_reviews sr \
-           LEFT JOIN platform_users pu ON pu.did = sr.did \
+           LEFT JOIN profiles pu ON pu.did = sr.did \
           WHERE sr.series_id = $1 \
             AND ( \
                   sr.visibility = 'public' \
