@@ -10,11 +10,17 @@ pub struct BookmarkWithTitle {
     pub created_at: DateTime<Utc>,
     pub title: String,
     pub summary: String,
+    /// Content kind of the bookmarked record (article / question / answer / thought).
+    /// Clients use this to route to the correct canonical page (e.g. `/question`
+    /// for aggregated answer threads).
+    pub kind: String,
+    pub question_uri: Option<String>,
 }
 
 pub async fn list_bookmarks(pool: &PgPool, did: &str) -> crate::Result<Vec<BookmarkWithTitle>> {
     let rows = sqlx::query_as::<_, BookmarkWithTitle>(
-        "SELECT b.article_uri, b.folder_path, b.created_at, a.title, a.summary \
+        "SELECT b.article_uri, b.folder_path, b.created_at, a.title, a.summary, \
+                a.kind::TEXT AS kind, a.question_uri \
          FROM user_bookmarks b \
          JOIN articles a ON a.at_uri = b.article_uri \
          WHERE b.did = $1 \

@@ -83,7 +83,7 @@
     {:else}
       <div class="question-list">
         {#each questions as q}
-          <a href="/article?uri={encodeURIComponent(q.at_uri)}" class="q-card">
+          <a href="/question?uri={encodeURIComponent(q.at_uri)}" class="q-card">
             <span class="q-title">{q.title}</span>
             <span class="q-meta">
               {authorName(q)} &middot; {t('rsidebar.answersCount', q.answer_count)}

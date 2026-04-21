@@ -136,18 +136,40 @@ pub async fn delete_comment(pool: &PgPool, id: &str) -> Result<()> {
 }
 
 /// Returns `(comment_did, content_author_did)` for authorization checks.
+///
+/// `content_uri` is polymorphic: it may point at an article (`at://...`), a
+/// book (`book:<id>`), a chapter (`chapter:<id>` → falls back to the book's
+/// creator), or a book series (`book_series:<id>`). The first matching
+/// content-author lookup wins.
 pub async fn get_comment_owner(pool: &PgPool, id: &str) -> Result<(String, String)> {
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT c.did, a.did FROM comments c JOIN articles a ON a.at_uri = c.content_uri WHERE c.id = $1",
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT c.did, \
+                COALESCE( \
+                    (SELECT a.did FROM articles a WHERE a.at_uri = c.content_uri), \
+                    (SELECT b.created_by FROM books b WHERE 'book:' || b.id = c.content_uri), \
+                    (SELECT bk.created_by FROM book_chapters bc \
+                                          JOIN books bk ON bk.id = bc.book_id \
+                      WHERE 'chapter:' || bc.id = c.content_uri), \
+                    (SELECT bs.created_by FROM book_series bs WHERE 'book_series:' || bs.id = c.content_uri) \
+                ) \
+           FROM comments c \
+          WHERE c.id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?;
 
-    row.ok_or_else(|| Error::NotFound {
-        entity: "comment",
-        id: id.to_string(),
-    })
+    match row {
+        Some((commenter, Some(author))) => Ok((commenter, author)),
+        Some((_, None)) => Err(Error::NotFound {
+            entity: "comment target",
+            id: id.to_string(),
+        }),
+        None => Err(Error::NotFound {
+            entity: "comment",
+            id: id.to_string(),
+        }),
+    }
 }
 
 /// Validates that `parent_id` exists and belongs to the same content.

@@ -3,6 +3,7 @@
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import type { BookmarkWithTitle, ArticleContent } from '../lib/types';
+  import { contentHref } from '../lib/utils';
 
   let bookmarks = $state<BookmarkWithTitle[]>([]);
   let drafts = $state<any[]>([]);
@@ -15,6 +16,9 @@
   let selectedTitle = $state('');
   let articleHtml = $state('');
   let contentLoading = $state(false);
+  let selectedBookmark = $derived(
+    selectedUri ? bookmarks.find(b => b.article_uri === selectedUri) ?? null : null,
+  );
 
   // Build folder tree
   type FolderNode = { name: string; path: string; children: FolderNode[]; items: BookmarkWithTitle[] };

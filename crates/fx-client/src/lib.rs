@@ -149,6 +149,21 @@ impl FxClient {
         Self::handle_empty(resp).await
     }
 
+    async fn delete_json<T: serde::de::DeserializeOwned, B: serde::Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> ClientResult<T> {
+        let resp = self
+            .http
+            .delete(format!("{}{path}", self.base_url))
+            .headers(self.auth_headers())
+            .json(body)
+            .send()
+            .await?;
+        Self::handle_response(resp).await
+    }
+
     async fn delete_with_body<B: serde::Serialize>(
         &self,
         path: &str,

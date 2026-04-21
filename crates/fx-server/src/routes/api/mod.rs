@@ -6,6 +6,8 @@ mod auth;
 mod blocks;
 mod bookmarks;
 pub(crate) mod books;
+pub(crate) mod book_series;
+pub(crate) mod short_reviews;
 mod comments;
 mod creator;
 mod discussions;
@@ -107,6 +109,7 @@ pub fn routes() -> Router<AppState> {
         .merge(report_routes())
         .merge(member_routes())
         .merge(book_routes())
+        .merge(book_series_routes())
         .merge(render_routes())
         .merge(creator_routes())
         .merge(recommendation_routes())
@@ -527,7 +530,32 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/editions/{eid}/cover", post(books::upload_edition_cover))
         .route("/books/{id}/resources", get(books::list_resources).post(books::add_resource))
         .route("/books/{id}/resources/{rid}", delete(books::delete_resource))
+        .route("/books/{id}/short-reviews", get(short_reviews::list_book_short_reviews).post(short_reviews::upsert_book_short_review))
+        .route("/books/{id}/short-reviews/my", get(short_reviews::get_my_book_short_review).delete(short_reviews::delete_my_book_short_review))
         .route("/book-covers/{id}", get(books::get_cover))
+}
+
+fn book_series_routes() -> Router<AppState> {
+    Router::new()
+        .route("/book-series", get(book_series::list_series).post(book_series::create_series))
+        .route("/book-series/{id}",
+               get(book_series::get_series)
+               .put(book_series::update_series)
+               .delete(book_series::delete_series))
+        .route("/book-series/{id}/history", get(book_series::get_series_history))
+        .route("/book-series/{id}/members",
+               post(book_series::add_member).put(book_series::reorder_members))
+        .route("/book-series/{id}/members/{book_id}", delete(book_series::remove_member))
+        .route("/book-series/{id}/rate",
+               post(book_series::rate_series).delete(book_series::unrate_series))
+        .route("/book-series/{id}/cover", post(book_series::upload_series_cover))
+        .route("/book-series/{id}/short-reviews",
+               get(short_reviews::list_series_short_reviews)
+               .post(short_reviews::upsert_series_short_review))
+        .route("/book-series/{id}/short-reviews/my",
+               get(short_reviews::get_my_series_short_review)
+               .delete(short_reviews::delete_my_series_short_review))
+        .route("/book-series-covers/{id}", get(book_series::get_series_cover))
 }
 
 fn author_routes() -> Router<AppState> {

@@ -1,3 +1,23 @@
+/**
+ * Build the canonical URL for a content record. Questions and answers go to
+ * the `/question` aggregation route (question body + answers thread); answers
+ * anchor to themselves inside the thread. Everything else (articles, thoughts)
+ * goes to `/article`.
+ */
+export function contentHref(
+  atUri: string,
+  kind?: string | null,
+  questionUri?: string | null,
+): string {
+  if (kind === 'question') {
+    return `/question?uri=${encodeURIComponent(atUri)}`;
+  }
+  if (kind === 'answer' && questionUri) {
+    return `/question?uri=${encodeURIComponent(questionUri)}#${encodeURIComponent(atUri)}`;
+  }
+  return `/article?uri=${encodeURIComponent(atUri)}`;
+}
+
 /** Format a datetime string as relative time (e.g. "3 小时前") or absolute date. */
 export function timeAgo(iso: string): string {
   const d = new Date(iso);

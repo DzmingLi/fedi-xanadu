@@ -63,6 +63,8 @@
   const lazyBookList = () => import('./routes/BookList.svelte');
   const lazyBookDetail = () => import('./routes/BookDetail.svelte');
   const lazyBookEdition = () => import('./routes/BookEdition.svelte');
+  const lazyBookSeriesList = () => import('./routes/BookSeriesList.svelte');
+  const lazyBookSeriesDetail = () => import('./routes/BookSeriesDetail.svelte');
   const lazySeriesEditor = () => import('./routes/SeriesEditor.svelte');
   const lazyDiscussion = () => import('./routes/Discussion.svelte');
   const lazyCreator = () => import('./routes/CreatorDashboard.svelte');
@@ -365,6 +367,26 @@
   <div class="container-wide">
     {#await lazyPublicationDetail() then mod}
       <mod.default slug={route.params.id || ''} />
+    {/await}
+  </div>
+{/if}
+
+{#if route.page === 'book-series-list'}
+  <div class="top-nav-wide">
+    <NavBar />
+  </div>
+  <div class="container-wide">
+    {#await lazyBookSeriesList() then mod}
+      <mod.default />
+    {/await}
+  </div>
+{:else if route.page === 'book-series-detail'}
+  <div class="top-nav-wide">
+    <NavBar />
+  </div>
+  <div class="container-wide">
+    {#await lazyBookSeriesDetail() then mod}
+      <mod.default id={route.params.id || ''} />
     {/await}
   </div>
 {/if}

@@ -989,6 +989,8 @@ pub async fn admin_batch_publish(
             metadata: None,
             authors: vec![],
             invites: vec![],
+            book_chapter_id: None,
+            course_session_id: None,
         };
 
         let resolved_desc = create.summary.as_deref().unwrap_or("").to_string();
@@ -1143,6 +1145,8 @@ pub async fn admin_rebuild_series_index(
                     metadata: None,
                     authors: vec![],
                     invites: vec![],
+                    book_chapter_id: None,
+                    course_session_id: None,
                 };
                 let resolved_desc = create.summary.as_deref().unwrap_or("").to_string();
                 let desc_html = crate::summary::render_summary_inline(

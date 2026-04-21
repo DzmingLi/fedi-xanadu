@@ -1,10 +1,13 @@
 <script lang="ts">
-  import { getBook, updateBook, updateBookEdition, uploadEditionCover, getBookEditHistory, rateBook, unrateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource } from '../lib/api';
+  import { getBook, updateBook, updateBookEdition, uploadEditionCover, getBookEditHistory, rateBook, unrateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource, listBookShortReviews, upsertBookShortReview, deleteBookShortReview } from '../lib/api';
   import type { BookResource } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
+  import { navigate } from '../lib/router';
   import PostCard from '../lib/components/PostCard.svelte';
-  import type { BookDetail, BookEdition, BookChapter, ChapterPrereqEntry } from '../lib/types';
+  import ShortReviewComposer from '../lib/components/ShortReviewComposer.svelte';
+  import ShortReviewCard from '../lib/components/ShortReviewCard.svelte';
+  import type { BookDetail, BookEdition, BookChapter, ChapterPrereqEntry, BookShortReview } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
@@ -68,6 +71,10 @@
   let myRating = $state(0);
   let avgRating = $state(0);
   let ratingCount = $state(0);
+
+  // Short reviews
+  let bookShortReviews = $state<BookShortReview[]>([]);
+  let showBookShortReviewComposer = $state(false);
 
   // Reading status state
   let readingStatus = $state('');
@@ -159,6 +166,7 @@
       readingStatus = detail.my_reading_status?.status || '';
       readingProgress = detail.my_reading_status?.progress || 0;
       chapterDone = new Map(detail.my_chapter_progress.map(p => [p.chapter_id, p.completed]));
+      bookShortReviews = detail.recent_short_reviews;
       getBookEditHistory(id).then(h => { editHistory = h; }).catch(() => {});
       getQuestionsByBook(id).then(qs => { bookQuestions = qs; }).catch(() => {});
       listBookResources(id).then(r => { resources = r; }).catch(() => {});
@@ -196,6 +204,21 @@
       avgRating = stats.avg_rating;
       ratingCount = stats.rating_count;
     } catch { /* */ }
+  }
+
+  let myBookShortReview = $derived(
+    getAuth() ? bookShortReviews.find(r => r.did === getAuth()!.did) || null : null
+  );
+
+  async function handleBookShortReviewSubmit(body: string) {
+    await upsertBookShortReview(id, { body });
+    bookShortReviews = await listBookShortReviews(id);
+    showBookShortReviewComposer = false;
+  }
+
+  async function handleDeleteBookShortReview() {
+    await deleteBookShortReview(id);
+    bookShortReviews = await listBookShortReviews(id);
   }
 
   async function setStatus(status: string) {
@@ -656,6 +679,15 @@
               {/each}
             </div>
           {/if}
+          {#if detail.series_badges.length > 0}
+            <div class="book-tag-row">
+              <span class="book-tag-row-label">{t('books.seriesBadges')}</span>
+              {#each detail.series_badges as badge}
+                <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+                <span class="tag-badge series-badge" onclick={() => navigate(`/book-series-detail?id=${encodeURIComponent(badge.id)}`)}>{loc(badge.title)} #{badge.position}</span>
+              {/each}
+            </div>
+          {/if}
 
           <!-- Rating display -->
           <div class="rating-row">
@@ -1073,6 +1105,40 @@
         {:else if !showChapterForm}
           <p class="empty">暂无章节目录</p>
         {/if}
+      </div>
+
+      <!-- Short reviews -->
+      <div class="reviews-section">
+        <div class="section-header">
+          <h2>{t('books.shortReviews')} ({bookShortReviews.length})</h2>
+          {#if getAuth() && !myBookShortReview}
+            <button class="write-btn" onclick={() => { showBookShortReviewComposer = !showBookShortReviewComposer; }}>
+              {t('books.writeShortReview')}
+            </button>
+          {/if}
+        </div>
+        {#if showBookShortReviewComposer}
+          <div class="composer-wrap">
+            <ShortReviewComposer
+              onSubmit={handleBookShortReviewSubmit}
+              initialBody={myBookShortReview?.body || ''}
+              placeholder={t('books.shortReviewPlaceholder')}
+            />
+          </div>
+        {/if}
+        {#if myBookShortReview}
+          <div class="my-review-section">
+            <ShortReviewCard review={myBookShortReview} onDelete={handleDeleteBookShortReview} />
+            <button class="edit-btn" onclick={() => { showBookShortReviewComposer = !showBookShortReviewComposer; }}>
+              {t('books.editShortReview')}
+            </button>
+          </div>
+        {/if}
+        {#each bookShortReviews.filter(r => !myBookShortReview || r.id !== myBookShortReview.id) as review}
+          <ShortReviewCard {review} />
+        {:else}
+          {#if !myBookShortReview}<p class="empty">{t('books.noShortReviews')}</p>{/if}
+        {/each}
       </div>
 
       <!-- Reviews (opinions on the book) -->
@@ -1913,6 +1979,7 @@
   .tag-badge.teaches { background: var(--accent-light, #e8f4fd); color: var(--accent); }
   .tag-badge.prereq { background: #fdf2e8; color: #b06000; }
   .tag-badge.topic { background: var(--bg-hover, #f5f5f5); color: var(--text-secondary); border: 1px dashed var(--border-strong); }
+  .tag-badge.series-badge { background: #f0edf9; color: #5b21b6; cursor: pointer; }
   .tag-badge.sm { font-size: 11px; padding: 1px 6px; }
   .tag-badge:hover { opacity: 0.8; }
   .tag-remove {
@@ -2088,6 +2155,31 @@
     border-left: 2px solid var(--border);
     margin-left: 8px;
   }
+
+  /* Short reviews */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .section-header h2 { margin: 0; }
+  .write-btn {
+    padding: 5px 12px;
+    background: var(--accent, #6366f1);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.82rem;
+  }
+  .edit-btn {
+    margin-top: 6px;
+    padding: 4px 10px;
+    background: none;
+    color: var(--accent, #6366f1);
+    border: 1px solid var(--accent, #6366f1);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  .composer-wrap { margin-bottom: 1.2rem; }
+  .my-review-section { margin-bottom: 1.2rem; }
 
   /* Reviews */
   .reviews-section h2 {

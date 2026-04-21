@@ -17,7 +17,6 @@ pub struct BookSeries {
     pub subtitle: sqlx::types::Json<HashMap<String, String>>,
     #[ts(type = "Record<string, string>")]
     pub description: sqlx::types::Json<HashMap<String, String>>,
-    pub publisher: Option<String>,
     pub cover_url: Option<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
@@ -56,7 +55,6 @@ pub struct BookSeriesListItem {
     pub title: sqlx::types::Json<HashMap<String, String>>,
     pub subtitle: sqlx::types::Json<HashMap<String, String>>,
     pub description: sqlx::types::Json<HashMap<String, String>>,
-    pub publisher: Option<String>,
     pub cover_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub member_count: i64,
@@ -96,8 +94,6 @@ pub struct CreateBookSeries {
     #[ts(type = "Record<string, string> | undefined")]
     pub description: Option<HashMap<String, String>>,
     #[serde(default)]
-    pub publisher: Option<String>,
-    #[serde(default)]
     pub cover_url: Option<String>,
 }
 
@@ -113,8 +109,6 @@ pub struct UpdateBookSeries {
     #[serde(default)]
     #[ts(type = "Record<string, string> | undefined")]
     pub description: Option<HashMap<String, String>>,
-    #[serde(default)]
-    pub publisher: Option<String>,
     #[serde(default)]
     pub cover_url: Option<String>,
     #[serde(default)]
@@ -134,14 +128,13 @@ pub async fn create_series(
     let description = sqlx::types::Json(input.description.as_ref().unwrap_or(&empty));
 
     sqlx::query(
-        "INSERT INTO book_series (id, title, subtitle, description, publisher, cover_url, created_by) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO book_series (id, title, subtitle, description, cover_url, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&input.id)
     .bind(title)
     .bind(subtitle)
     .bind(description)
-    .bind(&input.publisher)
     .bind(&input.cover_url)
     .bind(created_by)
     .execute(pool)
@@ -152,7 +145,7 @@ pub async fn create_series(
 
 pub async fn get_series(pool: &PgPool, id: &str) -> crate::Result<BookSeries> {
     sqlx::query_as::<_, BookSeries>(
-        "SELECT id, title, subtitle, description, publisher, cover_url, created_by, created_at \
+        "SELECT id, title, subtitle, description, cover_url, created_by, created_at \
            FROM book_series \
           WHERE id = $1 AND removed_at IS NULL",
     )
@@ -168,7 +161,7 @@ pub async fn list_series(
     offset: i64,
 ) -> crate::Result<Vec<BookSeriesListItem>> {
     let rows = sqlx::query_as::<_, BookSeriesListItem>(
-        "SELECT s.id, s.title, s.subtitle, s.description, s.publisher, s.cover_url, s.created_at, \
+        "SELECT s.id, s.title, s.subtitle, s.description, s.cover_url, s.created_at, \
                 COALESCE(mc.cnt, 0)                  AS member_count, \
                 COALESCE(mr.avg, 0)                  AS member_avg_rating, \
                 COALESCE(mr.cnt, 0)                  AS member_rating_count, \
@@ -207,7 +200,7 @@ pub async fn update_series(
 
     // Snapshot current row for the edit log.
     let current = sqlx::query_as::<_, BookSeries>(
-        "SELECT id, title, subtitle, description, publisher, cover_url, created_by, created_at \
+        "SELECT id, title, subtitle, description, cover_url, created_by, created_at \
            FROM book_series WHERE id = $1 AND removed_at IS NULL",
     )
     .bind(id)
@@ -239,14 +232,6 @@ pub async fn update_series(
         new_data.insert("description".into(), serde_json::to_value(description).unwrap_or_default());
         sqlx::query("UPDATE book_series SET description = $1 WHERE id = $2")
             .bind(sqlx::types::Json(description))
-            .bind(id)
-            .execute(&mut *tx).await?;
-    }
-    if let Some(publisher) = &input.publisher {
-        old_data.insert("publisher".into(), serde_json::Value::from(current.publisher.clone()));
-        new_data.insert("publisher".into(), serde_json::Value::from(publisher.clone()));
-        sqlx::query("UPDATE book_series SET publisher = $1 WHERE id = $2")
-            .bind(publisher)
             .bind(id)
             .execute(&mut *tx).await?;
     }

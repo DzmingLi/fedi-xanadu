@@ -8,7 +8,6 @@ CREATE TABLE book_series (
     title        JSONB NOT NULL DEFAULT '{}',
     subtitle     JSONB NOT NULL DEFAULT '{}',
     description  JSONB NOT NULL DEFAULT '{}',
-    publisher    VARCHAR(255),
     cover_url    VARCHAR(1024),
     created_by   VARCHAR(255) NOT NULL,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),

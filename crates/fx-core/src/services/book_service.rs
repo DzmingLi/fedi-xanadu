@@ -472,6 +472,56 @@ pub async fn get_book_notes(
     get_book_articles_by_category(pool, book_id, "note", limit, offset).await
 }
 
+/// Articles (notes or questions) scoped to a specific chapter. The
+/// `kind_or_category` argument is matched against either `articles.kind`
+/// ("question", "answer") or `articles.category` ("note") — whichever fits
+/// the caller. Reviews never attach to a chapter so they're not a valid
+/// argument here.
+pub async fn get_chapter_articles(
+    pool: &PgPool,
+    chapter_id: &str,
+    kind_or_category: &str,
+    limit: i64,
+    offset: i64,
+) -> crate::Result<Vec<crate::models::Article>> {
+    let predicate = match kind_or_category {
+        "question" | "answer" => "a.kind = $2::content_kind",
+        "note"                => "a.category = $2",
+        _ => return Err(crate::Error::BadRequest(
+            format!("get_chapter_articles: unsupported kind_or_category '{kind_or_category}'"),
+        )),
+    };
+    let sql = format!(
+        "SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS author_reputation, \
+         a.kind, a.title, a.summary, \
+         a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
+         a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
+         a.book_chapter_id, a.course_session_id, \
+         COALESCE(v.vote_score, 0) AS vote_score, \
+         COALESCE(b.bookmark_count, 0) AS bookmark_count, \
+         COALESCE(cm.comment_count, 0) AS comment_count, \
+         COALESCE(fk.fork_count, 0) AS fork_count, \
+         a.created_at, a.updated_at \
+         FROM articles a \
+         LEFT JOIN profiles p ON a.did = p.did \
+         LEFT JOIN (SELECT target_uri, SUM(value) AS vote_score FROM votes GROUP BY target_uri) v ON v.target_uri = a.at_uri \
+         LEFT JOIN (SELECT article_uri, COUNT(*) AS bookmark_count FROM user_bookmarks GROUP BY article_uri) b ON b.article_uri = a.at_uri \
+         LEFT JOIN (SELECT content_uri, COUNT(*) AS comment_count FROM comments GROUP BY content_uri) cm ON cm.content_uri = a.at_uri \
+         LEFT JOIN (SELECT source_uri, COUNT(*) AS fork_count FROM forks GROUP BY source_uri) fk ON fk.source_uri = a.at_uri \
+         WHERE a.book_chapter_id = $1 AND {predicate} AND a.visibility = 'public' \
+         ORDER BY vote_score DESC, a.created_at DESC \
+         LIMIT $3 OFFSET $4"
+    );
+    let rows = sqlx::query_as::<_, crate::models::Article>(&sql)
+        .bind(chapter_id)
+        .bind(kind_or_category)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows)
+}
+
 // ---- Ratings ----
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]

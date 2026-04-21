@@ -4,7 +4,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::{StatusCode, Response, header},
 };
-use fx_core::services::{author_service, book_service, skill_service, tag_service};
+use fx_core::services::{author_service, book_series_service, book_service, short_review_service, skill_service, tag_service};
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
@@ -52,6 +52,14 @@ pub struct BookDetail {
     /// that this book can be said to "belong to". Not stored; computed per
     /// request because it depends on the viewer's tree.
     pub topics: Vec<String>,
+    /// Series this book is part of. Rendered as "属于系列 X · 第 n 册" pills
+    /// on the book detail page.
+    pub series_badges: Vec<book_series_service::BookSeriesRef>,
+    /// The viewer's own short review of this book, if any.
+    pub my_short_review: Option<short_review_service::BookShortReview>,
+    /// Up to 5 most-recent public short reviews for the short-review tab.
+    pub recent_short_reviews: Vec<short_review_service::BookShortReview>,
+    pub short_review_count: i64,
 }
 
 pub async fn get_book(
@@ -95,7 +103,20 @@ pub async fn get_book(
     let topics = tag_service::derive_topics(&state.pool, &content_uri)
         .await
         .unwrap_or_default();
-    Ok(Json(BookDetail { book, linked_authors, editions, chapters, reviews, notes, review_count, rating, my_rating, my_reading_status, my_chapter_progress, tags, prereqs, topics }))
+    let series_badges = book_series_service::list_series_badges_for_book(&state.pool, &id).await?;
+    let my_short_review = if let Some(ref u) = user {
+        short_review_service::get_my_book_short_review(&state.pool, &u.did, &id).await?
+    } else { None };
+    let recent_short_reviews = short_review_service::list_book_short_reviews(
+        &state.pool, &id, user.as_ref().map(|u| u.did.as_str()), 5, 0,
+    ).await?;
+    let short_review_count = short_review_service::count_book_short_reviews(&state.pool, &id).await?;
+    Ok(Json(BookDetail {
+        book, linked_authors, editions, chapters, reviews, notes, review_count,
+        rating, my_rating, my_reading_status, my_chapter_progress,
+        tags, prereqs, topics,
+        series_badges, my_short_review, recent_short_reviews, short_review_count,
+    }))
 }
 
 // --- Create book ---

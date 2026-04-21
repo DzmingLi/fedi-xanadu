@@ -127,6 +127,8 @@ export interface BookmarkWithTitle {
   created_at: string;
   title: string;
   summary: string;
+  kind: string;
+  question_uri: string | null;
 }
 
 export interface AuthUser {
@@ -252,6 +254,83 @@ export interface LinkedAuthor {
   homepage: string | null;
 }
 
+export interface BookShortReview {
+  id: string;
+  did: string;
+  author_handle: string | null;
+  author_display_name: string | null;
+  author_avatar: string | null;
+  book_id: string;
+  edition_id: string | null;
+  body: string;
+  lang: string | null;
+  visibility: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SeriesShortReview {
+  id: string;
+  did: string;
+  author_handle: string | null;
+  author_display_name: string | null;
+  author_avatar: string | null;
+  series_id: string;
+  body: string;
+  lang: string | null;
+  visibility: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookSeriesRef {
+  id: string;
+  title: L;
+  position: number;
+}
+
+export interface BookSeriesListItem {
+  id: string;
+  title: L;
+  subtitle: L;
+  description: L;
+  cover_url: string | null;
+  member_count: number;
+  member_avg_rating: number;
+  member_rating_count: number;
+}
+
+export interface BookSeriesDetail {
+  series: {
+    id: string;
+    title: L;
+    subtitle: L;
+    description: L;
+    cover_url: string | null;
+    created_by: string;
+    created_at: string;
+  };
+  members: BookListItem[];
+  member_avg_rating: number;
+  member_rating_count: number;
+  series_rating: BookRatingStats;
+  my_series_rating: number | null;
+  short_review_count: number;
+  recent_short_reviews: SeriesShortReview[];
+  my_short_review: SeriesShortReview | null;
+}
+
+export interface BookListItem {
+  id: string;
+  title: L;
+  subtitle: L;
+  authors: string[];
+  cover_url: string | null;
+  avg_rating: number;
+  rating_count: number;
+  position?: number;
+}
+
 export interface BookDetail {
   book: Book;
   linked_authors: LinkedAuthor[];
@@ -260,6 +339,10 @@ export interface BookDetail {
   reviews: Article[];
   notes: Article[];
   review_count: number;
+  short_review_count: number;
+  recent_short_reviews: BookShortReview[];
+  my_short_review: BookShortReview | null;
+  series_badges: BookSeriesRef[];
   rating: BookRatingStats;
   my_rating: number | null;
   my_reading_status: ReadingStatus | null;

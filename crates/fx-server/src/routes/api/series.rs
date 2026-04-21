@@ -716,6 +716,8 @@ pub async fn compile_series(
                 metadata: None,
                 authors: vec![],
                 invites: vec![],
+                book_chapter_id: None,
+                course_session_id: None,
             };
             article_service::create_article(
                 &state.pool, &user.did, &at_uri, &input, &hash, None,

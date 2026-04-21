@@ -155,6 +155,12 @@ enum Command {
         #[command(subcommand)]
         action: BookCommand,
     },
+    /// Manage book series (collections of related books)
+    #[command(name = "book-series")]
+    BookSeries {
+        #[command(subcommand)]
+        action: BookSeriesCommand,
+    },
     /// Manage courses and sessions
     Course {
         #[command(subcommand)]
@@ -806,6 +812,109 @@ enum BookCommand {
         #[arg(long, default_value = "0")]
         position: i16,
     },
+    /// Write or update a short review for a book (rating + 500-char text)
+    #[command(name = "short-review")]
+    ShortReview {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+        /// Review body (max 500 chars)
+        #[arg(short, long)]
+        body: String,
+        /// Rating 1-10 (half-stars)
+        #[arg(long)]
+        rating: i16,
+        /// Edition ID (optional)
+        #[arg(long)]
+        edition_id: Option<String>,
+        /// Visibility: public, followers, private (default: public)
+        #[arg(long)]
+        visibility: Option<String>,
+    },
+    /// List short reviews for a book
+    #[command(name = "short-review-list")]
+    ShortReviewList {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+    },
+    /// Delete your short review for a book
+    #[command(name = "short-review-delete")]
+    ShortReviewDelete {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum BookSeriesCommand {
+    /// List all book series
+    #[command(alias = "ls")]
+    List,
+    /// Create a new book series
+    Create {
+        /// Series ID (e.g. bs-wangdao-cs-408)
+        #[arg(long)]
+        id: String,
+        /// Title as JSON (e.g. '{"zh":"王道考研408全套","en":"Wangdao CS 408 Series"}')
+        #[arg(short, long)]
+        title: String,
+        /// Description
+        #[arg(short, long)]
+        desc: Option<String>,
+        /// Cover image URL
+        #[arg(long)]
+        cover_url: Option<String>,
+    },
+    /// Show a series' detail
+    Show {
+        /// Series ID
+        id: String,
+    },
+    /// Update a series' metadata
+    Update {
+        /// Series ID
+        id: String,
+        /// New title JSON
+        #[arg(short, long)]
+        title: Option<String>,
+        /// New description JSON
+        #[arg(short, long)]
+        desc: Option<String>,
+    },
+    /// Add a book to a series
+    #[command(name = "add-member")]
+    AddMember {
+        /// Series ID
+        #[arg(long)]
+        series_id: String,
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+        /// Position (0-based)
+        #[arg(long, default_value = "0")]
+        position: i16,
+    },
+    /// Remove a book from a series
+    #[command(name = "remove-member")]
+    RemoveMember {
+        /// Series ID
+        #[arg(long)]
+        series_id: String,
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+    },
+    /// Upload a cover image for a series
+    #[command(name = "upload-cover")]
+    UploadCover {
+        /// Series ID
+        #[arg(long)]
+        id: String,
+        /// Path to image file
+        file: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1361,6 +1470,8 @@ async fn main() -> Result<()> {
                 metadata: None,
                 authors: vec![],
                 invites: invite,
+                book_chapter_id: None,
+                course_session_id: None,
             };
             let article: serde_json::Value = client()
                 .post(format!("{base}/questions"))
@@ -1417,7 +1528,6 @@ async fn main() -> Result<()> {
             } else if book_id.is_some() {
                 Some(fx_core::models::CategoryMetadata::Review {
                     book_id, edition_id: None, course_id: None,
-                    book_chapter_id: None, course_session_id: None,
                 })
             } else {
                 None
@@ -1439,6 +1549,8 @@ async fn main() -> Result<()> {
                 metadata: cat_metadata,
                 authors: vec![],
                 invites: vec![],
+                book_chapter_id: None,
+                course_session_id: None,
             };
 
             // Collect resource files (expanding directories recursively)
@@ -1597,6 +1709,10 @@ async fn main() -> Result<()> {
 
         Command::Book { action } => {
             handle_book(&base, &config, action).await?;
+        }
+
+        Command::BookSeries { action } => {
+            handle_book_series(&base, &config, action).await?;
         }
 
         Command::Admin { action } => {
@@ -2045,6 +2161,55 @@ async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result
                 .json().await?;
             let id = resp["id"].as_str().unwrap_or("?");
             println!("Added resource: {label} ({id})");
+        }
+
+        BookCommand::ShortReview { book_id, body, rating, edition_id, visibility } => {
+            if rating < 1 || rating > 10 {
+                bail!("Rating must be 1-10 (half-stars)");
+            }
+            let req_body = serde_json::json!({
+                "body": body,
+                "rating": rating,
+                "edition_id": edition_id,
+                "visibility": visibility.as_deref().unwrap_or("public"),
+            });
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/books/{book_id}/short-reviews"))
+                .bearer_auth(token)
+                .json(&req_body)
+                .send().await?
+                .error_for_status().context("Short review failed")?
+                .json().await?;
+            let id = resp["id"].as_str().unwrap_or("?");
+            println!("Short review saved: {id}");
+        }
+
+        BookCommand::ShortReviewList { book_id } => {
+            let reviews: Vec<serde_json::Value> = client()
+                .get(format!("{base}/books/{book_id}/short-reviews"))
+                .send().await?
+                .error_for_status().context("List short reviews failed")?
+                .json().await?;
+            if reviews.is_empty() {
+                println!("No short reviews for {book_id}.");
+            } else {
+                for r in &reviews {
+                    let did = r["did"].as_str().unwrap_or("?");
+                    let rating = r["rating"].as_i64().unwrap_or(0);
+                    let body = r["body"].as_str().unwrap_or("");
+                    println!("  {did}  [{rating}/10]  {body}");
+                }
+                println!("{} short review(s)", reviews.len());
+            }
+        }
+
+        BookCommand::ShortReviewDelete { book_id } => {
+            client()
+                .delete(format!("{base}/books/{book_id}/short-reviews/my"))
+                .bearer_auth(token)
+                .send().await?
+                .error_for_status().context("Delete short review failed")?;
+            println!("Short review deleted.");
         }
     }
     Ok(())
@@ -3726,6 +3891,149 @@ async fn handle_admin(base: &str, config: &mut Config, action: AdminCommand) -> 
 
             let count = resp.as_array().map(|a| a.len()).unwrap_or(0);
             println!("\nPublished {count} articles into series {series}");
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_book_series(base: &str, config: &Config, action: BookSeriesCommand) -> Result<()> {
+    let token = config.token().unwrap_or_default().to_string();
+
+    match action {
+        BookSeriesCommand::List => {
+            let resp: Vec<serde_json::Value> = client()
+                .get(format!("{base}/book-series"))
+                .send().await?
+                .error_for_status().context("List series failed")?
+                .json().await?;
+            if resp.is_empty() {
+                println!("No book series yet.");
+            } else {
+                for s in &resp {
+                    let id = s["id"].as_str().unwrap_or("?");
+                    let title = s["title"].as_object()
+                        .and_then(|t| t.get("zh").or_else(|| t.get("en")))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    let count = s["member_count"].as_i64().unwrap_or(0);
+                    println!("  {id}  {title}  ({count} books)");
+                }
+                println!("{} series", resp.len());
+            }
+        }
+
+        BookSeriesCommand::Create { id, title, desc, cover_url } => {
+            let parse_i18n = |s: &str| -> serde_json::Value {
+                if s.starts_with('{') {
+                    serde_json::from_str(s).unwrap_or(serde_json::json!({"zh": s}))
+                } else {
+                    serde_json::json!({"zh": s})
+                }
+            };
+            let title_val = parse_i18n(&title);
+            let desc_val = desc.as_deref().map(parse_i18n).unwrap_or(serde_json::json!({}));
+            let body = serde_json::json!({
+                "id": id,
+                "title": title_val,
+                "description": desc_val,
+                "cover_url": cover_url,
+            });
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/book-series"))
+                .bearer_auth(&token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Create series failed")?
+                .json().await?;
+            println!("Created series: {}", resp["id"].as_str().unwrap_or(&id));
+        }
+
+        BookSeriesCommand::Show { id } => {
+            let resp: serde_json::Value = client()
+                .get(format!("{base}/book-series/{id}"))
+                .send().await?
+                .error_for_status().context("Series not found")?
+                .json().await?;
+            let s = &resp["series"];
+            let title = s["title"].as_object()
+                .and_then(|t| t.get("zh").or_else(|| t.get("en")))
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            println!("ID: {id}");
+            println!("Title: {title}");
+            let avg = resp["member_avg_rating"].as_f64().unwrap_or(0.0);
+            let count = resp["member_rating_count"].as_i64().unwrap_or(0);
+            println!("Member avg rating: {avg:.1} ({count} ratings)");
+            if let Some(members) = resp["members"].as_array() {
+                println!("\nMembers ({}):", members.len());
+                for m in members {
+                    let bid = m["id"].as_str().unwrap_or("?");
+                    let btitle = m["title"].as_object()
+                        .and_then(|t| t.get("zh").or_else(|| t.get("en")))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    println!("  {bid}  {btitle}");
+                }
+            }
+        }
+
+        BookSeriesCommand::Update { id, title, desc } => {
+            let parse_i18n = |s: &str| -> serde_json::Value {
+                if s.starts_with('{') {
+                    serde_json::from_str(s).unwrap_or(serde_json::json!({"zh": s}))
+                } else {
+                    serde_json::json!({"zh": s})
+                }
+            };
+            let mut body = serde_json::json!({});
+            if let Some(t) = title { body["title"] = parse_i18n(&t); }
+            if let Some(d) = desc { body["description"] = parse_i18n(&d); }
+            client()
+                .put(format!("{base}/book-series/{id}"))
+                .bearer_auth(&token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Update series failed")?;
+            println!("Updated series {id}");
+        }
+
+        BookSeriesCommand::AddMember { series_id, book_id, position } => {
+            let body = serde_json::json!({ "book_id": book_id, "position": position });
+            client()
+                .post(format!("{base}/book-series/{series_id}/members"))
+                .bearer_auth(&token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Add member failed")?;
+            println!("Added {book_id} to series {series_id} at position {position}");
+        }
+
+        BookSeriesCommand::RemoveMember { series_id, book_id } => {
+            client()
+                .delete(format!("{base}/book-series/{series_id}/members/{book_id}"))
+                .bearer_auth(&token)
+                .send().await?
+                .error_for_status().context("Remove member failed")?;
+            println!("Removed {book_id} from series {series_id}");
+        }
+
+        BookSeriesCommand::UploadCover { id, file } => {
+            let file_bytes = std::fs::read(&file)
+                .with_context(|| format!("Cannot read {}", file.display()))?;
+            let file_name = file.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("cover.jpg");
+            let part = reqwest::multipart::Part::bytes(file_bytes)
+                .file_name(file_name.to_string());
+            let form = reqwest::multipart::Form::new().part("file", part);
+            client()
+                .post(format!("{base}/book-series/{id}/cover"))
+                .bearer_auth(&token)
+                .multipart(form)
+                .send().await?
+                .error_for_status().context("Upload cover failed")?;
+            println!("Uploaded cover for series {id}");
         }
     }
 

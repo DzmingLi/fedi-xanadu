@@ -6,6 +6,7 @@ import type {
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
   BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter, ChapterPrereqEntry,
   ArticleVersion, ArticleVersionInfo, ArticleVersionFull, VersionDiff,
+  BookShortReview, SeriesShortReview, BookSeriesListItem, BookSeriesDetail,
 } from './types';
 import { getToken, setAuth } from './auth.svelte';
 
@@ -623,6 +624,48 @@ export const addBookResource = (book_id: string, data: { kind: string; label: st
   post<{ id: string }>(`/books/${encodeURIComponent(book_id)}/resources`, data);
 export const deleteBookResource = (book_id: string, resource_id: string) =>
   del<void>(`/books/${encodeURIComponent(book_id)}/resources/${encodeURIComponent(resource_id)}`);
+
+// Book Series
+export const listBookSeries = () => get<BookSeriesListItem[]>('/book-series');
+export const getBookSeries = (id: string) => get<BookSeriesDetail>(`/book-series/${encodeURIComponent(id)}`);
+export const createBookSeries = (data: { id: string; title: Record<string, string>; subtitle?: Record<string, string>; description?: Record<string, string>; cover_url?: string }) =>
+  post<any>('/book-series', data);
+export const updateBookSeries = (id: string, data: { title?: Record<string, string>; description?: Record<string, string>; cover_url?: string }) =>
+  put<any>(`/book-series/${encodeURIComponent(id)}`, data);
+export const addBookSeriesMember = (series_id: string, book_id: string, position: number) =>
+  post<void>(`/book-series/${encodeURIComponent(series_id)}/members`, { book_id, position });
+export const removeBookSeriesMember = (series_id: string, book_id: string) =>
+  del<void>(`/book-series/${encodeURIComponent(series_id)}/members/${encodeURIComponent(book_id)}`);
+export const rateBookSeries = (series_id: string, rating: number) =>
+  post<{ avg_rating: number; rating_count: number }>(`/book-series/${encodeURIComponent(series_id)}/rate`, { rating });
+export const unrateBookSeries = (series_id: string) =>
+  del<{ avg_rating: number; rating_count: number }>(`/book-series/${encodeURIComponent(series_id)}/rate`);
+export const uploadBookSeriesCover = async (id: string, file: File): Promise<string> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/book-series/${encodeURIComponent(id)}/cover`, { method: 'POST', headers: authHeaders(), body: form });
+  if (!res.ok) throw new Error(`${res.status}`);
+  const data = await res.json();
+  return data.cover_url;
+};
+
+// Short Reviews
+export const upsertBookShortReview = (book_id: string, data: { body: string; edition_id?: string; lang?: string; visibility?: string }) =>
+  post<BookShortReview>(`/books/${encodeURIComponent(book_id)}/short-reviews`, data);
+export const getMyBookShortReview = (book_id: string) =>
+  get<BookShortReview | null>(`/books/${encodeURIComponent(book_id)}/short-reviews/my`);
+export const listBookShortReviews = (book_id: string) =>
+  get<BookShortReview[]>(`/books/${encodeURIComponent(book_id)}/short-reviews`);
+export const deleteBookShortReview = (book_id: string) =>
+  del<void>(`/books/${encodeURIComponent(book_id)}/short-reviews/my`);
+export const upsertSeriesShortReview = (series_id: string, data: { body: string; lang?: string; visibility?: string }) =>
+  post<SeriesShortReview>(`/book-series/${encodeURIComponent(series_id)}/short-reviews`, data);
+export const getMySeriesShortReview = (series_id: string) =>
+  get<SeriesShortReview | null>(`/book-series/${encodeURIComponent(series_id)}/short-reviews/my`);
+export const listSeriesShortReviews = (series_id: string) =>
+  get<SeriesShortReview[]>(`/book-series/${encodeURIComponent(series_id)}/short-reviews`);
+export const deleteSeriesShortReview = (series_id: string) =>
+  del<void>(`/book-series/${encodeURIComponent(series_id)}/short-reviews/my`);
 
 // Members
 export const listMembers = () =>

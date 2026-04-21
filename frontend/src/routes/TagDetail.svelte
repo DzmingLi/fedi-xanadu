@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes, listTagGroup, addTagGroupMember, removeTagGroupMember, setTagGroupRepresentative, mergeTagGroups, requestTagDeletion } from '../lib/api';
   import { authorName, tagName } from '../lib/display';
+  import { contentHref } from '../lib/utils';
   import { tagStore } from '../lib/tagStore.svelte';
   $effect(() => { tagStore.ensure(); });
   import { t, LOCALES } from '../lib/i18n/index.svelte';
@@ -190,7 +191,7 @@
       <div class="column">
         <h2>Top Articles</h2>
         {#each topArticles as a}
-          <a href="/article?uri={encodeURIComponent(a.at_uri)}" class="article-item">
+          <a href={contentHref(a.at_uri, a.kind, a.question_uri)} class="article-item">
             <span class="article-score">{voteMap.get(a.at_uri) ?? 0}</span>
             <div class="article-info">
               <span class="article-title">{a.title}</span>
@@ -206,7 +207,7 @@
       <div class="column">
         <h2>Trending</h2>
         {#each trendingArticles as a}
-          <a href="/article?uri={encodeURIComponent(a.at_uri)}" class="article-item">
+          <a href={contentHref(a.at_uri, a.kind, a.question_uri)} class="article-item">
             <span class="article-score">{voteMap.get(a.at_uri) ?? 0}</span>
             <div class="article-info">
               <span class="article-title">{a.title}</span>

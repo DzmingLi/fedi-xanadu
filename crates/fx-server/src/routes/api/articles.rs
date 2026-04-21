@@ -947,8 +947,10 @@ async fn save_category_metadata(state: &AppState, at_uri: &str, input: &CreateAr
         Some(CategoryMetadata::Experience(exp)) => {
             let _ = article_service::upsert_experience_metadata(&state.pool, at_uri, exp).await;
         }
-        Some(CategoryMetadata::Review { .. }) => {
-            // Review metadata (book_id, edition_id) is stored in the articles table via CreateArticle
+        Some(CategoryMetadata::Review { .. }) | Some(CategoryMetadata::Note { .. }) => {
+            // Review / Note metadata (book_id, edition_id, chapter_id, ...) is
+            // stored directly on the articles table via CreateArticle INSERT;
+            // no auxiliary table to upsert.
         }
         None => {}
     }
@@ -1895,9 +1897,28 @@ pub async fn update_article(
                 let _ = article_service::upsert_experience_metadata(&state.pool, &input.uri, exp).await;
             }
             CategoryMetadata::Review { book_id, edition_id, .. } => {
-                sqlx::query("UPDATE articles SET book_id = $1, edition_id = $2 WHERE at_uri = $3")
-                    .bind(book_id.as_deref()).bind(edition_id.as_deref()).bind(&input.uri)
-                    .execute(&state.pool).await?;
+                // Reviews: chapter/session always NULL (review is about the
+                // whole book/course).
+                sqlx::query(
+                    "UPDATE articles \
+                        SET book_id = $1, edition_id = $2, \
+                            book_chapter_id = NULL, course_session_id = NULL \
+                      WHERE at_uri = $3",
+                )
+                .bind(book_id.as_deref()).bind(edition_id.as_deref()).bind(&input.uri)
+                .execute(&state.pool).await?;
+            }
+            CategoryMetadata::Note { book_id, edition_id, book_chapter_id, course_session_id, .. } => {
+                sqlx::query(
+                    "UPDATE articles \
+                        SET book_id = $1, edition_id = $2, \
+                            book_chapter_id = $3, course_session_id = $4 \
+                      WHERE at_uri = $5",
+                )
+                .bind(book_id.as_deref()).bind(edition_id.as_deref())
+                .bind(book_chapter_id.as_deref()).bind(course_session_id.as_deref())
+                .bind(&input.uri)
+                .execute(&state.pool).await?;
             }
         }
     }
