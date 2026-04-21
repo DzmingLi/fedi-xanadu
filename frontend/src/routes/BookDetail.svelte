@@ -248,7 +248,7 @@
   let editLang = $state('en');
   let editAuthorsInput = $state('');
   let editBookTeaches = $state<string[]>([]);
-  let editBookPrereqs = $state<string[]>([]);
+  let editBookPrereqs = $state<{ tag_id: string; prereq_type: 'required' | 'recommended' }[]>([]);
   let editBookTopics = $state<string[]>([]);
   let editBookTagInput = $state('');
   let editBookTagSuggestions = $state<{id:string,name:string}[]>([]);
@@ -303,7 +303,9 @@
       if (!editBookTeaches.includes(tagId)) editBookTeaches = [...editBookTeaches, tagId];
       editBookTagInput = ''; editBookTagSuggestions = [];
     } else if (slot === 'prereqs') {
-      if (!editBookPrereqs.includes(tagId)) editBookPrereqs = [...editBookPrereqs, tagId];
+      if (!editBookPrereqs.some(p => p.tag_id === tagId)) {
+        editBookPrereqs = [...editBookPrereqs, { tag_id: tagId, prereq_type: 'required' }];
+      }
       editBookPrereqInput = ''; editBookPrereqSuggestions = [];
     } else {
       if (!editBookTopics.includes(tagId)) editBookTopics = [...editBookTopics, tagId];
@@ -314,7 +316,14 @@
     editBookTeaches = editBookTeaches.filter(t => t !== tagId);
   }
   function removeBookPrereq(tagId: string) {
-    editBookPrereqs = editBookPrereqs.filter(t => t !== tagId);
+    editBookPrereqs = editBookPrereqs.filter(p => p.tag_id !== tagId);
+  }
+  function toggleBookPrereqType(tagId: string) {
+    editBookPrereqs = editBookPrereqs.map(p =>
+      p.tag_id === tagId
+        ? { ...p, prereq_type: p.prereq_type === 'required' ? 'recommended' : 'required' }
+        : p,
+    );
   }
 
   let editBookTopicTimeout: ReturnType<typeof setTimeout>;
@@ -444,7 +453,7 @@
     // Edit state holds canonical tag_ids throughout; display chips use
     // tagStore.localize() to show the user-locale label.
     editBookTeaches = [...detail.tags];
-    editBookPrereqs = [...detail.prereqs];
+    editBookPrereqs = detail.prereqs.map(p => ({ ...p }));
     // detail.topics = derived ∪ explicit (display set); the editor
     // only manages the explicit ones — derived topics auto-appear
     // from teach-tag ancestors and shouldn't be persisted as rows.
@@ -703,7 +712,10 @@
             <div class="book-tag-row">
               <span class="book-tag-row-label">{t('books.prereqRowLabel')}</span>
               {#each detail.prereqs as prereq}
-                <a href="/tag?id={encodeURIComponent(prereq)}" class="tag-badge prereq">{localTag(prereq)}</a>
+                <a href="/tag?id={encodeURIComponent(prereq.tag_id)}"
+                   class="tag-badge prereq {prereq.prereq_type === 'recommended' ? 'recommended' : ''}"
+                   title={prereq.prereq_type === 'required' ? t('books.prereqRequired') : t('books.prereqRecommended')}
+                >{localTag(prereq.tag_id)}</a>
               {/each}
             </div>
           {/if}
@@ -1504,9 +1516,18 @@
 
         <div class="form-group">
           <label>{t('books.prereqsLabel')}</label>
+          <div class="form-hint">{t('books.prereqsHint')}</div>
           <div class="tag-chip-row">
-            {#each editBookPrereqs as tag}
-              <span class="tag-chip prereq">{localTag(tag)} <button type="button" onclick={() => removeBookPrereq(tag)}>×</button></span>
+            {#each editBookPrereqs as p (p.tag_id)}
+              <span class="tag-chip prereq {p.prereq_type === 'recommended' ? 'recommended' : ''}">
+                {localTag(p.tag_id)}
+                <button type="button" class="prereq-toggle"
+                  title={p.prereq_type === 'required' ? t('books.prereqClickRecommended') : t('books.prereqClickRequired')}
+                  onclick={() => toggleBookPrereqType(p.tag_id)}>
+                  {p.prereq_type === 'required' ? t('books.prereqRequired') : t('books.prereqRecommended')}
+                </button>
+                <button type="button" onclick={() => removeBookPrereq(p.tag_id)}>×</button>
+              </span>
             {/each}
           </div>
           <div class="tag-input-wrap">
@@ -2309,6 +2330,15 @@
     font-size: 12px; color: var(--text-primary);
   }
   .tag-chip.prereq { border-color: var(--warn, #d97706); color: var(--warn, #d97706); }
+  .tag-chip.prereq.recommended { border-color: var(--accent, #059669); color: var(--accent, #059669); border-style: dashed; }
+  .tag-badge.prereq.recommended { border-style: dashed; opacity: 0.85; }
+  .prereq-toggle {
+    font-size: 10px; padding: 0 4px; margin: 0 2px;
+    border: 1px solid currentColor; border-radius: 8px;
+    background: transparent; color: inherit; cursor: pointer;
+    line-height: 1.4;
+  }
+  .prereq-toggle:hover { background: rgba(0,0,0,0.05); }
   .tag-chip.topic  { border-color: var(--accent, #6b7280); color: var(--accent, #6b7280); }
   .form-hint { font-size: 12px; color: var(--text-muted, #888); margin-bottom: 6px; }
   .tag-chip button {

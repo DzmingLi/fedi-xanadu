@@ -47,7 +47,7 @@ pub struct BookDetail {
     pub my_reading_status: Option<book_service::ReadingStatus>,
     pub my_chapter_progress: Vec<book_service::ChapterProgress>,
     pub tags: Vec<String>,
-    pub prereqs: Vec<String>,
+    pub prereqs: Vec<fx_core::models::ArticlePrereq>,
     /// Derived from `tags` through the viewer's skill tree — ancestor tags
     /// that this book can be said to "belong to". Not stored; computed per
     /// request because it depends on the viewer's tree.
@@ -100,8 +100,8 @@ pub async fn get_book(
     .bind(&content_uri)
     .fetch_all(&state.pool)
     .await?;
-    let prereqs: Vec<String> = sqlx::query_scalar(
-        "SELECT tag_id FROM content_prereqs WHERE content_uri = $1 ORDER BY tag_id",
+    let prereqs: Vec<fx_core::models::ArticlePrereq> = sqlx::query_as(
+        "SELECT tag_id, prereq_type FROM content_prereqs WHERE content_uri = $1 ORDER BY tag_id",
     )
     .bind(&content_uri)
     .fetch_all(&state.pool)
@@ -192,8 +192,9 @@ pub struct UpdateBookInput {
     /// it grants skill credit). When present, replaces content_teaches.
     pub tags: Option<Vec<String>>,
     /// Tag ids that this book requires as prereqs. When present, replaces
-    /// content_prereqs for this book (all marked as 'required').
-    pub prereqs: Option<Vec<String>>,
+    /// content_prereqs for this book. Each entry carries its own
+    /// required / recommended strength.
+    pub prereqs: Option<Vec<fx_core::models::ArticlePrereq>>,
     /// Tag ids this book is RELATED to (belongs-to a field, mentions,
     /// application domain) but doesn't cover. When present, replaces
     /// content_topics for this book. Feeds the field filter / topic
@@ -274,14 +275,14 @@ pub async fn update_book(
         let content_uri = format!("book:{}", input.id);
         sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
             .bind(&content_uri).execute(&state.pool).await?;
-        for tag_id in prereqs {
-            let t = tag_id.trim();
+        for p in prereqs {
+            let t = p.tag_id.trim();
             if t.is_empty() { continue; }
             fx_core::services::tag_service::require_tag_id(t)?;
             sqlx::query(
                 "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-                 VALUES ($1, $2, 'required') ON CONFLICT DO NOTHING",
-            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
+                 VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            ).bind(&content_uri).bind(t).bind(p.prereq_type.as_str()).execute(&state.pool).await?;
         }
     }
     if let Some(ref topics) = input.topics {

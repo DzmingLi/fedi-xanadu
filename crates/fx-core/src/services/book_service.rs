@@ -35,7 +35,7 @@ pub struct CreateBook {
     pub description: Option<std::collections::HashMap<String, String>>,
     pub tags: Vec<String>,
     #[serde(default)]
-    pub prereqs: Vec<String>,
+    pub prereqs: Vec<crate::models::ArticlePrereq>,
     #[serde(default)]
     pub abbreviation: Option<String>,
 }
@@ -133,14 +133,15 @@ pub async fn create_book(
         .execute(&mut *tx).await?;
     }
 
-    // Prereq tags
-    for input_ref in &input.prereqs {
-        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, created_by).await?;
+    // Prereq tags — each entry carries its own required/recommended
+    // strength.
+    for p in &input.prereqs {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, &p.tag_id, created_by).await?;
         sqlx::query(
             "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-             VALUES ($1, $2, 'required') ON CONFLICT DO NOTHING",
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
-        .bind(&content_uri).bind(&tag_id)
+        .bind(&content_uri).bind(&tag_id).bind(p.prereq_type.as_str())
         .execute(&mut *tx).await?;
     }
 

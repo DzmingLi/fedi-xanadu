@@ -349,7 +349,7 @@ export interface BookDetail {
   my_reading_status: ReadingStatus | null;
   my_chapter_progress: ChapterProgress[];
   tags: string[];
-  prereqs: string[];
+  prereqs: { tag_id: string; prereq_type: PrereqType }[];
   topics: string[];
   /** Explicit content_topics rows only (no derived ancestors). The
    * editor pre-populates from this so saving doesn't re-materialize
