@@ -56,13 +56,24 @@ class TagStore {
   }
 
   /**
-   * Return the display string for a label id in the current UI locale.
-   * Resolution: find sibling matching UI locale → sibling in en →
-   * the label's own id (which already IS the display for its lang).
+   * Return the display string for a label id OR a concept tag_id in the
+   * current UI locale. Accepts both forms because `content_teaches` /
+   * `content_prereqs` store concept ids (`tg-…`), while caller-hand-built
+   * lookups may pass label ids (e.g., "Abstract Algebra"). Resolution:
+   * sibling in UI locale → sibling in en → the label's own id (which IS
+   * the display for its own lang).
    */
   localize(id: string): string {
     const locale = getLocale();
-    const tag = this.#byId.get(id);
+    let tag = this.#byId.get(id);
+    if (!tag) {
+      // Treat `id` as a concept tag_id: pick the best-matching sibling label.
+      const siblings = this.#byTag.get(id);
+      if (siblings) {
+        const labelId = siblings.get(locale) ?? siblings.get('en') ?? siblings.values().next().value;
+        if (labelId) tag = this.#byId.get(labelId);
+      }
+    }
     if (!tag) return id;
     if (tag.lang === locale) return tag.id;
     const siblings = this.#byTag.get(tag.tag_id);
