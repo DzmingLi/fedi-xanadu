@@ -298,6 +298,136 @@ pub struct SetTeachInput {
     pub tag_id: String,
 }
 
+// --- Teaching content for a tag page -----------------------------------
+//
+// Tag pages lead with what actually teaches the concept: articles (already
+// wired), plus books, book chapters, courses, and course sessions. Return
+// them in one call so the page doesn't need four round-trips.
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct TeachBookRow {
+    pub id: String,
+    #[sqlx(json)]
+    pub title: std::collections::HashMap<String, String>,
+    pub authors: Vec<String>,
+    pub abbreviation: Option<String>,
+    pub cover_url: Option<String>,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct TeachChapterRow {
+    pub id: String,
+    pub book_id: String,
+    pub title: String,
+    pub order_index: i32,
+    #[sqlx(json)]
+    pub book_title: std::collections::HashMap<String, String>,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct TeachCourseRow {
+    pub id: String,
+    pub code: Option<String>,
+    pub title: String,
+    pub institution: Option<String>,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct TeachSessionRow {
+    pub id: String,
+    pub course_id: String,
+    pub sort_order: i32,
+    pub topic: Option<String>,
+    pub course_title: String,
+    pub course_code: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct TeachingContentResponse {
+    pub books: Vec<TeachBookRow>,
+    pub chapters: Vec<TeachChapterRow>,
+    pub courses: Vec<TeachCourseRow>,
+    pub sessions: Vec<TeachSessionRow>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct TeachingContentQuery {
+    pub tag_id: String,
+}
+
+pub async fn get_teaching_content(
+    State(state): State<AppState>,
+    Query(q): Query<TeachingContentQuery>,
+) -> ApiResult<Json<TeachingContentResponse>> {
+    let Some(tag_id) = tag_service::lookup_tag_id(&state.pool, &q.tag_id).await? else {
+        return Ok(Json(TeachingContentResponse {
+            books: vec![], chapters: vec![], courses: vec![], sessions: vec![],
+        }));
+    };
+
+    let books = sqlx::query_as::<_, TeachBookRow>(
+        "SELECT b.id, b.title, b.authors, b.abbreviation, \
+                COALESCE( \
+                    (SELECT be.cover_url FROM book_editions be \
+                        WHERE be.id = b.default_edition_id LIMIT 1), \
+                    (SELECT be.cover_url FROM book_editions be \
+                        WHERE be.book_id = b.id AND be.cover_url IS NOT NULL \
+                        ORDER BY be.year DESC LIMIT 1) \
+                ) AS cover_url \
+         FROM books b \
+         JOIN content_teaches ct ON ct.content_uri = 'book:' || b.id \
+         WHERE ct.tag_id = $1 \
+         ORDER BY b.created_at DESC \
+         LIMIT 50",
+    )
+    .bind(&tag_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    // Chapter rows live under book_chapters, and chapter-level tags use
+    // uri = 'chapter:<chapter_id>' in content_teaches.
+    let chapters = sqlx::query_as::<_, TeachChapterRow>(
+        "SELECT bc.id, bc.book_id, bc.title, bc.order_index, b.title AS book_title \
+         FROM book_chapters bc \
+         JOIN books b ON b.id = bc.book_id \
+         JOIN content_teaches ct ON ct.content_uri = 'chapter:' || bc.id \
+         WHERE ct.tag_id = $1 \
+         ORDER BY bc.book_id, bc.order_index \
+         LIMIT 100",
+    )
+    .bind(&tag_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let courses = sqlx::query_as::<_, TeachCourseRow>(
+        "SELECT c.id, c.code, c.title, c.institution \
+         FROM courses c \
+         JOIN course_tags ctg ON ctg.course_id = c.id \
+         WHERE ctg.tag_id = $1 \
+         ORDER BY c.updated_at DESC \
+         LIMIT 50",
+    )
+    .bind(&tag_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let sessions = sqlx::query_as::<_, TeachSessionRow>(
+        "SELECT cs.id, cs.course_id, cs.sort_order, cs.topic, \
+                c.title AS course_title, c.code AS course_code \
+         FROM course_sessions cs \
+         JOIN courses c ON c.id = cs.course_id \
+         JOIN course_session_tags cst ON cst.session_id = cs.id \
+         WHERE cst.tag_id = $1 \
+         ORDER BY c.code NULLS LAST, cs.sort_order \
+         LIMIT 100",
+    )
+    .bind(&tag_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(Json(TeachingContentResponse { books, chapters, courses, sessions }))
+}
+
 pub async fn set_teach(
     State(state): State<AppState>,
     crate::auth::Auth(_user): crate::auth::Auth,

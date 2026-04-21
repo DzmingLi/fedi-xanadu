@@ -171,6 +171,7 @@ fn tag_routes() -> Router<AppState> {
         .route("/tags/name-prefs", get(tags::list_my_name_prefs))
         .route("/tags/{id}/deletion-requests", post(tags::request_tag_deletion))
         .route("/tags/search", get(tags::search_tags))
+        .route("/tags/teaching-content", get(tags::get_teaching_content))
         .route("/tags/resolve", post(tags::resolve_tag))
         .route("/tags/lookup", get(tags::lookup_tag))
         .route("/tags/teach", post(tags::set_teach))

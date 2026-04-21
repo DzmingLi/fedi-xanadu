@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
-    getTag, getArticlesByTag, getArticlesRelatedByTag, listSkills, lightSkill, unlightSkill, getArticleVotes,
+    getTag, getArticlesByTag, getArticlesRelatedByTag, getTeachingContent, type TeachingContent,
+    listSkills, lightSkill, unlightSkill, getArticleVotes,
     listTagGroup, addTagName, removeTagName,
     mergeTagGroups, deleteTag, setMyNamePref, clearMyNamePref,
     listTagHistory, type TagAuditEntry,
@@ -20,6 +21,7 @@
   let tag = $state<Tag | null>(null);
   let articles = $state<Article[]>([]);
   let relatedArticles = $state<Article[]>([]);
+  let teaching = $state<TeachingContent>({ books: [], chapters: [], courses: [], sessions: [] });
   let skills = $state<UserSkill[]>([]);
   let voteMap = $state(new Map<string, number>());
   let loading = $state(true);
@@ -223,11 +225,15 @@
 
   $effect(() => {
     loading = true;
-    Promise.all([getTag(id), getArticlesByTag(id), getArticlesRelatedByTag(id), listSkills()]).then(async ([resp, arts, rel, sk]) => {
+    Promise.all([
+      getTag(id), getArticlesByTag(id), getArticlesRelatedByTag(id),
+      getTeachingContent(id), listSkills(),
+    ]).then(async ([resp, arts, rel, teach, sk]) => {
       tag = resp as any;
       document.title = `${resp.name} — NightBoat`;
       articles = arts;
       relatedArticles = rel;
+      teaching = teach;
       skills = sk;
       // Populate parent/child edges so the main page can show them
       // without requiring the user to open the edit modal.
@@ -296,10 +302,87 @@
     </section>
   {/if}
 
-  {#if articles.length === 0 && relatedArticles.length === 0}
+  {#if teaching.books.length > 0 || teaching.chapters.length > 0 || teaching.courses.length > 0 || teaching.sessions.length > 0}
+    <section class="teach-section">
+      <h2>{t('tags.teachingLead')}</h2>
+      {#if teaching.books.length > 0}
+        <div class="teach-group">
+          <h3 class="teach-group-title">{t('tags.teachBooks')}</h3>
+          <div class="teach-grid">
+            {#each teaching.books as b}
+              <a class="teach-card book-card" href="/book?id={encodeURIComponent(b.id)}">
+                {#if b.cover_url}
+                  <img class="teach-cover" src={b.cover_url} alt="" loading="lazy" />
+                {:else}
+                  <div class="teach-cover placeholder"></div>
+                {/if}
+                <div class="teach-body">
+                  <div class="teach-title">{b.title['zh'] || b.title['en'] || Object.values(b.title)[0] || b.id}</div>
+                  {#if b.authors.length > 0}
+                    <div class="teach-meta">{b.authors.join(', ')}</div>
+                  {/if}
+                </div>
+              </a>
+            {/each}
+          </div>
+        </div>
+      {/if}
+      {#if teaching.chapters.length > 0}
+        <div class="teach-group">
+          <h3 class="teach-group-title">{t('tags.teachChapters')}</h3>
+          <ul class="teach-list">
+            {#each teaching.chapters as c}
+              <li>
+                <a href="/book?id={encodeURIComponent(c.book_id)}">
+                  <span class="teach-list-host">{c.book_title['zh'] || c.book_title['en'] || Object.values(c.book_title)[0] || c.book_id}</span>
+                  <span class="teach-sep">·</span>
+                  <span class="teach-list-title">{c.title}</span>
+                </a>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+      {#if teaching.courses.length > 0}
+        <div class="teach-group">
+          <h3 class="teach-group-title">{t('tags.teachCourses')}</h3>
+          <ul class="teach-list">
+            {#each teaching.courses as c}
+              <li>
+                <a href="/course?id={encodeURIComponent(c.id)}">
+                  {#if c.code}<span class="teach-list-code">{c.code}</span>{/if}
+                  <span class="teach-list-title">{c.title}</span>
+                  {#if c.institution}<span class="teach-list-host">— {c.institution}</span>{/if}
+                </a>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+      {#if teaching.sessions.length > 0}
+        <div class="teach-group">
+          <h3 class="teach-group-title">{t('tags.teachSessions')}</h3>
+          <ul class="teach-list">
+            {#each teaching.sessions as s}
+              <li>
+                <a href="/course?id={encodeURIComponent(s.course_id)}">
+                  {#if s.course_code}<span class="teach-list-code">{s.course_code}</span>{/if}
+                  <span class="teach-list-host">{s.course_title}</span>
+                  <span class="teach-sep">·</span>
+                  <span class="teach-list-title">L{s.sort_order}{#if s.topic}: {s.topic}{/if}</span>
+                </a>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+    </section>
+  {/if}
+
+  {#if articles.length === 0 && relatedArticles.length === 0 && teaching.books.length === 0 && teaching.chapters.length === 0 && teaching.courses.length === 0 && teaching.sessions.length === 0}
     <p class="meta">{t('tags.empty')}</p>
   {:else if articles.length === 0}
-    <!-- teaches empty but related non-empty: just show related section below -->
+    <!-- articles empty: teaching/related sections above handle display -->
   {:else}
     <div class="columns">
       <div class="column">
@@ -486,6 +569,26 @@
 
   .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
   @media (max-width: 700px) { .columns { grid-template-columns: 1fr; } }
+  .teach-section { margin-bottom: 2rem; }
+  .teach-section > h2 { font-family: var(--font-serif); font-size: 1.1rem; font-weight: 400; margin: 0 0 0.75rem; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+  .teach-group { margin-bottom: 1rem; }
+  .teach-group-title { font-size: 12px; color: var(--text-hint); font-weight: 500; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .teach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .teach-card { display: flex; gap: 10px; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-white); text-decoration: none; color: inherit; transition: border-color 0.15s, box-shadow 0.15s; }
+  .teach-card:hover { border-color: var(--border-strong); box-shadow: 0 1px 4px rgba(0,0,0,0.04); text-decoration: none; }
+  .teach-cover { width: 48px; height: 68px; object-fit: cover; border-radius: 2px; flex-shrink: 0; background: var(--bg-hover, #f5f5f5); }
+  .teach-cover.placeholder { background: linear-gradient(135deg, var(--bg-hover, #f5f5f5), var(--border)); }
+  .teach-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+  .teach-title { font-family: var(--font-serif); font-size: 14px; color: var(--text-primary); line-height: 1.3; }
+  .teach-meta { font-size: 12px; color: var(--text-hint); margin-top: 2px; }
+  .teach-list { list-style: none; padding: 0; margin: 0; }
+  .teach-list li { padding: 4px 0; font-size: 13px; }
+  .teach-list a { color: var(--text-primary); text-decoration: none; display: inline-flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .teach-list a:hover { color: var(--accent); }
+  .teach-list-code { font-family: var(--font-mono, monospace); font-size: 12px; color: var(--accent); }
+  .teach-list-host { color: var(--text-secondary); }
+  .teach-sep { color: var(--text-hint); }
+  .teach-list-title { color: var(--text-primary); }
   .edges-overview { margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 6px; }
   .edges-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .edges-label { font-size: 12px; color: var(--text-hint); min-width: 60px; }

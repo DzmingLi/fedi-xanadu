@@ -129,6 +129,18 @@ export const getAllArticlePrereqs = () => get<ContentPrereqBulkRow[]>('/articles
 export const getArticlesByTag = (tagId: string) => get<Article[]>(`/articles/by-tag?tag_id=${encodeURIComponent(tagId)}`);
 export const getArticlesRelatedByTag = (tagId: string) =>
   get<Article[]>(`/articles/related-by-tag?tag_id=${encodeURIComponent(tagId)}`);
+
+// Books / chapters / courses / sessions that teach a given tag. Rendered
+// on the tag page's lead section so readers find canonical material
+// before the article feed.
+export interface TeachingContent {
+  books: { id: string; title: Record<string, string>; authors: string[]; abbreviation: string | null; cover_url: string | null }[];
+  chapters: { id: string; book_id: string; title: string; order_index: number; book_title: Record<string, string> }[];
+  courses: { id: string; code: string | null; title: string; institution: string | null }[];
+  sessions: { id: string; course_id: string; sort_order: number; topic: string | null; course_title: string; course_code: string | null }[];
+}
+export const getTeachingContent = (tagId: string) =>
+  get<TeachingContent>(`/tags/teaching-content?tag_id=${encodeURIComponent(tagId)}`);
 export const getArticlesByDid = (did: string) => get<Article[]>(`/articles/by-did?did=${encodeURIComponent(did)}`);
 export const getTranslations = (uri: string) => get<Article[]>(`/articles/translations?uri=${encodeURIComponent(uri)}`);
 export const getArticleFull = (uri: string) =>
