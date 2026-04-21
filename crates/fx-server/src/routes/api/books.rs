@@ -100,12 +100,26 @@ pub async fn get_book(
     .bind(&content_uri)
     .fetch_all(&state.pool)
     .await?;
-    let prereqs: Vec<fx_core::models::ArticlePrereq> = sqlx::query_as(
+    // prereq_type is stored as varchar; decode as string then map into
+    // the typed enum (sqlx's Type derive on PrereqType insists on a PG
+    // enum, which we don't have).
+    #[derive(sqlx::FromRow)]
+    struct PrereqRow { tag_id: String, prereq_type: String }
+    let prereqs: Vec<fx_core::models::ArticlePrereq> = sqlx::query_as::<_, PrereqRow>(
         "SELECT tag_id, prereq_type FROM content_prereqs WHERE content_uri = $1 ORDER BY tag_id",
     )
     .bind(&content_uri)
     .fetch_all(&state.pool)
-    .await?;
+    .await?
+    .into_iter()
+    .map(|r| fx_core::models::ArticlePrereq {
+        tag_id: r.tag_id,
+        prereq_type: match r.prereq_type.as_str() {
+            "recommended" => fx_core::content::PrereqType::Recommended,
+            _ => fx_core::content::PrereqType::Required,
+        },
+    })
+    .collect();
     let derived = tag_service::derive_topics(&state.pool, &content_uri)
         .await
         .unwrap_or_default();

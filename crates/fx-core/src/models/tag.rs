@@ -52,7 +52,7 @@ pub struct CreateTag {
 
 // ---- Shared ----
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct ArticlePrereq {
     pub tag_id: String,
