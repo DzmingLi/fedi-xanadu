@@ -540,6 +540,16 @@ pub async fn create_article(
         .execute(&mut *tx).await?;
     }
 
+    for input_ref in &input.topics {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, did).await?;
+        sqlx::query(
+            "INSERT INTO content_topics (content_uri, tag_id) \
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(at_uri).bind(&tag_id)
+        .execute(&mut *tx).await?;
+    }
+
     tx.commit().await?;
 
     let article = sqlx::query_as::<_, Article>(&format!("{ARTICLE_BASE} WHERE a.at_uri = $1"))

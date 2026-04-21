@@ -229,6 +229,9 @@
       articles = arts;
       relatedArticles = rel;
       skills = sk;
+      // Populate parent/child edges so the main page can show them
+      // without requiring the user to open the edit modal.
+      loadEdges();
 
       const votes = await Promise.all(arts.map(a => getArticleVotes(a.at_uri).catch(() => ({ score: 0 }) as VoteSummary)));
       const map = new Map<string, number>();
@@ -271,6 +274,27 @@
     </div>
     <p class="tag-meta">{articles.length} {t('tags.articles')}</p>
   </div>
+
+  {#if parents.length > 0 || children.length > 0}
+    <section class="edges-overview">
+      {#if parents.length > 0}
+        <div class="edges-row">
+          <span class="edges-label">{t('tags.parentsLabel')}</span>
+          {#each parents as p (p)}
+            <a class="edge-chip parent" href="/tag?id={encodeURIComponent(p)}">{tagStore.localize(p)}</a>
+          {/each}
+        </div>
+      {/if}
+      {#if children.length > 0}
+        <div class="edges-row">
+          <span class="edges-label">{t('tags.childrenLabel')}</span>
+          {#each children as c (c)}
+            <a class="edge-chip child" href="/tag?id={encodeURIComponent(c)}">{tagStore.localize(c)}</a>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {/if}
 
   {#if articles.length === 0 && relatedArticles.length === 0}
     <p class="meta">{t('tags.empty')}</p>
@@ -462,6 +486,12 @@
 
   .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
   @media (max-width: 700px) { .columns { grid-template-columns: 1fr; } }
+  .edges-overview { margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 6px; }
+  .edges-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .edges-label { font-size: 12px; color: var(--text-hint); min-width: 60px; }
+  .edge-chip { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 12px; font-size: 12px; text-decoration: none; border: 1px solid var(--border); background: var(--bg-white); color: var(--text-primary); transition: border-color 0.15s; }
+  .edge-chip:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+  .edge-chip.parent { background: var(--bg-hover, #f5f5f5); }
   .related-section { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px dashed var(--border); }
   .related-section h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1rem; margin: 0 0 0.25rem; }
   .related-section .hint { color: var(--text-secondary); font-size: 13px; margin: 0 0 0.75rem; }

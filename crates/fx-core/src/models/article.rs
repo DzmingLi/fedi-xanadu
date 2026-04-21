@@ -109,6 +109,12 @@ pub struct CreateArticle {
     /// Mirrors `teaches` but carries no skill-mastery weight.
     #[serde(default)]
     pub related: Vec<String>,
+    /// Explicit field/domain tags ("topics") — distinct from the
+    /// auto-derived ancestors of `teaches`. Questions especially need
+    /// this: a question that doesn't teach anything still belongs in a
+    /// field and should surface in that field's feed.
+    #[serde(default)]
+    pub topics: Vec<String>,
     /// If set, the article belongs to this series and its source is stored in the series repo.
     pub series_id: Option<String>,
     /// Co-author DIDs (the creator is always included automatically).

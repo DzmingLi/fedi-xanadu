@@ -714,6 +714,8 @@ export interface CreateArticle {
   edition_id?: string;
   tags: string[];
   prereqs: { tag_id: string; prereq_type: PrereqType }[];
+  related?: string[];
+  topics?: string[];
 }
 
 // --- Version History ---

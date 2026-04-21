@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { createQuestion, searchTags } from '../lib/api';
+  import { createQuestion, searchTags, lookupTag } from '../lib/api';
   import { t, getLocale, LANG_NAMES } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import { toast } from '../lib/components/Toast.svelte';
-  import type { Tag, ContentFormat } from '../lib/types';
+  import { tagStore } from '../lib/tagStore.svelte';
+  import type { Tag, ContentFormat, PrereqType } from '../lib/types';
   import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
 
   let locale = $derived(getLocale());
+  $effect(() => { tagStore.ensure(); });
+  const localTag = (id: string) => tagStore.localize(id);
 
   let title = $state('');
   let description = $state('');
@@ -16,6 +19,15 @@
   let tags = $state<string[]>([]);
   let tagQuery = $state('');
   let tagResults = $state<Tag[]>([]);
+  let prereqs = $state<Array<{ tag_id: string; prereq_type: PrereqType }>>([]);
+  let prereqQuery = $state('');
+  let prereqResults = $state<Tag[]>([]);
+  let relatedTags = $state<string[]>([]);
+  let relatedQuery = $state('');
+  let relatedResults = $state<Tag[]>([]);
+  let topicTags = $state<string[]>([]);
+  let topicQuery = $state('');
+  let topicResults = $state<Tag[]>([]);
   let publishing = $state(false);
 
   // Translation versions
@@ -40,6 +52,9 @@
   }
 
   let tagTimer: ReturnType<typeof setTimeout>;
+  let prereqTimer: ReturnType<typeof setTimeout>;
+  let relatedTimer: ReturnType<typeof setTimeout>;
+  let topicTimer: ReturnType<typeof setTimeout>;
 
   function onTagInput() {
     clearTimeout(tagTimer);
@@ -49,22 +64,101 @@
       try { tagResults = await searchTags(q); } catch { tagResults = []; }
     }, 150);
   }
+  function onPrereqInput() {
+    clearTimeout(prereqTimer);
+    const q = prereqQuery.trim();
+    if (!q) { prereqResults = []; return; }
+    prereqTimer = setTimeout(async () => {
+      try { prereqResults = await searchTags(q); } catch { prereqResults = []; }
+    }, 150);
+  }
+  function onRelatedInput() {
+    clearTimeout(relatedTimer);
+    const q = relatedQuery.trim();
+    if (!q) { relatedResults = []; return; }
+    relatedTimer = setTimeout(async () => {
+      try { relatedResults = await searchTags(q); } catch { relatedResults = []; }
+    }, 150);
+  }
+  function onTopicInput() {
+    clearTimeout(topicTimer);
+    const q = topicQuery.trim();
+    if (!q) { topicResults = []; return; }
+    topicTimer = setTimeout(async () => {
+      try { topicResults = await searchTags(q); } catch { topicResults = []; }
+    }, 150);
+  }
+
+  // Resolve a free-text input to an existing tag_id. Lookup only — never
+  // create from the question form; unknown names surface an error pointing
+  // the user to /hierarchy.
+  async function resolveToTagId(input: string): Promise<string | null> {
+    const s = input.trim();
+    if (!s) return null;
+    if (s.startsWith('tg-')) return s;
+    try { return (await lookupTag(s)).tag_id; }
+    catch {
+      toast(t('books.tagNotFound').replace('{name}', s), 'error');
+      return null;
+    }
+  }
 
   function addTag(id: string) {
     if (!tags.includes(id)) tags = [...tags, id];
     tagQuery = '';
     tagResults = [];
   }
-
-  function removeTag(id: string) {
-    tags = tags.filter(t => t !== id);
-  }
-
-  function addTagOnEnter(e: KeyboardEvent) {
+  function removeTag(id: string) { tags = tags.filter(t => t !== id); }
+  async function addTagOnEnter(e: KeyboardEvent) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    const id = tagQuery.trim().toLowerCase().replace(/\s+/g, '-');
+    const id = await resolveToTagId(tagQuery);
     if (id) addTag(id);
+  }
+
+  function addPrereq(tagId: string, kind: PrereqType = 'required') {
+    if (prereqs.some(p => p.tag_id === tagId)) return;
+    prereqs = [...prereqs, { tag_id: tagId, prereq_type: kind }];
+    prereqQuery = '';
+    prereqResults = [];
+  }
+  function removePrereq(tagId: string) { prereqs = prereqs.filter(p => p.tag_id !== tagId); }
+  function togglePrereqType(tagId: string) {
+    prereqs = prereqs.map(p => p.tag_id === tagId
+      ? { ...p, prereq_type: p.prereq_type === 'required' ? 'recommended' : 'required' }
+      : p);
+  }
+  async function addPrereqOnEnter(e: KeyboardEvent) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const id = await resolveToTagId(prereqQuery);
+    if (id) addPrereq(id);
+  }
+
+  function addRelated(tagId: string) {
+    if (!relatedTags.includes(tagId)) relatedTags = [...relatedTags, tagId];
+    relatedQuery = '';
+    relatedResults = [];
+  }
+  function removeRelated(tagId: string) { relatedTags = relatedTags.filter(t => t !== tagId); }
+  async function addRelatedOnEnter(e: KeyboardEvent) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const id = await resolveToTagId(relatedQuery);
+    if (id) addRelated(id);
+  }
+
+  function addTopic(tagId: string) {
+    if (!topicTags.includes(tagId)) topicTags = [...topicTags, tagId];
+    topicQuery = '';
+    topicResults = [];
+  }
+  function removeTopic(tagId: string) { topicTags = topicTags.filter(t => t !== tagId); }
+  async function addTopicOnEnter(e: KeyboardEvent) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const id = await resolveToTagId(topicQuery);
+    if (id) addTopic(id);
   }
 
   async function submit() {
@@ -76,12 +170,14 @@
     try {
       const q = await createQuestion({
         title: title.trim(),
-        description: description.trim() || undefined,
-        content: content.trim() || undefined,
+        summary: description.trim() || undefined,
+        content: content.trim(),
         content_format: contentFormat,
         lang,
         tags,
-        prereqs: [],
+        prereqs,
+        related: relatedTags,
+        topics: topicTags,
       });
 
       // Create translation versions
@@ -90,13 +186,14 @@
         try {
           await createQuestion({
             title: lv.title.trim(),
-            description: undefined,
-            content: lv.content.trim() || undefined,
+            content: lv.content.trim(),
             content_format: lv.contentFormat,
             lang: lv.lang,
             translation_of: q.at_uri,
             tags,
-            prereqs: [],
+            prereqs,
+            related: relatedTags,
+            topics: topicTags,
           });
         } catch (e: any) {
           console.warn(`Failed to create ${lv.lang} translation:`, e);
@@ -159,7 +256,7 @@
     <div class="tag-input-wrap">
       {#each tags as tag}
         <span class="tag-chip">
-          {tag}
+          {localTag(tag)}
           <button type="button" onclick={() => removeTag(tag)}>&times;</button>
         </span>
       {/each}
@@ -174,7 +271,93 @@
     {#if tagResults.length > 0}
       <div class="tag-dropdown">
         {#each tagResults as tag}
-          <button type="button" class="tag-option" onclick={() => addTag(tag.id)}>{tag.name}</button>
+          <button type="button" class="tag-option" onclick={() => addTag(tag.tag_id)}>{tag.name}</button>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <div class="form-group">
+    <label>{t('books.topicsLabel')}</label>
+    <p class="hint">{t('books.topicsHint')}</p>
+    <div class="tag-input-wrap">
+      {#each topicTags as tag}
+        <span class="tag-chip">
+          {localTag(tag)}
+          <button type="button" onclick={() => removeTopic(tag)}>&times;</button>
+        </span>
+      {/each}
+      <input
+        bind:value={topicQuery}
+        oninput={onTopicInput}
+        onkeydown={addTopicOnEnter}
+        placeholder={t('newArticle.tagInput')}
+        class="tag-input"
+      />
+    </div>
+    {#if topicResults.length > 0}
+      <div class="tag-dropdown">
+        {#each topicResults as tag}
+          <button type="button" class="tag-option" onclick={() => addTopic(tag.tag_id)}>{tag.name}</button>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <div class="form-group">
+    <label>{t('newArticle.prereqsLabel')}</label>
+    <p class="hint">{t('newArticle.prereqsHint')}</p>
+    <div class="tag-input-wrap">
+      {#each prereqs as p (p.tag_id)}
+        <span class="tag-chip prereq {p.prereq_type === 'recommended' ? 'recommended' : ''}">
+          {localTag(p.tag_id)}
+          <button type="button" class="chip-toggle"
+            title={p.prereq_type === 'required' ? t('books.prereqClickRecommended') : t('books.prereqClickRequired')}
+            onclick={() => togglePrereqType(p.tag_id)}>
+            {p.prereq_type === 'required' ? t('newArticle.required') : t('newArticle.recommended')}
+          </button>
+          <button type="button" onclick={() => removePrereq(p.tag_id)}>&times;</button>
+        </span>
+      {/each}
+      <input
+        bind:value={prereqQuery}
+        oninput={onPrereqInput}
+        onkeydown={addPrereqOnEnter}
+        placeholder={t('newArticle.tagInput')}
+        class="tag-input"
+      />
+    </div>
+    {#if prereqResults.length > 0}
+      <div class="tag-dropdown">
+        {#each prereqResults as tag}
+          <button type="button" class="tag-option" onclick={() => addPrereq(tag.tag_id)}>{tag.name}</button>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <div class="form-group">
+    <label>{t('newArticle.relatedLabel')}</label>
+    <p class="hint">{t('newArticle.relatedHint')}</p>
+    <div class="tag-input-wrap">
+      {#each relatedTags as tag}
+        <span class="tag-chip">
+          {localTag(tag)}
+          <button type="button" onclick={() => removeRelated(tag)}>&times;</button>
+        </span>
+      {/each}
+      <input
+        bind:value={relatedQuery}
+        oninput={onRelatedInput}
+        onkeydown={addRelatedOnEnter}
+        placeholder={t('newArticle.tagInput')}
+        class="tag-input"
+      />
+    </div>
+    {#if relatedResults.length > 0}
+      <div class="tag-dropdown">
+        {#each relatedResults as tag}
+          <button type="button" class="tag-option" onclick={() => addRelated(tag.tag_id)}>{tag.name}</button>
         {/each}
       </div>
     {/if}
