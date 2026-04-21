@@ -469,7 +469,7 @@ frontier_tags AS (
             )
       )
 )
-SELECT tag_canonical_label(ft.tag_id) AS tag_id,
+SELECT ft.tag_id,
        tag_canonical_label(ft.tag_id) AS tag_name,
        tag_label_map(ft.tag_id) AS tag_names,
        COALESCE(ct.cnt, 0) AS article_count

@@ -25,8 +25,7 @@ pub struct TagParentEdit {
 
 pub async fn list_all(pool: &PgPool) -> Result<Vec<TagParent>> {
     let rows = sqlx::query_as::<_, TagParent>(
-        "SELECT tag_canonical_label(parent_tag) AS parent_tag, \
-                tag_canonical_label(child_tag)  AS child_tag \
+        "SELECT parent_tag, child_tag \
          FROM tag_parents ORDER BY 1, 2",
     )
     .fetch_all(pool)

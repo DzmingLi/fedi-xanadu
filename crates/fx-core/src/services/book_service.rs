@@ -263,7 +263,7 @@ pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64
          COALESCE(r.avg, 0) AS avg_rating, \
          COALESCE(r.cnt, 0) AS rating_count, \
          COALESCE(rd.cnt, 0) AS reader_count, \
-         COALESCE((SELECT jsonb_agg(tag_canonical_label(ct.tag_id)) FROM content_teaches ct WHERE ct.content_uri = 'book:' || b.id), '[]'::jsonb) AS tags, \
+         COALESCE((SELECT jsonb_agg(ct.tag_id) FROM content_teaches ct WHERE ct.content_uri = 'book:' || b.id), '[]'::jsonb) AS tags, \
          COALESCE(( \
              WITH RECURSIVE closure(tag) AS ( \
                  SELECT tag_id FROM content_teaches WHERE content_uri = 'book:' || b.id \
@@ -273,7 +273,7 @@ pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64
                  SELECT tp.parent_tag FROM tag_parents tp \
                  JOIN closure c ON tp.child_tag = c.tag \
              ) \
-             SELECT jsonb_agg(DISTINCT tag_canonical_label(tag)) FROM closure \
+             SELECT jsonb_agg(DISTINCT tag) FROM closure \
          ), '[]'::jsonb) AS topics \
          FROM books b \
          LEFT JOIN (SELECT book_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM book_ratings GROUP BY book_id) r ON r.book_id = b.id \

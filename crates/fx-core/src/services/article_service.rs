@@ -325,7 +325,7 @@ pub async fn get_article_prereqs(pool: &PgPool, uri: &str, _locale: &str) -> cra
     // For URL compatibility, we surface a canonical label id as `tag_id`
     // — the frontend's `tagStore` handles per-locale sibling lookup.
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
-        "SELECT tag_canonical_label(cp.tag_id) AS tag_id, \
+        "SELECT cp.tag_id AS tag_id, \
                 cp.prereq_type, \
                 tag_canonical_label(cp.tag_id) AS tag_name, \
                 tag_label_map(cp.tag_id) AS tag_names \
@@ -392,7 +392,7 @@ pub async fn get_article_forks(pool: &PgPool, uri: &str) -> crate::Result<Vec<Fo
 pub async fn get_all_article_teaches(pool: &PgPool, limit: i64) -> crate::Result<Vec<ContentTeachRow>> {
     let rows = sqlx::query_as::<_, ContentTeachRow>(
         "SELECT ct.content_uri, \
-                tag_canonical_label(ct.tag_id) AS tag_id, \
+                ct.tag_id AS tag_id, \
                 tag_canonical_label(ct.tag_id) AS tag_name, \
                 tag_label_map(ct.tag_id) as tag_names \
          FROM content_teaches ct \

@@ -92,8 +92,7 @@ pub async fn get_user_tag_tree(pool: &PgPool, _did: &str) -> crate::Result<Vec<T
     // surface the canonical label on either side so the tree renders
     // one node per concept rather than per-label alias.
     let tree = sqlx::query_as::<_, TagTreeEntry>(
-        "SELECT tag_canonical_label(parent_tag) AS parent_tag, \
-                tag_canonical_label(child_tag)  AS child_tag \
+        "SELECT parent_tag, child_tag \
          FROM tag_parents \
          ORDER BY 1, 2",
     )

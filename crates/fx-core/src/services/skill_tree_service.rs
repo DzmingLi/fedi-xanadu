@@ -79,7 +79,7 @@ pub async fn list_skill_trees(pool: &PgPool, limit: i64) -> Result<Vec<SkillTree
     // ids) keeps working, and attach the full translation map.
     let rows = sqlx::query_as::<_, SkillTreeListRow>(
         "SELECT st.at_uri, st.did, p.handle AS author_handle, st.title, st.description, \
-         tag_canonical_label(st.tag_id) AS tag_id, \
+         st.tag_id AS tag_id, \
          tag_canonical_label(st.tag_id) AS tag_name, \
          tag_label_map(st.tag_id) AS tag_names, \
          st.forked_from, st.created_at, \
@@ -391,8 +391,7 @@ async fn get_edges(pool: &PgPool, tree_uri: &str) -> Result<Vec<SkillTreeEdgeRow
     // Surface canonical labels so the frontend's label-keyed tagStore
     // can resolve them without another round-trip.
     let edges = sqlx::query_as::<_, SkillTreeEdgeRow>(
-        "SELECT tag_canonical_label(parent_tag) AS parent_tag, \
-                tag_canonical_label(child_tag)  AS child_tag \
+        "SELECT parent_tag, child_tag \
          FROM skill_tree_edges WHERE tree_uri = $1",
     )
     .bind(tree_uri)
@@ -403,8 +402,7 @@ async fn get_edges(pool: &PgPool, tree_uri: &str) -> Result<Vec<SkillTreeEdgeRow
 
 async fn get_prereqs(pool: &PgPool, tree_uri: &str) -> Result<Vec<SkillTreePrereqRow>> {
     let prereqs = sqlx::query_as::<_, SkillTreePrereqRow>(
-        "SELECT tag_canonical_label(from_tag) AS from_tag, \
-                tag_canonical_label(to_tag)   AS to_tag, \
+        "SELECT from_tag, to_tag, \
                 prereq_type \
          FROM skill_tree_prereqs WHERE tree_uri = $1",
     )
