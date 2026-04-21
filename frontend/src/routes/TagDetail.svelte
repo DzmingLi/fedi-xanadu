@@ -4,6 +4,7 @@
     listTagGroup, addTagName, removeTagName,
     mergeTagGroups, deleteTag, setMyNamePref, clearMyNamePref,
     listTagHistory, type TagAuditEntry,
+    listTagParents, addTagParent, removeTagParent, lookupTag,
   } from '../lib/api';
   import { navigate } from '../lib/router';
   import { authorName } from '../lib/display';
@@ -42,6 +43,76 @@
   let mergeFromId = $state('');
   let deleting = $state(false);
   let history = $state<TagAuditEntry[]>([]);
+  // Parent / child concept ids attached to this tag.
+  let parents = $state<string[]>([]);
+  let children = $state<string[]>([]);
+  let newParent = $state('');
+  let newChild = $state('');
+
+  async function loadEdges() {
+    if (!tag) return;
+    try {
+      const all = await listTagParents();
+      parents = all.filter(e => e.child_tag === tag!.tag_id).map(e => e.parent_tag);
+      children = all.filter(e => e.parent_tag === tag!.tag_id).map(e => e.child_tag);
+    } catch { /* */ }
+  }
+
+  async function asTagId(input: string): Promise<string | null> {
+    const s = input.trim();
+    if (!s) return null;
+    if (s.startsWith('tg-')) return s;
+    try { return (await lookupTag(s)).tag_id; }
+    catch { editError = t('books.tagNotFound').replace('{name}', s); return null; }
+  }
+
+  async function submitAddParent() {
+    if (!tag) return;
+    const pid = await asTagId(newParent);
+    if (!pid) return;
+    if (pid === tag.tag_id) { editError = t('hierarchy.sameTag'); return; }
+    try {
+      await addTagParent(pid, tag.tag_id);
+      newParent = '';
+      editError = '';
+      await loadEdges();
+    } catch (err: any) { editError = err.message ?? String(err); }
+  }
+
+  async function submitAddChild() {
+    if (!tag) return;
+    const cid = await asTagId(newChild);
+    if (!cid) return;
+    if (cid === tag.tag_id) { editError = t('hierarchy.sameTag'); return; }
+    try {
+      await addTagParent(tag.tag_id, cid);
+      newChild = '';
+      editError = '';
+      await loadEdges();
+    } catch (err: any) { editError = err.message ?? String(err); }
+  }
+
+  async function unparent(parentId: string) {
+    if (!tag) return;
+    if (!confirm(t('tags.confirmRemoveEdge')
+        .replace('{parent}', tagStore.localize(parentId))
+        .replace('{child}', tagStore.localize(tag.tag_id)))) return;
+    try {
+      await removeTagParent(parentId, tag.tag_id);
+      await loadEdges();
+    } catch (err: any) { editError = err.message ?? String(err); }
+  }
+
+  async function unchild(childId: string) {
+    if (!tag) return;
+    if (!confirm(t('tags.confirmRemoveEdge')
+        .replace('{parent}', tagStore.localize(tag.tag_id))
+        .replace('{child}', tagStore.localize(childId)))) return;
+    try {
+      await removeTagParent(tag.tag_id, childId);
+      await loadEdges();
+    } catch (err: any) { editError = err.message ?? String(err); }
+  }
 
   function conceptId(): string | null { return tag?.tag_id ?? null; }
 
@@ -53,6 +124,7 @@
     showEdit = true;
     listTagGroup(id).then((g) => { siblings = g.members; }).catch(() => {});
     listTagHistory(id).then((h) => { history = h; }).catch(() => {});
+    loadEdges();
   }
 
   async function refreshHistory() {
@@ -274,6 +346,38 @@
           {/each}
         </select>
         <button class="btn" onclick={submitAddName}>{t('tags.addName')}</button>
+      </div>
+
+      <h4 style="margin-top:18px">{t('tags.parentsLabel')}</h4>
+      <p class="hint">{t('tags.parentsHint')}</p>
+      <div class="sibling-list">
+        {#each parents as p (p)}
+          <div class="sibling-row">
+            <a class="sibling-name" href="/tag?id={encodeURIComponent(p)}">{tagStore.localize(p)}</a>
+            <button class="sibling-rm" onclick={() => unparent(p)} title={t('hierarchy.remove')}>×</button>
+          </div>
+        {/each}
+      </div>
+      <div class="sibling-add">
+        <input class="sm-input" bind:value={newParent} placeholder={t('tags.parentPlaceholder')} style="flex:1"
+          onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitAddParent(); } }} />
+        <button class="btn" onclick={submitAddParent}>{t('hierarchy.add')}</button>
+      </div>
+
+      <h4 style="margin-top:18px">{t('tags.childrenLabel')}</h4>
+      <p class="hint">{t('tags.childrenHint')}</p>
+      <div class="sibling-list">
+        {#each children as c (c)}
+          <div class="sibling-row">
+            <a class="sibling-name" href="/tag?id={encodeURIComponent(c)}">{tagStore.localize(c)}</a>
+            <button class="sibling-rm" onclick={() => unchild(c)} title={t('hierarchy.remove')}>×</button>
+          </div>
+        {/each}
+      </div>
+      <div class="sibling-add">
+        <input class="sm-input" bind:value={newChild} placeholder={t('tags.childPlaceholder')} style="flex:1"
+          onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitAddChild(); } }} />
+        <button class="btn" onclick={submitAddChild}>{t('hierarchy.add')}</button>
       </div>
 
       <div class="sibling-add merge-row">
