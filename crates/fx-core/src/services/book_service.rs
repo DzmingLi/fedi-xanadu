@@ -265,7 +265,7 @@ pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64
          COALESCE(r.avg, 0) AS avg_rating, \
          COALESCE(r.cnt, 0) AS rating_count, \
          COALESCE(rd.cnt, 0) AS reader_count, \
-         COALESCE((SELECT jsonb_agg(ct.tag_id) FROM content_teaches ct WHERE ct.content_uri = 'book:' || b.id), '[]'::jsonb) AS tags, \
+         COALESCE((SELECT jsonb_agg(tag_canonical_label(ct.tag_id)) FROM content_teaches ct WHERE ct.content_uri = 'book:' || b.id), '[]'::jsonb) AS tags, \
          COALESCE(( \
              WITH RECURSIVE closure(tag) AS ( \
                  SELECT tag_id FROM content_teaches WHERE content_uri = 'book:' || b.id \
