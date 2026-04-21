@@ -6,6 +6,7 @@
   import { tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
+  import { contentHref } from '../lib/utils';
   import PostCard from '../lib/components/PostCard.svelte';
   import type { ProfileData, Article, Series, ContentTeachRow, Contacts, ContactKind, CustomLink, LinkedHandle, BookmarkWithTitle, EducationEntry, EducationTranslation, WorkExperienceEntry, WorkExperienceTranslation, PublicationEntry, ProjectEntry, TeachingEntry, Listing } from '../lib/types';
   import { CONTACT_KINDS } from '../lib/types';
@@ -925,7 +926,7 @@
         {/if}
       {:else if profileTab === 'bookmarks'}
         {#each publicBookmarks as bm}
-          <a href="/article?uri={encodeURIComponent(bm.article_uri)}" class="bookmark-card">
+          <a href={contentHref(bm.article_uri, bm.kind, bm.question_uri)} class="bookmark-card">
             <div class="bookmark-info">
               <span class="bookmark-title">{bm.title}</span>
               {#if bm.folder_path && bm.folder_path !== '/'}

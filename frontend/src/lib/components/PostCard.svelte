@@ -272,7 +272,7 @@
   {#if expanded && expandedContent}
     <div class="expanded-full">
       <div class="expanded-header">
-        <h1 class="expanded-title"><a href="/article?uri={encodeURIComponent(expandedUri)}">{expandedTitle}</a></h1>
+        <h1 class="expanded-title"><a href={cardHref}>{expandedTitle}</a></h1>
         <div class="expanded-authors">
           {#if expandedAuthors.length > 0}
             {#each expandedAuthors as au}
@@ -321,7 +321,7 @@
         <button class="comment-toggle" onclick={() => { showComments = !showComments; }}>
           &#128172; {showComments ? t('qa.hideComments') : t('qa.showComments')}{#if article && article.comment_count > 0} ({article.comment_count}){/if}
         </button>
-        <a href="/article?uri={encodeURIComponent(expandedUri)}" class="read-full">{t('home.readFull') || 'Read full →'}</a>
+        <a href={cardHref} class="read-full">{t('home.readFull') || 'Read full →'}</a>
         <button class="collapse-btn" onclick={toggleExpand}>{t('home.collapse')} ▲</button>
       </div>
       {#if showComments && expandedUri}
