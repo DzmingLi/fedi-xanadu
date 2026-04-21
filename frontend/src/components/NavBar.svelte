@@ -9,11 +9,34 @@
   import LoginModal from './LoginModal.svelte';
 
   let locale = $derived(getLocale());
+  let currentLocaleLabel = $derived(
+    LOCALES.find(l => l.code === locale)?.label ?? locale,
+  );
 
-  function cycleLocale() {
-    const codes = LOCALES.map(l => l.code);
-    const next = codes[(codes.indexOf(locale) + 1) % codes.length];
-    setLocale(next as any);
+  let localeMenuOpen = $state(false);
+  let localeMenuEl: HTMLDivElement | undefined = $state();
+
+  $effect(() => {
+    if (!localeMenuOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (localeMenuEl && !localeMenuEl.contains(e.target as Node)) {
+        localeMenuOpen = false;
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') localeMenuOpen = false;
+    }
+    document.addEventListener('click', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('click', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  });
+
+  function pickLocale(code: Locale) {
+    setLocale(code);
+    localeMenuOpen = false;
   }
 
   let isDark = $state(
@@ -88,9 +111,43 @@
   </div>
 
   <div class="nav-right">
-    <button type="button" class="locale-toggle" onclick={cycleLocale} title="Switch language">
-      {(() => { const codes = LOCALES.map(l => l.code); return LOCALES[(codes.indexOf(locale) + 1) % codes.length].label; })()}
-    </button>
+    <div class="locale-menu" bind:this={localeMenuEl}>
+      <button
+        type="button"
+        class="locale-trigger"
+        onclick={() => localeMenuOpen = !localeMenuOpen}
+        aria-haspopup="listbox"
+        aria-expanded={localeMenuOpen}
+        title={t('nav.switchLanguage')}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="2" y1="12" x2="22" y2="12"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        <span>{currentLocaleLabel}</span>
+        <svg class="chevron" width="9" height="9" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true"><path d="M1 3l4 4 4-4z"/></svg>
+      </button>
+      {#if localeMenuOpen}
+        <ul class="locale-list" role="listbox" aria-label={t('nav.switchLanguage')}>
+          {#each LOCALES as l}
+            <li>
+              <button
+                type="button"
+                class="locale-option"
+                class:active={l.code === locale}
+                onclick={() => pickLocale(l.code)}
+                role="option"
+                aria-selected={l.code === locale}
+              >
+                <span class="check">{l.code === locale ? '✓' : ''}</span>
+                <span>{l.label}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
 
     <button type="button" class="theme-toggle" onclick={toggleTheme} title={isDark ? 'Light mode' : 'Dark mode'}>
       {#if isDark}
@@ -205,10 +262,16 @@
     flex-wrap: wrap;
     gap: 0.5rem;
   }
-  .locale-toggle {
+  .locale-menu {
+    position: relative;
+  }
+  .locale-trigger {
+    display: flex;
+    align-items: center;
+    gap: 5px;
     font-size: 12px;
     font-weight: 600;
-    padding: 2px 6px;
+    padding: 3px 7px;
     border: 1px solid var(--border);
     border-radius: 3px;
     background: none;
@@ -216,16 +279,62 @@
     color: var(--text-secondary);
     transition: all 0.15s;
     font-family: var(--font-sans);
-    appearance: none;
-    -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 4px center;
-    padding-right: 16px;
   }
-  .locale-toggle:hover {
+  .locale-trigger:hover {
     border-color: var(--accent);
     color: var(--accent);
+  }
+  .locale-trigger .chevron {
+    opacity: 0.7;
+    transition: transform 0.15s;
+  }
+  .locale-trigger[aria-expanded="true"] .chevron {
+    transform: rotate(180deg);
+  }
+  .locale-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 200;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--bg-page);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    min-width: 140px;
+  }
+  .locale-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 13px;
+    background: none;
+    border: none;
+    border-radius: 3px;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-sans);
+    transition: background 0.1s, color 0.1s;
+  }
+  .locale-option:hover {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--accent);
+  }
+  .locale-option.active {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .locale-option .check {
+    width: 12px;
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--accent);
+    text-align: center;
   }
   .theme-toggle {
     background: none;
