@@ -10,6 +10,11 @@ pub struct Config {
     pub port: u16,
     pub database_url: String,
     pub pijul_store_path: String,
+    /// Scratch directory for PDS-blob-backed article working trees. Source files
+    /// are materialized here on demand (mirrors pijul_store_path layout so the
+    /// renderer treats them identically). Set via FX_BLOB_CACHE_PATH.
+    #[serde(default = "default_blob_cache_path")]
+    pub blob_cache_path: String,
     pub instance_name: String,
     /// Comma-separated string of allowed CORS origins. Empty = same-origin only.
     #[serde(default)]
@@ -45,6 +50,10 @@ pub struct Config {
     pub orcid_client_secret: Option<String>,
 }
 
+fn default_blob_cache_path() -> String {
+    "data/blob-cache".into()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -52,6 +61,7 @@ impl Default for Config {
             port: 3000,
             database_url: "postgres://localhost/nightboat".into(),
             pijul_store_path: "data/pijul-store".into(),
+            blob_cache_path: default_blob_cache_path(),
             instance_name: "NightBoat".into(),
             cors_origins: String::new(),
             admin_secret: None,

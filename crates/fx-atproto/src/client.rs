@@ -349,6 +349,29 @@ impl AtClient {
         Ok(output.blob)
     }
 
+    /// Fetch a blob from a PDS by DID + CID. No auth required for public blobs.
+    pub async fn get_blob(
+        &self,
+        pds_url: &str,
+        did: &str,
+        cid: &str,
+    ) -> anyhow::Result<Vec<u8>> {
+        let url = format!(
+            "{}/xrpc/com.atproto.sync.getBlob?did={}&cid={}",
+            pds_url.trim_end_matches('/'),
+            urlencoding::encode(did),
+            urlencoding::encode(cid),
+        );
+        let resp = self.http.get(&url).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("getBlob {} failed: {}", status, body);
+        }
+        let bytes = resp.bytes().await?;
+        Ok(bytes.to_vec())
+    }
+
     /// Delete a record from the user's PDS repository.
     pub async fn delete_record(
         &self,

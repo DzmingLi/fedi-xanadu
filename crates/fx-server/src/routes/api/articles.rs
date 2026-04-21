@@ -284,6 +284,91 @@ impl ArticleLocation {
     }
 }
 
+/// Per-file entry inside `articles.content_manifest` JSONB for blob-backed articles.
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+pub(super) struct BlobManifestFile {
+    pub path: String,
+    pub cid: String,
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub mime: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+pub(super) struct BlobManifest {
+    pub entry: String,
+    pub files: Vec<BlobManifestFile>,
+    /// PDS endpoint to fetch blobs from. Stored in the manifest so image /
+    /// render requests don't need to resolve the DID doc on every hit.
+    pub pds_url: String,
+}
+
+/// Materialize blob-backed source files under `{blob_cache}/{node_id}/` so the
+/// renderer sees the same layout as a pijul working dir. Idempotent: existing
+/// files with matching size are left alone. Returns the scratch repo path.
+pub(super) async fn ensure_blob_materialized(
+    state: &AppState,
+    did: &str,
+    manifest: &BlobManifest,
+    repo_path: &std::path::Path,
+) -> Result<(), AppError> {
+    tokio::fs::create_dir_all(repo_path).await
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("create blob cache dir: {e}"))))?;
+    for file in &manifest.files {
+        if file.path.is_empty() || file.path.contains("..") || file.path.starts_with('/') {
+            return Err(AppError(fx_core::Error::Internal(format!(
+                "invalid manifest path: {}", file.path
+            ))));
+        }
+        let dest = repo_path.join(&file.path);
+        if let Ok(meta) = tokio::fs::metadata(&dest).await {
+            if meta.is_file() && (file.size == 0 || meta.len() == file.size) {
+                continue;
+            }
+        }
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await
+                .map_err(|e| AppError(fx_core::Error::Internal(format!("create parent dir: {e}"))))?;
+        }
+        let bytes = state.at_client.get_blob(&manifest.pds_url, did, &file.cid).await
+            .map_err(|e| AppError(fx_core::Error::Internal(format!("get_blob {}: {e}", file.cid))))?;
+        let tmp = dest.with_extension(format!(
+            "{}.part",
+            dest.extension().and_then(|e| e.to_str()).unwrap_or("")
+        ));
+        tokio::fs::write(&tmp, &bytes).await
+            .map_err(|e| AppError(fx_core::Error::Internal(format!("write blob: {e}"))))?;
+        tokio::fs::rename(&tmp, &dest).await
+            .map_err(|e| AppError(fx_core::Error::Internal(format!("rename blob: {e}"))))?;
+    }
+    Ok(())
+}
+
+/// Load a blob-backed article's manifest if storage = 'blob'. Returns None for
+/// pijul-backed (or missing) articles.
+pub(super) async fn load_blob_manifest(
+    pool: &sqlx::PgPool,
+    article_uri: &str,
+) -> Option<BlobManifest> {
+    let row: Option<(String, Option<serde_json::Value>)> = sqlx::query_as(
+        "SELECT content_storage, content_manifest FROM articles WHERE at_uri = $1",
+    )
+    .bind(article_uri)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    let (storage, manifest) = row?;
+    if storage != "blob" { return None; }
+    serde_json::from_value::<BlobManifest>(manifest?).ok()
+}
+
+/// Extract the owning DID from an at-uri (`at://DID/...`).
+fn uri_did(article_uri: &str) -> Option<&str> {
+    article_uri.strip_prefix("at://")?.split('/').next()
+}
+
 /// Resolve the pijul location for an article (series chapter or standalone).
 /// This is the single decision point that replaces all `get_series_pijul_info` + branching.
 pub(super) async fn resolve_location(
@@ -293,6 +378,29 @@ pub(super) async fn resolve_location(
 ) -> Option<ArticleLocation> {
     let src_ext = fx_renderer::format_extension(format);
     let chapter_id = article_uri.rsplit('/').next()?;
+
+    // Blob-backed standalone article: materialize source files into scratch
+    // dir and treat layout as identical to a pijul repo. ARR articles take
+    // this path; they are never series chapters by construction.
+    if let Some(manifest) = load_blob_manifest(&state.pool, article_uri).await {
+        let did = uri_did(article_uri)?;
+        let node_id = uri_to_node_id(article_uri);
+        let repo_path = state.blob_cache_path.join(&node_id);
+        if let Err(e) = ensure_blob_materialized(state, did, &manifest, &repo_path).await {
+            tracing::warn!("blob materialize failed for {article_uri}: {e:?}");
+            return None;
+        }
+        let content_path = repo_path.join(format!("content.{src_ext}"));
+        let cache_path = repo_path.join("content.html");
+        return Some(ArticleLocation {
+            node_id,
+            repo_path,
+            content_path,
+            cache_path,
+            series_id: None,
+            chapter_id: None,
+        });
+    }
 
     // Check if article belongs to a series with a pijul repo
     let series_row: Option<(String, String, Option<String>)> = sqlx::query_as(
@@ -1659,13 +1767,24 @@ pub async fn get_image(
     Query(q): Query<ImageQuery>,
 ) -> ApiResult<(axum::http::HeaderMap, Vec<u8>)> {
     let node_id = uri_to_node_id(&q.uri);
-    let repo_path = state.pijul.repo_path(&node_id);
 
     // Sanitize: allow subdirectories (e.g. _rendered/hash.png, Figure/img.pdf) but reject ..
     let name = &q.name;
     if name.is_empty() || name.contains("..") || name.starts_with('/') {
         return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
     }
+
+    // Storage-aware root: blob-backed articles serve from the materialized
+    // scratch dir (same layout as the pijul working dir would have had), so
+    // `_rendered/*.svg` and `Figure/*.pdf` resolve via the same relative path.
+    let repo_path = if let Some(manifest) = load_blob_manifest(&state.pool, &q.uri).await {
+        let did = uri_did(&q.uri).ok_or_else(|| AppError(fx_core::Error::BadRequest("bad uri".into())))?;
+        let path = state.blob_cache_path.join(&node_id);
+        ensure_blob_materialized(&state, did, &manifest, &path).await?;
+        path
+    } else {
+        state.pijul.repo_path(&node_id)
+    };
 
     let path = repo_path.join(name);
     let data = tokio::fs::read(&path).await.map_err(|_| {
@@ -1678,6 +1797,7 @@ pub async fn get_image(
         Some("gif") => "image/gif",
         Some("svg") => "image/svg+xml",
         Some("webp") => "image/webp",
+        Some("pdf") => "application/pdf",
         _ => "application/octet-stream",
     };
 

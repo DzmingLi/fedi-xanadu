@@ -1,7 +1,7 @@
 {
   "lexicon": 1,
   "id": "at.nightbo.article",
-  "description": "A standalone knowledge article (or question/answer/thought). Each standalone article is backed by its own pijul repository; `pijulRepoUrl` is the knot-hosted location so external consumers can clone the authoritative source. Chapters of a series are NOT published as at.nightbo.article records — the series record describes the whole work and the repo's chapter files are the authoritative structure.",
+  "description": "A standalone knowledge article (or question/answer/thought). Content is either backed by a pijul repository (for collaborative open-licensed works, addressed via `pijulRepoUrl`) or stored as blobs on the author's PDS (for All-Rights-Reserved and other non-forkable works, addressed via the `content` union). Chapters of a series are NOT published as at.nightbo.article records — the series record describes the whole work and the repo's chapter files are the authoritative structure.",
   "defs": {
     "main": {
       "type": "record",
@@ -12,11 +12,30 @@
         "properties": {
           "title":         { "type": "string", "maxLength": 500 },
           "description":   { "type": "string", "maxLength": 10000, "description": "Short summary / lede." },
-          "contentFormat": { "type": "string", "enum": ["markdown", "typst", "html"] },
+          "contentFormat": { "type": "string", "enum": ["markdown", "typst", "html", "tex"] },
           "tags":          { "type": "array", "items": { "type": "string" } },
-          "pijulRepoUrl":  { "type": "string", "format": "uri", "description": "Public knot URL hosting the article's pijul repo, e.g. https://knot.example.com/did:web:alice/at___did_web_alice_at.nightbo.article_<tid>" },
+          "pijulRepoUrl":  { "type": "string", "format": "uri", "description": "Public knot URL for the article's pijul repo. Required for historical continuity; for blob-backed content, may point to the original (now obsolete) pijul location or to an empty placeholder repo." },
+          "license":       { "type": "string", "knownValues": ["All-Rights-Reserved", "CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0", "CC-BY-NC-SA-4.0", "CC-BY-ND-4.0", "CC-BY-NC-ND-4.0"], "description": "SPDX-style license identifier. `All-Rights-Reserved` implies the article's content must not be stored in a forkable pijul repo — use `content` union with `#blobContent` instead." },
+          "content":       { "type": "union", "refs": ["#blobContent"], "description": "Non-pijul content storage. When present, this is authoritative and `pijulRepoUrl` is legacy/historical." },
           "createdAt":     { "type": "string", "format": "datetime" }
         }
+      }
+    },
+    "blobContent": {
+      "type": "object",
+      "description": "Article content stored as one or more blobs on the author's PDS. Source files only — rendered artifacts (e.g. _rendered/*.svg, content.html) are server-derived and not included here.",
+      "required": ["entry", "files"],
+      "properties": {
+        "entry": { "type": "string", "description": "Relative path of the root source file within the file set, e.g. `content.typ` or `content.md`." },
+        "files": { "type": "array", "items": { "ref": "#blobFile" } }
+      }
+    },
+    "blobFile": {
+      "type": "object",
+      "required": ["path", "blob"],
+      "properties": {
+        "path": { "type": "string", "description": "Relative path from the content root, e.g. `Figure/compare.pdf` or `main.bib`." },
+        "blob": { "type": "blob" }
       }
     }
   }

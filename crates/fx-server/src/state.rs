@@ -11,6 +11,7 @@ use crate::config::Config;
 pub struct AppState {
     pub pool: PgPool,
     pub pijul: Arc<PijulStore>,
+    pub blob_cache_path: std::path::PathBuf,
     pub data_dir: std::path::PathBuf,
     pub at_client: AtClient,
     pub admin_secret: Option<String>,
@@ -51,6 +52,8 @@ impl AppState {
         let instance_mode = InstanceMode::from_str(&config.instance_mode);
 
         std::fs::create_dir_all(&config.pijul_store_path)?;
+        std::fs::create_dir_all(&config.blob_cache_path)?;
+        let blob_cache_path = std::path::PathBuf::from(&config.blob_cache_path);
 
         let packages_dir = std::path::PathBuf::from(&config.pijul_store_path).join("typst-packages");
         std::fs::create_dir_all(&packages_dir)?;
@@ -77,6 +80,7 @@ impl AppState {
         Ok(Self {
             pool,
             pijul,
+            blob_cache_path,
             data_dir,
             at_client,
             admin_secret: config.admin_secret.clone(),
