@@ -38,6 +38,7 @@ pub async fn light_skill(
     }
 
     let status = input.status.as_deref().unwrap_or("mastered");
+    fx_core::services::tag_service::require_tag_id(&input.tag_id)?;
     skill_service::light_skill(&state.pool, &user.did, &input.tag_id, status).await?;
 
     let record = serde_json::json!({
@@ -61,6 +62,7 @@ pub async fn delete_skill(
         return Err(AppError(fx_core::Error::Validation(vec![e])));
     }
 
+    fx_core::services::tag_service::require_tag_id(&input.tag_id)?;
     skill_service::delete_skill(&state.pool, &user.did, &input.tag_id).await?;
     pds_delete_record(&state, &user.token, fx_atproto::lexicon::SKILL, input.tag_id.clone(), "unlight skill").await;
     Ok(StatusCode::NO_CONTENT)

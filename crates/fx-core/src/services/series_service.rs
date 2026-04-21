@@ -184,15 +184,14 @@ pub async fn create_series(
     .execute(&mut *tx)
     .await?;
 
-    for topic_label in topics {
-        super::tag_service::ensure_tag(&mut *tx, topic_label, created_by).await?;
+    for input_ref in topics {
+        let tag_id = super::tag_service::resolve_tag_id(&mut *tx, input_ref, created_by).await?;
         sqlx::query(
             "INSERT INTO content_topics (content_uri, tag_id) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
         .bind(id)
-        .bind(topic_label)
+        .bind(&tag_id)
         .execute(&mut *tx)
         .await?;
     }

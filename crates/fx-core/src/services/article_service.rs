@@ -143,17 +143,16 @@ pub async fn get_article(pool: &PgPool, mode: InstanceMode, uri: &str) -> crate:
         .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() })
 }
 
-pub async fn get_questions_by_tag(pool: &PgPool, mode: InstanceMode, label_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
-    // Resolve the incoming label to its tag, then walk the skill-tree
-    // taxonomy down through tags (concepts).
+pub async fn get_questions_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
+    // Walk the skill-tree taxonomy down from `tag_id` through descendants.
     let descendant_tags: Vec<String> = sqlx::query_scalar(
         "WITH RECURSIVE descendants(tag) AS ( \
-           SELECT tag_id FROM tag_labels WHERE id = $1 \
+           SELECT CAST($1 AS varchar) \
            UNION \
            SELECT e.child_tag FROM skill_tree_edges e JOIN descendants d ON e.parent_tag = d.tag \
          ) SELECT tag FROM descendants WHERE tag IS NOT NULL",
     )
-    .bind(label_id)
+    .bind(tag_id)
     .fetch_all(pool)
     .await?;
 
@@ -191,21 +190,19 @@ pub async fn get_related_questions(pool: &PgPool, mode: InstanceMode, uri: &str,
     Ok(rows)
 }
 
-pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, label_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
-    // Resolve the query label to its tag, then walk the skill-tree
-    // taxonomy down through tag ids. Edge-tables now carry tag_id
-    // directly so the query filters by that column — no sibling expansion
-    // needed at this layer.
+pub async fn get_articles_by_tag(pool: &PgPool, mode: InstanceMode, tag_id: &str, limit: i64) -> crate::Result<Vec<Article>> {
+    // Walk the skill-tree taxonomy down from `tag_id` through descendants.
+    // Edge tables carry tag_ids directly so the filter is straightforward.
     let tag_ids: Vec<String> = sqlx::query_scalar(
         "WITH RECURSIVE descendants(tid) AS ( \
-             SELECT (SELECT tag_id FROM tag_labels WHERE id = $1) \
+             SELECT CAST($1 AS varchar) \
              UNION \
              SELECT e.child_tag \
              FROM skill_tree_edges e \
              JOIN descendants d ON d.tid = e.parent_tag \
          ) SELECT tid FROM descendants WHERE tid IS NOT NULL",
     )
-    .bind(label_id)
+    .bind(tag_id)
     .fetch_all(pool)
     .await?;
 
@@ -482,25 +479,23 @@ pub async fn create_article(
     .execute(&mut *tx)
     .await?;
 
-    for label_id in &input.tags {
-        crate::services::tag_service::ensure_tag(&mut *tx, label_id, did).await?;
+    for input_ref in &input.tags {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, did).await?;
         sqlx::query(
             "INSERT INTO content_teaches (content_uri, tag_id) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
-        .bind(at_uri).bind(label_id)
+        .bind(at_uri).bind(&tag_id)
         .execute(&mut *tx).await?;
     }
 
     for prereq in &input.prereqs {
-        crate::services::tag_service::ensure_tag(&mut *tx, &prereq.tag_id, did).await?;
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, &prereq.tag_id, did).await?;
         sqlx::query(
             "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
-        .bind(at_uri).bind(&prereq.tag_id).bind(prereq.prereq_type.as_str())
+        .bind(at_uri).bind(&tag_id).bind(prereq.prereq_type.as_str())
         .execute(&mut *tx).await?;
     }
 
@@ -644,22 +639,20 @@ pub async fn update_article_batch(
     .await?;
 
     // Replace tags — callers pass label ids; ensure the label exists
-    // (ensure_tag creates a standalone tag if it doesn't yet) and then
-    // link via the label's resolved tag_id.
+    // via resolve_tag_id: input may be tag_id, label id, or new name.
     sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
         .bind(uri).execute(&mut *tx).await?;
     let updater_did: String = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
         .bind(uri)
         .fetch_one(&mut *tx)
         .await?;
-    for label_id in &input.tags {
-        crate::services::tag_service::ensure_tag(&mut *tx, label_id, &updater_did).await?;
+    for input_ref in &input.tags {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, &updater_did).await?;
         sqlx::query(
             "INSERT INTO content_teaches (content_uri, tag_id) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
-        .bind(uri).bind(label_id)
+        .bind(uri).bind(&tag_id)
         .execute(&mut *tx).await?;
     }
 

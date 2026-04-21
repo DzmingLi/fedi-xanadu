@@ -222,7 +222,10 @@ pub async fn get_questions_by_tag(
     Query(q): Query<TagQuestionsQuery>,
 ) -> ApiResult<Json<Vec<Article>>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 100);
-    let questions = article_service::get_questions_by_tag(&state.pool, state.instance_mode, &q.tag_id, limit).await?;
+    let Some(tag_id) = fx_core::services::tag_service::lookup_tag_id(&state.pool, &q.tag_id).await? else {
+        return Ok(Json(vec![]));
+    };
+    let questions = article_service::get_questions_by_tag(&state.pool, state.instance_mode, &tag_id, limit).await?;
     Ok(Json(questions))
 }
 

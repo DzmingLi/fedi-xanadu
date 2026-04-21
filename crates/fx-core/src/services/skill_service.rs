@@ -27,7 +27,7 @@ pub async fn list_user_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<Use
 pub async fn light_skill(
     pool: &PgPool,
     did: &str,
-    label_id: &str,
+    tag_id: &str,
     status: &str,
 ) -> crate::Result<()> {
     let status = match status {
@@ -35,27 +35,19 @@ pub async fn light_skill(
         _ => "mastered",
     };
 
-    // user_skills is keyed on (did, tag_id); resolve the incoming label
-    // to its tag.
-    let tag_id: Option<String> = sqlx::query_scalar("SELECT tag_id FROM tag_labels WHERE id = $1")
-        .bind(label_id)
-        .fetch_optional(pool)
-        .await?;
-    let Some(tag_id) = tag_id else { return Ok(()); };
-
     sqlx::query(
         "INSERT INTO user_skills (did, tag_id, status) VALUES ($1, $2, $3) \
          ON CONFLICT(did, tag_id) DO UPDATE SET status = EXCLUDED.status, lit_at = NOW()",
     )
     .bind(did)
-    .bind(&tag_id)
+    .bind(tag_id)
     .bind(status)
     .execute(pool)
     .await?;
 
     if status == "mastered" {
-        // Descend through the tag (concept) taxonomy so lighting a
-        // parent tag auto-lights every descendant.
+        // Descend through the tag taxonomy so lighting a parent auto-lights
+        // every descendant.
         let children: Vec<String> = sqlx::query_scalar(
             "WITH RECURSIVE descendants(tag) AS ( \
                SELECT child_tag FROM tag_parents WHERE parent_tag = $1 \
@@ -64,7 +56,7 @@ pub async fn light_skill(
                JOIN descendants d ON tp.parent_tag = d.tag \
              ) SELECT tag FROM descendants",
         )
-        .bind(&tag_id)
+        .bind(tag_id)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
@@ -84,13 +76,12 @@ pub async fn light_skill(
     Ok(())
 }
 
-pub async fn delete_skill(pool: &PgPool, did: &str, label_id: &str) -> crate::Result<()> {
+pub async fn delete_skill(pool: &PgPool, did: &str, tag_id: &str) -> crate::Result<()> {
     sqlx::query(
-        "DELETE FROM user_skills WHERE did = $1 \
-         AND tag_id = (SELECT tag_id FROM tag_labels WHERE id = $2)",
+        "DELETE FROM user_skills WHERE did = $1 AND tag_id = $2",
     )
         .bind(did)
-        .bind(label_id)
+        .bind(tag_id)
         .execute(pool)
         .await?;
     Ok(())

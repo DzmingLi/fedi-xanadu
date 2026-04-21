@@ -121,28 +121,26 @@ pub async fn create_book(
     .execute(&mut *tx)
     .await?;
 
-    // Tags via content_teaches with uri = book:<id>. Resolve each label id
-    // to its tag (creating a new single-label tag if the label is new).
-    for label_id in &input.tags {
-        crate::services::tag_service::ensure_tag(&mut *tx, label_id, created_by).await?;
+    // Tags via content_teaches with uri = book:<id>. Normalize each
+    // input (tag_id, label id, or new name) to a canonical tag_id.
+    for input_ref in &input.tags {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, created_by).await?;
         sqlx::query(
             "INSERT INTO content_teaches (content_uri, tag_id) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
-        .bind(&content_uri).bind(label_id)
+        .bind(&content_uri).bind(&tag_id)
         .execute(&mut *tx).await?;
     }
 
     // Prereq tags
-    for label_id in &input.prereqs {
-        crate::services::tag_service::ensure_tag(&mut *tx, label_id, created_by).await?;
+    for input_ref in &input.prereqs {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, created_by).await?;
         sqlx::query(
             "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), 'required') \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2, 'required') ON CONFLICT DO NOTHING",
         )
-        .bind(&content_uri).bind(label_id)
+        .bind(&content_uri).bind(&tag_id)
         .execute(&mut *tx).await?;
     }
 
@@ -757,23 +755,21 @@ pub async fn create_chapter(
     sqlx::query("INSERT INTO content (uri, content_type) VALUES ($1, 'chapter') ON CONFLICT DO NOTHING")
         .bind(&content_uri).execute(&mut *tx).await?;
 
-    for label_id in &input.teaches {
-        crate::services::tag_service::ensure_tag(&mut *tx, label_id, created_by).await?;
+    for input_ref in &input.teaches {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, created_by).await?;
         sqlx::query(
             "INSERT INTO content_teaches (content_uri, tag_id) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
-        .bind(&content_uri).bind(label_id).execute(&mut *tx).await?;
+        .bind(&content_uri).bind(&tag_id).execute(&mut *tx).await?;
     }
     for p in &input.prereqs {
-        crate::services::tag_service::ensure_tag(&mut *tx, &p.tag_id, created_by).await?;
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, &p.tag_id, created_by).await?;
         sqlx::query(
             "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
-        .bind(&content_uri).bind(&p.tag_id).bind(&p.prereq_type).execute(&mut *tx).await?;
+        .bind(&content_uri).bind(&tag_id).bind(&p.prereq_type).execute(&mut *tx).await?;
     }
 
     tx.commit().await?;
@@ -800,27 +796,25 @@ pub async fn set_chapter_tags(
     // Replace teaches
     sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
         .bind(&content_uri).execute(&mut *tx).await?;
-    for label_id in teaches {
-        crate::services::tag_service::ensure_tag(&mut *tx, label_id, created_by).await?;
+    for input_ref in teaches {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, created_by).await?;
         sqlx::query(
             "INSERT INTO content_teaches (content_uri, tag_id) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
-        .bind(&content_uri).bind(label_id).execute(&mut *tx).await?;
+        .bind(&content_uri).bind(&tag_id).execute(&mut *tx).await?;
     }
 
     // Replace prereqs
     sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
         .bind(&content_uri).execute(&mut *tx).await?;
     for p in prereqs {
-        crate::services::tag_service::ensure_tag(&mut *tx, &p.tag_id, created_by).await?;
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, &p.tag_id, created_by).await?;
         sqlx::query(
             "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
-        .bind(&content_uri).bind(&p.tag_id).bind(&p.prereq_type).execute(&mut *tx).await?;
+        .bind(&content_uri).bind(&tag_id).bind(&p.prereq_type).execute(&mut *tx).await?;
     }
 
     tx.commit().await?;

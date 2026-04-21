@@ -194,27 +194,26 @@ pub async fn publish_to_article(
     .execute(&mut *tx)
     .await?;
 
-    for label_id in &tags {
-        crate::services::tag_service::ensure_tag(&mut *tx, label_id, &draft.did).await?;
+    for input_ref in &tags {
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, input_ref, &draft.did).await?;
         sqlx::query(
             "INSERT INTO content_teaches (content_uri, tag_id) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-             ON CONFLICT DO NOTHING",
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
             .bind(at_uri)
-            .bind(label_id)
+            .bind(&tag_id)
             .execute(&mut *tx)
             .await?;
     }
 
     for prereq in &prereqs {
-        crate::services::tag_service::ensure_tag(&mut *tx, &prereq.tag_id, &draft.did).await?;
+        let tag_id = crate::services::tag_service::resolve_tag_id(&mut *tx, &prereq.tag_id, &draft.did).await?;
         sqlx::query(
             "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) ON CONFLICT DO NOTHING",
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
         .bind(at_uri)
-        .bind(&prereq.tag_id)
+        .bind(&tag_id)
         .bind(prereq.prereq_type.as_str())
         .execute(&mut *tx)
         .await?;

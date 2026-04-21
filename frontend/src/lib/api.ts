@@ -522,6 +522,17 @@ export const searchArticles = (q: string, limit = 20) =>
 
 // Tag search
 export const searchTags = (q: string) => get<Tag[]>(`/tags/search?q=${encodeURIComponent(q)}`);
+
+/**
+ * Input-boundary helper for tag editors: takes a label ("Abstract
+ * Algebra") or a brand-new name the user just typed, returns the
+ * canonical tag_id the server stores in edge tables. Backend creates
+ * a fresh label + tag row if the name is new. Callers that already
+ * have a tag_id don't need this — use it only when the input came
+ * from a text field or a pre-tag-id suggestion.
+ */
+export const resolveTag = (input: string) =>
+  post<{ tag_id: string }>('/tags/resolve', { input });
 export const updateTagNames = (id: string, names: Record<string, string>) =>
   put<Tag>(`/tags/${encodeURIComponent(id)}/names`, { names });
 export const listTagParents = () => get<{ parent_tag: string; child_tag: string }[]>('/tag-parents');

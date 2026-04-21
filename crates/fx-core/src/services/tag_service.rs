@@ -185,6 +185,82 @@ pub async fn ensure_tag(
     Ok(())
 }
 
+/// Validate that `input` is shaped like a tag_id (`tg-…`). Used at
+/// user-facing write boundaries where the client is expected to send
+/// already-resolved tag_ids. Format-only check — does not touch the
+/// database; use it for cheap input validation before bind.
+pub fn require_tag_id(input: &str) -> Result<()> {
+    if input.starts_with("tg-") {
+        Ok(())
+    } else {
+        Err(crate::Error::BadRequest(format!(
+            "expected a tag_id (tg-…), got {input:?} — resolve labels via POST /api/tags/resolve first"
+        )))
+    }
+}
+
+/// Read-only counterpart to `resolve_tag_id`: resolve a tag reference
+/// to the canonical `tag_id` without creating anything. Returns `None`
+/// if the input doesn't match an existing tag or label. Use from READ
+/// endpoints (e.g., `?tag_id=Math` in a list query) where mistyped
+/// input should yield an empty result, not a brand-new tag row.
+pub async fn lookup_tag_id(pool: &PgPool, input: &str) -> Result<Option<String>> {
+    if input.starts_with("tg-") {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1)")
+            .bind(input).fetch_one(pool).await?;
+        if exists { return Ok(Some(input.to_string())); }
+    }
+    let tag_id: Option<String> = sqlx::query_scalar(
+        "SELECT tag_id FROM tag_labels WHERE id = $1",
+    )
+    .bind(input).fetch_optional(pool).await?;
+    Ok(tag_id)
+}
+
+/// Input boundary: turn a **label** (what the user typed or picked
+/// from autocomplete) into the canonical `tag_id` used by every edge
+/// table (`content_teaches`, `content_prereqs`, `content_topics`,
+/// `skill_tree_edges`, …).
+///
+/// Two accepted input shapes:
+///   1. **existing label id** (e.g., `"Abstract Algebra"`) — resolved
+///      via `tag_labels.id → tag_labels.tag_id`.
+///   2. **brand-new label name** — `ensure_tag` mints a fresh label
+///      row + `tags` row and we return the new `tag_id`.
+///
+/// Explicitly does NOT accept `tg-…` tag_ids: operations below the
+/// input boundary speak tag_ids only. If a caller already has a
+/// tag_id, bind it directly — don't route it through here.
+pub async fn resolve_tag_id(
+    conn: &mut sqlx::PgConnection,
+    input: &str,
+    created_by: &str,
+) -> Result<String> {
+    if input.starts_with("tg-") {
+        return Err(crate::Error::BadRequest(format!(
+            "resolve_tag_id expects a label or new name, got a tag_id: {input}"
+        )));
+    }
+    if let Some(tag_id) = sqlx::query_scalar::<_, String>(
+        "SELECT tag_id FROM tag_labels WHERE id = $1",
+    )
+    .bind(input)
+    .fetch_optional(&mut *conn)
+    .await?
+    {
+        return Ok(tag_id);
+    }
+    // Brand-new label — mint label + tags row.
+    ensure_tag(&mut *conn, input, created_by).await?;
+    let tag_id: String = sqlx::query_scalar(
+        "SELECT tag_id FROM tag_labels WHERE id = $1",
+    )
+    .bind(input)
+    .fetch_one(&mut *conn)
+    .await?;
+    Ok(tag_id)
+}
+
 /// Batch-fetch tag names for a set of IDs. Returns a map of id -> name.
 pub async fn get_tag_names(
     pool: &PgPool,

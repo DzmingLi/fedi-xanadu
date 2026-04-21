@@ -136,6 +136,7 @@ pub async fn add_tag(
     Path(id): Path<String>,
     Json(input): Json<AddTagInput>,
 ) -> ApiResult<StatusCode> {
+    fx_core::services::tag_service::require_tag_id(&input.tag_id)?;
     course_service::add_tag(&state.pool, &id, &input.tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -147,6 +148,7 @@ pub async fn remove_tag(
     Query(q): Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<StatusCode> {
     let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
+    fx_core::services::tag_service::require_tag_id(tag_id)?;
     course_service::remove_tag(&state.pool, &id, tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -222,6 +224,7 @@ pub async fn add_session_tag(
     Path((_course_id, session_id)): Path<(String, String)>,
     Json(input): Json<SessionTagInput>,
 ) -> ApiResult<StatusCode> {
+    fx_core::services::tag_service::require_tag_id(&input.tag_id)?;
     course_service::add_session_tag(&state.pool, &session_id, &input.tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -233,6 +236,7 @@ pub async fn remove_session_tag(
     Query(q): Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<StatusCode> {
     let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
+    fx_core::services::tag_service::require_tag_id(tag_id)?;
     course_service::remove_session_tag(&state.pool, &session_id, tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -243,6 +247,7 @@ pub async fn add_session_prereq(
     Path((_course_id, session_id)): Path<(String, String)>,
     Json(input): Json<SessionTagInput>,
 ) -> ApiResult<StatusCode> {
+    fx_core::services::tag_service::require_tag_id(&input.tag_id)?;
     course_service::add_session_prereq(&state.pool, &session_id, &input.tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -254,6 +259,7 @@ pub async fn remove_session_prereq(
     Query(q): Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<StatusCode> {
     let tag_id = q.get("tag_id").ok_or(AppError(fx_core::Error::BadRequest("missing tag_id".into())))?;
+    fx_core::services::tag_service::require_tag_id(tag_id)?;
     course_service::remove_session_prereq(&state.pool, &session_id, tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

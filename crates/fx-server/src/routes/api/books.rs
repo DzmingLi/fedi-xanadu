@@ -236,55 +236,49 @@ pub async fn update_book(
             author_service::link_author_to_book(&state.pool, &input.id, &author_id, position as i16).await?;
         }
     }
-    // Each incoming value is a *label* id. Ensure the label exists (as a
-    // standalone tag if it's brand-new), then link the book to that
-    // label's tag.
+    // Tags, prereqs, topics arrive as canonical tag_ids (the client
+    // resolved any typed labels via `POST /api/tags/resolve` during
+    // input). Bind directly; reject anything that isn't a tag_id.
     if let Some(ref tags) = input.tags {
         let content_uri = format!("book:{}", input.id);
         sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
             .bind(&content_uri).execute(&state.pool).await?;
-        let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
-        for label_id in tags {
-            let t = label_id.trim();
+        for tag_id in tags {
+            let t = tag_id.trim();
             if t.is_empty() { continue; }
-            fx_core::services::tag_service::ensure_tag(&mut conn, t, &user.did).await?;
+            fx_core::services::tag_service::require_tag_id(t)?;
             sqlx::query(
                 "INSERT INTO content_teaches (content_uri, tag_id) \
-                 VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-                 ON CONFLICT DO NOTHING",
-            ).bind(&content_uri).bind(t).execute(&mut *conn).await?;
+                 VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
         }
     }
     if let Some(ref prereqs) = input.prereqs {
         let content_uri = format!("book:{}", input.id);
         sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
             .bind(&content_uri).execute(&state.pool).await?;
-        let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
-        for label_id in prereqs {
-            let t = label_id.trim();
+        for tag_id in prereqs {
+            let t = tag_id.trim();
             if t.is_empty() { continue; }
-            fx_core::services::tag_service::ensure_tag(&mut conn, t, &user.did).await?;
+            fx_core::services::tag_service::require_tag_id(t)?;
             sqlx::query(
                 "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-                 VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), 'required') \
-                 ON CONFLICT DO NOTHING",
-            ).bind(&content_uri).bind(t).execute(&mut *conn).await?;
+                 VALUES ($1, $2, 'required') ON CONFLICT DO NOTHING",
+            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
         }
     }
     if let Some(ref topics) = input.topics {
         let content_uri = format!("book:{}", input.id);
         sqlx::query("DELETE FROM content_topics WHERE content_uri = $1")
             .bind(&content_uri).execute(&state.pool).await?;
-        let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
-        for label_id in topics {
-            let t = label_id.trim();
+        for tag_id in topics {
+            let t = tag_id.trim();
             if t.is_empty() { continue; }
-            fx_core::services::tag_service::ensure_tag(&mut conn, t, &user.did).await?;
+            fx_core::services::tag_service::require_tag_id(t)?;
             sqlx::query(
                 "INSERT INTO content_topics (content_uri, tag_id) \
-                 VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-                 ON CONFLICT DO NOTHING",
-            ).bind(&content_uri).bind(t).execute(&mut *conn).await?;
+                 VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            ).bind(&content_uri).bind(t).execute(&state.pool).await?;
         }
     }
     // Save edit log

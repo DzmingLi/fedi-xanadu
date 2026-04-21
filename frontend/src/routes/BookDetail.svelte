@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, updateBook, updateBookEdition, uploadEditionCover, getBookEditHistory, rateBook, unrateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource, listBookShortReviews, upsertBookShortReview, deleteBookShortReview } from '../lib/api';
+  import { getBook, updateBook, updateBookEdition, uploadEditionCover, getBookEditHistory, rateBook, unrateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, resolveTag, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource, listBookShortReviews, upsertBookShortReview, deleteBookShortReview } from '../lib/api';
   import type { BookResource } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
@@ -275,18 +275,38 @@
       editBookPrereqSuggestions = await searchTags(q).catch(() => []);
     }, 150);
   });
-  function addBookTag(tagId: string) {
-    if (!editBookTeaches.includes(tagId)) editBookTeaches = [...editBookTeaches, tagId];
-    editBookTagInput = '';
-    editBookTagSuggestions = [];
+  /**
+   * Append a tag_id to the given slot. Input may already be a tag_id
+   * (from a suggestion's `tag_id` field) or a brand-new label the
+   * user just typed — in the latter case we hit /api/tags/resolve to
+   * mint the tag_id first. The edit state only ever contains tag_ids.
+   */
+  async function appendTagId(slot: 'teaches' | 'prereqs' | 'topics', input: string) {
+    const s = input.trim();
+    if (!s) return;
+    let tagId: string;
+    if (s.startsWith('tg-')) {
+      tagId = s;
+    } else {
+      try {
+        const res = await resolveTag(s);
+        tagId = res.tag_id;
+        await tagStore.refresh();
+      } catch { return; }
+    }
+    if (slot === 'teaches') {
+      if (!editBookTeaches.includes(tagId)) editBookTeaches = [...editBookTeaches, tagId];
+      editBookTagInput = ''; editBookTagSuggestions = [];
+    } else if (slot === 'prereqs') {
+      if (!editBookPrereqs.includes(tagId)) editBookPrereqs = [...editBookPrereqs, tagId];
+      editBookPrereqInput = ''; editBookPrereqSuggestions = [];
+    } else {
+      if (!editBookTopics.includes(tagId)) editBookTopics = [...editBookTopics, tagId];
+      editBookTopicInput = ''; editBookTopicSuggestions = [];
+    }
   }
   function removeBookTag(tagId: string) {
     editBookTeaches = editBookTeaches.filter(t => t !== tagId);
-  }
-  function addBookPrereq(tagId: string) {
-    if (!editBookPrereqs.includes(tagId)) editBookPrereqs = [...editBookPrereqs, tagId];
-    editBookPrereqInput = '';
-    editBookPrereqSuggestions = [];
   }
   function removeBookPrereq(tagId: string) {
     editBookPrereqs = editBookPrereqs.filter(t => t !== tagId);
@@ -301,11 +321,6 @@
       editBookTopicSuggestions = await searchTags(q).catch(() => []);
     }, 150);
   });
-  function addBookTopic(tagId: string) {
-    if (!editBookTopics.includes(tagId)) editBookTopics = [...editBookTopics, tagId];
-    editBookTopicInput = '';
-    editBookTopicSuggestions = [];
-  }
   function removeBookTopic(tagId: string) {
     editBookTopics = editBookTopics.filter(t => t !== tagId);
   }
@@ -421,13 +436,11 @@
     editAuthorsInput = (detail.linked_authors.length > 0
       ? detail.linked_authors.map(a => a.name)
       : detail.book.authors).join(', ');
-    // Edges are stored as concept tag_ids; the save endpoint expects
-    // label ids. Convert to label ids in the current locale so the
-    // chips are readable AND the save round-trip preserves the concept
-    // linkage instead of fabricating new labels.
-    editBookTeaches = detail.tags.map(c => tagStore.conceptToLabelId(c));
-    editBookPrereqs = detail.prereqs.map(c => tagStore.conceptToLabelId(c));
-    editBookTopics = detail.topics.map(c => tagStore.conceptToLabelId(c));
+    // Edit state holds canonical tag_ids throughout; display chips use
+    // tagStore.localize() to show the user-locale label.
+    editBookTeaches = [...detail.tags];
+    editBookPrereqs = [...detail.prereqs];
+    editBookTopics = [...detail.topics];
     editBookTagInput = '';
     editBookPrereqInput = '';
     editBookTopicInput = '';
@@ -1450,11 +1463,11 @@
             {/each}
           </div>
           <div class="tag-input-wrap">
-            <input class="tag-input" bind:value={editBookTagInput} placeholder={t('books.tagsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookTagInput.trim()) { e.preventDefault(); addBookTag(editBookTagInput.trim()); } }} />
+            <input class="tag-input" bind:value={editBookTagInput} placeholder={t('books.tagsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookTagInput.trim()) { e.preventDefault(); appendTagId('teaches', editBookTagInput); } }} />
             {#if editBookTagSuggestions.length > 0}
               <ul class="tag-suggestions">
                 {#each editBookTagSuggestions as s}
-                  <li><button type="button" onclick={() => addBookTag(s.id)}>{s.name || s.id}</button></li>
+                  <li><button type="button" onclick={() => appendTagId('teaches', s.tag_id)}>{s.name || s.id}</button></li>
                 {/each}
               </ul>
             {/if}
@@ -1470,11 +1483,11 @@
             {/each}
           </div>
           <div class="tag-input-wrap">
-            <input class="tag-input" bind:value={editBookTopicInput} placeholder={t('books.topicsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookTopicInput.trim()) { e.preventDefault(); addBookTopic(editBookTopicInput.trim()); } }} />
+            <input class="tag-input" bind:value={editBookTopicInput} placeholder={t('books.topicsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookTopicInput.trim()) { e.preventDefault(); appendTagId('topics', editBookTopicInput); } }} />
             {#if editBookTopicSuggestions.length > 0}
               <ul class="tag-suggestions">
                 {#each editBookTopicSuggestions as s}
-                  <li><button type="button" onclick={() => addBookTopic(s.id)}>{s.name || s.id}</button></li>
+                  <li><button type="button" onclick={() => appendTagId('topics', s.tag_id)}>{s.name || s.id}</button></li>
                 {/each}
               </ul>
             {/if}
@@ -1489,11 +1502,11 @@
             {/each}
           </div>
           <div class="tag-input-wrap">
-            <input class="tag-input" bind:value={editBookPrereqInput} placeholder={t('books.prereqsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookPrereqInput.trim()) { e.preventDefault(); addBookPrereq(editBookPrereqInput.trim()); } }} />
+            <input class="tag-input" bind:value={editBookPrereqInput} placeholder={t('books.prereqsPlaceholder')} onkeydown={(e) => { if (e.key === 'Enter' && editBookPrereqInput.trim()) { e.preventDefault(); appendTagId('prereqs', editBookPrereqInput); } }} />
             {#if editBookPrereqSuggestions.length > 0}
               <ul class="tag-suggestions">
                 {#each editBookPrereqSuggestions as s}
-                  <li><button type="button" onclick={() => addBookPrereq(s.id)}>{s.name || s.id}</button></li>
+                  <li><button type="button" onclick={() => appendTagId('prereqs', s.tag_id)}>{s.name || s.id}</button></li>
                 {/each}
               </ul>
             {/if}

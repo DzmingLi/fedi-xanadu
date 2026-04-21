@@ -88,34 +88,6 @@ class TagStore {
   get(id: string): Tag | undefined {
     return this.#byId.get(id);
   }
-
-  /**
-   * Given a concept tag_id (e.g. `tg-xxxx`) or a label id, return the
-   * label id most appropriate for the given locale (UI locale by
-   * default). Falls back to en, then any sibling, then the input.
-   * Used by editors that need to round-trip concept-keyed edge data
-   * (content_teaches, content_prereqs, content_topics) through an input
-   * that sends *label* ids to the backend.
-   */
-  conceptToLabelId(id: string, locale?: string): string {
-    const loc = locale ?? getLocale();
-    // Already a label id.
-    if (this.#byId.has(id)) {
-      const tag = this.#byId.get(id)!;
-      if (tag.lang === loc) return tag.id;
-      const siblings = this.#byTag.get(tag.tag_id);
-      if (siblings) {
-        return siblings.get(loc) ?? siblings.get('en') ?? tag.id;
-      }
-      return tag.id;
-    }
-    // Concept id: pick best sibling label.
-    const siblings = this.#byTag.get(id);
-    if (siblings) {
-      return siblings.get(loc) ?? siblings.get('en') ?? siblings.values().next().value ?? id;
-    }
-    return id;
-  }
 }
 
 export const tagStore = new TagStore();

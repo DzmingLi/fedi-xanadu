@@ -1491,7 +1491,10 @@ pub async fn get_articles_by_tag(
     Query(q): Query<TagArticlesQuery>,
 ) -> ApiResult<Json<Vec<Article>>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 100);
-    let articles = article_service::get_articles_by_tag(&state.pool, state.instance_mode, &q.tag_id, limit).await?;
+    let Some(tag_id) = fx_core::services::tag_service::lookup_tag_id(&state.pool, &q.tag_id).await? else {
+        return Ok(Json(vec![]));
+    };
+    let articles = article_service::get_articles_by_tag(&state.pool, state.instance_mode, &tag_id, limit).await?;
     Ok(Json(articles))
 }
 
@@ -2314,15 +2317,15 @@ pub(super) async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_pa
     if !fm.teaches.is_empty() {
         let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
             .bind(article_uri).execute(&state.pool).await;
-        for label_id in &fm.teaches {
+        for input_ref in &fm.teaches {
             if let Ok(mut conn) = state.pool.acquire().await {
-                let _ = fx_core::services::tag_service::ensure_tag(&mut conn, label_id, &creator_did).await;
+                if let Ok(tag_id) = fx_core::services::tag_service::resolve_tag_id(&mut conn, input_ref, &creator_did).await {
+                    let _ = sqlx::query(
+                        "INSERT INTO content_teaches (content_uri, tag_id) \
+                         VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                    ).bind(article_uri).bind(&tag_id).execute(&mut *conn).await;
+                }
             }
-            let _ = sqlx::query(
-                "INSERT INTO content_teaches (content_uri, tag_id) \
-                 VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-                 ON CONFLICT DO NOTHING",
-            ).bind(article_uri).bind(label_id).execute(&state.pool).await;
         }
     }
     if !fm.prereqs.is_empty() {
@@ -2330,15 +2333,13 @@ pub(super) async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_pa
             .bind(article_uri).execute(&state.pool).await;
         for p in &fm.prereqs {
             if let Ok(mut conn) = state.pool.acquire().await {
-                let _ = fx_core::services::tag_service::ensure_tag(&mut conn, &p.tag, &creator_did).await;
+                if let Ok(tag_id) = fx_core::services::tag_service::resolve_tag_id(&mut conn, &p.tag, &creator_did).await {
+                    let _ = sqlx::query(
+                        "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
+                         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                    ).bind(article_uri).bind(&tag_id).bind(p.kind()).execute(&mut *conn).await;
+                }
             }
-            let _ = sqlx::query(
-                "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-                 VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) \
-                 ON CONFLICT DO NOTHING",
-            )
-            .bind(article_uri).bind(&p.tag).bind(p.kind())
-            .execute(&state.pool).await;
         }
     }
 }

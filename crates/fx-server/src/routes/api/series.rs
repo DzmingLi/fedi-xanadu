@@ -912,19 +912,20 @@ async fn sync_typst_chapter_metadata(
             .unwrap_or_default();
 
         if let Some(value) = meta.chapter_metadata.get(i) {
-            // teaches: array of label ids → resolved to their tags.
+            // teaches: array of tag references (tag_id, label id, or new
+            // name) → resolve each to a tag_id before linking.
             if let Some(arr) = value.get("teaches").and_then(|v| v.as_array()) {
                 let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
                     .bind(uri).execute(&state.pool).await;
-                for label_id in arr.iter().filter_map(|v| v.as_str()) {
+                for input_ref in arr.iter().filter_map(|v| v.as_str()) {
                     if let Ok(mut conn) = state.pool.acquire().await {
-                        let _ = fx_core::services::tag_service::ensure_tag(&mut conn, label_id, &chapter_did).await;
+                        if let Ok(tag_id) = fx_core::services::tag_service::resolve_tag_id(&mut conn, input_ref, &chapter_did).await {
+                            let _ = sqlx::query(
+                                "INSERT INTO content_teaches (content_uri, tag_id) \
+                                 VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                            ).bind(uri).bind(&tag_id).execute(&mut *conn).await;
+                        }
                     }
-                    let _ = sqlx::query(
-                        "INSERT INTO content_teaches (content_uri, tag_id) \
-                         VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-                         ON CONFLICT DO NOTHING",
-                    ).bind(uri).bind(label_id).execute(&state.pool).await;
                 }
             }
             // prereqs: array of (tag, type) tuples — also accepts { tag, type } dict
@@ -932,7 +933,7 @@ async fn sync_typst_chapter_metadata(
                 let _ = sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
                     .bind(uri).execute(&state.pool).await;
                 for entry in arr {
-                    let (label_id, kind) = match entry {
+                    let (input_ref, kind) = match entry {
                         serde_json::Value::String(s) => (Some(s.as_str()), "required"),
                         serde_json::Value::Array(t) => (
                             t.first().and_then(|v| v.as_str()),
@@ -944,15 +945,15 @@ async fn sync_typst_chapter_metadata(
                         ),
                         _ => (None, "required"),
                     };
-                    if let Some(label_id) = label_id {
+                    if let Some(input_ref) = input_ref {
                         if let Ok(mut conn) = state.pool.acquire().await {
-                            let _ = fx_core::services::tag_service::ensure_tag(&mut conn, label_id, &chapter_did).await;
+                            if let Ok(tag_id) = fx_core::services::tag_service::resolve_tag_id(&mut conn, input_ref, &chapter_did).await {
+                                let _ = sqlx::query(
+                                    "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
+                                     VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                                ).bind(uri).bind(&tag_id).bind(kind).execute(&mut *conn).await;
+                            }
                         }
-                        let _ = sqlx::query(
-                            "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-                             VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2), $3) \
-                             ON CONFLICT DO NOTHING",
-                        ).bind(uri).bind(label_id).bind(kind).execute(&state.pool).await;
                     }
                 }
             }

@@ -34,16 +34,15 @@ pub async fn list_all(pool: &PgPool) -> Result<Vec<TagParent>> {
     Ok(rows)
 }
 
-/// Add a parent→child edge between two tags. Callers pass label ids (the
-/// strings the editor clicked); we resolve them to their tags and record
-/// both label + tag sides in the audit log.
+/// Add a parent→child edge between two tags. Callers pass canonical
+/// tag_ids; the route handler validates format before calling.
 pub async fn add_edge(
     pool: &PgPool,
-    parent_label: &str,
-    child_label: &str,
+    parent_tag: &str,
+    child_tag: &str,
     editor_did: &str,
 ) -> Result<()> {
-    if parent_label == child_label {
+    if parent_tag == child_tag {
         return Err(crate::Error::Validation(vec![
             crate::validation::ValidationError {
                 field: "child_tag".into(),
@@ -54,23 +53,19 @@ pub async fn add_edge(
     let mut tx = pool.begin().await?;
     let inserted = sqlx::query(
         "INSERT INTO tag_parents (parent_tag, child_tag) \
-         VALUES ((SELECT tag_id FROM tag_labels WHERE id = $1), \
-                 (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-         ON CONFLICT DO NOTHING",
+         VALUES ($1, $2) ON CONFLICT DO NOTHING",
     )
-    .bind(parent_label)
-    .bind(child_label)
+    .bind(parent_tag)
+    .bind(child_tag)
     .execute(&mut *tx)
     .await?;
     if inserted.rows_affected() > 0 {
         sqlx::query(
             "INSERT INTO tag_parent_edits (parent_tag, child_tag, action, editor_did) \
-             VALUES ((SELECT tag_id FROM tag_labels WHERE id = $1), \
-                     (SELECT tag_id FROM tag_labels WHERE id = $2), \
-                     'add', $3)",
+             VALUES ($1, $2, 'add', $3)",
         )
-        .bind(parent_label)
-        .bind(child_label)
+        .bind(parent_tag)
+        .bind(child_tag)
         .bind(editor_did)
         .execute(&mut *tx)
         .await?;
@@ -81,29 +76,25 @@ pub async fn add_edge(
 
 pub async fn remove_edge(
     pool: &PgPool,
-    parent_label: &str,
-    child_label: &str,
+    parent_tag: &str,
+    child_tag: &str,
     editor_did: &str,
 ) -> Result<()> {
     let mut tx = pool.begin().await?;
     let deleted = sqlx::query(
-        "DELETE FROM tag_parents \
-         WHERE parent_tag = (SELECT tag_id FROM tag_labels WHERE id = $1) \
-           AND child_tag  = (SELECT tag_id FROM tag_labels WHERE id = $2)",
+        "DELETE FROM tag_parents WHERE parent_tag = $1 AND child_tag = $2",
     )
-    .bind(parent_label)
-    .bind(child_label)
+    .bind(parent_tag)
+    .bind(child_tag)
     .execute(&mut *tx)
     .await?;
     if deleted.rows_affected() > 0 {
         sqlx::query(
             "INSERT INTO tag_parent_edits (parent_tag, child_tag, action, editor_did) \
-             VALUES ((SELECT tag_id FROM tag_labels WHERE id = $1), \
-                     (SELECT tag_id FROM tag_labels WHERE id = $2), \
-                     'remove', $3)",
+             VALUES ($1, $2, 'remove', $3)",
         )
-        .bind(parent_label)
-        .bind(child_label)
+        .bind(parent_tag)
+        .bind(child_tag)
         .bind(editor_did)
         .execute(&mut *tx)
         .await?;

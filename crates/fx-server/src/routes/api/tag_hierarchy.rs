@@ -23,13 +23,11 @@ pub async fn add_tag_parent(
     Auth(user): Auth,
     Json(input): Json<EdgeInput>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    tag_hierarchy_service::add_edge(
-        &state.pool,
-        input.parent_tag.trim(),
-        input.child_tag.trim(),
-        &user.did,
-    )
-    .await?;
+    let parent = input.parent_tag.trim();
+    let child = input.child_tag.trim();
+    fx_core::services::tag_service::require_tag_id(parent)?;
+    fx_core::services::tag_service::require_tag_id(child)?;
+    tag_hierarchy_service::add_edge(&state.pool, parent, child, &user.did).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -38,12 +36,10 @@ pub async fn remove_tag_parent(
     Auth(user): Auth,
     Json(input): Json<EdgeInput>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    tag_hierarchy_service::remove_edge(
-        &state.pool,
-        input.parent_tag.trim(),
-        input.child_tag.trim(),
-        &user.did,
-    )
-    .await?;
+    let parent = input.parent_tag.trim();
+    let child = input.child_tag.trim();
+    fx_core::services::tag_service::require_tag_id(parent)?;
+    fx_core::services::tag_service::require_tag_id(child)?;
+    tag_hierarchy_service::remove_edge(&state.pool, parent, child, &user.did).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }

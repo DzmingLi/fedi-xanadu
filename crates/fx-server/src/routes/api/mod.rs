@@ -169,6 +169,7 @@ fn tag_routes() -> Router<AppState> {
         .route("/tags/{id}/group/merge", post(tags::merge_groups))
         .route("/tags/{id}/deletion-requests", post(tags::request_tag_deletion))
         .route("/tags/search", get(tags::search_tags))
+        .route("/tags/resolve", post(tags::resolve_tag))
         .route("/tags/teach", post(tags::set_teach))
         .route("/tag-parents", get(tag_hierarchy::list_tag_parents)
             .post(tag_hierarchy::add_tag_parent)

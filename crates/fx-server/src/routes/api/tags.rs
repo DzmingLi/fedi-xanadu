@@ -28,6 +28,35 @@ pub async fn search_tags(
     Ok(Json(tags))
 }
 
+/// Input-boundary endpoint for the edit UI: take a label or brand-new
+/// name (what the user typed or picked) and return the canonical
+/// `tag_id`. Creates a new label + tag row if the name is new.
+/// Forbids `tg-…` input — callers that already have a tag_id don't
+/// need this endpoint.
+#[derive(serde::Deserialize)]
+pub struct ResolveTagInput {
+    pub input: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct ResolveTagOutput {
+    pub tag_id: String,
+}
+
+pub async fn resolve_tag(
+    State(state): State<AppState>,
+    WriteAuth(user): WriteAuth,
+    Json(input): Json<ResolveTagInput>,
+) -> ApiResult<Json<ResolveTagOutput>> {
+    let trimmed = input.input.trim();
+    if trimmed.is_empty() {
+        return Err(AppError(fx_core::Error::BadRequest("input must not be empty".into())));
+    }
+    let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
+    let tag_id = tag_service::resolve_tag_id(&mut conn, trimmed, &user.did).await?;
+    Ok(Json(ResolveTagOutput { tag_id }))
+}
+
 #[derive(serde::Deserialize)]
 pub struct ListTagsQuery {
     pub limit: Option<i64>,
@@ -214,15 +243,10 @@ pub async fn set_teach(
     crate::auth::Auth(_user): crate::auth::Auth,
     Json(input): Json<SetTeachInput>,
 ) -> ApiResult<StatusCode> {
-    // Ensure the label exists (ensure_tag creates a standalone tag if
-    // the label is new), then link the content to that label's tag.
-    let mut conn = state.pool.acquire().await.map_err(|e| fx_core::Error::Internal(e.to_string()))?;
-    tag_service::ensure_tag(&mut conn, &input.tag_id, &_user.did).await?;
-    drop(conn);
+    tag_service::require_tag_id(&input.tag_id)?;
     sqlx::query(
         "INSERT INTO content_teaches (content_uri, tag_id) \
-         VALUES ($1, (SELECT tag_id FROM tag_labels WHERE id = $2)) \
-         ON CONFLICT DO NOTHING",
+         VALUES ($1, $2) ON CONFLICT DO NOTHING",
     )
     .bind(&input.content_uri)
     .bind(&input.tag_id)
