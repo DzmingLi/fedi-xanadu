@@ -1,0 +1,23 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.bookseries.shortReview",
+  "description": "A short review (brief text) of a book series. Same shape as at.nightbo.book.shortReview, scoped to a series. Ratings are separate (at.nightbo.bookseries.rating). rkey is the series_id so each user has at most one short review per series.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:{seriesId}",
+      "record": {
+        "type": "object",
+        "required": ["seriesId", "body", "createdAt"],
+        "properties": {
+          "seriesId":  { "type": "string", "maxLength": 64 },
+          "body":      { "type": "string", "maxLength": 500 },
+          "lang":      { "type": "string", "maxLength": 10 },
+          "visibility":{ "type": "string", "enum": ["public", "followers", "private"], "default": "public" },
+          "createdAt": { "type": "string", "format": "datetime" },
+          "updatedAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

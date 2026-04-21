@@ -33,8 +33,7 @@
   let siblings = $state<Tag[]>([]);
   // Map: lang → member id that is the representative for that language.
   let representatives = $state<Record<string, string>>({});
-  let newMemberId = $state('');
-  let newMemberName = $state('');
+  let newMemberLabel = $state('');
   let newMemberLang = $state('zh');
   let mergeTargetId = $state('');
   let deleteReason = $state('');
@@ -44,8 +43,7 @@
 
   function openEdit() {
     if (!tag) return;
-    newMemberId = '';
-    newMemberName = '';
+    newMemberLabel = '';
     newMemberLang = 'zh';
     editError = '';
     showEdit = true;
@@ -94,13 +92,13 @@
   }
 
   async function submitAddGroupMember() {
-    const mid = newMemberId.trim();
-    const mname = newMemberName.trim() || mid;
-    if (!mid) return;
+    const label = newMemberLabel.trim();
+    if (!label) return;
     try {
-      await addTagGroupMember(id, { id: mid, name: mname, lang: newMemberLang });
-      newMemberId = '';
-      newMemberName = '';
+      // id and name are the same thing now — the label text identifies
+      // and displays itself.
+      await addTagGroupMember(id, { id: label, name: label, lang: newMemberLang });
+      newMemberLabel = '';
       siblings = await listTagGroup(id);
     } catch (err: any) {
       editError = err.message ?? String(err);
@@ -255,8 +253,7 @@
         {/each}
       </div>
       <div class="sibling-add">
-        <input class="sm-input" bind:value={newMemberId} placeholder={t('tags.newMemberIdPlaceholder')} />
-        <input class="sm-input" bind:value={newMemberName} placeholder={t('tags.newMemberNamePlaceholder')} />
+        <input class="sm-input" bind:value={newMemberLabel} placeholder={t('tags.newMemberPlaceholder')} style="flex:1" />
         <select class="sm-input" bind:value={newMemberLang}>
           {#each LOCALES as loc (loc.code)}
             <option value={loc.code}>{loc.code}</option>

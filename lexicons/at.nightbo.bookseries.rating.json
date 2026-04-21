@@ -1,0 +1,21 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.bookseries.rating",
+  "description": "A reader's numeric rating for a book series (1–10 half-stars: 1=½, 10=5 stars). rkey is the series_id so a user has at most one rating per series.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:{seriesId}",
+      "record": {
+        "type": "object",
+        "required": ["seriesId", "rating", "createdAt"],
+        "properties": {
+          "seriesId":  { "type": "string", "maxLength": 64 },
+          "rating":    { "type": "integer", "minimum": 1, "maximum": 10 },
+          "createdAt": { "type": "string", "format": "datetime" },
+          "updatedAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

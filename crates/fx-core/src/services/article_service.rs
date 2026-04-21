@@ -474,11 +474,11 @@ pub async fn create_article(
     .bind(question_uri)
     .bind(restricted)
     .bind(category)
-    .bind(input.review_book_id())
-    .bind(input.review_edition_id())
-    .bind(input.review_course_id())
-    .bind(input.review_book_chapter_id())
-    .bind(input.review_course_session_id())
+    .bind(input.target_book_id())
+    .bind(input.target_edition_id())
+    .bind(input.target_course_id())
+    .bind(input.target_book_chapter_id())
+    .bind(input.target_course_session_id())
     .execute(&mut *tx)
     .await?;
 

@@ -1,0 +1,24 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.book.shortReview",
+  "description": "A short review (brief text) of a book. Ratings live independently in at.nightbo.book.rating; a short review is just the text. rkey is the book_id so each user has at most one short review per book.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:{bookId}",
+      "record": {
+        "type": "object",
+        "required": ["bookId", "body", "createdAt"],
+        "properties": {
+          "bookId":    { "type": "string", "maxLength": 64 },
+          "editionId": { "type": "string", "maxLength": 64, "description": "Which edition the reviewer read (optional)." },
+          "body":      { "type": "string", "maxLength": 500 },
+          "lang":      { "type": "string", "maxLength": 10 },
+          "visibility":{ "type": "string", "enum": ["public", "followers", "private"], "default": "public" },
+          "createdAt": { "type": "string", "format": "datetime" },
+          "updatedAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}
