@@ -18,24 +18,6 @@
    * Tag ids outside this mapping (orphan edges referencing a deleted tag)
    * fall through unchanged via callers' `?? id` defaults.
    */
-  function buildGroupCanon(tags: Tag[], locale: string): Map<string, string> {
-    const byGroup = new Map<string, Tag[]>();
-    for (const t of tags) {
-      const arr = byGroup.get(t.tag_id) ?? [];
-      arr.push(t);
-      byGroup.set(t.tag_id, arr);
-    }
-    const canon = new Map<string, string>();
-    for (const members of byGroup.values()) {
-      const pick =
-        members.find(m => m.lang === locale) ??
-        members.find(m => m.lang === 'en') ??
-        members[0];
-      for (const m of members) canon.set(m.id, pick.id);
-    }
-    return canon;
-  }
-
   type Edge = { parent_tag: string; child_tag: string };
 
   let edges = $state<Edge[]>([]);
@@ -214,50 +196,27 @@
     }
   }
 
-  // Canonical-per-group resolver: every tag id (including edge endpoints)
-  // is mapped to one representative picked for the UI locale. Group
-  // siblings collapse to one chip so zh UI doesn't show "数学" twice
-  // just because there happens to be both `Mathematics` (en) and `数学`
-  // (zh) as group members.
-  let groupCanon = $derived.by(() => buildGroupCanon(tags, getLocale()));
-
-  // Group edges by parent (after canonicalizing both ends to the group
-  // rep). Duplicate edges that collapse to the same (p, c) are deduped.
+  // Edges and the tag list both speak in concept `tag_id`s now; the UI
+  // shows one row per concept. Display strings come from tagStore so
+  // they follow viewer locale + user pref.
   let groupedByParent = $derived.by(() => {
     const m = new Map<string, Set<string>>();
     for (const e of edges) {
-      const p = groupCanon.get(e.parent_tag) ?? e.parent_tag;
-      const c = groupCanon.get(e.child_tag) ?? e.child_tag;
-      if (p === c) continue;
-      const set = m.get(p) ?? new Set<string>();
-      set.add(c);
-      m.set(p, set);
+      if (e.parent_tag === e.child_tag) continue;
+      const set = m.get(e.parent_tag) ?? new Set<string>();
+      set.add(e.child_tag);
+      m.set(e.parent_tag, set);
     }
     return Array.from(m.entries())
       .map(([parent, children]) => ({ parent, children: [...children].sort() }))
       .sort((a, b) => a.parent.localeCompare(b.parent));
   });
 
-  // Orphans: one entry per group, representative only. A tag has no
-  // parent if no *group member* of it is a child in any edge.
+  // Orphans = concepts that never appear as a child of any edge.
   let orphans = $derived.by(() => {
-    const parentedGroups = new Set<string>();
-    for (const e of edges) {
-      const childTag = tagById.get(e.child_tag);
-      if (childTag) parentedGroups.add(childTag.tag_id);
-    }
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const tg of tags) {
-      if (parentedGroups.has(tg.tag_id)) continue;
-      if (seen.has(tg.tag_id)) continue;
-      const canonId = groupCanon.get(tg.id) ?? tg.id;
-      if (canonId === tg.id) {
-        seen.add(tg.tag_id);
-        out.push(tg.id);
-      }
-    }
-    return out.sort();
+    const parented = new Set(edges.map(e => e.child_tag));
+    const all = new Set(tags.map(t => t.tag_id));
+    return [...all].filter(id => !parented.has(id)).sort();
   });
 </script>
 

@@ -18,7 +18,9 @@
   import { getRecommendations, getAllArticleTeaches, getAllArticlePrereqs, listTags, getTagTree, getInterests, setInterests as apiSetInterests, listSeries, getAllSeriesArticles, getFollowingFeed } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { authorName, tagName, deduplicateByTranslation, deduplicateSeriesByTranslation } from '../lib/display';
+  import { tagStore } from '../lib/tagStore.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
+  $effect(() => { tagStore.ensure(); });
   import { buildSeriesArticleMaps, buildArticleRowMap } from '../lib/series';
   import PostCard from '../lib/components/PostCard.svelte';
   import SponsoredCard from '../components/SponsoredCard.svelte';
@@ -62,27 +64,23 @@
     }
   }
 
-  // Top-level field categories — always show these four
-  const FIELD_IDS = ['math', 'physics', 'cs', 'economics'];
-  function fieldFallback(id: string): string {
-    return t(`field.${id}`) !== `field.${id}` ? t(`field.${id}`) : id;
-  }
-  let topCategories = $derived.by(() => {
-    const tagMap = new Map(allTags.map(t => [t.id, t]));
-    // Also discover additional roots from tagTree
+  // Top-level field categories = roots of the tag hierarchy (concepts
+  // that are parents but not children). Display name comes from
+  // tagStore so it respects the viewer's locale + name preferences.
+  interface CategoryEntry { id: string; name: string }
+  let topCategories = $derived.by<CategoryEntry[]>(() => {
+    // Trigger re-eval when the UI locale changes — tagStore.localize
+    // reads getLocale() internally, but Svelte can't see that from here.
+    void locale;
     const hasParent = new Set<string>();
     const isParent = new Set<string>();
     for (const e of tagTree) {
       hasParent.add(e.child_tag);
       isParent.add(e.parent_tag);
     }
-    const extraRoots = Array.from(isParent)
-      .filter(id => !hasParent.has(id) && !FIELD_IDS.includes(id));
-
-    const allRoots = [...FIELD_IDS, ...extraRoots];
-    return allRoots
-      .map(id => tagMap.get(id) ?? { id, name: fieldFallback(id), description: null, created_by: 'system', created_at: '' } as Tag)
-      .filter((t): t is Tag => !!t);
+    return Array.from(isParent)
+      .filter(id => !hasParent.has(id))
+      .map(id => ({ id, name: tagStore.localize(id) }));
   });
 
   // Build set of all descendant tag IDs for each top category
