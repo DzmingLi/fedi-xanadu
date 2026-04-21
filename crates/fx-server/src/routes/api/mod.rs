@@ -159,7 +159,7 @@ fn auth_routes() -> Router<AppState> {
 fn tag_routes() -> Router<AppState> {
     Router::new()
         .route("/tags", get(tags::list_tags).post(tags::create_tag))
-        .route("/tags/{id}", get(tags::get_tag))
+        .route("/tags/{id}", get(tags::get_tag).delete(tags::delete_tag))
         .route("/tags/{id}/names", put(tags::update_tag_names))
         .route("/tags/{id}/group",
             get(tags::list_group_siblings)
@@ -172,6 +172,7 @@ fn tag_routes() -> Router<AppState> {
         .route("/tags/{id}/deletion-requests", post(tags::request_tag_deletion))
         .route("/tags/search", get(tags::search_tags))
         .route("/tags/resolve", post(tags::resolve_tag))
+        .route("/tags/lookup", get(tags::lookup_tag))
         .route("/tags/teach", post(tags::set_teach))
         .route("/tag-parents", get(tag_hierarchy::list_tag_parents)
             .post(tag_hierarchy::add_tag_parent)

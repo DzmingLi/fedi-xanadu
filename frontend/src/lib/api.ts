@@ -537,6 +537,14 @@ export const searchTags = (q: string) => get<Tag[]>(`/tags/search?q=${encodeURIC
 export const resolveTag = (input: string) =>
   post<{ tag_id: string }>('/tags/resolve', { input });
 
+/** Read-only counterpart to resolveTag: returns 404 if the input
+ * doesn't match an existing concept. Used by the book / article
+ * tag pickers, which deliberately refuse to silently mint orphan
+ * tags — the user is sent to the hierarchy page to create new
+ * concepts with a proper parent first. */
+export const lookupTag = (input: string) =>
+  get<{ tag_id: string }>(`/tags/lookup?input=${encodeURIComponent(input)}`);
+
 /** Viewer's name preferences: `{tag_id → name_id}`. */
 export const listMyNamePrefs = () =>
   get<Record<string, string>>('/tags/name-prefs');
@@ -638,6 +646,12 @@ export const mergeTagGroups = (anchorId: string, fromId: string) =>
   post<{ ok: boolean }>(`/tags/${encodeURIComponent(anchorId)}/group/merge`, { from: fromId });
 export const requestTagDeletion = (tagId: string, reason: string) =>
   post<any>(`/tags/${encodeURIComponent(tagId)}/deletion-requests`, { reason });
+
+/** Hard-delete a concept. Any logged-in user may call; audit log
+ * preserves who/when. Cascades to every name + every edge + every
+ * content link that referenced it. */
+export const deleteTag = (id: string) =>
+  del<{ ok: boolean }>(`/tags/${encodeURIComponent(id)}`);
 
 /** Per-tag edit history — who added/removed/merged, newest first. */
 export interface TagAuditEntry {

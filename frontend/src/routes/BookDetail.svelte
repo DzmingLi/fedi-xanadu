@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBook, updateBook, updateBookEdition, uploadEditionCover, getBookEditHistory, rateBook, unrateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, resolveTag, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource, listBookShortReviews, upsertBookShortReview, deleteBookShortReview } from '../lib/api';
+  import { getBook, updateBook, updateBookEdition, uploadEditionCover, getBookEditHistory, rateBook, unrateBook, setReadingStatus, removeReadingStatus, setChapterProgress, createChapter, deleteChapter, updateChapterTags, searchTags, lookupTag, getQuestionsByBook, createQuestion, setPreferredEdition, listBookResources, addBookResource, deleteBookResource, listBookShortReviews, upsertBookShortReview, deleteBookShortReview } from '../lib/api';
   import type { BookResource } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
@@ -277,9 +277,11 @@
   });
   /**
    * Append a tag_id to the given slot. Input may already be a tag_id
-   * (from a suggestion's `tag_id` field) or a brand-new label the
-   * user just typed — in the latter case we hit /api/tags/resolve to
-   * mint the tag_id first. The edit state only ever contains tag_ids.
+   * (from a suggestion's `tag_id` field) or a label the user typed.
+   * For typed labels we LOOK UP only — never silently create — so an
+   * unknown name surfaces an error nudging the user to the hierarchy
+   * page to mint the concept with a proper parent first. Editor
+   * state only ever contains tag_ids.
    */
   async function appendTagId(slot: 'teaches' | 'prereqs' | 'topics', input: string) {
     const s = input.trim();
@@ -289,11 +291,14 @@
       tagId = s;
     } else {
       try {
-        const res = await resolveTag(s);
+        const res = await lookupTag(s);
         tagId = res.tag_id;
-        await tagStore.refresh();
-      } catch { return; }
+      } catch {
+        editError = t('books.tagNotFound').replace('{name}', s);
+        return;
+      }
     }
+    editError = '';
     if (slot === 'teaches') {
       if (!editBookTeaches.includes(tagId)) editBookTeaches = [...editBookTeaches, tagId];
       editBookTagInput = ''; editBookTagSuggestions = [];

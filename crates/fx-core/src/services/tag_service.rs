@@ -602,6 +602,24 @@ pub async fn derive_topics(pool: &PgPool, content_uri: &str) -> Result<Vec<Strin
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
+/// Direct concept deletion — drops the `tags` row, which CASCADEs to
+/// every name, every edge that referenced it, every `content_teaches` /
+/// `content_prereqs` / `content_topics` link, every `user_name_pref`,
+/// and every `user_skills` row. Audit log entry preserves the
+/// who-deleted-what trail so admin can spot abuse after the fact.
+pub async fn delete_tag(pool: &PgPool, tag_id: &str, actor_did: &str) -> Result<()> {
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1)")
+        .bind(tag_id).fetch_one(pool).await?;
+    if !exists {
+        return Err(crate::Error::NotFound { entity: "tag", id: tag_id.to_string() });
+    }
+    let mut conn = pool.acquire().await?;
+    sqlx::query("DELETE FROM tags WHERE id = $1")
+        .bind(tag_id).execute(&mut *conn).await?;
+    audit(&mut conn, "delete_tag", actor_did, Some(tag_id), None, None, None).await?;
+    Ok(())
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // Audit log
 // ══════════════════════════════════════════════════════════════════════

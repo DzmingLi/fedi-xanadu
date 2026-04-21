@@ -57,6 +57,44 @@ pub async fn resolve_tag(
     Ok(Json(ResolveTagOutput { tag_id }))
 }
 
+/// Read-only counterpart to `resolve_tag`: look up a label/name, do
+/// NOT create. Returns 404 if no concept matches. Used by editors
+/// (book/article tag pickers) where typing an unknown name should
+/// nudge the user to the hierarchy page to mint the concept properly
+/// — with a parent relationship — instead of silently spawning an
+/// orphan tag.
+#[derive(serde::Deserialize)]
+pub struct LookupTagQuery {
+    pub input: String,
+}
+
+/// Hard-delete a concept. Any logged-in user can call; the audit log
+/// captures who/when so admin can retroactively review. Cascades to
+/// every name, every edge, and every content link that referenced it.
+pub async fn delete_tag(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    crate::auth::Auth(user): crate::auth::Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    let tag_id = tag_service::lookup_tag_id(&state.pool, &id).await?
+        .ok_or_else(|| AppError(fx_core::Error::NotFound { entity: "tag", id: id.clone() }))?;
+    tag_service::delete_tag(&state.pool, &tag_id, &user.did).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+pub async fn lookup_tag(
+    State(state): State<AppState>,
+    Query(q): Query<LookupTagQuery>,
+) -> ApiResult<Json<ResolveTagOutput>> {
+    let trimmed = q.input.trim();
+    if trimmed.is_empty() {
+        return Err(AppError(fx_core::Error::BadRequest("input must not be empty".into())));
+    }
+    let tag_id = tag_service::lookup_tag_id(&state.pool, trimmed).await?
+        .ok_or_else(|| AppError(fx_core::Error::NotFound { entity: "tag", id: trimmed.to_string() }))?;
+    Ok(Json(ResolveTagOutput { tag_id }))
+}
+
 #[derive(serde::Deserialize)]
 pub struct ListTagsQuery {
     pub limit: Option<i64>,

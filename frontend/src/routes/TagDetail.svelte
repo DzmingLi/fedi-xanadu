@@ -2,9 +2,10 @@
   import {
     getTag, getArticlesByTag, listSkills, lightSkill, unlightSkill, getArticleVotes,
     listTagGroup, addTagName, removeTagName,
-    mergeTagGroups, requestTagDeletion, setMyNamePref, clearMyNamePref,
+    mergeTagGroups, deleteTag, setMyNamePref, clearMyNamePref,
     listTagHistory, type TagAuditEntry,
   } from '../lib/api';
+  import { navigate } from '../lib/router';
   import { authorName } from '../lib/display';
   import { contentHref } from '../lib/utils';
   import { tagStore } from '../lib/tagStore.svelte';
@@ -39,10 +40,7 @@
   let newName = $state('');
   let newLang = $state('zh');
   let mergeFromId = $state('');
-  let deleteReason = $state('');
-  let deleteSubmitting = $state(false);
-  let deleteSubmitted = $state(false);
-  let pendingDeletion = $state(false);
+  let deleting = $state(false);
   let history = $state<TagAuditEntry[]>([]);
 
   function conceptId(): string | null { return tag?.tag_id ?? null; }
@@ -130,17 +128,16 @@
     }
   }
 
-  async function submitDeletionRequest() {
-    deleteSubmitting = true;
+  async function confirmDelete() {
+    if (!tag) return;
+    if (!confirm(t('tags.confirmDelete').replace('{name}', tagStore.localize(tag.tag_id)))) return;
+    deleting = true;
     try {
-      await requestTagDeletion(id, deleteReason.trim());
-      deleteSubmitted = true;
-      pendingDeletion = true;
-      deleteReason = '';
+      await deleteTag(id);
+      navigate('/hierarchy');
     } catch (err: any) {
       editError = err.message ?? String(err);
-    } finally {
-      deleteSubmitting = false;
+      deleting = false;
     }
   }
 
@@ -155,7 +152,6 @@
     loading = true;
     Promise.all([getTag(id), getArticlesByTag(id), listSkills()]).then(async ([resp, arts, sk]) => {
       tag = resp as any;
-      pendingDeletion = !!(resp as any).pending_deletion;
       document.title = `${resp.name} — NightBoat`;
       articles = arts;
       skills = sk;
@@ -288,21 +284,12 @@
       <p class="hint">{t('tags.mergeHint')}</p>
 
       <h4 style="margin-top:18px">{t('tags.deleteTitle')}</h4>
-      {#if pendingDeletion}
-        <p class="hint" style="color:#d97706">{t('tags.deletePending')}</p>
-      {:else}
-        <p class="hint">{t('tags.deleteHint')}</p>
-        {#if deleteSubmitted}
-          <p class="hint" style="color: var(--accent)">{t('tags.deleteSubmitted')}</p>
-        {:else}
-          <div class="sibling-add">
-            <input class="sm-input" bind:value={deleteReason} placeholder={t('tags.deleteReasonPlaceholder')} style="flex:1" />
-            <button class="btn" style="color:#c00;border-color:#c00" onclick={submitDeletionRequest} disabled={deleteSubmitting}>
-              {deleteSubmitting ? t('common.saving') : t('tags.requestDelete')}
-            </button>
-          </div>
-        {/if}
-      {/if}
+      <p class="hint">{t('tags.deleteHint')}</p>
+      <div class="sibling-add">
+        <button class="btn" style="color:#c00;border-color:#c00" onclick={confirmDelete} disabled={deleting}>
+          {deleting ? t('common.saving') : t('tags.deleteNow')}
+        </button>
+      </div>
 
       <h4 style="margin-top:18px">{t('tags.historyTitle')}</h4>
       {#if history.length === 0}
