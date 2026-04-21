@@ -113,6 +113,7 @@
                 FX_PORT = toString cfg.port;
                 FX_DATABASE_URL = "postgres:///${cfg.database.name}?host=/run/postgresql";
                 FX_PIJUL_STORE_PATH = "${cfg.dataDir}/pijul-store";
+                FX_BLOB_CACHE_PATH = "${cfg.dataDir}/blob-cache";
                 FX_INSTANCE_NAME = cfg.instanceName;
                 FX_ENV = "production";
                 RUST_LOG = "info";
