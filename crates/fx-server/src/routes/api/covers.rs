@@ -60,10 +60,27 @@ fn validate_reference_path(file: &str) -> Result<String, AppError> {
     Ok(ext)
 }
 
-/// Resolve the key prefix + node_id to a pijul repo path.
-fn repo_for(state: &AppState, kind: &str, node_id: &str) -> Option<std::path::PathBuf> {
+/// Resolve the key prefix + node_id to the working directory that holds the
+/// cover file. For blob-backed articles the source + rendered artifacts live
+/// in `blob_cache_path`; for everything else it's the pijul working dir.
+async fn repo_for(state: &AppState, kind: &str, node_id: &str) -> Option<std::path::PathBuf> {
     match kind {
-        "a" => Some(state.pijul.repo_path(node_id)),
+        "a" => {
+            let storage: Option<String> = sqlx::query_scalar(
+                "SELECT content_storage FROM articles \
+                 WHERE translate(at_uri, '/:', '__') = $1",
+            )
+            .bind(node_id)
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten();
+            if storage.as_deref() == Some("blob") {
+                Some(state.blob_cache_path.join(node_id))
+            } else {
+                Some(state.pijul.repo_path(node_id))
+            }
+        }
         "s" => Some(state.pijul.series_repo_path(node_id)),
         _ => None,
     }
@@ -113,7 +130,7 @@ pub async fn get_cover(
         Some((k, n)) if !n.is_empty() => (k, n),
         _ => return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap(),
     };
-    let Some(repo) = repo_for(&state, kind, node_id) else {
+    let Some(repo) = repo_for(&state, kind, node_id).await else {
         return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
     };
 
