@@ -153,7 +153,7 @@ article_stats AS (
         WHERE created_at > NOW() - INTERVAL '7 days'
         GROUP BY content_uri
     ) cm7 ON cm7.content_uri = a.at_uri
-    WHERE {vis} AND a.kind IN ('article', 'question', 'answer')
+    WHERE {vis} AND a.kind IN ('article', 'answer')
 ),
 
 -- Per-article prereq readiness
@@ -197,7 +197,7 @@ best_translation AS (
         a.at_uri
     FROM articles a
     LEFT JOIN lang_settings ls ON TRUE
-    WHERE {vis} AND a.kind IN ('article', 'question', 'answer')
+    WHERE {vis} AND a.kind IN ('article', 'answer')
       -- Exclude series chapters (articles only have these)
       AND NOT EXISTS (SELECT 1 FROM series_articles sa WHERE sa.article_uri = a.at_uri)
       -- Exclude learned
