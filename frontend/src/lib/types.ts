@@ -351,6 +351,10 @@ export interface BookDetail {
   tags: string[];
   prereqs: string[];
   topics: string[];
+  /** Explicit content_topics rows only (no derived ancestors). The
+   * editor pre-populates from this so saving doesn't re-materialize
+   * derived topics as explicit entries. */
+  explicit_topics: string[];
 }
 
 export interface SeriesArticle {

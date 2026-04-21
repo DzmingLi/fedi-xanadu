@@ -51,7 +51,13 @@ pub struct BookDetail {
     /// Derived from `tags` through the viewer's skill tree — ancestor tags
     /// that this book can be said to "belong to". Not stored; computed per
     /// request because it depends on the viewer's tree.
+    /// Display set: union of derived (parents-of-teach) + explicit
+    /// (admin-added rows in content_topics).
     pub topics: Vec<String>,
+    /// Just the rows in content_topics, no derived ancestors. Editor
+    /// pre-populates from this so saving doesn't re-materialize the
+    /// derived topics as explicit rows.
+    pub explicit_topics: Vec<String>,
     /// Series this book is part of. Rendered as "属于系列 X · 第 n 册" pills
     /// on the book detail page.
     pub series_badges: Vec<book_series_service::BookSeriesRef>,
@@ -100,9 +106,20 @@ pub async fn get_book(
     .bind(&content_uri)
     .fetch_all(&state.pool)
     .await?;
-    let topics = tag_service::derive_topics(&state.pool, &content_uri)
+    let derived = tag_service::derive_topics(&state.pool, &content_uri)
         .await
         .unwrap_or_default();
+    let explicit_topics: Vec<String> = sqlx::query_scalar(
+        "SELECT tag_id FROM content_topics WHERE content_uri = $1 ORDER BY tag_id",
+    )
+    .bind(&content_uri)
+    .fetch_all(&state.pool)
+    .await?;
+    let topics: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        derived.into_iter().chain(explicit_topics.iter().cloned())
+            .filter(|t| seen.insert(t.clone())).collect()
+    };
     let series_badges = book_series_service::list_series_badges_for_book(&state.pool, &id).await?;
     let my_short_review = if let Some(ref u) = user {
         short_review_service::get_my_book_short_review(&state.pool, &u.did, &id).await?
@@ -114,7 +131,7 @@ pub async fn get_book(
     Ok(Json(BookDetail {
         book, linked_authors, editions, chapters, reviews, notes, review_count,
         rating, my_rating, my_reading_status, my_chapter_progress,
-        tags, prereqs, topics,
+        tags, prereqs, topics, explicit_topics,
         series_badges, my_short_review, recent_short_reviews, short_review_count,
     }))
 }

@@ -445,7 +445,10 @@
     // tagStore.localize() to show the user-locale label.
     editBookTeaches = [...detail.tags];
     editBookPrereqs = [...detail.prereqs];
-    editBookTopics = [...detail.topics];
+    // detail.topics = derived ∪ explicit (display set); the editor
+    // only manages the explicit ones — derived topics auto-appear
+    // from teach-tag ancestors and shouldn't be persisted as rows.
+    editBookTopics = [...detail.explicit_topics];
     editBookTagInput = '';
     editBookPrereqInput = '';
     editBookTopicInput = '';
