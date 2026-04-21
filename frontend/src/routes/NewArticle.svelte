@@ -4,6 +4,7 @@
   import VersionPanel from 'pijul-editor/VersionPanel.svelte';
   import type { DiffLine } from 'pijul-editor/VersionPanel.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
+  import { getAuth } from '../lib/auth.svelte';
   import { getLangPrefs } from '../lib/langPrefs.svelte';
   import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
   import TypstEditor from 'pijul-editor/TypstEditor.svelte';

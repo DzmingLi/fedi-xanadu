@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { listBooks } from '../lib/api';
+  import { listBooks, listTagParents, getInterests } from '../lib/api';
   import { tagStore } from '../lib/tagStore.svelte';
   $effect(() => { tagStore.ensure(); });
   import { t, getLocale } from '../lib/i18n/index.svelte';
@@ -12,34 +12,68 @@
     const locale = getLocale();
     return field[locale] || field['en'] || field['zh'] || Object.values(field)[0] || '';
   }
+  let locale = $derived(getLocale());
 
   let books = $state<Book[]>([]);
   let loading = $state(true);
   let activeField = $state('');
   let search = $state('');
 
-  // Field tabs: a book lives under a field if its topic closure (which
-  // already expands group siblings and walks tag_parents) includes any
-  // of the field's anchor tag ids. Anchors cover both en + zh siblings
-  // so the tabs work regardless of which label was attached.
-  const FIELDS: { key: string; anchors: string[] }[] = [
-    { key: 'math',     anchors: ['Math', '数学', 'Mathematics'] },
-    { key: 'cs',       anchors: ['Computer Science', 'Cs', '计算机科学'] },
-    { key: 'physics',  anchors: ['Physics', '物理学'] },
-    { key: 'economics',anchors: ['Economics', '经济学'] },
-  ];
-  function bookInField(b: Book, fieldKey: string): boolean {
-    const f = FIELDS.find(x => x.key === fieldKey);
-    if (!f) return false;
-    const topics = b.topics || [];
-    return f.anchors.some(a => topics.includes(a));
+  // Same `fx_interests` store the Home feed uses — so the books page
+  // mirrors the home page's field selection without a separate picker.
+  const STORAGE_KEY = 'fx_interests';
+  let interests = $state<string[]>(loadLocalInterests());
+  let tagTree = $state<{ parent_tag: string; child_tag: string }[]>([]);
+
+  function loadLocalInterests(): string[] {
+    try {
+      const s = localStorage.getItem(STORAGE_KEY);
+      return s ? JSON.parse(s) : [];
+    } catch { return []; }
   }
-  let fieldCounts = $derived.by(() => {
-    const m = new Map<string, number>();
-    for (const f of FIELDS) {
-      m.set(f.key, books.filter(b => bookInField(b, f.key)).length);
+
+  // Descendants (including self) for every concept in tagTree.
+  let descendantsOf = $derived.by(() => {
+    const childrenOf = new Map<string, string[]>();
+    for (const e of tagTree) {
+      const arr = childrenOf.get(e.parent_tag) || [];
+      arr.push(e.child_tag);
+      childrenOf.set(e.parent_tag, arr);
     }
-    return m;
+    const cache = new Map<string, Set<string>>();
+    function walk(id: string): Set<string> {
+      if (cache.has(id)) return cache.get(id)!;
+      const set = new Set<string>([id]);
+      cache.set(id, set);
+      for (const c of (childrenOf.get(id) || [])) {
+        for (const d of walk(c)) set.add(d);
+      }
+      return set;
+    }
+    for (const e of tagTree) { walk(e.parent_tag); walk(e.child_tag); }
+    return cache;
+  });
+
+  // A book belongs to a field if its topic closure (server-computed:
+  // teach ∪ explicit topics ∪ parents) contains any descendant of the
+  // field's tag id.
+  function bookInField(b: Book, fieldId: string): boolean {
+    const set = descendantsOf.get(fieldId);
+    if (!set) return false;
+    const bookTopics = b.topics || [];
+    for (const t of bookTopics) { if (set.has(t)) return true; }
+    return false;
+  }
+
+  let fieldTabs = $derived.by(() => {
+    void locale;
+    return interests
+      .map(id => ({
+        id,
+        name: tagStore.localize(id),
+        count: books.filter(b => bookInField(b, id)).length,
+      }))
+      .filter(t => t.count > 0);
   });
 
   let filteredBooks = $derived.by(() => {
@@ -64,6 +98,16 @@
   $effect(() => {
     document.title = `${t('books.title')} — NightBoat`;
     loadBooks();
+    listTagParents().then(t => { tagTree = t; }).catch(() => {});
+    // Pull server-side interests too (same handling as Home.svelte).
+    if (getAuth()) {
+      getInterests().then(serverInterests => {
+        if (serverInterests && serverInterests.length > 0) {
+          interests = serverInterests;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(interests));
+        }
+      }).catch(() => {});
+    }
   });
 
   async function loadBooks() {
@@ -75,10 +119,6 @@
   function fmtRating(r: number): string {
     return r > 0 ? r.toFixed(1) : '—';
   }
-
-  const FIELD_LABELS: Record<string, string> = {
-    math: 'Math', cs: 'CS', physics: 'Physics', economics: 'Econ',
-  };
 </script>
 
 <div class="books-page">
@@ -108,12 +148,10 @@
     <button class="field-tab" class:active={activeField === ''} onclick={() => activeField = ''}>
       {t('home.all')} <span class="tab-count">{books.length}</span>
     </button>
-    {#each FIELDS as f}
-      {#if fieldCounts.get(f.key)}
-        <button class="field-tab" class:active={activeField === f.key} onclick={() => activeField = f.key}>
-          {FIELD_LABELS[f.key] || f.key} <span class="tab-count">{fieldCounts.get(f.key)}</span>
-        </button>
-      {/if}
+    {#each fieldTabs as f (f.id)}
+      <button class="field-tab" class:active={activeField === f.id} onclick={() => activeField = f.id}>
+        {f.name} <span class="tab-count">{f.count}</span>
+      </button>
     {/each}
   </div>
 
