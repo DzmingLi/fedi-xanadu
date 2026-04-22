@@ -47,6 +47,23 @@ pub(super) async fn pijul_repo_url(state: &AppState, did: &str, node_id: &str) -
     Some(format!("{base}/{did}/{node_id}"))
 }
 
+/// Resolve a collaborator identifier (DID or atproto handle) to a DID.
+/// Passes `did:` URIs through unchanged; otherwise calls
+/// `AtClient::resolve_handle` and returns a `BadRequest` on failure so the
+/// caller hears the exact reason (unknown handle, network, etc.).
+pub(super) async fn resolve_identifier(state: &AppState, identifier: &str) -> Result<String, AppError> {
+    let s = identifier.trim();
+    if s.is_empty() {
+        return Err(AppError(fx_core::Error::BadRequest("identifier is empty".into())));
+    }
+    if s.starts_with("did:") {
+        return Ok(s.to_string());
+    }
+    let (did, _pds) = state.at_client.resolve_handle(s).await
+        .map_err(|e| AppError(fx_core::Error::BadRequest(format!("cannot resolve handle '{s}': {e}"))))?;
+    Ok(did)
+}
+
 /// For an article URI, resolve the PDS-facing `(subject, sectionRef)` pair.
 /// - Standalone article: `(article_uri, None)`
 /// - Series chapter:     `(series_at_uri, Some(chapter_tid))`
@@ -2387,7 +2404,9 @@ pub async fn list_article_collaborators(
 #[derive(serde::Deserialize)]
 pub struct InviteArticleCollabInput {
     pub uri: String,
-    pub user_did: String,
+    /// DID (did:plc:… / did:web:…) or atproto handle (e.g. alice.bsky.social).
+    /// Handles are resolved server-side to a DID.
+    pub identifier: String,
     pub role: Option<String>,
 }
 
@@ -2400,8 +2419,10 @@ pub async fn invite_article_collaborator(
     let article = article_service::get_article(&state.pool, state.instance_mode, &input.uri).await?;
     require_owner(Some(&article.did), &user.did)?;
 
+    let user_did = resolve_identifier(&state, &input.identifier).await?;
+
     let role = input.role.as_deref().unwrap_or("editor");
-    let short_did = input.user_did.chars().rev().take(8).collect::<String>().chars().rev().collect::<String>();
+    let short_did = user_did.chars().rev().take(8).collect::<String>().chars().rev().collect::<String>();
     let channel_name = format!("collab_{short_did}");
 
     // Create pijul channel
@@ -2411,7 +2432,7 @@ pub async fn invite_article_collaborator(
     }
 
     let collab = collaboration_service::add_article_collaborator(
-        &state.pool, &input.uri, &input.user_did, role, &channel_name, &user.did,
+        &state.pool, &input.uri, &user_did, role, &channel_name, &user.did,
     ).await?;
 
     Ok((StatusCode::CREATED, Json(collab)))

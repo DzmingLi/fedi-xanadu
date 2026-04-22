@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { listTags, searchTags, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveArticle, recordArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, getArticleHistory, getArticleDiff, unrecordArticleChange, listArticleCollaborators, inviteArticleCollaborator, removeArticleCollaborator, listArticleChannels, readArticleChannelFile, writeArticleChannelFile, articleChannelDiff, applyArticleChannelChange } from '../lib/api';
+  import { listTags, searchTags, lookupTag, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveArticle, recordArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, getArticleHistory, getArticleDiff, unrecordArticleChange, listArticleCollaborators, inviteArticleCollaborator, removeArticleCollaborator, listArticleChannels, readArticleChannelFile, writeArticleChannelFile, articleChannelDiff, applyArticleChannelChange } from '../lib/api';
   import ChannelPanel from 'pijul-editor/ChannelPanel.svelte';
   import VersionPanel from 'pijul-editor/VersionPanel.svelte';
   import type { DiffLine } from 'pijul-editor/VersionPanel.svelte';
@@ -257,36 +257,86 @@
     input.value = '';
   }
 
-  // For tag input with server-side autocomplete
-  let newTagInput = $state('');
-  let showTagSuggestions = $state(false);
-  let tagSuggestionList = $state<Tag[]>([]);
-  let searchTimeout: ReturnType<typeof setTimeout> | undefined;
+  // Tag / related / prereq inputs — chip-row + search input with autocomplete,
+  // mirroring the book editor. Lookup-only: unknown names surface an error
+  // nudging the user to the hierarchy page to mint the concept first.
+  let teachInput = $state('');
+  let teachSuggestions = $state<Tag[]>([]);
+  let teachTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  let relatedInput = $state('');
+  let relatedSuggestions = $state<Tag[]>([]);
+  let relatedTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  let prereqInput = $state('');
+  let prereqSuggestions = $state<Tag[]>([]);
+  let prereqTimeout: ReturnType<typeof setTimeout> | undefined;
+  let tagError = $state('');
 
   $effect(() => {
-    const q = newTagInput.trim();
-    clearTimeout(searchTimeout);
-    if (!q) { tagSuggestionList = []; return; }
-    searchTimeout = setTimeout(() => {
-      searchTags(q).then(results => { tagSuggestionList = results; });
+    const q = teachInput.trim();
+    clearTimeout(teachTimeout);
+    if (!q) { teachSuggestions = []; return; }
+    teachTimeout = setTimeout(() => {
+      searchTags(q).then(results => { teachSuggestions = results; }).catch(() => { teachSuggestions = []; });
     }, 150);
   });
 
-  function addNewTag() {
-    const val = newTagInput.trim();
-    if (!val) return;
-    const existing = tags.find(t => t.id === val || t.name.toLowerCase() === val.toLowerCase());
-    const tagId = existing ? existing.id : val;
-    if (!selectedTags.includes(tagId)) {
-      selectedTags = [...selectedTags, tagId];
+  $effect(() => {
+    const q = relatedInput.trim();
+    clearTimeout(relatedTimeout);
+    if (!q) { relatedSuggestions = []; return; }
+    relatedTimeout = setTimeout(() => {
+      searchTags(q).then(results => { relatedSuggestions = results; }).catch(() => { relatedSuggestions = []; });
+    }, 150);
+  });
+
+  $effect(() => {
+    const q = prereqInput.trim();
+    clearTimeout(prereqTimeout);
+    if (!q) { prereqSuggestions = []; return; }
+    prereqTimeout = setTimeout(() => {
+      searchTags(q).then(results => { prereqSuggestions = results; }).catch(() => { prereqSuggestions = []; });
+    }, 150);
+  });
+
+  async function appendArticleTag(slot: 'teaches' | 'related' | 'prereqs', input: string) {
+    const s = input.trim();
+    if (!s) return;
+    let tagId: string;
+    if (s.startsWith('tg-')) {
+      tagId = s;
+    } else {
+      try {
+        const res = await lookupTag(s);
+        tagId = res.tag_id;
+      } catch {
+        tagError = t('newArticle.tagNotFound').replace('{name}', s);
+        return;
+      }
     }
-    newTagInput = '';
-    showTagSuggestions = false;
+    tagError = '';
+    if (slot === 'teaches') {
+      if (!selectedTags.includes(tagId)) selectedTags = [...selectedTags, tagId];
+      teachInput = ''; teachSuggestions = [];
+    } else if (slot === 'related') {
+      if (!relatedTags.includes(tagId)) relatedTags = [...relatedTags, tagId];
+      relatedInput = ''; relatedSuggestions = [];
+    } else {
+      if (!prereqs.some(p => p.tag_id === tagId)) {
+        prereqs = [...prereqs, { tag_id: tagId, prereq_type: 'required' }];
+      }
+      prereqInput = ''; prereqSuggestions = [];
+    }
   }
 
-  // For prereq adding
-  let prereqTagId = $state('');
-  let prereqType = $state<PrereqType>('required');
+  function togglePrereqType(tagId: string) {
+    prereqs = prereqs.map(p =>
+      p.tag_id === tagId
+        ? { ...p, prereq_type: p.prereq_type === 'required' ? 'recommended' : 'required' }
+        : p,
+    );
+  }
 
   $effect(() => {
     listTags().then(data => { tags = data; });
@@ -346,13 +396,6 @@
     } else {
       selectedTags = [...selectedTags, id];
     }
-  }
-
-  function addPrereq() {
-    if (!prereqTagId) return;
-    if (prereqs.some(p => p.tag_id === prereqTagId)) return;
-    prereqs = [...prereqs, { tag_id: prereqTagId, prereq_type: prereqType }];
-    prereqTagId = '';
   }
 
   function removePrereq(tagId: string) {
@@ -868,30 +911,9 @@
             </div>
           </details>
 
-          <details>
+          <details open>
             <summary>{t('newArticle.tagsLabel')}</summary>
             <div class="sb-field">
-              <div class="tag-input-row">
-                <input
-                  type="text"
-                  bind:value={newTagInput}
-                  placeholder={t('newArticle.tagInput')}
-                  onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTag(); } }}
-                  onfocus={() => showTagSuggestions = true}
-                  onblur={() => setTimeout(() => showTagSuggestions = false, 200)}
-                  oninput={() => showTagSuggestions = true}
-                />
-                <button class="tag-add-btn" onclick={addNewTag}>{t('common.add')}</button>
-                {#if showTagSuggestions && tagSuggestionList.length > 0}
-                  <div class="tag-suggestions">
-                    {#each tagSuggestionList as s}
-                      <button type="button" onmousedown={() => { toggleTag(s.id); newTagInput = ''; showTagSuggestions = false; }}>
-                        {s.name} {#if s.name !== s.id}<span class="sg-id">({s.id})</span>{/if}
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
               {#if selectedTags.length > 0}
                 <div class="selected-tags">
                   {#each selectedTags as tagId}
@@ -899,59 +921,97 @@
                   {/each}
                 </div>
               {/if}
-              <div class="tag-picker">
-                {#each tags.filter(t => !selectedTags.includes(t.id)).slice(0, 15) as t}
-                  <button class="tag" onclick={() => toggleTag(t.id)}>{t.name}</button>
-                {/each}
+              <div class="tag-input-wrap">
+                <input
+                  class="tag-input"
+                  type="text"
+                  bind:value={teachInput}
+                  placeholder={t('newArticle.tagInput')}
+                  onkeydown={(e) => { if (e.key === 'Enter' && teachInput.trim()) { e.preventDefault(); appendArticleTag('teaches', teachInput); } }}
+                />
+                {#if teachSuggestions.length > 0}
+                  <ul class="tag-suggestions">
+                    {#each teachSuggestions as s}
+                      <li><button type="button" onclick={() => appendArticleTag('teaches', s.id)}>{s.name || s.id}</button></li>
+                    {/each}
+                  </ul>
+                {/if}
               </div>
             </div>
           </details>
 
           <details>
             <summary>{t('newArticle.relatedLabel')}</summary>
-            <p class="sb-hint">{t('newArticle.relatedHint')}</p>
-            {#if relatedTags.length > 0}
-              <div class="selected-tags">
-                {#each relatedTags as tagId}
-                  <span class="tag lit">{getTagName(tagId)} <button class="tag-remove" onclick={() => toggleRelated(tagId)}>&times;</button></span>
-                {/each}
+            <div class="sb-field">
+              <p class="sb-hint">{t('newArticle.relatedHint')}</p>
+              {#if relatedTags.length > 0}
+                <div class="selected-tags">
+                  {#each relatedTags as tagId}
+                    <span class="tag lit related">{getTagName(tagId)} <button class="tag-remove" onclick={() => toggleRelated(tagId)}>&times;</button></span>
+                  {/each}
+                </div>
+              {/if}
+              <div class="tag-input-wrap">
+                <input
+                  class="tag-input"
+                  type="text"
+                  bind:value={relatedInput}
+                  placeholder={t('newArticle.relatedPlaceholder')}
+                  onkeydown={(e) => { if (e.key === 'Enter' && relatedInput.trim()) { e.preventDefault(); appendArticleTag('related', relatedInput); } }}
+                />
+                {#if relatedSuggestions.length > 0}
+                  <ul class="tag-suggestions">
+                    {#each relatedSuggestions as s}
+                      <li><button type="button" onclick={() => appendArticleTag('related', s.id)}>{s.name || s.id}</button></li>
+                    {/each}
+                  </ul>
+                {/if}
               </div>
-            {/if}
-            <div class="tag-picker">
-              {#each tags.filter(t => !relatedTags.includes(t.id)).slice(0, 15) as t}
-                <button class="tag" onclick={() => toggleRelated(t.id)}>{t.name}</button>
-              {/each}
             </div>
           </details>
 
           <details>
             <summary>{t('newArticle.prereqsLabel')}</summary>
-            <p class="sb-hint">{t('newArticle.prereqsHint')}</p>
-            {#if prereqs.length > 0}
-              <div class="prereq-list">
-                {#each prereqs as p}
-                  <div class="prereq-item">
-                    <span class="tag {p.prereq_type}">{getTagName(p.tag_id)}</span>
-                    <span class="prereq-type-label">{p.prereq_type}</span>
-                    <button class="prereq-remove" onclick={() => removePrereq(p.tag_id)}>&times;</button>
-                  </div>
-                {/each}
+            <div class="sb-field">
+              <p class="sb-hint">{t('newArticle.prereqsHint')}</p>
+              {#if prereqs.length > 0}
+                <div class="selected-tags">
+                  {#each prereqs as p (p.tag_id)}
+                    <span class="tag lit prereq {p.prereq_type === 'recommended' ? 'recommended' : ''}">
+                      {getTagName(p.tag_id)}
+                      <button
+                        type="button"
+                        class="prereq-toggle"
+                        title={p.prereq_type === 'required' ? t('books.prereqClickRecommended') : t('books.prereqClickRequired')}
+                        onclick={() => togglePrereqType(p.tag_id)}
+                      >{p.prereq_type === 'required' ? t('books.prereqRequired') : t('books.prereqRecommended')}</button>
+                      <button class="tag-remove" onclick={() => removePrereq(p.tag_id)}>&times;</button>
+                    </span>
+                  {/each}
+                </div>
+              {/if}
+              <div class="tag-input-wrap">
+                <input
+                  class="tag-input"
+                  type="text"
+                  bind:value={prereqInput}
+                  placeholder={t('newArticle.prereqsPlaceholder')}
+                  onkeydown={(e) => { if (e.key === 'Enter' && prereqInput.trim()) { e.preventDefault(); appendArticleTag('prereqs', prereqInput); } }}
+                />
+                {#if prereqSuggestions.length > 0}
+                  <ul class="tag-suggestions">
+                    {#each prereqSuggestions as s}
+                      <li><button type="button" onclick={() => appendArticleTag('prereqs', s.id)}>{s.name || s.id}</button></li>
+                    {/each}
+                  </ul>
+                {/if}
               </div>
-            {/if}
-            <div class="prereq-add">
-              <select bind:value={prereqTagId}>
-                <option value="">{t('newArticle.selectTag')}</option>
-                {#each tags.filter(t => !prereqs.some(p => p.tag_id === t.id)) as t}
-                  <option value={t.id}>{t.name}</option>
-                {/each}
-              </select>
-              <select bind:value={prereqType}>
-                <option value="required">{t('newArticle.required')}</option>
-                <option value="recommended">{t('newArticle.recommended')}</option>
-              </select>
-              <button class="prereq-add-btn" onclick={addPrereq} disabled={!prereqTagId}>{t('newArticle.addPrereq')}</button>
             </div>
           </details>
+
+          {#if tagError}
+            <p class="sb-error">{tagError}</p>
+          {/if}
 
           {#if !isEditing && !forkSource}
             <details>
@@ -994,7 +1054,7 @@
                 currentUserDid={getAuth()?.did || ''}
                 onChannelChange={(ch) => { currentArticleChannel = ch; }}
                 fetchCollaborators={() => listArticleCollaborators(savedArticleUri)}
-                doInvite={(did) => inviteArticleCollaborator(savedArticleUri, did).then(() => {})}
+                doInvite={(identifier) => inviteArticleCollaborator(savedArticleUri, identifier).then(() => {})}
                 doRemove={(did) => removeArticleCollaborator(savedArticleUri, did)}
                 fetchDiff={(target, current) => articleChannelDiff(savedArticleUri, target, current)}
                 doApply={(target, _source, hash) => applyArticleChannelChange(savedArticleUri, target, hash)}
@@ -1341,56 +1401,31 @@
     color: var(--text-secondary) !important;
   }
 
-  /* Tags inside sidebar */
-  .tag-input-row {
-    position: relative;
-    display: flex;
-    gap: 4px;
-    margin-bottom: 6px;
-  }
-  .tag-input-row input { flex: 1; }
-  .tag-add-btn {
-    padding: 4px 10px;
-    font-size: 12px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .tag-suggestions {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 40px;
-    background: var(--bg-white);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    z-index: 10;
-    max-height: 150px;
-    overflow-y: auto;
-  }
-  .tag-suggestions button {
-    display: block;
-    width: 100%;
-    padding: 4px 8px;
-    border: none;
-    background: none;
-    text-align: left;
-    cursor: pointer;
-    font-size: 12px;
-  }
-  .tag-suggestions button:hover { background: var(--bg-gray, #f5f5f5); }
-  .sg-id { color: var(--text-hint); font-size: 10px; }
+  /* Tag inputs inside sidebar (mirrors BookDetail) */
   .selected-tags {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
     margin-bottom: 6px;
   }
-  .selected-tags .tag { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
+  .selected-tags .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+  }
+  .selected-tags .tag.related {
+    background: rgba(107, 114, 128, 0.1);
+    color: var(--text-secondary);
+  }
+  .selected-tags .tag.prereq {
+    background: rgba(217, 119, 6, 0.12);
+    color: #b45309;
+  }
+  .selected-tags .tag.prereq.recommended {
+    background: rgba(22, 163, 74, 0.1);
+    color: #15803d;
+  }
   .tag-remove {
     background: none;
     border: none;
@@ -1402,67 +1437,67 @@
     opacity: 0.6;
   }
   .tag-remove:hover { opacity: 1; }
-  .tag-picker {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 3px;
-  }
-  .tag-picker .tag { cursor: pointer; font-size: 11px; }
-
-  /* Prereqs inside sidebar */
-  .prereq-list {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    padding: 4px 12px;
-  }
-  .prereq-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 6px;
-    background: var(--bg-hover);
-    border-radius: 3px;
-    font-size: 12px;
-  }
-  .prereq-type-label {
-    font-size: 11px;
-    color: var(--text-hint);
-    margin-left: auto;
-  }
-  .prereq-remove {
+  .prereq-toggle {
+    font-size: 10px;
+    padding: 0 4px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
     background: none;
-    border: none;
+    color: inherit;
     cursor: pointer;
-    color: var(--text-hint);
-    font-size: 14px;
-    padding: 0 2px;
-    line-height: 1;
+    line-height: 1.4;
+    opacity: 0.85;
   }
-  .prereq-remove:hover { color: #dc2626; }
-  .prereq-add {
+  .prereq-toggle:hover { opacity: 1; background: rgba(0, 0, 0, 0.05); }
+  .tag-input-wrap {
+    position: relative;
     display: flex;
-    gap: 4px;
     align-items: center;
-    padding: 6px 12px;
   }
-  .prereq-add select {
-    padding: 3px 6px;
+  .tag-input {
+    flex: 1;
+    padding: 4px 8px;
     font-size: 12px;
     border: 1px solid var(--border);
     border-radius: 3px;
     background: var(--bg-white);
+    color: var(--text-primary);
   }
-  .prereq-add-btn {
-    padding: 3px 10px;
-    font-size: 12px;
-    background: var(--accent);
-    color: white;
+  .tag-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 4px 0;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .tag-suggestions li { margin: 0; }
+  .tag-suggestions li button {
+    display: block;
+    width: 100%;
+    padding: 4px 10px;
     border: none;
-    border-radius: 3px;
+    background: none;
+    text-align: left;
     cursor: pointer;
+    font-size: 12px;
+    color: var(--text-primary);
   }
-  .prereq-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .tag-suggestions li button:hover { background: var(--bg-hover, #f5f5f5); }
+  .sb-error {
+    padding: 4px 12px;
+    margin: 0;
+    font-size: 11px;
+    color: #c53030;
+  }
 
   /* Language versions inside sidebar */
   .btn-add-lang {

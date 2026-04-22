@@ -382,7 +382,7 @@
             currentUserDid={getAuth()?.did || ''}
             onChannelChange={switchChannel}
             fetchCollaborators={() => listCollaborators(id)}
-            doInvite={(did) => inviteCollaborator(id, did).then(() => {})}
+            doInvite={(identifier) => inviteCollaborator(id, identifier).then(() => {})}
             doRemove={(did) => removeCollaborator(id, did)}
             fetchDiff={(target, current) => channelDiff(id, target, current)}
             doApply={(target, source, hash) => applyChannelChange(id, target, source, hash)}

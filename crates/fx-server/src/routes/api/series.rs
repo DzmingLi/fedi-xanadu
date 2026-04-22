@@ -1026,7 +1026,9 @@ pub async fn list_collaborators(
 
 #[derive(serde::Deserialize)]
 pub struct InviteInput {
-    pub user_did: String,
+    /// DID (did:plc:… / did:web:…) or atproto handle (e.g. alice.bsky.social).
+    /// Handles are resolved server-side to a DID.
+    pub identifier: String,
     pub role: Option<String>,
 }
 
@@ -1039,8 +1041,10 @@ pub async fn invite_collaborator(
     let owner = series_service::get_series_owner(&state.pool, &id).await?;
     require_owner(Some(&owner), &user.did)?;
 
+    let user_did = super::articles::resolve_identifier(&state, &input.identifier).await?;
+
     let role = input.role.as_deref().unwrap_or("editor");
-    let short_did = input.user_did.chars().rev().take(8).collect::<String>().chars().rev().collect::<String>();
+    let short_did = user_did.chars().rev().take(8).collect::<String>().chars().rev().collect::<String>();
     let channel_name = format!("collab_{short_did}");
 
     let node_id: Option<String> = sqlx::query_scalar(
@@ -1057,7 +1061,7 @@ pub async fn invite_collaborator(
     }
 
     let collab = collaboration_service::add_collaborator(
-        &state.pool, &id, &input.user_did, role, &channel_name, &user.did,
+        &state.pool, &id, &user_did, role, &channel_name, &user.did,
     ).await?;
 
     Ok((StatusCode::CREATED, Json(collab)))

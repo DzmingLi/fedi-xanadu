@@ -303,8 +303,8 @@ export interface ChannelDiffResult {
   only_in_b: string[];
 }
 export const listCollaborators = (id: string) => get<Collaborator[]>(`/series/${encodeURIComponent(id)}/collaborators`);
-export const inviteCollaborator = (id: string, user_did: string, role?: string) =>
-  post<Collaborator>(`/series/${encodeURIComponent(id)}/collaborators`, { user_did, role });
+export const inviteCollaborator = (id: string, identifier: string, role?: string) =>
+  post<Collaborator>(`/series/${encodeURIComponent(id)}/collaborators`, { identifier, role });
 export const removeCollaborator = (id: string, did: string) =>
   del<void>(`/series/${encodeURIComponent(id)}/collaborators/${encodeURIComponent(did)}`);
 export const listChannels = (id: string) => get<string[]>(`/series/${encodeURIComponent(id)}/channels`);
@@ -330,8 +330,8 @@ export const channelDiff = (id: string, a: string, b: string) =>
 
 // Article Collaboration
 export const listArticleCollaborators = (uri: string) => get<ArticleCollaborator[]>(`/articles/collaborators?uri=${encodeURIComponent(uri)}`);
-export const inviteArticleCollaborator = (uri: string, user_did: string, role?: string) =>
-  post<ArticleCollaborator>('/articles/collaborators', { uri, user_did, role });
+export const inviteArticleCollaborator = (uri: string, identifier: string, role?: string) =>
+  post<ArticleCollaborator>('/articles/collaborators', { uri, identifier, role });
 export const removeArticleCollaborator = (uri: string, user_did: string) =>
   del<void>('/articles/collaborators/remove', { uri, user_did });
 export const listArticleChannels = (uri: string) => get<string[]>(`/articles/channels?uri=${encodeURIComponent(uri)}`);
