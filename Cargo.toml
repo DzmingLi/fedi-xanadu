@@ -75,14 +75,3 @@ figment = { version = "0.10", features = ["toml", "env"] }
 atproto-auth = { git = "https://github.com/DzmingLi/atproto-auth.git" }
 atproto-oauth = "0.14"
 atproto-identity = "0.14"
-
-# Local patch for atproto-auth during the identity-resolution unification.
-# Remove once the new `resolve` module is pushed to the github remote.
-[patch."https://github.com/DzmingLi/atproto-auth.git"]
-atproto-auth = { path = "../atproto-auth" }
-
-[patch."https://github.com/DzmingLi/typst-render.git"]
-fx-renderer = { path = "../fx-renderer" }
-
-[patch."https://github.com/DzmingLi/pijul-knot.git"]
-pijul-knot = { path = "../pijul-knot" }
