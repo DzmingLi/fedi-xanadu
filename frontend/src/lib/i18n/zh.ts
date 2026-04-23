@@ -19,6 +19,8 @@ export default {
   'common.prev': '上一页',
   'common.next': '下一页',
   'common.noResults': '无结果',
+  'api.rateLimited': '请求过于频繁，请稍后再试',
+  'qa.permalink': '固定链接',
   'common.upvote': '赞',
   'common.downvote': '踩',
   'common.reply': '回复',

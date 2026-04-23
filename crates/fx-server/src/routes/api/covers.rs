@@ -11,17 +11,22 @@
 //! `s` (series). `get_cover` reads the DB row to find `cover_file`, and falls
 //! back to scanning `cover.{ext}` if the column is NULL (legacy rows + the
 //! case where the repo has a `cover.png` but the DB wasn't updated).
+use std::sync::LazyLock;
+
 use axum::{
     Json,
     body::Body,
     extract::{Multipart, Path, State},
     http::{StatusCode, Response, header},
+    response::IntoResponse,
 };
 use fx_core::util::uri_to_node_id;
+use regex_lite::Regex;
 
 use crate::auth::{AdminAuth, WriteAuth};
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
+use fx_core::services::{article_service, series_service};
 
 const UPLOAD_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "svg"];
 /// Broader allow-list for the reference path: body images in the repo may be
@@ -29,6 +34,38 @@ const UPLOAD_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "svg"];
 const REFERENCE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "svg"];
 const MAX_COVER_SIZE: usize = 5 * 1024 * 1024; // 5 MB
 const COVER_STEM: &str = "cover";
+const COVER_CACHE: &str = "public, max-age=300";
+
+static TYPST_COVER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*#metadata\([^)]*\)\s*<nbt-article>\s*\n?"#)
+        .expect("cover typst regex")
+});
+static HTML_COVER_META_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)<meta\s+name="nightboat:cover"\s+content="([^"]+)"\s*/?>"#)
+        .expect("cover html meta regex")
+});
+static HTML_COVER_META_STRIP_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)<meta\s+name="nightboat:cover"\s+content="[^"]*"\s*/?>\s*\n?"#)
+        .expect("cover html meta strip regex")
+});
+static HTML_HEAD_OPEN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)<head[^>]*>").expect("cover html head open regex")
+});
+
+fn empty_response(status: StatusCode) -> Response<Body> {
+    status.into_response()
+}
+
+fn image_response(data: Vec<u8>, ext: &str) -> Response<Body> {
+    (
+        [
+            (header::CONTENT_TYPE, content_type_for_ext(ext)),
+            (header::CACHE_CONTROL, COVER_CACHE),
+        ],
+        data,
+    )
+        .into_response()
+}
 
 fn content_type_for_ext(ext: &str) -> &'static str {
     match ext {
@@ -128,10 +165,10 @@ pub async fn get_cover(
 ) -> Response<Body> {
     let (kind, node_id) = match id.split_once('-') {
         Some((k, n)) if !n.is_empty() => (k, n),
-        _ => return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap(),
+        _ => return empty_response(StatusCode::NOT_FOUND),
     };
     let Some(repo) = repo_for(&state, kind, node_id).await else {
-        return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
+        return empty_response(StatusCode::NOT_FOUND);
     };
 
     // Preferred path for series: the repo's native metadata slot.
@@ -155,12 +192,7 @@ pub async fn get_cover(
             if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
                 let ext = ext_of(&rel);
                 if let Ok(data) = tokio::fs::read(repo.join(&rel)).await {
-                    return Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, content_type_for_ext(&ext))
-                        .header(header::CACHE_CONTROL, "public, max-age=300")
-                        .body(Body::from(data))
-                        .unwrap();
+                    return image_response(data, &ext);
                 }
             }
         }
@@ -184,12 +216,7 @@ pub async fn get_cover(
             if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
                 let ext = ext_of(&rel);
                 if let Ok(data) = tokio::fs::read(repo.join(&rel)).await {
-                    return Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, content_type_for_ext(&ext))
-                        .header(header::CACHE_CONTROL, "public, max-age=300")
-                        .body(Body::from(data))
-                        .unwrap();
+                    return image_response(data, &ext);
                 }
             }
         }
@@ -200,12 +227,7 @@ pub async fn get_cover(
         if !rel.is_empty() && !rel.starts_with('/') && !rel.contains("..") {
             let ext = ext_of(&rel);
             if let Ok(data) = tokio::fs::read(repo.join(&rel)).await {
-                return Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, content_type_for_ext(&ext))
-                    .header(header::CACHE_CONTROL, "public, max-age=300")
-                    .body(Body::from(data))
-                    .unwrap();
+                return image_response(data, &ext);
             }
         }
     }
@@ -214,15 +236,10 @@ pub async fn get_cover(
     for ext in UPLOAD_EXTENSIONS {
         let path = repo.join(format!("{COVER_STEM}.{ext}"));
         if let Ok(data) = tokio::fs::read(&path).await {
-            return Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, content_type_for_ext(ext))
-                .header(header::CACHE_CONTROL, "public, max-age=300")
-                .body(Body::from(data))
-                .unwrap();
+            return image_response(data, ext);
         }
     }
-    Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
+    empty_response(StatusCode::NOT_FOUND)
 }
 
 async fn read_multipart(mut multipart: Multipart) -> Result<(Vec<u8>, String), AppError> {
@@ -310,7 +327,7 @@ async fn write_cover_to_repo(
     // Mirror to knot if the user has one configured (articles only — series
     // knot flow isn't currently wired up for writes).
     if !is_series {
-        let knot_url = super::articles::get_user_knot_url(&state.pool, did).await;
+        let knot_url = fx_core::services::article_service::get_user_knot_url(&state.pool, did).await;
         if let Some(ref knot) = knot_url {
             let client = pijul_knot::KnotClient::new(knot);
             let rel = format!("{COVER_STEM}.{ext}");
@@ -376,12 +393,7 @@ async fn update_article_cover_meta(
 /// typst source. Any existing line carrying that label is removed first so we
 /// never leave two covers behind. A None cover means "remove it".
 fn rewrite_typst_article_cover(source: &str, cover: Option<String>) -> String {
-    use regex_lite::Regex;
-    // Matches a full `#metadata(...) <nbt-article>` line plus its trailing newline.
-    let re = Regex::new(
-        r#"(?m)^\s*#metadata\([^)]*\)\s*<nbt-article>\s*\n?"#,
-    ).unwrap();
-    let stripped = re.replace_all(source, "").to_string();
+    let stripped = TYPST_COVER_RE.replace_all(source, "").to_string();
     match cover {
         Some(c) => {
             let escaped = c.replace('\\', r"\\").replace('"', r#"\""#);
@@ -394,11 +406,7 @@ fn rewrite_typst_article_cover(source: &str, cover: Option<String>) -> String {
 
 /// Parse `<meta name="nightboat:cover" content="...">` out of an HTML source.
 pub(super) fn html_cover_from_meta(source: &str) -> Option<String> {
-    use regex_lite::Regex;
-    let re = Regex::new(
-        r#"(?i)<meta\s+name="nightboat:cover"\s+content="([^"]+)"\s*/?>"#,
-    ).ok()?;
-    let caps = re.captures(source)?;
+    let caps = HTML_COVER_META_RE.captures(source)?;
     let raw = caps.get(1)?.as_str();
     let decoded = raw
         .replace("&quot;", "\"")
@@ -412,11 +420,7 @@ pub(super) fn html_cover_from_meta(source: &str) -> Option<String> {
 /// head. Idempotent; None removes the tag. Falls back to prepending the tag
 /// when the document has no recognizable `<head>`.
 fn rewrite_html_article_cover(source: &str, cover: Option<String>) -> String {
-    use regex_lite::Regex;
-    let existing = Regex::new(
-        r#"(?i)<meta\s+name="nightboat:cover"\s+content="[^"]*"\s*/?>\s*\n?"#,
-    ).unwrap();
-    let stripped = existing.replace_all(source, "").to_string();
+    let stripped = HTML_COVER_META_STRIP_RE.replace_all(source, "").to_string();
     let Some(c) = cover else { return stripped; };
     let escaped = c
         .replace('&', "&amp;")
@@ -425,8 +429,7 @@ fn rewrite_html_article_cover(source: &str, cover: Option<String>) -> String {
         .replace('>', "&gt;");
     let tag = format!("<meta name=\"nightboat:cover\" content=\"{escaped}\">\n");
     // Insert right after <head> if present; else just prepend.
-    let head_open = Regex::new(r"(?i)<head[^>]*>").unwrap();
-    if let Some(m) = head_open.find(&stripped) {
+    if let Some(m) = HTML_HEAD_OPEN_RE.find(&stripped) {
         let (a, b) = stripped.split_at(m.end());
         let needs_newline = if b.starts_with('\n') { "" } else { "\n" };
         format!("{a}{needs_newline}{tag}{b}")
@@ -487,11 +490,7 @@ pub async fn upload_article_cover(
     axum::extract::Query(q): axum::extract::Query<UriQuery>,
     multipart: Multipart,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let owner: Option<String> = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
-        .bind(&q.uri).fetch_optional(&state.pool).await?;
-    let Some(owner_did) = owner else {
-        return Err(AppError(fx_core::Error::NotFound { entity: "article", id: q.uri.clone() }));
-    };
+    let owner_did = article_service::get_article_owner(&state.pool, &q.uri).await?;
     if owner_did != user.did {
         return Err(AppError(fx_core::Error::BadRequest("only the author can set a cover".into())));
     }
@@ -517,11 +516,7 @@ pub async fn remove_article_cover(
     WriteAuth(user): WriteAuth,
     axum::extract::Query(q): axum::extract::Query<UriQuery>,
 ) -> ApiResult<StatusCode> {
-    let owner: Option<String> = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
-        .bind(&q.uri).fetch_optional(&state.pool).await?;
-    let Some(owner_did) = owner else {
-        return Err(AppError(fx_core::Error::NotFound { entity: "article", id: q.uri.clone() }));
-    };
+    let owner_did = article_service::get_article_owner(&state.pool, &q.uri).await?;
     if owner_did != user.did {
         return Err(AppError(fx_core::Error::BadRequest("only the author can remove the cover".into())));
     }
@@ -544,11 +539,7 @@ pub async fn set_article_cover_reference(
     axum::extract::Query(q): axum::extract::Query<UriQuery>,
     Json(body): Json<CoverReference>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let owner: Option<String> = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
-        .bind(&q.uri).fetch_optional(&state.pool).await?;
-    let Some(owner_did) = owner else {
-        return Err(AppError(fx_core::Error::NotFound { entity: "article", id: q.uri.clone() }));
-    };
+    let owner_did = article_service::get_article_owner(&state.pool, &q.uri).await?;
     if owner_did != user.did {
         return Err(AppError(fx_core::Error::BadRequest("only the author can set a cover".into())));
     }
@@ -570,9 +561,7 @@ async fn set_article_cover_reference_inner(
     }
     let cover_url = format!("/api/covers/a-{node_id}");
     if update_article_cover_meta(&state.pool, &repo_path, uri, Some(file.to_string())).await.unwrap_or(false) {
-        let did: Option<String> = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
-            .bind(uri).fetch_optional(&state.pool).await.ok().flatten();
-        if let Some(d) = did {
+        if let Ok(d) = article_service::get_article_owner(&state.pool, uri).await {
             record_article_cover_meta(state, &node_id, &d).await;
         }
     }
@@ -588,11 +577,7 @@ pub async fn admin_set_article_cover_reference(
     Json(body): Json<CoverReference>,
 ) -> ApiResult<Json<serde_json::Value>> {
     // Still confirm the article exists.
-    let owner: Option<String> = sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
-        .bind(&q.uri).fetch_optional(&state.pool).await?;
-    if owner.is_none() {
-        return Err(AppError(fx_core::Error::NotFound { entity: "article", id: q.uri.clone() }));
-    }
+    article_service::get_article_owner(&state.pool, &q.uri).await?;
     set_article_cover_reference_inner(&state, &q.uri, &body.file).await
 }
 
@@ -602,11 +587,7 @@ pub async fn upload_series_cover(
     axum::extract::Query(q): axum::extract::Query<IdQuery>,
     multipart: Multipart,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let owner: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
-        .bind(&q.id).fetch_optional(&state.pool).await?;
-    let Some(owner_did) = owner else {
-        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
-    };
+    let owner_did = series_service::get_series_owner(&state.pool, &q.id).await?;
     if owner_did != user.did {
         return Err(AppError(fx_core::Error::BadRequest("only the creator can set a cover".into())));
     }
@@ -629,11 +610,7 @@ pub async fn remove_series_cover(
     WriteAuth(user): WriteAuth,
     axum::extract::Query(q): axum::extract::Query<IdQuery>,
 ) -> ApiResult<StatusCode> {
-    let owner: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
-        .bind(&q.id).fetch_optional(&state.pool).await?;
-    let Some(owner_did) = owner else {
-        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
-    };
+    let owner_did = series_service::get_series_owner(&state.pool, &q.id).await?;
     if owner_did != user.did {
         return Err(AppError(fx_core::Error::BadRequest("only the creator can remove the cover".into())));
     }
@@ -651,11 +628,7 @@ pub async fn set_series_cover_reference(
     axum::extract::Query(q): axum::extract::Query<IdQuery>,
     Json(body): Json<CoverReference>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let owner: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
-        .bind(&q.id).fetch_optional(&state.pool).await?;
-    let Some(owner_did) = owner else {
-        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
-    };
+    let owner_did = series_service::get_series_owner(&state.pool, &q.id).await?;
     if owner_did != user.did {
         return Err(AppError(fx_core::Error::BadRequest("only the creator can set a cover".into())));
     }
@@ -679,13 +652,10 @@ async fn set_series_cover_reference_inner(
     // The repo's native metadata slot (typst's <nbt-series> or meta.yaml)
     // is the source of truth; write it before the DB update so fork/clone
     // inherits the selection.
-    let owner_did: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
-        .bind(series_id).fetch_optional(&state.pool).await?;
+    let owner_did = series_service::get_series_owner(&state.pool, series_id).await?;
     persist_series_cover(&repo_path, Some(file.to_string())).await;
-    if let Some(d) = owner_did {
-        if let Err(e) = state.pijul_record_series(node_id.clone(), "Set cover".into(), Some(d)).await {
-            tracing::warn!("pijul record series cover ref failed: {e}");
-        }
+    if let Err(e) = state.pijul_record_series(node_id.clone(), "Set cover".into(), Some(owner_did)).await {
+        tracing::warn!("pijul record series cover ref failed: {e}");
     }
 
     let cover_url = format!("/api/covers/s-{node_id}");
@@ -703,11 +673,7 @@ pub async fn admin_upload_series_cover(
     axum::extract::Query(q): axum::extract::Query<IdQuery>,
     multipart: Multipart,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let owner: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
-        .bind(&q.id).fetch_optional(&state.pool).await?;
-    let Some(owner_did) = owner else {
-        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
-    };
+    let owner_did = series_service::get_series_owner(&state.pool, &q.id).await?;
 
     let node_id = format!("series_{}", q.id);
     let repo_path = state.pijul.series_repo_path(&node_id);
@@ -727,11 +693,7 @@ pub async fn admin_remove_series_cover(
     _admin: AdminAuth,
     axum::extract::Query(q): axum::extract::Query<IdQuery>,
 ) -> ApiResult<StatusCode> {
-    let owner: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
-        .bind(&q.id).fetch_optional(&state.pool).await?;
-    let Some(owner_did) = owner else {
-        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
-    };
+    let owner_did = series_service::get_series_owner(&state.pool, &q.id).await?;
     let node_id = format!("series_{}", q.id);
     let repo_path = state.pijul.series_repo_path(&node_id);
     remove_cover_from_repo(&state, &repo_path, &node_id, &owner_did, true).await;
@@ -746,10 +708,6 @@ pub async fn admin_set_series_cover_reference(
     axum::extract::Query(q): axum::extract::Query<IdQuery>,
     Json(body): Json<CoverReference>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let exists: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
-        .bind(&q.id).fetch_optional(&state.pool).await?;
-    if exists.is_none() {
-        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: q.id.clone() }));
-    }
+    series_service::get_series_owner(&state.pool, &q.id).await?;
     set_series_cover_reference_inner(&state, &q.id, &body.file).await
 }

@@ -81,7 +81,7 @@ pub async fn create_comment(
         None
     };
     let (subject, chapter_ref) =
-        crate::routes::api::articles::resolve_subject_ref(&state.pool, &input.content_uri).await;
+        fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.content_uri, fx_atproto::lexicon::SERIES).await;
     let mut record = serde_json::json!({
         "$type": fx_atproto::lexicon::COMMENT,
         "subject": subject,
@@ -99,9 +99,7 @@ pub async fn create_comment(
     pds_create_record(&state, &user.token, fx_atproto::lexicon::COMMENT, record, Some(id.clone()), "create comment").await;
 
     // Notify content author
-    if let Ok(Some(content_did)) = sqlx::query_scalar::<_, String>(
-        "SELECT did FROM articles WHERE at_uri = $1"
-    ).bind(&input.content_uri).fetch_optional(&state.pool).await {
+    if let Ok(content_did) = fx_core::services::article_service::get_article_owner(&state.pool, &input.content_uri).await {
         if let Err(e) = notification_service::create_notification(
             &state.pool, &tid(), &content_did, &user.did,
             "article_comment", Some(&input.content_uri), Some(&id),
@@ -151,7 +149,7 @@ pub async fn update_comment(
 
     // Overwrite the record on PDS with refreshed body + updatedAt.
     let (subject, chapter_ref) =
-        crate::routes::api::articles::resolve_subject_ref(&state.pool, &comment.content_uri).await;
+        fx_core::services::article_service::resolve_subject_ref(&state.pool, &comment.content_uri, fx_atproto::lexicon::SERIES).await;
     let mut record = serde_json::json!({
         "$type": fx_atproto::lexicon::COMMENT,
         "subject": subject,

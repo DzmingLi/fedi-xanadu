@@ -9,8 +9,8 @@ export type Article = { at_uri: string, did: string, author_handle: string | nul
  */
 paper_venue: string | null, paper_year: number | null, paper_accepted: boolean | null, content_hash: string | null, content_format: ContentFormat, lang: string, translation_group: string | null, license: string, prereq_threshold: number, category: string, question_uri: string | null, book_id: string | null, edition_id: string | null, 
 /**
- * When the article is a review (category='review'), scoping it to
- * a specific chapter or lecture. Null ⇒ review is about the whole
- * book/course.
+ * Chapter/lecture scope. Used by notes (category='note') and questions
+ * (kind='question'). Reviews are always about the whole book/course and
+ * leave these NULL.
  */
-book_chapter_id: string | null, course_session_id: string | null, answer_count: number, restricted: boolean, vote_score: bigint, bookmark_count: bigint, comment_count: bigint, fork_count: bigint, created_at: string, updated_at: string, };
+book_chapter_id: string | null, course_session_id: string | null, answer_count: number, restricted: boolean, vote_score: number, bookmark_count: number, comment_count: number, fork_count: number, created_at: string, updated_at: string, };

@@ -331,6 +331,76 @@ pub async fn get_article_owner(pool: &PgPool, uri: &str) -> crate::Result<String
         .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() })
 }
 
+/// Per-user knot URL override from user_settings; None if not set or empty.
+pub async fn get_user_knot_url(pool: &PgPool, did: &str) -> Option<String> {
+    sqlx::query_scalar::<_, Option<String>>("SELECT knot_url FROM user_settings WHERE did = $1")
+        .bind(did)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .filter(|u| !u.is_empty())
+}
+
+/// Effective knot URL: user override, or the provided default. None means
+/// "this record cannot be published portably" (both missing).
+pub async fn get_effective_knot_url(
+    pool: &PgPool,
+    did: &str,
+    default_knot_url: &str,
+) -> Option<String> {
+    if let Some(u) = get_user_knot_url(pool, did).await {
+        return Some(u);
+    }
+    let d = default_knot_url.trim();
+    if d.is_empty() { None } else { Some(d.to_string()) }
+}
+
+/// Public repo URL for a pijul node on the user's effective knot.
+/// None if no knot is configured.
+pub async fn pijul_repo_url(
+    pool: &PgPool,
+    did: &str,
+    node_id: &str,
+    default_knot_url: &str,
+) -> Option<String> {
+    let knot = get_effective_knot_url(pool, did, default_knot_url).await?;
+    let base = knot.trim_end_matches('/');
+    Some(format!("{base}/{did}/{node_id}"))
+}
+
+/// For an article URI, resolve the PDS-facing `(subject, sectionRef)` pair.
+/// - Standalone article: `(article_uri, None)`
+/// - Series chapter:     `(series_at_uri, Some(chapter_tid))`
+///
+/// The `series_lexicon` is passed in to avoid this crate depending on
+/// fx-atproto; the caller supplies `fx_atproto::lexicon::SERIES`.
+pub async fn resolve_subject_ref(
+    pool: &PgPool,
+    article_uri: &str,
+    series_lexicon: &str,
+) -> (String, Option<String>) {
+    let series_info: Option<(String, String)> = sqlx::query_as(
+        "SELECT s.id, s.created_by \
+         FROM series s JOIN series_articles sa ON sa.series_id = s.id \
+         WHERE sa.article_uri = $1 \
+         LIMIT 1",
+    )
+    .bind(article_uri)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some((series_id, owner_did)) = series_info {
+        let chapter_tid = article_uri.rsplit('/').next().unwrap_or("").to_string();
+        let series_uri = format!("at://{owner_did}/{series_lexicon}/{series_id}");
+        (series_uri, Some(chapter_tid))
+    } else {
+        (article_uri.to_string(), None)
+    }
+}
+
 pub async fn get_content_format(pool: &PgPool, uri: &str) -> crate::Result<String> {
     sqlx::query_scalar::<_, String>("SELECT content_format::text FROM articles WHERE at_uri = $1")
         .bind(uri)

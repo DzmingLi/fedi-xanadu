@@ -35,16 +35,16 @@ pub struct Contacts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub matrix: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bluesky: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub github: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codeberg: Option<String>,
-    /// Tangled stores both a full URL (for the hyperlink) and a username
-    /// (for display), since usernames don't map to a canonical URL pattern.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tangled: Option<LinkedHandle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub youtube: Option<String>,
-    /// Bilibili — same rationale as tangled.
+    /// Bilibili stores both a full URL and a username since the platform
+    /// doesn't map usernames to a canonical URL pattern — the URL is what
+    /// we link to, the username is what we display.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bilibili: Option<LinkedHandle>,
     /// Free-form extra links with user-supplied labels.
@@ -60,8 +60,8 @@ pub struct CustomLink {
 }
 
 /// A hyperlink whose displayed text and destination URL differ, used where
-/// platforms (bilibili, tangled) don't have a canonical `domain/{username}`
-/// URL pattern.
+/// a platform (bilibili) doesn't have a canonical `domain/{username}` URL
+/// pattern.
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct LinkedHandle {
@@ -87,7 +87,6 @@ pub struct EducationEntry {
     pub current: bool,
     /// Locale → translated text fields (school, department, major).
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
-    #[ts(type = "Record<string, EducationTranslation>")]
     pub translations: std::collections::HashMap<String, EducationTranslation>,
 }
 
@@ -125,7 +124,6 @@ pub struct WorkExperienceEntry {
     /// Locale → translated text fields (company, department, title,
     /// location, description).
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
-    #[ts(type = "Record<string, WorkExperienceTranslation>")]
     pub translations: std::collections::HashMap<String, WorkExperienceTranslation>,
 }
 

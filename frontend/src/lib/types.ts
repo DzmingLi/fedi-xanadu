@@ -1,7 +1,15 @@
-export type ContentFormat = 'typst' | 'markdown' | 'html';
-export type ContentKind = 'article' | 'question' | 'answer' | 'thought';
+// Generated types pipeline — see frontend/src/lib/generated/ (symlink into
+// crates/frontend/src/lib/generated/ populated by `cargo test -p fx-core`).
+// `npm run gen-types` regenerates them from ts-rs `#[ts(export)]` attributes.
+// Prefer re-exporting generated types over re-declaring them here; legacy
+// hand-written shapes below will be migrated incrementally. The generated
+// shapes often use `bigint` for SQL COUNT columns — if a consumer needs
+// `number`, pin it with `#[ts(type = "number")]` on the Rust field.
+import type { ContentFormat } from './generated/ContentFormat';
+import type { ContentKind } from './generated/ContentKind';
+import type { PrereqType } from './generated/PrereqType';
+export type { ContentFormat, ContentKind, PrereqType };
 export type Category = string;
-export type PrereqType = 'required' | 'recommended' | 'suggested';
 
 /** One name in some language attached to a concept (`tag_id`). A concept
  * can have many names across languages and within one language
@@ -465,15 +473,36 @@ export interface ForkSourceInfo {
   author_avatar: string | null;
 }
 
+export interface PaperMetadata {
+  article_uri: string;
+  venue: string | null;
+  venue_type: string | null;
+  year: number | null;
+  doi: string | null;
+  arxiv_id: string | null;
+  accepted: boolean;
+}
+
+export interface ExperienceMetadata {
+  article_uri: string;
+  kind: string | null;
+  target: string | null;
+  year: number | null;
+  result: string | null;
+}
+
 export interface ArticleFullResponse {
   article: Article;
   content: ArticleContent;
   prereqs: ArticlePrereqRow[];
+  related: string[];
   forks: ForkWithTitle[];
   fork_source: ForkSourceInfo | null;
   votes: VoteSummary;
   series_context: SeriesContextItem[];
   translations: Article[];
+  paper?: PaperMetadata | null;
+  experience?: ExperienceMetadata | null;
   my_vote: number;
   is_bookmarked: boolean;
   learned: boolean;
@@ -489,17 +518,17 @@ export interface AccessGrant {
 /** Fixed contact fields shown on the profile card, plus free-form extras.
  * Undefined/empty fields should be stripped before sending to the server.
  *
- * `tangled` and `bilibili` store `{url, username}` since neither platform
- * maps usernames to a canonical URL pattern — the URL is what we link to,
+ * `bilibili` stores `{url, username}` since the platform doesn't map
+ * usernames to a canonical URL pattern — the URL is what we link to,
  * the username is what we display. */
 export interface Contacts {
   website?: string | null;
   email?: string | null;
   telegram?: string | null;
   matrix?: string | null;
+  bluesky?: string | null;
   github?: string | null;
   codeberg?: string | null;
-  tangled?: LinkedHandle | null;
   youtube?: string | null;
   bilibili?: LinkedHandle | null;
   custom?: CustomLink[];
@@ -516,8 +545,8 @@ export interface CustomLink {
 }
 
 export const CONTACT_KINDS = [
-  'website', 'email', 'telegram', 'matrix',
-  'github', 'codeberg', 'tangled',
+  'website', 'email', 'telegram', 'matrix', 'bluesky',
+  'github', 'codeberg',
   'youtube', 'bilibili',
 ] as const;
 export type ContactKind = typeof CONTACT_KINDS[number];
@@ -666,7 +695,7 @@ export interface Notification {
   recipient_did: string;
   actor_did: string;
   actor_handle: string | null;
-  kind: 'comment_reply' | 'article_comment' | 'new_follower' | 'article_fork' | 'new_answer';
+  kind: 'comment_reply' | 'article_comment' | 'new_follower' | 'article_fork' | 'new_answer' | 'invite_answer';
   target_uri: string | null;
   target_title: string | null;
   context_id: string | null;

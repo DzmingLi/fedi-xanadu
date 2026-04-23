@@ -5,12 +5,12 @@ import type { CreatePaperMetadata } from "./CreatePaperMetadata";
 /**
  * Category-specific metadata — tagged union, only one variant per article.
  */
-export type CategoryMetadata = { "type": "paper" } & CreatePaperMetadata | { "type": "review", book_id: string | null, edition_id: string | null, course_id: string | null, 
+export type CategoryMetadata = { "type": "paper" } & CreatePaperMetadata | { "type": "review", book_id: string | null, edition_id: string | null, course_id: string | null, } | { "type": "note", book_id: string | null, edition_id: string | null, course_id: string | null, 
 /**
- * Chapter-specific review. Only meaningful with book_id set.
+ * Chapter-specific note. Only meaningful with `book_id` set.
  */
 book_chapter_id: string | null, 
 /**
- * Lecture-specific review. Only meaningful with course_id set.
+ * Lecture-specific note. Only meaningful with `course_id` set.
  */
 course_session_id: string | null, } | { "type": "experience" } & CreateExperienceMetadata;

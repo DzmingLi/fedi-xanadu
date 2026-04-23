@@ -7,8 +7,8 @@ use fx_core::services::skill_tree_service;
 
 use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
-use crate::auth::{WriteAuth, MaybeAuth, pds_put_record, pds_delete_record};
-use fx_core::util::{tid, now_rfc3339};
+use crate::auth::{WriteAuth, MaybeAuth, pds_put_record};
+use fx_core::util::tid;
 use super::UriQuery;
 
 /// Rebuild the full PDS record for a skill tree from current DB state and

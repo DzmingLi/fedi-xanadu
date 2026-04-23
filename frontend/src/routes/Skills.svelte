@@ -653,6 +653,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="skills-page" onclick={onGlobalClick}>
   <!-- Top toolbar -->
   <div class="skills-toolbar">
@@ -723,6 +724,8 @@
         {/each}
       </div>
 
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="field-content"
         bind:this={scrollContainerEl}
         onscroll={recomputeCrossConns}
@@ -774,6 +777,7 @@
                       </defs>
                       {#each layout.conns as c}
                         <!-- Invisible wide hit area for right-click -->
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
                         <path
                           d={connPath(c)}
                           class="conn-hit"
@@ -846,6 +850,7 @@
               </marker>
             </defs>
             {#each crossConns as c}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <path
                 d={crossConnPath(c)}
                 class="conn-hit"
@@ -863,6 +868,8 @@
 
       <!-- Detail panel -->
       {#if selectedNode}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="detail-panel" onclick={(e: MouseEvent) => e.stopPropagation()}>
           <button class="panel-close" onclick={() => selectedNodeId = null}>×</button>
           <h3 class="panel-title">{selectedNode.name}</h3>
@@ -929,6 +936,7 @@
       <!-- Context menu -->
       {#if contextMenu}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="ctx-menu" style="left:{contextMenu.x}px; top:{contextMenu.y}px;" onclick={(e) => e.stopPropagation()}>
           {#if contextMenu.nodeId}
             <button class="ctx-item" onclick={ctxAddChild}>
@@ -951,7 +959,10 @@
       <!-- Add child tag dialog -->
       {#if addChildDialog}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="dialog-overlay" onclick={() => addChildDialog = null}>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="dialog-box" onclick={(e) => e.stopPropagation()}>
             <h3>{t('skills.addChildTag')}</h3>
             <p class="dialog-hint">{t('skills.addChildHint', resolveName(addChildDialog.parentId))}</p>

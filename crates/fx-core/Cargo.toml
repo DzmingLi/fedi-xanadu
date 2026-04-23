@@ -18,3 +18,4 @@ rand.workspace = true
 ts-rs.workspace = true
 imara-diff = "0.1"
 serde_yml = "0.0.12"
+async-trait = "0.1"

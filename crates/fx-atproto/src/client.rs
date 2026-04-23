@@ -100,13 +100,6 @@ pub struct DeleteRecordInput {
     pub rkey: String,
 }
 
-// --- Resolve handle ---
-
-#[derive(Debug, Deserialize)]
-struct ResolveHandleOutput {
-    did: String,
-}
-
 impl Default for AtClient {
     fn default() -> Self {
         Self::new()
@@ -125,47 +118,11 @@ impl AtClient {
     }
 
     /// Resolve a handle (e.g. "alice.bsky.social") to the PDS service URL.
-    /// Returns (did, pds_url).
+    /// Returns (did, pds_url). Delegates to `atproto_auth::resolve` so both
+    /// the OAuth flow and direct handle lookups use one identity-resolution
+    /// implementation.
     pub async fn resolve_handle(&self, handle: &str) -> anyhow::Result<(String, String)> {
-        // Try resolving via public API first
-        let url = format!(
-            "https://bsky.social/xrpc/com.atproto.identity.resolveHandle?handle={}",
-            handle
-        );
-        let resp: ResolveHandleOutput = self.http.get(&url).send().await?.json().await?;
-        let did = resp.did;
-
-        // Get PDS URL from DID document
-        let pds_url = self.get_pds_url(&did).await?;
-        Ok((did, pds_url))
-    }
-
-    /// Get the PDS service endpoint from a DID's DID document.
-    async fn get_pds_url(&self, did: &str) -> anyhow::Result<String> {
-        let url = if did.starts_with("did:plc:") {
-            format!("https://plc.directory/{}", did)
-        } else if did.starts_with("did:web:") {
-            let host = did.strip_prefix("did:web:").unwrap();
-            format!("https://{}/.well-known/did.json", host)
-        } else {
-            anyhow::bail!("unsupported DID method: {}", did);
-        };
-
-        let doc: serde_json::Value = self.http.get(&url).send().await?.json().await?;
-
-        // Look for atproto_pds service endpoint
-        if let Some(services) = doc.get("service").and_then(|s| s.as_array()) {
-            for svc in services {
-                let svc_type = svc.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                if svc_type == "AtprotoPersonalDataServer"
-                    && let Some(endpoint) = svc.get("serviceEndpoint").and_then(|e| e.as_str())
-                {
-                    return Ok(endpoint.to_string());
-                }
-            }
-        }
-
-        anyhow::bail!("no PDS service endpoint found for {}", did);
+        atproto_auth::resolve::resolve_handle(&self.http, handle).await
     }
 
     /// Create a session on the user's PDS (login with handle + app password).

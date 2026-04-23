@@ -11,6 +11,10 @@ use crate::config::Config;
 pub struct AppState {
     pub pool: PgPool,
     pub pijul: Arc<PijulStore>,
+    /// Root of the pijul repo store. Duplicated from `pijul` because
+    /// `PijulStore::base_path` is private and the consistency checker needs
+    /// to enumerate the directory directly (pg rows ↔ on-disk dirs diff).
+    pub pijul_store_path: std::path::PathBuf,
     pub blob_cache_path: std::path::PathBuf,
     pub data_dir: std::path::PathBuf,
     pub at_client: AtClient,
@@ -80,6 +84,7 @@ impl AppState {
         Ok(Self {
             pool,
             pijul,
+            pijul_store_path: pijul_path.clone(),
             blob_cache_path,
             data_dir,
             at_client,
@@ -123,35 +128,16 @@ struct PgSeriesResolver {
 #[async_trait::async_trait]
 impl PadProjectResolver for PgSeriesResolver {
     async fn resolve_node_id(&self, series_id: &str) -> Result<String, PadError> {
-        let row: Option<Option<String>> = sqlx::query_scalar("SELECT pijul_node_id FROM series WHERE id = $1")
-            .bind(series_id)
-            .fetch_optional(&self.pool)
+        fx_core::services::series_service::get_pijul_node_id(&self.pool, series_id)
             .await
-            .map_err(|e| PadError::Internal(e.to_string()))?;
-        row.flatten()
+            .map_err(|e| PadError::Internal(e.to_string()))?
             .ok_or(PadError::NotFound("series not found or no pijul repo".into()))
     }
 
     async fn get_knot_url(&self, series_id: &str) -> Option<String> {
         // Look up the series author's knot_url from user_settings
-        let author_did: Option<String> = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
-            .bind(series_id)
-            .fetch_optional(&self.pool)
-            .await
-            .ok()
-            .flatten();
-        if let Some(did) = author_did {
-            sqlx::query_scalar::<_, Option<String>>("SELECT knot_url FROM user_settings WHERE did = $1")
-                .bind(&did)
-                .fetch_optional(&self.pool)
-                .await
-                .ok()
-                .flatten()
-                .flatten()
-                .filter(|u| !u.is_empty())
-        } else {
-            None
-        }
+        let author_did = fx_core::services::series_service::get_series_owner(&self.pool, series_id).await.ok()?;
+        fx_core::services::article_service::get_user_knot_url(&self.pool, &author_did).await
     }
 
     async fn get_owner_did(&self, series_id: &str) -> Result<String, PadError> {

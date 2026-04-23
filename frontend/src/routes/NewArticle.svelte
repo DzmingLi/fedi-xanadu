@@ -41,7 +41,11 @@
   let restricted = $state(false);
   let translationOf = $state('');
   let commitMessage = $state('');
+  // Props seed the initial value only; after mount the user may edit freely,
+  // so we intentionally don't wrap these in $derived.
+  // svelte-ignore state_referenced_locally
   let category = $state(initialCategory || 'general');
+  // svelte-ignore state_referenced_locally
   let bookId = $state(initialBookId || '');
   let editionId = $state('');
   let bookEditions = $state<BookEdition[]>([]);
@@ -734,7 +738,6 @@
       {#if versionPanelOpen}
         <aside class="version-panel">
           <VersionPanel
-            {currentDiffLines}
             versions={versionHistory}
             {loadingHistory}
             {recording}
@@ -817,12 +820,14 @@
       {#if sidebarOpen}
         <aside class="settings-sidebar">
           <div class="sb-field" style="padding: 8px 12px; border-bottom: 1px solid var(--border);">
-            <label>{t('newArticle.formatLabel')}</label>
-            <select value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
-              <option value="markdown">Markdown</option>
-              <option value="typst">Typst</option>
-              {#if contentFormat === 'html'}<option value="html">HTML (只读)</option>{/if}
-            </select>
+            <label>
+              {t('newArticle.formatLabel')}
+              <select value={contentFormat} onchange={(e) => handleFormatChange((e.target as HTMLSelectElement).value as ContentFormat)} disabled={converting}>
+                <option value="markdown">Markdown</option>
+                <option value="typst">Typst</option>
+                {#if contentFormat === 'html'}<option value="html">HTML (只读)</option>{/if}
+              </select>
+            </label>
             {#if converting}<span class="converting-hint">{t('newArticle.converting')}</span>{/if}
           </div>
           <div class="sb-uploads">
@@ -838,15 +843,17 @@
           <details open>
             <summary>{t('editor.basicInfo')}</summary>
             <div class="sb-field">
-              <label>{t('newArticle.langLabel')}</label>
-              <select bind:value={lang}>
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-                <option value="ja">日本語</option>
-                <option value="ko">한국어</option>
-                <option value="fr">Français</option>
-                <option value="de">Deutsch</option>
-              </select>
+              <label>
+                {t('newArticle.langLabel')}
+                <select bind:value={lang}>
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                  <option value="ja">日本語</option>
+                  <option value="ko">한국어</option>
+                  <option value="fr">Français</option>
+                  <option value="de">Deutsch</option>
+                </select>
+              </label>
             </div>
             <div class="sb-field">
               <label class="check-label">
@@ -856,29 +863,33 @@
             </div>
             {#if !restricted}
             <div class="sb-field">
-              <label>{t('newArticle.licenseLabel')}</label>
-              <select bind:value={license}>
-                <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
-                <option value="CC-BY-NC-SA-4.0">CC BY-NC-SA 4.0</option>
-                <option value="CC-BY-4.0">CC BY 4.0</option>
-                <option value="CC-BY-NC-4.0">CC BY-NC 4.0</option>
-                <option value="CC-BY-NC-ND-4.0">CC BY-NC-ND 4.0</option>
-                <option value="CC0-1.0">CC0</option>
-                <option value="MIT">MIT</option>
-                <option value="Apache-2.0">Apache 2.0</option>
-                <option value="GFDL-1.3">GFDL 1.3</option>
-                <option value="All-Rights-Reserved">All Rights Reserved</option>
-              </select>
+              <label>
+                {t('newArticle.licenseLabel')}
+                <select bind:value={license}>
+                  <option value="CC-BY-SA-4.0">CC BY-SA 4.0</option>
+                  <option value="CC-BY-NC-SA-4.0">CC BY-NC-SA 4.0</option>
+                  <option value="CC-BY-4.0">CC BY 4.0</option>
+                  <option value="CC-BY-NC-4.0">CC BY-NC 4.0</option>
+                  <option value="CC-BY-NC-ND-4.0">CC BY-NC-ND 4.0</option>
+                  <option value="CC0-1.0">CC0</option>
+                  <option value="MIT">MIT</option>
+                  <option value="Apache-2.0">Apache 2.0</option>
+                  <option value="GFDL-1.3">GFDL 1.3</option>
+                  <option value="All-Rights-Reserved">All Rights Reserved</option>
+                </select>
+              </label>
             </div>
             {/if}
             <div class="sb-field">
-              <label>{t('newArticle.categoryLabel')}</label>
-              <input
-                bind:value={category}
-                list="category-suggestions"
-                placeholder={t('category.general')}
-                class="category-input"
-              />
+              <label>
+                {t('newArticle.categoryLabel')}
+                <input
+                  bind:value={category}
+                  list="category-suggestions"
+                  placeholder={t('category.general')}
+                  class="category-input"
+                />
+              </label>
               <datalist id="category-suggestions">
                 <option value="general">{t('category.general')}</option>
                 <option value="lecture">{t('category.lecture')}</option>
@@ -888,13 +899,15 @@
             </div>
             {#if category === 'review' && bookEditions.length > 0}
               <div class="sb-field">
-                <label>{t('newArticle.editionLabel')}</label>
-                <select bind:value={editionId}>
-                  <option value="">{t('newArticle.noEdition')}</option>
-                  {#each bookEditions as ed}
-                    <option value={ed.id}>{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
-                  {/each}
-                </select>
+                <label>
+                  {t('newArticle.editionLabel')}
+                  <select bind:value={editionId}>
+                    <option value="">{t('newArticle.noEdition')}</option>
+                    {#each bookEditions as ed}
+                      <option value={ed.id}>{ed.title} ({ed.lang}{ed.year ? `, ${ed.year}` : ''})</option>
+                    {/each}
+                  </select>
+                </label>
               </div>
             {/if}
           </details>
@@ -1251,42 +1264,10 @@
     box-shadow: 2px 0 6px rgba(0,0,0,0.08);
   }
 
-  .editor-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-white);
-    flex-shrink: 0;
-  }
-  .toolbar-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px 6px;
-    border: none;
-    background: none;
-    border-radius: 3px;
-    cursor: pointer;
-    color: var(--text-hint);
-    transition: all 0.15s;
-  }
-  .toolbar-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
-  .toolbar-icon.active { color: var(--accent); background: rgba(95,155,101,0.1); }
-  .toolbar-select {
-    padding: 3px 8px;
-    font-size: 12px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: var(--bg-white);
-    color: var(--text-primary);
-  }
   .converting-hint {
     font-size: 11px;
     color: var(--accent);
   }
-  .toolbar-spacer { flex: 1; }
   .toolbar-btn {
     font-size: 12px;
     color: var(--accent);
@@ -1297,7 +1278,6 @@
     transition: all 0.15s;
   }
   .toolbar-btn:hover { background: rgba(95,155,101,0.08); }
-  .toolbar-btn.disabled { opacity: 0.5; pointer-events: none; }
 
   .editor-content {
     flex: 1;

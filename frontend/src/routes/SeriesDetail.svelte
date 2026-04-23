@@ -362,13 +362,6 @@
     margin-bottom: 8px;
   }
   .series-title-row h1 { margin: 0; }
-  .edit-link {
-    font-size: 13px;
-    color: var(--text-hint);
-    text-decoration: none;
-    flex-shrink: 0;
-  }
-  .edit-link:hover { color: var(--accent); }
   .series-long-desc {
     font-size: 15px;
     color: var(--text-secondary);
@@ -499,19 +492,6 @@
     cursor: not-allowed;
   }
 
-  /* Parent link */
-  .series-parent {
-    margin-top: 8px;
-    font-size: 13px;
-  }
-  .series-parent a {
-    color: var(--accent);
-    text-decoration: none;
-  }
-  .series-parent a:hover {
-    text-decoration: underline;
-  }
-
   /* Hierarchical TOC */
   .toc-chapters {
     display: flex;
@@ -534,66 +514,6 @@
     font-size: 13px;
     color: var(--text-hint);
     margin: 8px 0;
-  }
-
-  /* Tree view */
-  .tree-section {
-    margin-bottom: 8px;
-  }
-  .section-title {
-    font-family: var(--font-serif);
-    font-weight: 500;
-    font-size: 1.15rem;
-    margin: 20px 0 4px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--border);
-  }
-  .section-title a {
-    color: var(--text-primary);
-    text-decoration: none;
-  }
-  .section-title a:hover {
-    color: var(--accent);
-  }
-  .section-desc {
-    font-size: 14px;
-    color: var(--text-secondary);
-    margin: 0 0 8px;
-    line-height: 1.4;
-  }
-
-  /* Children list (flat view fallback) */
-  .children-list {
-    margin-top: 24px;
-  }
-  .children-list h2 {
-    font-family: var(--font-serif);
-    font-weight: 400;
-    margin: 0 0 12px;
-  }
-  .child-link {
-    display: block;
-    padding: 12px 16px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    text-decoration: none;
-    margin-bottom: 8px;
-    transition: border-color 0.15s;
-  }
-  .child-link:hover {
-    border-color: var(--accent);
-  }
-  .child-title {
-    font-family: var(--font-serif);
-    font-size: 1.05rem;
-    color: var(--text-primary);
-    display: block;
-  }
-  .child-desc {
-    font-size: 13px;
-    color: var(--text-secondary);
-    display: block;
-    margin-top: 4px;
   }
 
   /* Action bar */

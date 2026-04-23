@@ -33,4 +33,6 @@ pub mod ad_service;
 pub mod author_service;
 pub mod tag_hierarchy_service;
 pub mod authorship_service;
+pub mod consistency_service;
 pub mod publication_service;
+pub mod search_service;

@@ -51,9 +51,16 @@ pub struct Article {
     pub course_session_id: Option<String>,
     pub answer_count: i32,
     pub restricted: bool,
+    // SQL aggregates are i64 on the Rust side but fit in JS `number` — pin
+    // them so ts-rs doesn't emit `bigint` (which breaks every consumer that
+    // does arithmetic on these counts).
+    #[ts(type = "number")]
     pub vote_score: i64,
+    #[ts(type = "number")]
     pub bookmark_count: i64,
+    #[ts(type = "number")]
     pub comment_count: i64,
+    #[ts(type = "number")]
     pub fork_count: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

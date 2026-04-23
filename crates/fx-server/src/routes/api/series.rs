@@ -11,7 +11,6 @@ use fx_core::validation;
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
 use crate::auth::{WriteAuth, pds_create_record};
-use crate::routes::api::articles::pijul_repo_url;
 use fx_core::util::{tid, now_rfc3339};
 use super::UriQuery;
 
@@ -151,7 +150,7 @@ pub async fn create_series(
     // Publish the series record to PDS (rkey = series id). pijulRepoUrl is
     // the authoritative source; external AppViews clone it to read chapters.
     if let Some(ref node) = pijul_node_id {
-        if let Some(repo_url) = pijul_repo_url(&state, &user.did, node).await {
+        if let Some(repo_url) = fx_core::services::article_service::pijul_repo_url(&state.pool, &user.did, node, &state.default_knot_url).await {
             let mut record = serde_json::json!({
                 "$type": fx_atproto::lexicon::SERIES,
                 "seriesId": id,
@@ -345,11 +344,7 @@ pub async fn serve_file(
     use axum::body::Body;
 
     // Look up pijul_node_id for this series
-    let node_id: Option<String> = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1 AND pijul_node_id IS NOT NULL"
-    ).bind(&id).fetch_optional(&state.pool).await.ok().flatten();
-
-    let Some(node_id) = node_id else {
+    let Ok(Some(node_id)) = series_service::get_pijul_node_id(&state.pool, &id).await else {
         return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
     };
 
@@ -403,19 +398,7 @@ pub async fn upload_resource(
     let owner = series_service::get_series_owner(&state.pool, &id).await?;
     require_owner(Some(&owner), &user.did)?;
 
-    let pijul_node_id: Option<String> = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1",
-    )
-    .bind(&id)
-    .fetch_optional(&state.pool)
-    .await?
-    .flatten();
-
-    let Some(node_id) = pijul_node_id else {
-        return Err(AppError(fx_core::Error::BadRequest(
-            "Series does not have a pijul repo. Only root series support resources.".into(),
-        )));
-    };
+    let node_id = series_service::require_pijul_node_id(&state.pool, &id).await?;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         AppError(fx_core::Error::BadRequest(format!("multipart error: {e}")))
@@ -453,13 +436,7 @@ pub async fn list_resources(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<ResourceInfo>>> {
-    let pijul_node_id: Option<String> = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1",
-    )
-    .bind(&id)
-    .fetch_optional(&state.pool)
-    .await?
-    .flatten();
+    let pijul_node_id = series_service::get_pijul_node_id(&state.pool, &id).await?;
 
     let Some(node_id) = pijul_node_id else {
         return Ok(Json(vec![]));
@@ -506,13 +483,7 @@ pub async fn fork_series(
     let fork_node_id = format!("series_{fork_id}");
 
     // Fork pijul repo if original has one
-    let original_pijul: Option<String> = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1",
-    )
-    .bind(&id)
-    .fetch_optional(&state.pool)
-    .await?
-    .flatten();
+    let original_pijul = series_service::get_pijul_node_id(&state.pool, &id).await?;
 
     if let Some(ref source_node) = original_pijul {
         state.pijul.fork_series(source_node, &fork_node_id)
@@ -566,13 +537,7 @@ pub async fn compile_series(
     let series = series_service::get_series_detail(&state.pool, &series_id).await?;
     let split_level = series.series.split_level as u32;
 
-    let pijul_node_id: Option<String> = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1",
-    )
-    .bind(&series_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .flatten();
+    let pijul_node_id = series_service::get_pijul_node_id(&state.pool, &series_id).await?;
 
     // Sync series meta.yaml → DB if it exists
     if let Some(ref node) = pijul_node_id {
@@ -905,13 +870,7 @@ async fn sync_typst_chapter_metadata(
 
         // Resolve the chapter's author so ensure_tag can stamp created_by
         // on any brand-new label rows.
-        let chapter_did: String = sqlx::query_scalar::<_, String>("SELECT did FROM articles WHERE at_uri = $1")
-            .bind(uri)
-            .fetch_optional(&state.pool)
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or_default();
+        let chapter_did = article_service::get_article_owner(&state.pool, uri).await.unwrap_or_default();
 
         if let Some(value) = meta.chapter_metadata.get(i) {
             // teaches: array of tag references (tag_id, label id, or new
@@ -1047,13 +1006,7 @@ pub async fn invite_collaborator(
     let short_did = user_did.chars().rev().take(8).collect::<String>().chars().rev().collect::<String>();
     let channel_name = format!("collab_{short_did}");
 
-    let node_id: Option<String> = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1",
-    )
-    .bind(&id)
-    .fetch_optional(&state.pool)
-    .await?
-    .flatten();
+    let node_id = series_service::get_pijul_node_id(&state.pool, &id).await?;
 
     if let Some(ref node) = node_id {
         state.pijul.create_channel(node, &channel_name, None)
@@ -1082,13 +1035,7 @@ pub async fn remove_collaborator(
     }
 
     if let Some(c) = collab {
-        let node_id: Option<String> = sqlx::query_scalar(
-            "SELECT pijul_node_id FROM series WHERE id = $1",
-        )
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .flatten();
+        let node_id = series_service::get_pijul_node_id(&state.pool, &id).await?;
 
         if let Some(ref node) = node_id {
             let _ = state.pijul.delete_channel(node, &c.channel_name);

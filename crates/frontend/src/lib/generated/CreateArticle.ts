@@ -5,6 +5,18 @@ import type { ContentFormat } from "./ContentFormat";
 
 export type CreateArticle = { title: string, summary: string | null, content: string, content_format: ContentFormat, lang: string | null, license: string | null, translation_of: string | null, restricted: boolean | null, category: string | null, tags: Array<string>, prereqs: Array<ArticlePrereq>, 
 /**
+ * Tag ids for concepts the article touches but does not teach.
+ * Mirrors `teaches` but carries no skill-mastery weight.
+ */
+related: Array<string>, 
+/**
+ * Explicit field/domain tags ("topics") — distinct from the
+ * auto-derived ancestors of `teaches`. Questions especially need
+ * this: a question that doesn't teach anything still belongs in a
+ * field and should surface in that field's feed.
+ */
+topics: Array<string>, 
+/**
  * If set, the article belongs to this series and its source is stored in the series repo.
  */
 series_id: string | null, 
@@ -19,4 +31,16 @@ invites: Array<string>,
 /**
  * Category-specific metadata.
  */
-metadata: CategoryMetadata | null, };
+metadata: CategoryMetadata | null, 
+/**
+ * Chapter scope for questions or general articles that reference a book
+ * chapter. Notes carry this inside `CategoryMetadata::Note`; reviews
+ * leave it NULL (reviews are always whole-book).
+ */
+book_chapter_id: string | null, 
+/**
+ * Lecture scope for questions or general articles that reference a
+ * course session. See `book_chapter_id` for the analogous note/review
+ * policy.
+ */
+course_session_id: string | null, };

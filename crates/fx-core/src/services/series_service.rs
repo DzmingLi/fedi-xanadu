@@ -51,7 +51,9 @@ pub struct SeriesListRow {
     pub category: String,
     pub split_level: i32,
     pub is_published: bool,
+    #[ts(type = "number")]
     pub vote_score: i64,
+    #[ts(type = "number")]
     pub bookmark_count: i64,
     #[sqlx(default)]
     pub cover_url: Option<String>,
@@ -105,6 +107,7 @@ pub struct SeriesArticleMemberRow {
 pub struct SeriesContextItem {
     pub series_id: String,
     pub series_title: String,
+    #[ts(type = "number")]
     pub total: i64,
     pub prev: Vec<SeriesNavItem>,
     pub next: Vec<SeriesNavItem>,
@@ -466,6 +469,30 @@ pub async fn get_series_owner(pool: &PgPool, series_id: &str) -> crate::Result<S
         id: series_id.to_string(),
     })?;
     Ok(owner)
+}
+
+/// Resolve the pijul node id backing a series (the on-disk repo name).
+/// Returns None if the row doesn't exist or the column is NULL
+/// (leaf/branch series without their own repo).
+pub async fn get_pijul_node_id(pool: &PgPool, series_id: &str) -> crate::Result<Option<String>> {
+    let v: Option<Option<String>> = sqlx::query_scalar(
+        "SELECT pijul_node_id FROM series WHERE id = $1",
+    )
+    .bind(series_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(v.flatten())
+}
+
+/// Require that a series has a pijul repo; errors with BadRequest otherwise.
+/// Use this for endpoints that manipulate repo contents (resources, upload,
+/// etc.) where operating on a repo-less series makes no sense.
+pub async fn require_pijul_node_id(pool: &PgPool, series_id: &str) -> crate::Result<String> {
+    get_pijul_node_id(pool, series_id).await?.ok_or_else(|| {
+        crate::Error::BadRequest(format!(
+            "series {series_id} has no pijul repo"
+        ))
+    })
 }
 
 pub async fn all_series_articles(pool: &PgPool, limit: i64) -> crate::Result<Vec<SeriesArticleMemberRow>> {

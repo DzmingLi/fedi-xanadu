@@ -255,7 +255,6 @@
       <!-- Left: Version panel -->
       <aside class="version-panel">
         <VersionPanel
-          {currentDiffLines}
           {versions}
           {loadingHistory}
           {recording}

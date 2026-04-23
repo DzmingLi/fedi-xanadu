@@ -122,7 +122,7 @@
       }
       // Set bookmarked state from server response
       if (data.is_bookmarked) {
-        bookmarks = [{ article_uri: uri, folder_path: '/', created_at: '', title: '', description: '' }];
+        bookmarks = [{ article_uri: uri, folder_path: '/', created_at: '', title: '', summary: '', kind: 'article', question_uri: null }];
       } else {
         bookmarks = bookmarks.filter(b => b.article_uri !== uri);
       }
@@ -505,7 +505,7 @@ try {
               <ul>
                 {#each tocItems as item}
                   <li class="toc-{item.level}" class:active={activeId === item.id}>
-                    <a href="javascript:void(0)" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
+                    <a href="#{item.id}" onclick={(e: MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{item.text}</a>
                   </li>
                 {/each}
               </ul>

@@ -30,7 +30,8 @@
   {:else}
     <div class="series-grid">
       {#each series as s}
-        <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="series-card" onclick={() => navigate(`/book-series-detail?id=${encodeURIComponent(s.id)}`)}>
           <div class="card-cover">
             {#if s.cover_url}

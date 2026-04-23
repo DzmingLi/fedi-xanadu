@@ -7,7 +7,7 @@
   import PostCard from '../lib/components/PostCard.svelte';
   import ShortReviewComposer from '../lib/components/ShortReviewComposer.svelte';
   import ShortReviewCard from '../lib/components/ShortReviewCard.svelte';
-  import type { BookDetail, BookEdition, BookChapter, ChapterPrereqEntry, BookShortReview } from '../lib/types';
+  import type { BookDetail, BookEdition, BookChapter, ChapterPrereqEntry, BookShortReview, Tag } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
@@ -251,14 +251,14 @@
   let editBookPrereqs = $state<{ tag_id: string; prereq_type: 'required' | 'recommended' }[]>([]);
   let editBookTopics = $state<string[]>([]);
   let editBookTagInput = $state('');
-  let editBookTagSuggestions = $state<{id:string,name:string}[]>([]);
+  let editBookTagSuggestions = $state<Tag[]>([]);
   let editBookPrereqInput = $state('');
-  let editBookPrereqSuggestions = $state<{id:string,name:string}[]>([]);
+  let editBookPrereqSuggestions = $state<Tag[]>([]);
   let editBookTopicInput = $state('');
-  let editBookTopicSuggestions = $state<{id:string,name:string}[]>([]);
+  let editBookTopicSuggestions = $state<Tag[]>([]);
   let editBookRelated = $state<string[]>([]);
   let editBookRelatedInput = $state('');
-  let editBookRelatedSuggestions = $state<{id:string,name:string}[]>([]);
+  let editBookRelatedSuggestions = $state<Tag[]>([]);
 
   let editBookTagTimeout: ReturnType<typeof setTimeout>;
   $effect(() => {
@@ -617,9 +617,9 @@
   let editChapterTeaches = $state<string[]>([]);
   let editChapterPrereqs = $state<ChapterPrereqEntry[]>([]);
   let editChapterTagInput = $state('');
-  let editChapterTagSuggestions = $state<{id:string,name:string}[]>([]);
+  let editChapterTagSuggestions = $state<Tag[]>([]);
   let editChapterPrereqInput = $state('');
-  let editChapterPrereqSuggestions = $state<{id:string,name:string}[]>([]);
+  let editChapterPrereqSuggestions = $state<Tag[]>([]);
   let editChapterPrereqType = $state<'required'|'recommended'>('required');
 
   let editTagSearchTimeout: ReturnType<typeof setTimeout>;
@@ -753,7 +753,8 @@
             <div class="book-tag-row">
               <span class="book-tag-row-label">{t('books.seriesBadges')}</span>
               {#each detail.series_badges as badge}
-                <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <span class="tag-badge series-badge" onclick={() => navigate(`/book-series-detail?id=${encodeURIComponent(badge.id)}`)}>{loc(badge.title)} #{badge.position}</span>
               {/each}
             </div>
@@ -2078,10 +2079,6 @@
   }
   .report-dispute-btn:hover { color: #c33; border-color: #c33; }
 
-  /* Book tags */
-  .book-tags {
-    display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px;
-  }
   .book-tag-row {
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
     margin: 4px 0;
@@ -2127,7 +2124,6 @@
     border: 1px solid var(--border); border-radius: 6px;
     background: var(--bg-card, var(--bg));
   }
-  .chapter-form h4 { margin: 0 0 8px; font-size: 14px; }
   .chapter-input {
     width: 100%; padding: 6px 8px; margin-bottom: 8px;
     border: 1px solid var(--border); border-radius: 4px;
@@ -2395,16 +2391,4 @@
     background: none; border: none; cursor: pointer; color: inherit;
     font-size: 14px; padding: 0; line-height: 1;
   }
-  .tag-suggest {
-    display: inline-block;
-    margin: 2px 4px 0 0;
-    padding: 3px 8px;
-    font-size: 12px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-white);
-    cursor: pointer;
-    color: var(--text-primary);
-  }
-  .tag-suggest:hover { background: var(--bg-hover); }
 </style>

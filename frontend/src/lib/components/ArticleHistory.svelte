@@ -110,10 +110,15 @@
       <p class="history-empty">{t('history.empty')}</p>
     {:else}
       {#each [...versions].reverse() as v}
-        <button
+        <!-- Nested buttons (unrecord / apply) aren't valid HTML, so the row
+             itself is a div with a button role instead of a <button> element. -->
+        <div
           class="version-row"
           class:selected={selectedVersion?.id === v.id}
+          role="button"
+          tabindex="0"
           onclick={() => selectVersion(v)}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectVersion(v); } }}
         >
           <div class="version-meta">
             <span class="version-msg">{v.message}</span>
@@ -140,7 +145,7 @@
               {applying === v.change_hash ? '…' : t('history.apply')}
             </button>
           {/if}
-        </button>
+        </div>
       {/each}
     {/if}
   </div>

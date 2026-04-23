@@ -19,6 +19,8 @@ export default {
   'common.prev': 'Zurück',
   'common.next': 'Weiter',
   'common.noResults': 'Keine Ergebnisse',
+  'api.rateLimited': 'Zu viele Anfragen, bitte später erneut versuchen',
+  'qa.permalink': 'Permalink',
   'common.upvote': 'Dafür',
   'common.downvote': 'Dagegen',
   'common.reply': 'Antworten',

@@ -212,7 +212,8 @@
       <h2>{t('bookSeries.members')} ({detail.members.length})</h2>
       <div class="member-grid">
         {#each detail.members as book}
-          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="member-card" onclick={() => navigate(`/book?id=${encodeURIComponent(book.id)}`)}>
             <div class="member-cover">
               {#if book.cover_url}

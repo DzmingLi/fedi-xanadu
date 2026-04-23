@@ -354,7 +354,6 @@ $$</code></pre>
   .guide a { color: var(--accent); }
   .required { color: #c33; }
   .recommended { color: #b8860b; }
-  .suggested { color: var(--accent); }
   .do-dont {
     display: grid;
     grid-template-columns: 1fr 1fr;

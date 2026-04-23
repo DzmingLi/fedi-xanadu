@@ -321,33 +321,8 @@ impl FromRequestParts<AppState> for AdminAuth {
     }
 }
 
-/// Newtype for pijul-knot PadUser trait (orphan rules).
-pub struct PadAuthUser(pub AuthUser);
-
-impl pijul_knot::PadUser for PadAuthUser {
-    fn did(&self) -> &str {
-        &self.0.did
-    }
-}
-
-pub struct PadAuthRejection;
-
-impl axum::response::IntoResponse for PadAuthRejection {
-    fn into_response(self) -> axum::response::Response {
-        crate::error::AppError(fx_core::Error::Unauthorized).into_response()
-    }
-}
-
-impl axum::extract::FromRequestParts<AppState> for PadAuthUser {
-    type Rejection = PadAuthRejection;
-
-    async fn from_request_parts(parts: &mut axum::http::request::Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        match extract_auth_user(&state.pool, &parts.headers).await {
-            Some(user) => Ok(PadAuthUser(user)),
-            None => Err(PadAuthRejection),
-        }
-    }
-}
+// `pijul_knot::PadUser` is implemented directly for `atproto_auth::AuthUser`
+// inside pijul-knot (blanket impl), so no newtype wrapper is needed here.
 
 #[cfg(test)]
 mod tests {

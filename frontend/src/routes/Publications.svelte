@@ -184,7 +184,7 @@
   .pub-title { margin: 0 0 6px; font-size: 1rem; font-weight: 600; }
   .pub-desc {
     margin: 0 0 8px; font-size: 13px; color: var(--text-secondary);
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
   .pub-meta {
     display: flex; gap: 12px; font-size: 12px; color: var(--text-hint);

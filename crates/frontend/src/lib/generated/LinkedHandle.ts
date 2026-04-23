@@ -2,7 +2,7 @@
 
 /**
  * A hyperlink whose displayed text and destination URL differ, used where
- * platforms (bilibili, tangled) don't have a canonical `domain/{username}`
- * URL pattern.
+ * a platform (bilibili) doesn't have a canonical `domain/{username}` URL
+ * pattern.
  */
 export type LinkedHandle = { url: string, username: string, };

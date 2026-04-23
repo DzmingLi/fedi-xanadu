@@ -13,7 +13,7 @@ use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
 use crate::auth::{Auth, WriteAuth, pds_create_record, pds_delete_record};
 use fx_core::util::{tid, content_hash, uri_to_node_id, now_rfc3339};
-use super::articles::get_user_knot_url;
+use fx_core::services::article_service::get_user_knot_url;
 
 pub async fn list_drafts(
     State(state): State<AppState>,

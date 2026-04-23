@@ -5,11 +5,12 @@ import type {
   SkillTree, SkillTreeDetail, SkillTreeEdge, SkillTreePrereq, UserTagPrereq, FrontierSkill, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
   BlockedUser, Report, Book, BookDetail, BookEdition, BookChapter, ChapterPrereqEntry,
-  ArticleVersion, ArticleVersionInfo, ArticleVersionFull, VersionDiff,
+  ArticleVersionInfo, ArticleVersionFull, VersionDiff,
   BookShortReview, SeriesShortReview, BookSeriesListItem, BookSeriesDetail,
   PrereqType,
 } from './types';
 import { getToken, setAuth } from './auth.svelte';
+import { t } from './i18n/index.svelte';
 
 const BASE = '/api';
 
@@ -28,7 +29,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: authHeaders(), credentials: 'same-origin', signal });
   if (!res.ok) {
     handleUnauthorized(res.status);
-    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
+    if (res.status === 429) throw new Error(t('api.rateLimited'));
     throw new Error(`${res.status} ${res.statusText}`);
   }
   return res.json();
@@ -44,7 +45,7 @@ async function post<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
   });
   if (!res.ok) {
     handleUnauthorized(res.status);
-    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
+    if (res.status === 429) throw new Error(t('api.rateLimited'));
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
   }
@@ -62,7 +63,7 @@ async function put<T>(path: string, body?: unknown, signal?: AbortSignal): Promi
   });
   if (!res.ok) {
     handleUnauthorized(res.status);
-    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
+    if (res.status === 429) throw new Error(t('api.rateLimited'));
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
   }
@@ -80,7 +81,7 @@ async function del<T>(path: string, body?: unknown, signal?: AbortSignal): Promi
   });
   if (!res.ok) {
     handleUnauthorized(res.status);
-    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
+    if (res.status === 429) throw new Error(t('api.rateLimited'));
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
   }
@@ -264,8 +265,16 @@ export const removeSeriesCover = (id: string) =>
 // Series
 export const listSeries = () => get<Series[]>('/series');
 export const getSeries = (id: string) => get<SeriesDetail>(`/series/${encodeURIComponent(id)}`);
-export const createSeries = (data: { title: string; summary?: string; long_description?: string; topics?: string[]; category?: string }) =>
-  post<Series>('/series', data);
+export const createSeries = (data: {
+  title: string;
+  summary?: string;
+  long_description?: string;
+  topics?: string[];
+  category?: string;
+  lang?: string;
+  translation_of?: string;
+  format?: string;
+}) => post<Series>('/series', data);
 export const addSeriesArticle = (series_id: string, article_uri: string) =>
   post<void>(`/series/${encodeURIComponent(series_id)}/articles`, { article_uri });
 export const removeSeriesArticle = (series_id: string, article_uri: string) =>
@@ -410,7 +419,11 @@ export const getActiveTree = () => get<SkillTreeDetail | null>('/skill-trees/act
 /** Create a new concept. `name` is the initial display string; the
  * server mints a tag_id and a `tag_names` row. `lang` is autodetected
  * from the name (CJK → zh, else en) unless provided. */
-export const createTagInline = (name: string) => post<Tag>('/tags', { name });
+// Callers sometimes pass `(tagId, displayName)` — the server only takes a
+// `name`, but we accept the optional second arg so call sites that want to
+// override the display string compile cleanly.
+export const createTagInline = (idOrName: string, displayName?: string) =>
+  post<Tag>('/tags', { name: displayName ?? idOrName });
 
 // Follows
 export interface FollowedUser {
@@ -475,7 +488,7 @@ export async function uploadImage(articleUri: string, file: File): Promise<{ fil
     body: form,
   });
   if (!res.ok) {
-    if (res.status === 429) throw new Error('请求过于频繁，请稍后再试');
+    if (res.status === 429) throw new Error(t('api.rateLimited'));
     const text = await res.text();
     throw new Error(text || `${res.status} ${res.statusText}`);
   }
@@ -650,9 +663,13 @@ export const searchAuthors = (q: string, limit = 20) => get<any[]>(`/authors/sea
 export const setAuthorNames = (
   id: string,
   original_names: Record<string, string>,
+  official_translations: Record<string, string>,
   translations: Record<string, string>,
 ) =>
-  put<any>(`/authors/${encodeURIComponent(id)}/names`, { original_names, translations });
+  put<any>(
+    `/authors/${encodeURIComponent(id)}/names`,
+    { original_names, official_translations, translations },
+  );
 
 // Tag name management
 export const listTagGroup = (tagId: string) =>

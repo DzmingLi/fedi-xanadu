@@ -37,7 +37,7 @@
     try {
       const series = await createSeries({
         title,
-        description: description || undefined,
+        summary: description || undefined,
         topics: selectedTagId ? [selectedTagId] : undefined,
         category,
         lang,

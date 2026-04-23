@@ -6,7 +6,7 @@ use axum::{
 use fx_core::content::ContentKind;
 use fx_core::models::{Article, CreateArticle};
 use fx_core::region::default_visibility;
-use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service};
+use fx_core::services::{appeal_service, article_service, consistency_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -866,17 +866,7 @@ pub async fn admin_batch_publish(
     let lang = input.lang.as_deref().unwrap_or("en");
 
     // Get series pijul node
-    let pijul_node_id: Option<String> = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1",
-    )
-    .bind(&input.series_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .flatten();
-
-    let node_id = pijul_node_id.ok_or_else(|| {
-        AppError(fx_core::Error::BadRequest("Series has no pijul repo".into()))
-    })?;
+    let node_id = series_service::require_pijul_node_id(&state.pool, &input.series_id).await?;
 
     // Ensure pijul repo exists (may have been deleted)
     if let Err(e) = state.pijul.init_series_repo(&node_id) {
@@ -1052,14 +1042,7 @@ pub async fn admin_rebuild_series_index(
     Path(series_id): Path<String>,
     _admin: AdminAuth,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let pijul_node_id: String = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1",
-    )
-    .bind(&series_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .flatten()
-    .ok_or_else(|| AppError(fx_core::Error::BadRequest("series has no pijul repo".into())))?;
+    let pijul_node_id = series_service::require_pijul_node_id(&state.pool, &series_id).await?;
 
     let series_repo = state.pijul.series_repo_path(&pijul_node_id);
     let meta = fx_core::meta::read_series_meta(&series_repo)
@@ -1290,5 +1273,17 @@ async fn write_series_meta_from_db(
     if let Err(e) = fx_core::meta::write_series_meta(series_repo, &meta) {
         tracing::warn!("failed to write meta.yaml for {series_id}: {e}");
     }
+}
+
+/// GET /api/admin/consistency/pijul — report mismatches between the
+/// `articles` / `series` tables and the on-disk pijul repo store. Read-only;
+/// call this before any cleanup script, and inspect the orphan list by hand
+/// before deleting anything.
+pub async fn check_pijul_consistency(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+) -> ApiResult<Json<consistency_service::ConsistencyReport>> {
+    let report = consistency_service::check_pijul(&state.pool, &state.pijul_store_path).await?;
+    Ok(Json(report))
 }
 

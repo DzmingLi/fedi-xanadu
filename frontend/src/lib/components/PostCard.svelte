@@ -213,7 +213,15 @@
       {:else if article.kind === 'answer'}
         <span class="answer-badge">{t('qa.answerBadge')}</span>
       {:else if article.category === 'review' && article.book_id}
-        <a href="/book?id={encodeURIComponent(article.book_id)}" class="review-badge" onclick={(e) => e.stopPropagation()}>{t('article.reviewBadge')}</a>
+        <!-- Can't be an <a> because the outer card is already an <a>; use a
+             span with button semantics and navigate manually. -->
+        <span
+          class="review-badge"
+          role="button"
+          tabindex="0"
+          onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/book?id=${encodeURIComponent(article.book_id!)}`; }}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); window.location.href = `/book?id=${encodeURIComponent(article.book_id!)}`; } }}
+        >{t('article.reviewBadge')}</span>
       {/if}
       <span class="post-title">{article.title}</span>
       {#if article.category === 'paper' && article.paper_accepted && article.paper_venue}
@@ -244,7 +252,13 @@
 
     <div class="card-bottom">
       <span class="post-meta">
-        <span class="author-link" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(article.did)}`; }}>
+        <span
+          class="author-link"
+          role="link"
+          tabindex="0"
+          onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(article.did)}`; }}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(article.did)}`; } }}
+        >
           {#if article.author_avatar}
             <img src={article.author_avatar} alt="" class="post-avatar" />
           {:else}
@@ -353,7 +367,13 @@
 
     <div class="card-bottom">
       <span class="post-meta">
-        <span class="author-link" role="link" tabindex="0" onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(series.created_by)}`; }}>
+        <span
+          class="author-link"
+          role="link"
+          tabindex="0"
+          onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(series.created_by)}`; }}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile?did=${encodeURIComponent(series.created_by)}`; } }}
+        >
           {#if series.author_avatar}
             <img src={series.author_avatar} alt="" class="post-avatar" />
           {:else}
@@ -721,8 +741,6 @@
     font-size: 13px;
     color: var(--text-hint);
   }
-  .expanded-meta a { color: var(--text-secondary); text-decoration: none; }
-  .expanded-meta a:hover { color: var(--accent); }
   .collapse-btn {
     margin-left: auto;
     background: none;

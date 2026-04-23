@@ -3,9 +3,9 @@ members = [
     "crates/fx-server",
     "crates/fx-core",
     "crates/fx-atproto",
-    "crates/fx-search",
     "crates/nightboat-cli",
     "crates/fx-client",
+    "crates/xtask",
 ]
 resolver = "3"
 
@@ -19,7 +19,6 @@ repository = "https://github.com/DzmingLi/nightboat"
 fx-core = { path = "crates/fx-core" }
 pijul-knot = { git = "https://github.com/DzmingLi/pijul-knot.git" }
 fx-atproto = { path = "crates/fx-atproto" }
-fx-search = { path = "crates/fx-search" }
 fx-renderer = { git = "https://github.com/DzmingLi/typst-render.git" }
 fx-client = { path = "crates/fx-client" }
 
@@ -76,3 +75,14 @@ figment = { version = "0.10", features = ["toml", "env"] }
 atproto-auth = { git = "https://github.com/DzmingLi/atproto-auth.git" }
 atproto-oauth = "0.14"
 atproto-identity = "0.14"
+
+# Local patch for atproto-auth during the identity-resolution unification.
+# Remove once the new `resolve` module is pushed to the github remote.
+[patch."https://github.com/DzmingLi/atproto-auth.git"]
+atproto-auth = { path = "../atproto-auth" }
+
+[patch."https://github.com/DzmingLi/typst-render.git"]
+fx-renderer = { path = "../fx-renderer" }
+
+[patch."https://github.com/DzmingLi/pijul-knot.git"]
+pijul-knot = { path = "../pijul-knot" }

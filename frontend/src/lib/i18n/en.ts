@@ -19,6 +19,8 @@ export default {
   'common.prev': 'Prev',
   'common.next': 'Next',
   'common.noResults': 'No results',
+  'api.rateLimited': 'Too many requests, please try again later',
+  'qa.permalink': 'Permalink',
   'common.upvote': 'Upvote',
   'common.downvote': 'Downvote',
   'common.reply': 'Reply',

@@ -74,7 +74,7 @@ pub async fn cast_vote(
     // Publish the new vote record (only for non-zero votes)
     if value != 0 {
         let (subject, section_ref) =
-            crate::routes::api::articles::resolve_subject_ref(&state.pool, &input.target_uri).await;
+            fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.target_uri, fx_atproto::lexicon::SERIES).await;
         let mut record = serde_json::json!({
             "$type": fx_atproto::lexicon::VOTE,
             "subject": subject,

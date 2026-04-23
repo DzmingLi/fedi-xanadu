@@ -6,8 +6,11 @@ use crate::Result;
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct VoteSummary {
     pub target_uri: String,
+    #[ts(type = "number")]
     pub score: i64,
+    #[ts(type = "number")]
     pub upvotes: i64,
+    #[ts(type = "number")]
     pub downvotes: i64,
 }
 

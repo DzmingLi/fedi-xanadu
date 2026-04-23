@@ -332,14 +332,6 @@
     font-size: 12px;
     color: var(--text-hint, #999);
   }
-  .kb-hint kbd {
-    font-family: var(--font-mono, monospace);
-    font-size: 11px;
-    background: var(--bg-hover, #f5f5f5);
-    border: 1px solid var(--border, #e5e5e5);
-    border-radius: 2px;
-    padding: 0 4px;
-  }
   .kb-settings-btn {
     font-size: 13px;
     padding: 4px 14px;

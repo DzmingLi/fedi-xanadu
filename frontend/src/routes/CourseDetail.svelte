@@ -161,7 +161,7 @@
   let colCount = $derived(2 + (hasMaterials ? 1 : 0) + (hasSupplementary ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0) + (hasDiscussion ? 1 : 0) + (isOwner ? 1 : 0));
 
   // Helper to get resources by type
-  function getResources(session: import('./lib/types').CourseSession, type: string) {
+  function getResources(session: import('../lib/types').CourseSession, type: string) {
     return session.resources.filter(r => r.type === type);
   }
 
@@ -526,7 +526,7 @@
       </div>
 
       <div class="body-side">
-        {#snippet bookCard(tb: (typeof detail.textbooks)[number])}
+        {#snippet bookCard(tb: NonNullable<typeof detail>['textbooks'][number])}
           <a href="/book?id={encodeURIComponent(tb.book_id)}" class="textbook-card">
             {#if tb.cover_url}
               <img src={tb.cover_url} alt="" class="textbook-cover" />
@@ -754,15 +754,6 @@
   .source-link:hover { color: var(--accent); }
   .attribution { font-size: 12px; color: var(--text-hint); font-style: italic; margin: 4px 0; }
 
-  .staff-list { margin-bottom: 16px; }
-  .staff-list h3 { font-family: var(--font-serif); font-weight: 400; font-size: 0.95rem; margin: 0 0 8px; color: var(--text-secondary); }
-  .staff-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; text-decoration: none; color: inherit; }
-  .staff-item:hover { opacity: 0.8; text-decoration: none; }
-  .staff-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-  .staff-avatar.placeholder { display: flex; align-items: center; justify-content: center; background: var(--accent); color: white; font-size: 14px; }
-  .staff-info { display: flex; flex-direction: column; }
-  .staff-name { font-size: 13px; color: var(--text-primary); }
-  .staff-role { font-size: 11px; color: var(--text-hint); text-transform: capitalize; }
   .edit-btn { font-size: 13px; padding: 5px 14px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-secondary); text-decoration: none; display: inline-block; margin-bottom: 12px; }
   .edit-btn:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
   .course-meta-box { font-size: 12px; color: var(--text-hint); display: flex; flex-direction: column; gap: 4px; }
@@ -781,9 +772,7 @@
   .session-exam { background: var(--bg-hover, rgba(0,0,0,0.02)); }
   .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
   .session-topic { color: var(--text-primary); width: 40%; }
-  .session-readings { color: var(--text-hint); font-size: 13px; white-space: nowrap; width: 18%; }
   .session-video { white-space: nowrap; }
-  .session-notes { white-space: nowrap; }
   .session-hw { white-space: nowrap; }
   .session-materials { max-width: 260px; }
   .session-materials > * { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
@@ -796,18 +785,11 @@
   .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
   .res-link:hover { opacity: 0.8; text-decoration: none; }
   .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }
-  .res-notes { background: rgba(59,130,246,0.1); color: #3b82f6; }
   .res-hw { background: rgba(16,185,129,0.1); color: #059669; }
   .res-disc { background: rgba(168,85,247,0.1); color: #7c3aed; }
   .session-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .session-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(95,155,101,0.08); color: var(--accent); text-decoration: none; }
   .session-tag:hover { background: rgba(95,155,101,0.18); text-decoration: none; }
-  .res-reading { font-size: 11px; color: var(--text-hint); }
-  .series-link { display: block; padding: 12px 16px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 0 4px 4px 0; margin-bottom: 8px; text-decoration: none; color: inherit; transition: border-color 0.15s; }
-  .series-link:hover { border-color: var(--accent); text-decoration: none; }
-  .series-role { font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; display: block; margin-bottom: 2px; }
-  .series-title { font-family: var(--font-serif); font-size: 1.05rem; display: block; }
-  .series-desc { font-size: 13px; color: var(--text-secondary); display: block; margin-top: 4px; }
 
   .qa-summary { margin-bottom: 20px; }
   .qa-summary h3 { font-family: var(--font-serif); font-weight: 400; font-size: 0.95rem; margin: 0 0 8px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
@@ -818,7 +800,6 @@
   .qa-body { font-size: 12px; color: var(--text-primary); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .qa-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-hint); }
   .qa-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
-  .qa-replies { flex-shrink: 0; margin-left: 6px; }
   .qa-more { display: block; font-size: 12px; color: var(--accent); text-decoration: none; margin-top: 4px; }
   .qa-more:hover { text-decoration: underline; }
   .qa-ask-btn { display: inline-block; margin-top: 6px; padding: 4px 10px; font-size: 12px; background: var(--accent); color: white; border-radius: 3px; text-decoration: none; }
@@ -832,7 +813,6 @@
   .textbook-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .textbook-title { font-size: 13px; font-weight: 500; color: var(--text-primary); line-height: 1.3; }
   .textbook-authors { font-size: 12px; color: var(--text-secondary); }
-  .textbook-role { font-size: 11px; color: var(--text-hint); text-transform: capitalize; }
   .prereqs, .skill-trees { margin-bottom: 20px; }
   .prereqs h3, .skill-trees h3 { font-family: var(--font-serif); font-weight: 400; font-size: 0.95rem; margin: 0 0 8px; color: var(--text-secondary); }
   .prereq-link, .tree-link { display: block; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 6px; text-decoration: none; color: var(--text-primary); font-size: 13px; transition: border-color 0.15s; }

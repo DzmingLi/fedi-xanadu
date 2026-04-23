@@ -321,7 +321,7 @@ fn series_routes() -> Router<AppState> {
         .route("/series/{id}/resource", post(series::upload_resource))
         .route("/series/{id}/resources", get(series::list_resources))
         // Pijul file/channel/history routes from shared pad_router
-        .nest("/series/{id}", pijul_knot::pad_router::<AppState, crate::auth::PadAuthUser>())
+        .nest("/series/{id}", pijul_knot::pad_router::<AppState, atproto_auth::AuthUser>())
         .route("/series/{id}/fork", post(series::fork_series))
         // Series compile + heading extraction
         .route("/series/{id}/compile", post(series::compile_series))
@@ -441,6 +441,7 @@ fn search_routes() -> Router<AppState> {
 fn admin_routes() -> Router<AppState> {
     Router::new()
         .route("/admin/platform-users", get(admin::list_platform_users).post(admin::create_platform_user))
+        .route("/admin/consistency/pijul", get(admin::check_pijul_consistency))
         .route("/admin/articles", post(admin::admin_create_article))
         .route("/admin/articles/update", put(admin::admin_update_article))
         .route("/admin/articles/delete", delete(admin::admin_delete_article))

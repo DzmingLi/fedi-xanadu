@@ -12,8 +12,8 @@
   import { CONTACT_KINDS } from '../lib/types';
 
   /** Contact kinds that store {url, username} rather than a bare string. */
-  const LINKED_HANDLE_KINDS = ['tangled', 'bilibili'] as const;
-  function isLinkedHandleKind(k: ContactKind): k is 'tangled' | 'bilibili' {
+  const LINKED_HANDLE_KINDS = ['bilibili'] as const;
+  function isLinkedHandleKind(k: ContactKind): k is 'bilibili' {
     return (LINKED_HANDLE_KINDS as readonly string[]).includes(k);
   }
 
@@ -276,7 +276,6 @@
       ...src,
       // Ensure LinkedHandle kinds always have a writable object so <input>
       // bindings don't crash when the user has nothing saved yet.
-      tangled: src.tangled ? { ...src.tangled } : { url: '', username: '' },
       bilibili: src.bilibili ? { ...src.bilibili } : { url: '', username: '' },
       custom: [...(src.custom || []).map(l => ({ ...l }))],
     };
@@ -289,10 +288,10 @@
       email: 'you@example.com',
       telegram: '@username',
       matrix: '@user:matrix.org',
+      bluesky: 'handle.bsky.social',
       github: 'username',
       codeberg: 'username',
-      // tangled/bilibili use paired username+url inputs, not this placeholder.
-      tangled: '',
+      // bilibili uses paired username+url inputs, not this placeholder.
       youtube: '@channel',
       bilibili: '',
     };
@@ -341,9 +340,8 @@
         return value.startsWith('http') ? value : `https://github.com/${value.replace(/^@/, '')}`;
       case 'codeberg':
         return value.startsWith('http') ? value : `https://codeberg.org/${value.replace(/^@/, '')}`;
-      case 'tangled':
-        // Callers pass the LinkedHandle's `url` field.
-        return value.startsWith('http') ? value : `https://${value.replace(/^\/+/, '')}`;
+      case 'bluesky':
+        return value.startsWith('http') ? value : `https://bsky.app/profile/${value.replace(/^@/, '')}`;
       case 'youtube': {
         if (value.startsWith('http')) return value;
         // Accept @handle, channel/..., or plain user id
@@ -361,8 +359,8 @@
   function contactLabel(kind: ContactKind): string {
     const map: Record<ContactKind, string> = {
       website: 'Website', email: 'Email', telegram: 'Telegram',
-      matrix: 'Matrix',
-      github: 'GitHub', codeberg: 'Codeberg', tangled: 'Tangled',
+      matrix: 'Matrix', bluesky: 'Bluesky',
+      github: 'GitHub', codeberg: 'Codeberg',
       youtube: 'YouTube', bilibili: 'Bilibili',
     };
     return map[kind];
@@ -440,8 +438,6 @@
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.52 11.52 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
   {:else if kind === 'codeberg'}
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.955.49A12 12 0 0 0 0 12.49a12 12 0 0 0 6.568 10.692L11.97 13.46v-.002l-.982-6.56a.313.313 0 0 1 .612-.12l.4 1.26-.005.007 1.86 5.874-.003.001 4.162 9.443a12 12 0 0 0 6.022-10.416A12 12 0 0 0 11.955.49z"/></svg>
-  {:else if kind === 'tangled'}
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/><path d="M8 16c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/><path d="M6 10l4-2M14 14l4-2"/></svg>
   {:else if kind === 'youtube'}
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
   {:else if kind === 'bilibili'}
@@ -611,7 +607,7 @@
         <div class="bio-edit">
           <textarea class="bio-input" bind:value={editBio} placeholder={t('settings.bioPlaceholder')} rows="3"></textarea>
           <div class="bio-edit-actions">
-            <button class="email-save" onclick={async () => { await updateBio(editBio.trim()); if (profile) profile.bio = editBio.trim() || null; editingBio = false; }}>{t('common.save')}</button>
+            <button class="email-save" onclick={async () => { await updateBio(editBio.trim()); if (profile) profile.bio = editBio.trim(); editingBio = false; }}>{t('common.save')}</button>
             <button class="email-cancel" onclick={() => { editingBio = false; }}>{t('common.cancel')}</button>
           </div>
         </div>
@@ -776,12 +772,7 @@
             <div class="contact-edit-row">
               <span class="contact-edit-icon">{@render contactIcon(kind)}</span>
               <span class="contact-edit-label">{contactLabel(kind)}</span>
-              {#if kind === 'tangled'}
-                <div class="contact-edit-paired">
-                  <input class="contact-edit-input" bind:value={editContacts.tangled!.username} placeholder={t('profile.contactUsername')} />
-                  <input class="contact-edit-input" bind:value={editContacts.tangled!.url} placeholder="https://tangled.sh/..." />
-                </div>
-              {:else if kind === 'bilibili'}
+              {#if kind === 'bilibili'}
                 <div class="contact-edit-paired">
                   <input class="contact-edit-input" bind:value={editContacts.bilibili!.username} placeholder={t('profile.contactUsername')} />
                   <input class="contact-edit-input" bind:value={editContacts.bilibili!.url} placeholder="https://space.bilibili.com/..." />
@@ -940,7 +931,7 @@
           <p class="empty-text">{t('profile.noWorks')}</p>
         {/if}
       {:else if profileTab === 'all'}
-        {#each allArticleGroups() as group}
+        {#each allArticleGroups as group}
           {#if group.series}
             <div class="all-series-group">
               <a href="/series?id={group.series.id}" class="all-series-title">
@@ -962,7 +953,7 @@
             {/each}
           {/if}
         {/each}
-        {#if allArticleGroups().length === 0}
+        {#if allArticleGroups.length === 0}
           <p class="empty-text">{t('profile.noWorks')}</p>
         {/if}
       {/if}
@@ -2311,7 +2302,6 @@
   .year-input { max-width: 80px; }
   .remove-entry { font-size: 11px; color: #dc2626; background: none; border: none; cursor: pointer; margin-top: 4px; }
   .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px; cursor: pointer; }
-  .checkbox-label input[type="checkbox"] { margin: 0; }
   .add-entry { font-size: 13px; color: var(--accent); background: none; border: 1px dashed var(--accent); border-radius: 4px; padding: 6px 12px; cursor: pointer; width: 100%; margin: 8px 0; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   .btn-cancel { padding: 6px 14px; font-size: 13px; border: 1px solid var(--border); border-radius: 3px; background: none; color: var(--text-secondary); cursor: pointer; }

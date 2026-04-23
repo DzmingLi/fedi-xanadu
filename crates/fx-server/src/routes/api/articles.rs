@@ -15,42 +15,11 @@ use crate::auth::{WriteAuth, pds_create_record, pds_delete_record};
 use fx_core::util::{content_hash, tid, uri_to_node_id, now_rfc3339};
 use super::UriQuery;
 
-/// Look up a user's knot_url from user_settings. Returns None if not set.
-pub(super) async fn get_user_knot_url(pool: &sqlx::PgPool, did: &str) -> Option<String> {
-    sqlx::query_scalar::<_, Option<String>>("SELECT knot_url FROM user_settings WHERE did = $1")
-        .bind(did)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .flatten()
-        .filter(|u| !u.is_empty())
-}
-
-/// Resolve the public knot URL hosting a user's repo: the user's per-account
-/// override if set, otherwise the server's default. Returns None when neither
-/// is configured — callers should treat that as "this record cannot be
-/// published portably."
-pub(super) async fn effective_knot_url(state: &AppState, did: &str) -> Option<String> {
-    if let Some(u) = get_user_knot_url(&state.pool, did).await {
-        return Some(u);
-    }
-    let d = state.default_knot_url.trim();
-    if d.is_empty() { None } else { Some(d.to_string()) }
-}
-
-/// Build the public repo URL for a pijul node on the user's effective knot.
-/// Returns None if no knot is configured.
-pub(super) async fn pijul_repo_url(state: &AppState, did: &str, node_id: &str) -> Option<String> {
-    let knot = effective_knot_url(state, did).await?;
-    let base = knot.trim_end_matches('/');
-    Some(format!("{base}/{did}/{node_id}"))
-}
-
 /// Resolve a collaborator identifier (DID or atproto handle) to a DID.
 /// Passes `did:` URIs through unchanged; otherwise calls
 /// `AtClient::resolve_handle` and returns a `BadRequest` on failure so the
-/// caller hears the exact reason (unknown handle, network, etc.).
+/// caller hears the exact reason (unknown handle, network, etc.). Stays in
+/// the server crate because it depends on the server-owned `AtClient`.
 pub(super) async fn resolve_identifier(state: &AppState, identifier: &str) -> Result<String, AppError> {
     let s = identifier.trim();
     if s.is_empty() {
@@ -62,36 +31,6 @@ pub(super) async fn resolve_identifier(state: &AppState, identifier: &str) -> Re
     let (did, _pds) = state.at_client.resolve_handle(s).await
         .map_err(|e| AppError(fx_core::Error::BadRequest(format!("cannot resolve handle '{s}': {e}"))))?;
     Ok(did)
-}
-
-/// For an article URI, resolve the PDS-facing `(subject, sectionRef)` pair.
-/// - Standalone article: `(article_uri, None)`
-/// - Series chapter:     `(series_at_uri, Some(chapter_tid))`
-///
-/// Uses the series's `created_by` as the owning DID when building the series
-/// at-uri, matching how create_series writes the record.
-pub(super) async fn resolve_subject_ref(
-    pool: &sqlx::PgPool,
-    article_uri: &str,
-) -> (String, Option<String>) {
-    let series_info: Option<(String, String)> = sqlx::query_as(
-        "SELECT s.id, s.created_by \
-         FROM series s JOIN series_articles sa ON sa.series_id = s.id \
-         WHERE sa.article_uri = $1 \
-         LIMIT 1",
-    )
-    .bind(article_uri)
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
-
-    if let Some((series_id, owner_did)) = series_info {
-        let chapter_tid = article_uri.rsplit('/').next().unwrap_or("").to_string();
-        let series_uri = format!("at://{owner_did}/{}/{series_id}", fx_atproto::lexicon::SERIES);
-        (series_uri, Some(chapter_tid))
-    } else {
-        (article_uri.to_string(), None)
-    }
 }
 
 /// Pre-compiled regex for extracting anchor IDs from HTML.
@@ -142,16 +81,33 @@ pub async fn get_article_content(
     Ok(Json(resolve_article_content(&state, &uri, &format).await?))
 }
 
-/// Shared content resolution: reads source + renders HTML for any article type
-/// (independent, series chapter, heading slice, thought).
+/// Shared content resolution. Dispatches to the right backend based on how
+/// the article's bytes are stored:
+///   1. **Heading slice** — a pre-split chapter whose HTML sits in the parent
+///      series' compile cache.
+///   2. **Thought** — short note stored inline in `article_versions`; no pijul.
+///   3. **Standard** — source file in a pijul repo (standalone or series
+///      chapter); renders on demand with a cache-aside layer.
 async fn resolve_article_content(
     state: &AppState,
     uri: &str,
     format: &str,
 ) -> Result<ArticleContent, AppError> {
-    let _src_ext = fx_renderer::format_extension(format);
+    if let Some(content) = resolve_heading_slice(state, uri).await? {
+        return Ok(content);
+    }
+    if let Some(content) = resolve_thought(state, uri, format).await? {
+        return Ok(content);
+    }
+    resolve_standard_content(state, uri, format).await
+}
 
-    // Check if this is a compile-generated heading slice
+/// Compile-generated chapter whose HTML was written to the series' compile
+/// cache at publish time. Returns None when this URI isn't a heading slice.
+async fn resolve_heading_slice(
+    state: &AppState,
+    uri: &str,
+) -> Result<Option<ArticleContent>, AppError> {
     let heading_info: Option<(String, String)> = sqlx::query_as(
         "SELECT s.pijul_node_id, sa.heading_anchor \
          FROM series_articles sa JOIN series s ON s.id = sa.series_id \
@@ -161,43 +117,56 @@ async fn resolve_article_content(
     .fetch_optional(&state.pool)
     .await?;
 
-    if let Some((node_id, anchor)) = heading_info {
-        let cache_path = state.pijul.series_repo_path(&node_id)
-            .join("cache")
-            .join(format!("{anchor}.html"));
-        let html = tokio::fs::read_to_string(&cache_path).await
-            .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
-        return Ok(ArticleContent { source: String::new(), html });
-    }
+    let Some((node_id, anchor)) = heading_info else { return Ok(None); };
+    let cache_path = state.pijul.series_repo_path(&node_id)
+        .join("cache")
+        .join(format!("{anchor}.html"));
+    let html = tokio::fs::read_to_string(&cache_path).await
+        .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
+    Ok(Some(ArticleContent { source: String::new(), html }))
+}
 
-    // Thoughts: content stored in DB (article_versions), not pijul
+/// Thought: source + optional cached HTML live in the latest `article_versions`
+/// row (no pijul repo). Returns None for non-thought kinds.
+async fn resolve_thought(
+    state: &AppState,
+    uri: &str,
+    format: &str,
+) -> Result<Option<ArticleContent>, AppError> {
     let kind: Option<String> = sqlx::query_scalar("SELECT kind::TEXT FROM articles WHERE at_uri = $1")
         .bind(uri).fetch_optional(&state.pool).await?;
-    if kind.as_deref() == Some("thought") {
-        let row: Option<(String, Option<String>)> = sqlx::query_as(
-            "SELECT source_text, rendered_html FROM article_versions WHERE article_uri = $1 ORDER BY created_at DESC LIMIT 1"
-        ).bind(uri).fetch_optional(&state.pool).await?;
+    if kind.as_deref() != Some("thought") { return Ok(None); }
 
-        let (source, cached_html) = row
-            .ok_or(AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT source_text, rendered_html FROM article_versions WHERE article_uri = $1 ORDER BY created_at DESC LIMIT 1"
+    ).bind(uri).fetch_optional(&state.pool).await?;
 
-        let html = if let Some(h) = cached_html {
-            h
-        } else if format == "html" {
-            source.clone()
-        } else {
-            let tmp = std::env::temp_dir().join(format!("nb-thought-{}", tid()));
-            let _ = tokio::fs::create_dir_all(&tmp).await;
-            let rendered = render_content(format, &source, &tmp)?;
-            let _ = tokio::fs::remove_dir_all(&tmp).await;
-            let _ = sqlx::query("UPDATE article_versions SET rendered_html = $1 WHERE article_uri = $2 AND rendered_html IS NULL")
-                .bind(&rendered).bind(uri).execute(&state.pool).await;
-            rendered
-        };
-        return Ok(ArticleContent { source, html });
-    }
+    let (source, cached_html) = row
+        .ok_or(AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
 
-    // Resolve article location (unified for series and standalone)
+    let html = if let Some(h) = cached_html {
+        h
+    } else if format == "html" {
+        source.clone()
+    } else {
+        let tmp = std::env::temp_dir().join(format!("nb-thought-{}", tid()));
+        let _ = tokio::fs::create_dir_all(&tmp).await;
+        let rendered = render_content(format, &source, &tmp)?;
+        let _ = tokio::fs::remove_dir_all(&tmp).await;
+        let _ = sqlx::query("UPDATE article_versions SET rendered_html = $1 WHERE article_uri = $2 AND rendered_html IS NULL")
+            .bind(&rendered).bind(uri).execute(&state.pool).await;
+        rendered
+    };
+    Ok(Some(ArticleContent { source, html }))
+}
+
+/// Standalone article or series chapter: source in a pijul repo, HTML
+/// rendered on demand with a file-backed cache-aside.
+async fn resolve_standard_content(
+    state: &AppState,
+    uri: &str,
+    format: &str,
+) -> Result<ArticleContent, AppError> {
     let loc = resolve_location(state, uri, format).await
         .ok_or(AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
 
@@ -220,18 +189,26 @@ async fn resolve_article_content(
     };
 
     let html = loc.rewrite_html_urls(&html, uri);
-
     Ok(ArticleContent { source, html })
+}
+
+/// Shared regex for both relative-URL rewriters (compiled once at startup).
+static REL_URL_RE: std::sync::LazyLock<regex_lite::Regex> =
+    std::sync::LazyLock::new(|| regex_lite::Regex::new(r#"(src|href)="([^"]*?)""#).expect("rel url regex"));
+
+fn is_absolute_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+        || url.starts_with('/') || url.starts_with('#')
+        || url.starts_with("data:") || url.starts_with("mailto:")
 }
 
 /// Rewrite relative `src` and `href` attributes in HTML to point to a base URL.
 /// Only rewrites paths that don't start with `/`, `http://`, `https://`, or `#`.
 fn rewrite_relative_urls(html: &str, base_url: &str) -> String {
-    let re = regex_lite::Regex::new(r#"(src|href)="([^"]*?)""#).unwrap();
-    re.replace_all(html, |caps: &regex_lite::Captures| {
+    REL_URL_RE.replace_all(html, |caps: &regex_lite::Captures| {
         let attr = &caps[1];
         let url = &caps[2];
-        if url.starts_with("http://") || url.starts_with("https://") || url.starts_with('/') || url.starts_with('#') || url.starts_with("data:") || url.starts_with("mailto:") {
+        if is_absolute_url(url) {
             caps[0].to_string()
         } else {
             format!("{attr}=\"{base_url}/{url}\"")
@@ -241,11 +218,10 @@ fn rewrite_relative_urls(html: &str, base_url: &str) -> String {
 
 /// Rewrite relative URLs for standalone articles: `src="foo.png"` → `src="/api/articles/image?uri=...&name=foo.png"`
 fn rewrite_relative_urls_with_query(html: &str, endpoint: &str, encoded_uri: &str) -> String {
-    let re = regex_lite::Regex::new(r#"(src|href)="([^"]*?)""#).unwrap();
-    re.replace_all(html, |caps: &regex_lite::Captures| {
+    REL_URL_RE.replace_all(html, |caps: &regex_lite::Captures| {
         let attr = &caps[1];
         let url = &caps[2];
-        if url.starts_with("http://") || url.starts_with("https://") || url.starts_with('/') || url.starts_with('#') || url.starts_with("data:") || url.starts_with("mailto:") {
+        if is_absolute_url(url) {
             caps[0].to_string()
         } else {
             format!("{attr}=\"{endpoint}?uri={encoded_uri}&name={}\"", urlencoding::encode(url))
@@ -504,14 +480,7 @@ async fn try_series_render(
     tracing::info!("series render: {series_id} with {} chapters", chapters.len());
 
     // Get series pijul repo for cache paths
-    let series_pijul: Option<String> = sqlx::query_scalar(
-        "SELECT pijul_node_id FROM series WHERE id = $1 AND pijul_node_id IS NOT NULL",
-    )
-    .bind(&series_id)
-    .fetch_optional(&state.pool)
-    .await
-    .ok()
-    .flatten();
+    let series_pijul = series_service::get_pijul_node_id(&state.pool, &series_id).await.ok().flatten();
 
     let Some(ref pijul_node_id) = series_pijul else {
         tracing::warn!("series {series_id} has no pijul repo");
@@ -791,14 +760,7 @@ pub(super) async fn publish_article_content(
     let fmt = format.as_str();
     let loc = if let Some(sid) = series_id {
         // Series: resolve location from DB
-        let pijul_node_id: String = sqlx::query_scalar(
-            "SELECT pijul_node_id FROM series WHERE id = $1",
-        )
-        .bind(sid)
-        .fetch_optional(&state.pool)
-        .await?
-        .flatten()
-        .ok_or_else(|| AppError(fx_core::Error::BadRequest("Series has no pijul repo".into())))?;
+        let pijul_node_id = series_service::require_pijul_node_id(&state.pool, sid).await?;
 
         let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
         let repo_path = state.pijul.repo_path(&pijul_node_id);
@@ -836,7 +798,7 @@ pub(super) async fn publish_article_content(
         }
     };
 
-    let knot_url = get_user_knot_url(&state.pool, did).await;
+    let knot_url = article_service::get_user_knot_url(&state.pool, did).await;
 
     // Write content to knot (remote) if configured
     if let Some(ref knot) = knot_url {
@@ -1058,7 +1020,7 @@ pub(super) async fn record_pijul_change(
 ) -> Result<(), AppError> {
     let loc = resolve_location(state, uri, "typst").await
         .ok_or(AppError(fx_core::Error::NotFound { entity: "article", id: uri.to_string() }))?;
-    let knot_url = get_user_knot_url(&state.pool, did).await;
+    let knot_url = article_service::get_user_knot_url(&state.pool, did).await;
 
     let record_result = if let Some(ref knot) = knot_url {
         let client = pijul_knot::KnotClient::new(knot);
@@ -1102,7 +1064,7 @@ pub async fn create_article(
     // Init pijul repo for standalone articles (series repos are already initialized)
     if input.series_id.is_none() {
         let node_id = uri_to_node_id(&at_uri);
-        let knot_url = get_user_knot_url(&state.pool, &user.did).await;
+        let knot_url = article_service::get_user_knot_url(&state.pool, &user.did).await;
         if let Some(ref knot) = knot_url {
             let client = pijul_knot::KnotClient::new(knot);
             if let Err(e) = client.init_repo(&node_id).await {
@@ -1149,7 +1111,7 @@ pub async fn create_article(
     // are addressed via the series record + sectionRef, not per-chapter records.
     if !input.restricted.unwrap_or(false) && input.series_id.is_none() {
         let node_id = uri_to_node_id(&at_uri);
-        if let Some(repo_url) = pijul_repo_url(&state, &user.did, &node_id).await {
+        if let Some(repo_url) = article_service::pijul_repo_url(&state.pool, &user.did, &node_id, &state.default_knot_url).await {
             let record = serde_json::json!({
                 "$type": fx_atproto::lexicon::ARTICLE,
                 "title": input.title,
@@ -1254,7 +1216,7 @@ pub async fn create_article_multipart(
     // Init repo for standalone articles (series repos already exist)
     if input.series_id.is_none() {
         let node_id = uri_to_node_id(&at_uri);
-        let knot_url = get_user_knot_url(&state.pool, &user.did).await;
+        let knot_url = article_service::get_user_knot_url(&state.pool, &user.did).await;
         if let Some(ref knot) = knot_url {
             let client = pijul_knot::KnotClient::new(knot);
             if let Err(e) = client.init_repo(&node_id).await {
@@ -1317,7 +1279,7 @@ pub async fn create_article_multipart(
 
     if !input.restricted.unwrap_or(false) && input.series_id.is_none() {
         let node_id = uri_to_node_id(&at_uri);
-        if let Some(repo_url) = pijul_repo_url(&state, &user.did, &node_id).await {
+        if let Some(repo_url) = article_service::pijul_repo_url(&state.pool, &user.did, &node_id, &state.default_knot_url).await {
             let record = serde_json::json!({
                 "$type": fx_atproto::lexicon::ARTICLE,
                 "title": input.title,
@@ -2128,8 +2090,7 @@ pub async fn search_articles(
     Query(q): Query<SearchQuery>,
 ) -> ApiResult<Json<Vec<Article>>> {
     let limit = q.limit.unwrap_or(20).clamp(1, 100);
-    let engine = fx_search::SearchEngine::new(state.pool.clone());
-    let uris = engine.search(&q.q, limit).await
+    let uris = fx_core::services::search_service::search_articles(&state.pool, &q.q, limit).await
         .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
 
     let articles = article_service::get_articles_by_uris(&state.pool, state.instance_mode, &uris).await?;
@@ -2339,13 +2300,7 @@ pub(super) async fn sync_meta_to_db(state: &AppState, article_uri: &str, repo_pa
     }
     // Resolve the article's creator so ensure_tag can stamp created_by
     // on any brand-new label rows.
-    let creator_did: String = sqlx::query_scalar::<_, String>("SELECT did FROM articles WHERE at_uri = $1")
-        .bind(article_uri)
-        .fetch_optional(&state.pool)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let creator_did = article_service::get_article_owner(&state.pool, article_uri).await.unwrap_or_default();
 
     if !fm.teaches.is_empty() {
         let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")

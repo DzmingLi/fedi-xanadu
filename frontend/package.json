@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "gen-types": "cd .. && cargo test -p fx-core --lib export_bindings -- --quiet",
+    "prebuild": "npm run gen-types"
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.5",

@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { searchArticles, getAllArticleTeaches, getAllArticlePrereqs } from '../lib/api';
+
+  // Svelte action: focus the input once mounted (preferred over the native
+  // `autofocus` attribute, which svelte-check flags as an a11y pitfall).
+  function focusOnMount(el: HTMLInputElement) {
+    el.focus();
+  }
   import { t } from '../lib/i18n/index.svelte';
   import type { Article, ContentTeachRow, ContentPrereqBulkRow } from '../lib/types';
   import PostCard from '../lib/components/PostCard.svelte';
@@ -12,6 +18,7 @@
   let teaches = $state(new Map<string, ContentTeachRow[]>());
   let prereqs = $state(new Map<string, ContentPrereqBulkRow[]>());
   let loading = $state(false);
+  // svelte-ignore state_referenced_locally
   let query = $state(q);
 
   function buildRowMap<T extends { content_uri: string }>(rows: T[]): Map<string, T[]> {
@@ -66,7 +73,7 @@
       class="search-box"
       bind:value={query}
       placeholder={t('nav.search')}
-      autofocus
+      use:focusOnMount
     />
   </form>
 

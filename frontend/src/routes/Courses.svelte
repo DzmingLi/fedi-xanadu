@@ -85,7 +85,7 @@
   .course-code { font-size: 12px; font-weight: 600; color: var(--accent); background: rgba(95,155,101,0.1); padding: 2px 8px; border-radius: 3px; margin-bottom: 6px; display: inline-block; }
   .course-title { font-family: var(--font-serif); font-size: 1.15rem; margin: 4px 0 0; line-height: 1.35; }
   .course-meta { font-size: 13px; color: var(--text-secondary); margin: 4px 0; }
-  .course-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 8px 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .course-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 8px 0; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .card-bottom { display: flex; gap: 12px; align-items: center; margin-top: 12px; font-size: 12px; color: var(--text-hint); }
   .rating { display: flex; align-items: center; gap: 3px; color: #f59e0b; font-weight: 500; }
   .rating svg { display: block; }

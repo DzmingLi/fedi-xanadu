@@ -200,9 +200,10 @@
         </div>
       {:else}
         {#if c.quote_text}
-          <blockquote class="comment-quote" role="button" tabindex="0" onclick={() => scrollToQuote(c.quote_text!)} onkeydown={(e) => { if (e.key === 'Enter') scrollToQuote(c.quote_text!); }}>
-            {c.quote_text}
-          </blockquote>
+          <!-- blockquote doesn't allow role=button per ARIA; wrap in a real <button> -->
+          <button type="button" class="comment-quote-btn" onclick={() => scrollToQuote(c.quote_text!)}>
+            <blockquote class="comment-quote">{c.quote_text}</blockquote>
+          </button>
         {/if}
         <div class="comment-body">{c.body}</div>
       {/if}

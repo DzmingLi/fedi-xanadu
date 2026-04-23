@@ -497,9 +497,6 @@
     justify-content: space-between;
     margin-bottom: 0.25rem;
   }
-  .home-header h1 {
-    margin: 0;
-  }
   .edit-interests {
     background: none;
     border: none;

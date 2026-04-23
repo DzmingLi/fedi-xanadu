@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import {
     listTagParents, addTagParent, removeTagParent, listTags, searchTags, createTagInline, resolveTag,
-    requestTagDeletion,
+    requestTagDeletion, updateTagNames,
   } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, LOCALES, getLocale } from '../lib/i18n/index.svelte';
@@ -404,11 +404,6 @@
   .te-section { margin-top: 10px; }
   .te-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
   .tag-editor input { width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-white); color: var(--text-primary); font-size: 14px; box-sizing: border-box; margin-bottom: 6px; }
-  .inline-label { font-size: 12px; color: var(--text-hint); display: block; margin-top: 4px; }
-  .alias-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
-  .alias-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 12px; background: var(--bg-hover, #f5f5f5); border: 1px solid var(--border); font-size: 12px; }
-  .alias-chip button { background: none; border: none; cursor: pointer; color: var(--text-hint); padding: 0; line-height: 1; font-size: 14px; }
-  .alias-chip button:hover { color: #c00; }
   .alias-add { display: flex; gap: 6px; }
   .alias-add input { margin-bottom: 0; flex: 1; }
   .btn-ghost { background: none; border: none; cursor: pointer; color: var(--text-hint); font-size: 12px; padding: 2px 6px; }

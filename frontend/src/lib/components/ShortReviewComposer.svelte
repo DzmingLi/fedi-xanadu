@@ -7,6 +7,7 @@
     placeholder?: string;
   } = $props();
 
+  // svelte-ignore state_referenced_locally
   let body = $state(initialBody);
   let submitting = $state(false);
   let error = $state('');

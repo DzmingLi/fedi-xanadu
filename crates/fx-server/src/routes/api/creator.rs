@@ -158,11 +158,8 @@ pub async fn publish_series(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> ApiResult<axum::http::StatusCode> {
     // Verify ownership
-    let series = sqlx::query_as::<_, (String,)>(
-        "SELECT created_by FROM series WHERE id = $1"
-    ).bind(&id).fetch_optional(&state.pool).await?
-        .ok_or(AppError(fx_core::Error::NotFound { entity: "series", id: id.clone() }))?;
-    if series.0 != user.did {
+    let owner = series_service::get_series_owner(&state.pool, &id).await?;
+    if owner != user.did {
         return Err(AppError(fx_core::Error::Forbidden { action: "publish" }));
     }
     series_service::publish_series(&state.pool, &id).await?;

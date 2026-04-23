@@ -7,14 +7,11 @@ import type { LinkedHandle } from "./LinkedHandle";
  * list of free-form extra links. Omitted keys should be stripped by the
  * frontend so the stored JSON stays compact.
  */
-export type Contacts = { website: string | null, email: string | null, telegram: string | null, matrix: string | null, github: string | null, codeberg: string | null, 
+export type Contacts = { website: string | null, email: string | null, telegram: string | null, matrix: string | null, bluesky: string | null, github: string | null, codeberg: string | null, youtube: string | null, 
 /**
- * Tangled stores both a full URL (for the hyperlink) and a username
- * (for display), since usernames don't map to a canonical URL pattern.
- */
-tangled: LinkedHandle | null, youtube: string | null, 
-/**
- * Bilibili — same rationale as tangled.
+ * Bilibili stores both a full URL and a username since the platform
+ * doesn't map usernames to a canonical URL pattern — the URL is what
+ * we link to, the username is what we display.
  */
 bilibili: LinkedHandle | null, 
 /**

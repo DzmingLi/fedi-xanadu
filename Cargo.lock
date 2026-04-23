@@ -193,7 +193,6 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 [[package]]
 name = "atproto-auth"
 version = "0.1.0"
-source = "git+https://github.com/DzmingLi/atproto-auth.git#8f8f91da26671c35a11d42205f78f7037d0e27ba"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1921,6 +1920,7 @@ name = "fx-atproto"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "atproto-auth",
  "reqwest",
  "serde",
  "serde_json",
@@ -1949,6 +1949,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argon2",
+ "async-trait",
  "blake3",
  "chrono",
  "imara-diff",
@@ -1965,7 +1966,6 @@ dependencies = [
 [[package]]
 name = "fx-renderer"
 version = "0.1.0"
-source = "git+https://github.com/DzmingLi/typst-render.git#11afecc9d76a0afb1b51118ae3aeeb7f3649546c"
 dependencies = [
  "anyhow",
  "base64",
@@ -1988,16 +1988,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fx-search"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "sqlx",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
 name = "fx-server"
 version = "0.1.0"
 dependencies = [
@@ -2014,7 +2004,6 @@ dependencies = [
  "fx-atproto",
  "fx-core",
  "fx-renderer",
- "fx-search",
  "pijul-knot",
  "rand 0.10.1",
  "regex-lite",
@@ -4060,10 +4049,10 @@ dependencies = [
 [[package]]
 name = "pijul-knot"
 version = "0.1.0"
-source = "git+https://github.com/DzmingLi/pijul-knot.git#d86a9504b001b09f38db2063bc64cc1764f79baf"
 dependencies = [
  "anyhow",
  "async-trait",
+ "atproto-auth",
  "axum",
  "clap",
  "dashmap",
@@ -7500,6 +7489,17 @@ name = "xmlwriter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "heck",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "yaml-rust"

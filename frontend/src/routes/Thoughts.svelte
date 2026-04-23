@@ -154,7 +154,7 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               {t('qa.showComments')}
             </button>
-            <a href="/article?uri={encodeURIComponent(th.at_uri)}" class="action-btn permalink">
+            <a href="/article?uri={encodeURIComponent(th.at_uri)}" class="action-btn permalink" title={t('qa.permalink')} aria-label={t('qa.permalink')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </a>
           </div>

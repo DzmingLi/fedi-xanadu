@@ -70,7 +70,9 @@
           folder_path: '/草稿箱',
           created_at: d.updated_at || d.created_at || '',
           title: d.title || t('drafts.untitled'),
-          description: '',
+          summary: '',
+          kind: 'draft',
+          question_uri: null,
         });
       }
     }
@@ -160,6 +162,7 @@
       <nav class="tree-nav">
         {#snippet folderItem(node: FolderNode, depth: number)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div class="tree-item tree-folder" style="padding-left: {8 + depth * 14}px"
             onclick={() => toggleFolder(node.path)}
             ondragover={(e) => e.preventDefault()} ondrop={() => onDrop(node.path)}>
@@ -183,6 +186,7 @@
             {/each}
             {#each node.items as item}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div class="tree-item tree-file" class:selected={selectedUri === item.article_uri}
                 style="padding-left: {8 + (depth + 1) * 14}px"
                 onclick={() => selectItem(item.article_uri, item.title)}
