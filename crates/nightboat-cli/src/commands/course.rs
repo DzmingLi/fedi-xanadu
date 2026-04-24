@@ -158,6 +158,21 @@ pub enum CourseCommand {
         /// Path to TOML file
         file: PathBuf,
     },
+    /// Link a course to a course group (so it appears alongside other iterations)
+    #[command(name = "set-group")]
+    SetGroup {
+        /// Course ID
+        course_id: String,
+        /// Group ID (cg-xxx)
+        #[arg(long)]
+        group_id: String,
+    },
+    /// Remove a course from its current group (the group itself is kept)
+    #[command(name = "unset-group")]
+    UnsetGroup {
+        /// Course ID
+        course_id: String,
+    },
 }
 
 pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Result<()> {
@@ -567,6 +582,25 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
             }
 
             println!("\n{created} created, {updated} updated, {skipped} unchanged");
+        }
+
+        CourseCommand::SetGroup { course_id, group_id } => {
+            client()
+                .put(format!("{base}/courses/{course_id}/group"))
+                .bearer_auth(token)
+                .json(&serde_json::json!({ "group_id": group_id }))
+                .send().await?
+                .error_for_status().context("Set group failed")?;
+            println!("Linked course {course_id} to group {group_id}.");
+        }
+
+        CourseCommand::UnsetGroup { course_id } => {
+            client()
+                .delete(format!("{base}/courses/{course_id}/group"))
+                .bearer_auth(token)
+                .send().await?
+                .error_for_status().context("Unset group failed")?;
+            println!("Unlinked course {course_id} from its group.");
         }
     }
 

@@ -20,6 +20,11 @@ pub struct CourseRow {
     pub source_attribution: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Course group this iteration belongs to. When two courses share a
+    /// `group_id`, they're different iterations of the same offering and
+    /// the UI can render them as sibling tabs.
+    #[sqlx(default)]
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -79,6 +84,18 @@ pub struct CourseDetailResponse {
     pub my_session_progress: Vec<SessionProgress>,
     /// Course-level supplementary resources (software pages, tools, etc.).
     pub resources: Vec<CourseResource>,
+    /// Other iterations of the same course (same `group_id`), newest
+    /// semester first. Empty when the course isn't in a group. The
+    /// viewed course itself is excluded.
+    pub siblings: Vec<CourseSibling>,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct CourseSibling {
+    pub id: String,
+    pub title: String,
+    pub semester: Option<String>,
+    pub institution: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -256,7 +273,7 @@ pub async fn list_course_authors(pool: &PgPool, course_id: &str) -> crate::Resul
 pub async fn get_course(pool: &PgPool, id: &str) -> crate::Result<CourseRow> {
     sqlx::query_as::<_, CourseRow>(
         "SELECT id, did, title, code, description, institution, department, semester, \
-         lang, license, source_url, source_attribution, created_at, updated_at \
+         lang, license, source_url, source_attribution, created_at, updated_at, group_id \
          FROM courses WHERE id = $1",
     )
     .bind(id).fetch_one(pool).await
@@ -348,10 +365,20 @@ pub async fn get_course_detail(pool: &PgPool, id: &str, viewer_did: Option<&str>
 
     let resources = list_course_resources(pool, id).await?;
 
+    let siblings: Vec<CourseSibling> = if let Some(ref gid) = course.group_id {
+        sqlx::query_as::<_, CourseSibling>(
+            "SELECT id, title, semester, institution FROM courses \
+             WHERE group_id = $1 AND id <> $2 \
+             ORDER BY semester DESC NULLS LAST, created_at DESC",
+        ).bind(gid).bind(id).fetch_all(pool).await?
+    } else {
+        Vec::new()
+    };
+
     Ok(CourseDetailResponse {
         course, syllabus, authors, sessions, textbooks, tags, series, skill_trees, prerequisites,
         rating, reviews, review_count, notes, note_count, discussions, discussion_count,
-        my_rating, my_learning_status, my_session_progress, resources,
+        my_rating, my_learning_status, my_session_progress, resources, siblings,
     })
 }
 

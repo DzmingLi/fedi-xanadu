@@ -28,6 +28,7 @@ pub mod recommendation_service;
 pub mod reputation_service;
 pub mod listing_service;
 pub mod course_service;
+pub mod course_group_service;
 pub mod patch_service;
 pub mod ad_service;
 pub mod author_service;

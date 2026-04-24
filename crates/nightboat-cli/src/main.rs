@@ -174,6 +174,12 @@ enum Command {
         #[command(subcommand)]
         action: CourseCommand,
     },
+    /// Manage course groups (link different iterations of the same course)
+    #[command(name = "course-group")]
+    CourseGroup {
+        #[command(subcommand)]
+        action: commands::course_group::CourseGroupCommand,
+    },
     /// Admin operations (manage platform users, publish as any user)
     Admin {
         #[command(subcommand)]
@@ -659,6 +665,10 @@ async fn main() -> Result<()> {
 
         Command::Course { action } => {
             handle_course(&base, &config, action).await?;
+        }
+
+        Command::CourseGroup { action } => {
+            commands::course_group::handle_course_group(&base, &config, action).await?;
         }
 
         Command::Book { action } => {

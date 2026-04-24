@@ -411,14 +411,6 @@ pub async fn update_book(
     Ok(())
 }
 
-pub async fn delete_edition(pool: &PgPool, id: &str) -> crate::Result<()> {
-    sqlx::query("DELETE FROM book_editions WHERE id = $1")
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
 async fn get_book_articles_by_category(
     pool: &PgPool,
     book_id: &str,
@@ -1000,4 +992,79 @@ pub async fn delete_book_resource(pool: &PgPool, id: &str) -> crate::Result<bool
         .execute(pool)
         .await?;
     Ok(result.rows_affected() > 0)
+}
+
+// ---- Delete book / edition ---------------------------------------------
+
+/// Delete a book and cascade-remove all child rows (editions, chapters,
+/// resources, ratings, reviews). Writes a final `book_edit_log` entry
+/// before deletion so the audit trail survives via the FK's
+/// `ON DELETE SET NULL` — callers can still query history by
+/// `original_book_id` after the book row is gone.
+///
+/// `editor_did` is the acting user's DID, recorded on the audit row.
+pub async fn delete_book(pool: &PgPool, id: &str, editor_did: &str) -> crate::Result<()> {
+    let mut tx = pool.begin().await?;
+
+    // Snapshot the book so the audit row has something to show for it.
+    let book_row: Option<(serde_json::Value, Vec<String>)> = sqlx::query_as(
+        "SELECT title, authors FROM books WHERE id = $1"
+    ).bind(id).fetch_optional(&mut *tx).await?;
+    let (title_json, authors) = book_row
+        .ok_or_else(|| crate::Error::NotFound { entity: "book", id: id.to_string() })?;
+
+    let edit_id = format!("bel-{}", crate::util::tid());
+    let snapshot = serde_json::json!({
+        "title": title_json,
+        "authors": authors,
+    });
+    sqlx::query(
+        "INSERT INTO book_edit_log (id, book_id, original_book_id, editor_did, old_data, new_data, summary) \
+         VALUES ($1, $2, $2, $3, $4, '{}'::jsonb, $5)",
+    )
+    .bind(&edit_id)
+    .bind(id)
+    .bind(editor_did)
+    .bind(&snapshot)
+    .bind("deleted book")
+    .execute(&mut *tx).await?;
+
+    sqlx::query("DELETE FROM books WHERE id = $1")
+        .bind(id).execute(&mut *tx).await?;
+    // books.id doesn't FK into content.uri, so clear the content row too.
+    let content_uri = format!("book:{id}");
+    sqlx::query("DELETE FROM content WHERE uri = $1")
+        .bind(&content_uri).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Delete a single edition by id. Cascades to any FK children (short
+/// reviews via ON DELETE SET NULL, purchase links, covers). Refuses to
+/// delete an edition if it's the only edition on the book — callers
+/// should hard-delete the whole book instead.
+pub async fn delete_edition(pool: &PgPool, book_id: &str, edition_id: &str) -> crate::Result<()> {
+    let mut tx = pool.begin().await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM book_editions WHERE book_id = $1")
+        .bind(book_id).fetch_one(&mut *tx).await?;
+    if count == 0 {
+        return Err(crate::Error::NotFound { entity: "book_edition", id: edition_id.to_string() });
+    }
+    if count == 1 {
+        return Err(crate::Error::BadRequest(
+            "cannot delete the only edition on a book — hard-delete the whole book instead".into(),
+        ));
+    }
+    let res = sqlx::query("DELETE FROM book_editions WHERE id = $1 AND book_id = $2")
+        .bind(edition_id).bind(book_id).execute(&mut *tx).await?;
+    if res.rows_affected() == 0 {
+        return Err(crate::Error::NotFound { entity: "book_edition", id: edition_id.to_string() });
+    }
+    // If we deleted the book's default_edition_id, clear it (any remaining
+    // edition will be used as fallback by the display layer).
+    sqlx::query("UPDATE books SET default_edition_id = NULL \
+                  WHERE id = $1 AND default_edition_id = $2")
+        .bind(book_id).bind(edition_id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
 }

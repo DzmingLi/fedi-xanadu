@@ -19,6 +19,7 @@ mod keybindings;
 mod learned;
 mod listings;
 mod courses;
+mod course_groups;
 mod members;
 mod notifications;
 mod profile;
@@ -420,6 +421,12 @@ fn course_routes() -> Router<AppState> {
         .route("/courses/{id}/sessions/{session_id}", put(courses::update_session).delete(courses::delete_session))
         .route("/courses/{id}/sessions/{session_id}/tags", post(courses::add_session_tag).delete(courses::remove_session_tag))
         .route("/courses/{id}/sessions/{session_id}/prereqs", post(courses::add_session_prereq).delete(courses::remove_session_prereq))
+        .route("/courses/{id}/group",
+               put(course_groups::set_course_group).delete(course_groups::unset_course_group))
+        .route("/course-groups",
+               get(course_groups::list_course_groups).post(course_groups::create_course_group))
+        .route("/course-groups/{id}",
+               get(course_groups::get_course_group).delete(course_groups::delete_course_group))
 }
 
 fn question_routes() -> Router<AppState> {
@@ -523,7 +530,7 @@ fn render_routes() -> Router<AppState> {
 fn book_routes() -> Router<AppState> {
     Router::new()
         .route("/books", get(books::list_books).post(books::create_book))
-        .route("/books/{id}", get(books::get_book).put(books::update_book))
+        .route("/books/{id}", get(books::get_book).put(books::update_book).delete(books::delete_book))
         .route("/books/{id}/editions", post(books::add_edition))
         .route("/books/{id}/chapters", get(books::list_chapters).post(books::create_chapter))
         .route("/books/{id}/chapters/delete", delete(books::delete_chapter))
@@ -533,7 +540,7 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/reading-status", post(books::set_reading_status).delete(books::remove_reading_status))
         .route("/books/{id}/preferred-edition", put(books::set_preferred_edition))
         .route("/books/{id}/history", get(books::get_edit_history))
-        .route("/books/{id}/editions/{eid}", put(books::update_edition))
+        .route("/books/{id}/editions/{eid}", put(books::update_edition).delete(books::delete_edition))
         .route("/books/{id}/editions/{eid}/cover", post(books::upload_edition_cover))
         .route("/books/{id}/resources", get(books::list_resources).post(books::add_resource))
         .route("/books/{id}/resources/{rid}", delete(books::delete_resource))

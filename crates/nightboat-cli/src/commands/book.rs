@@ -5,6 +5,7 @@ use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
 use crate::{Config, client};
+use super::util;
 
 #[derive(Subcommand)]
 pub enum BookCommand {
@@ -62,6 +63,10 @@ pub enum BookCommand {
         /// Subtitle of the first edition
         #[arg(long)]
         edition_subtitle: Option<String>,
+        /// Skip creating a first edition — create only the bare book shell.
+        /// Use this when you want to add editions explicitly via `add-edition`.
+        #[arg(long)]
+        no_edition: bool,
     },
     /// Update a book's info
     Update {
@@ -281,6 +286,55 @@ pub enum BookCommand {
         #[arg(long)]
         book_id: String,
     },
+    /// Delete a book. Cascades to every edition, chapter, resource, and
+    /// rating. The final `book_edit_log` entry survives via FK SET NULL,
+    /// so the audit trail persists after the row is gone.
+    Delete {
+        /// Book ID
+        id: String,
+    },
+    /// Delete a single edition from a book
+    #[command(name = "delete-edition")]
+    DeleteEdition {
+        /// Book ID
+        #[arg(long)]
+        book_id: String,
+        /// Edition ID
+        #[arg(long)]
+        edition_id: String,
+    },
+    /// Ingest a book from one or more douban URLs.
+    ///
+    /// The first URL becomes the book shell + first edition. Remaining URLs
+    /// are added as extra editions. Covers are downloaded and uploaded.
+    /// Each douban URL is also added as a resource (kind=other, label=豆瓣).
+    #[command(name = "ingest-douban")]
+    IngestDouban {
+        /// Douban subject URL(s), space separated. First URL sets the book's
+        /// canonical title/authors; remaining ones become additional editions.
+        #[arg(required = true, num_args = 1..)]
+        urls: Vec<String>,
+        /// Language for each URL in order (comma-separated, e.g. en,en,zh).
+        /// Defaults to en for all if not provided.
+        #[arg(long, value_delimiter = ',')]
+        langs: Vec<String>,
+        /// Edition name for each URL in order (comma-separated, e.g. "First Edition,Second Edition").
+        /// Defaults to the parsed edition info from douban.
+        #[arg(long, value_delimiter = ',')]
+        edition_names: Vec<String>,
+        /// Tags to apply to the book (comma-separated tag IDs)
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// Prereq tags (comma-separated tag IDs)
+        #[arg(long, value_delimiter = ',')]
+        prereqs: Vec<String>,
+        /// Override book title (by default uses the canonical title from the first URL)
+        #[arg(long)]
+        title: Option<String>,
+        /// Dry run — print what would be created without doing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// TOML manifest for uploading book chapters.
@@ -349,7 +403,7 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
             } else {
                 for b in &resp {
                     let id = b["id"].as_str().unwrap_or("?");
-                    let title = b["title"].as_str().unwrap_or("?");
+                    let title = util::i18n_display(&b["title"]);
                     let authors = b["authors"].as_array()
                         .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
                         .unwrap_or_default();
@@ -360,17 +414,10 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
         }
 
         BookCommand::Create { title, subtitle, authors, desc, cover_url, tags, prereqs,
-                             edition, lang, isbn, publisher, year, translators, purchase_links, edition_cover_url, edition_subtitle } => {
-            let parse_i18n = |s: &str| -> serde_json::Value {
-                if s.starts_with('{') {
-                    serde_json::from_str(s).unwrap_or(serde_json::json!({"en": s}))
-                } else {
-                    serde_json::json!({"en": s})
-                }
-            };
-            let title_val = parse_i18n(&title);
-            let subtitle_val = subtitle.as_deref().map(parse_i18n).unwrap_or(serde_json::json!({}));
-            let desc_val = desc.as_deref().map(parse_i18n).unwrap_or(serde_json::json!({}));
+                             edition, lang, isbn, publisher, year, translators, purchase_links, edition_cover_url, edition_subtitle, no_edition } => {
+            let title_val = util::parse_i18n(&title);
+            let subtitle_val = subtitle.as_deref().map(util::parse_i18n).unwrap_or(serde_json::json!({}));
+            let desc_val = desc.as_deref().map(util::parse_i18n).unwrap_or(serde_json::json!({}));
             let body = serde_json::json!({
                 "title": title_val,
                 "subtitle": subtitle_val,
@@ -395,6 +442,14 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
             }
             println!("Created book: {title}");
             println!("ID: {book_id}");
+
+            if no_edition {
+                // Silence unused-variable warnings on the edition-only flags
+                let _ = (edition, lang, isbn, publisher, year, translators,
+                         purchase_links, edition_cover_url, edition_subtitle);
+                println!("(skipped first edition — add one with `nbt book add-edition`)");
+                return Ok(());
+            }
 
             let links: Vec<serde_json::Value> = if let Some(ref pl) = purchase_links {
                 serde_json::from_str(pl).context("Invalid JSON for --purchase-links")?
@@ -575,22 +630,32 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
                 .json().await?;
 
             let book = &resp["book"];
-            println!("Title: {}", book["title"].as_str().unwrap_or("?"));
+            println!("Title: {}", util::i18n_display(&book["title"]));
+            let subtitle = util::i18n_display(&book["subtitle"]);
+            if subtitle != "?" && !subtitle.is_empty() {
+                println!("Subtitle: {subtitle}");
+            }
             println!("Authors: {}", book["authors"].as_array()
                 .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
                 .unwrap_or_default());
-            if let Some(d) = book["description"].as_str() {
-                if !d.is_empty() { println!("Description: {d}"); }
+            let desc = util::i18n_display(&book["description"]);
+            if desc != "?" && !desc.is_empty() {
+                println!("Description: {desc}");
             }
 
             if let Some(editions) = resp["editions"].as_array() {
                 if !editions.is_empty() {
                     println!("\nEditions:");
                     for ed in editions {
-                        let etitle = ed["title"].as_str().unwrap_or("?");
-                        let elang = ed["lang"].as_str().unwrap_or("?");
-                        let eisbn = ed["isbn"].as_str().unwrap_or("-");
-                        println!("  [{elang}] {etitle}  ISBN: {eisbn}");
+                        let ed_id = ed["id"].as_str().unwrap_or("?");
+                        let ed_title = ed["title"].as_str().unwrap_or("?");
+                        let ed_lang = ed["lang"].as_str().unwrap_or("?");
+                        let ed_isbn = ed["isbn"].as_str().unwrap_or("-");
+                        let ed_name = ed["edition_name"].as_str().unwrap_or("");
+                        let ed_year = ed["year"].as_str().unwrap_or("-");
+                        let ed_publisher = ed["publisher"].as_str().unwrap_or("-");
+                        let name_part = if ed_name.is_empty() { String::new() } else { format!(" — {ed_name}") };
+                        println!("  [{ed_lang}] {ed_title}{name_part}  ({ed_publisher}, {ed_year})  ISBN: {ed_isbn}  {ed_id}");
                     }
                 }
             }
@@ -602,10 +667,10 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
                 if !chapters.is_empty() {
                     println!("\nTable of Contents:");
                     for ch in chapters {
-                        let ctitle = ch["title"].as_str().unwrap_or("?");
-                        let cid = ch["id"].as_str().unwrap_or("?");
+                        let ch_title = ch["title"].as_str().unwrap_or("?");
+                        let ch_id = ch["id"].as_str().unwrap_or("?");
                         let indent = if ch["parent_id"].is_null() { "" } else { "  " };
-                        println!("  {indent}{ctitle}  ({cid})");
+                        println!("  {indent}{ch_title}  ({ch_id})");
                     }
                 }
             }
@@ -800,6 +865,173 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
                 .error_for_status().context("Delete short review failed")?;
             println!("Short review deleted.");
         }
+
+        BookCommand::Delete { id } => {
+            client()
+                .delete(format!("{base}/books/{id}"))
+                .bearer_auth(token)
+                .send().await?
+                .error_for_status().context("Delete book failed")?;
+            println!("Deleted book {id} — audit entry recorded in book_edit_log.");
+        }
+
+        BookCommand::DeleteEdition { book_id, edition_id } => {
+            client()
+                .delete(format!("{base}/books/{book_id}/editions/{edition_id}"))
+                .bearer_auth(token)
+                .send().await?
+                .error_for_status().context("Delete edition failed")?;
+            println!("Deleted edition {edition_id} from book {book_id}.");
+        }
+
+        BookCommand::IngestDouban { urls, langs, edition_names, tags, prereqs, title: title_override, dry_run } => {
+            handle_ingest_douban(base, &token, urls, langs, edition_names, tags, prereqs, title_override, dry_run).await?;
+        }
     }
+    Ok(())
+}
+
+async fn handle_ingest_douban(
+    base: &str,
+    token: &str,
+    urls: Vec<String>,
+    langs: Vec<String>,
+    edition_names: Vec<String>,
+    tags: Vec<String>,
+    prereqs: Vec<String>,
+    title_override: Option<String>,
+    dry_run: bool,
+) -> Result<()> {
+    // Fetch + parse each douban page up front so we fail fast on bad URLs.
+    let mut fetched = Vec::with_capacity(urls.len());
+    for (i, url) in urls.iter().enumerate() {
+        eprintln!("[{}/{}] fetching {url}", i + 1, urls.len());
+        let d = util::fetch_douban(url).await
+            .with_context(|| format!("parsing douban page {url}"))?;
+        fetched.push(d);
+    }
+
+    let first = fetched.first().context("no douban URLs provided")?;
+    let canonical_title = title_override.clone().unwrap_or_else(|| {
+        // Prefer the original (English) title if douban exposes it — that
+        // stays stable across translation/reprint pages.
+        first.original_title.clone().unwrap_or_else(|| first.title.clone().unwrap_or_default())
+    });
+    let canonical_authors = first.authors.clone();
+    let canonical_desc = first.description.clone();
+
+    if dry_run {
+        println!("DRY RUN — no changes would be made.");
+        println!("Book title: {canonical_title}");
+        println!("Authors:    {}", canonical_authors.join(", "));
+        for (i, d) in fetched.iter().enumerate() {
+            let lang = langs.get(i).cloned().unwrap_or_else(|| "en".to_string());
+            let en = edition_names.get(i).cloned().unwrap_or_else(|| format!("Edition {}", i + 1));
+            println!("  Edition #{}: [{lang}] {en}  ISBN={}  {} ({})",
+                i + 1,
+                d.isbn.clone().unwrap_or_else(|| "-".to_string()),
+                d.publisher.clone().unwrap_or_else(|| "-".to_string()),
+                d.year.clone().unwrap_or_else(|| "-".to_string()),
+            );
+            if let Some(ref c) = d.cover_url { println!("    cover: {c}"); }
+            println!("    douban: {}", d.douban_url);
+        }
+        return Ok(());
+    }
+
+    // 1. Create the book shell. Use --no-edition semantics: send
+    //    POST /books with just the book-level fields, skip first edition.
+    let title_json = serde_json::json!({ "en": canonical_title });
+    let desc_json = canonical_desc
+        .as_deref()
+        .map(|d| serde_json::json!({ "en": d }))
+        .unwrap_or(serde_json::json!({}));
+    let body = serde_json::json!({
+        "title": title_json,
+        "subtitle": serde_json::json!({}),
+        "authors": canonical_authors,
+        "description": desc_json,
+        "tags": tags,
+        "prereqs": prereqs,
+    });
+    let resp: serde_json::Value = client()
+        .post(format!("{base}/books"))
+        .bearer_auth(token)
+        .json(&body)
+        .send().await?
+        .error_for_status().context("Create book failed")?
+        .json().await?;
+    let book_id = resp["id"].as_str().context("no book id in response")?.to_string();
+    println!("Created book: {canonical_title} ({book_id})");
+
+    // 2. For each douban URL: add edition, upload cover, add douban resource.
+    for (i, d) in fetched.iter().enumerate() {
+        let lang = langs.get(i).cloned().unwrap_or_else(|| "en".to_string());
+        let edition_name = edition_names.get(i).cloned().unwrap_or_else(|| {
+            if i == 0 { "First Edition".to_string() } else { format!("Edition {}", i + 1) }
+        });
+        let ed_title = d.original_title.clone()
+            .or_else(|| d.title.clone())
+            .unwrap_or_else(|| canonical_title.clone());
+        let ed_body = serde_json::json!({
+            "title": ed_title,
+            "subtitle": d.subtitle,
+            "edition_name": edition_name,
+            "lang": lang,
+            "isbn": d.isbn,
+            "publisher": d.publisher,
+            "year": d.year,
+            "translators": d.translators,
+            "purchase_links": serde_json::json!([]),
+            "cover_url": null,
+        });
+        let ed_resp: serde_json::Value = client()
+            .post(format!("{base}/books/{book_id}/editions"))
+            .bearer_auth(token)
+            .json(&ed_body)
+            .send().await?
+            .error_for_status()
+            .with_context(|| format!("Add edition #{} failed", i + 1))?
+            .json().await?;
+        let edition_id = ed_resp["id"].as_str().context("no edition id")?.to_string();
+        println!("  Added edition: {edition_name} ({edition_id})");
+
+        // Cover — download with referer then upload via multipart.
+        if let Some(ref cover_url) = d.cover_url {
+            let local = util::download_to_tempfile(cover_url, &d.douban_url).await
+                .with_context(|| format!("download cover from {cover_url}"))?;
+            let bytes = std::fs::read(&local)?;
+            let filename = local.file_name().and_then(|n| n.to_str()).unwrap_or("cover.jpg").to_string();
+            let form = reqwest::multipart::Form::new()
+                .part("file", reqwest::multipart::Part::bytes(bytes).file_name(filename));
+            client()
+                .post(format!("{base}/books/{book_id}/editions/{edition_id}/cover"))
+                .bearer_auth(token)
+                .multipart(form)
+                .send().await?
+                .error_for_status().context("Upload cover failed")?;
+            let _ = std::fs::remove_file(&local);
+            println!("    uploaded cover ({})", local.display());
+        }
+
+        // Douban resource — via book_resources, per the project rule that
+        // douban is not a purchase link.
+        let res_body = serde_json::json!({
+            "edition_id": edition_id,
+            "kind": "other",
+            "label": "豆瓣",
+            "url": d.douban_url,
+            "position": 0,
+        });
+        client()
+            .post(format!("{base}/books/{book_id}/resources"))
+            .bearer_auth(token)
+            .json(&res_body)
+            .send().await?
+            .error_for_status().context("Add douban resource failed")?;
+        println!("    linked douban");
+    }
+
+    println!("\nIngested {} edition(s) into {book_id}.", fetched.len());
     Ok(())
 }

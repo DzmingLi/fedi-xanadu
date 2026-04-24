@@ -345,8 +345,8 @@ pub async fn update_book(
     // Save edit log
     let edit_id = tid();
     sqlx::query(
-        "INSERT INTO book_edit_log (id, book_id, editor_did, old_data, new_data, summary) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO book_edit_log (id, book_id, original_book_id, editor_did, old_data, new_data, summary) \
+         VALUES ($1, $2, $2, $3, $4, $5, $6)",
     )
     .bind(&edit_id)
     .bind(&input.id)
@@ -391,6 +391,24 @@ pub async fn update_edition(
     Ok(Json(edition))
 }
 
+pub async fn delete_book(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WriteAuth(user): WriteAuth,
+) -> ApiResult<StatusCode> {
+    book_service::delete_book(&state.pool, &id, &user.did).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_edition(
+    State(state): State<AppState>,
+    Path((book_id, edition_id)): Path<(String, String)>,
+    WriteAuth(_user): WriteAuth,
+) -> ApiResult<StatusCode> {
+    book_service::delete_edition(&state.pool, &book_id, &edition_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // --- Book edit history ---
 
 #[derive(serde::Serialize, sqlx::FromRow)]
@@ -409,12 +427,14 @@ pub async fn get_edit_history(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<BookEditLog>>> {
+    // Query on original_book_id so entries for deleted books (where
+    // book_id has been nulled by the FK SET NULL cascade) still surface.
     let rows = sqlx::query_as::<_, BookEditLog>(
-        "SELECT l.id, l.book_id, l.editor_did, p.handle AS editor_handle, \
+        "SELECT l.id, l.original_book_id AS book_id, l.editor_did, p.handle AS editor_handle, \
                 l.old_data, l.new_data, l.summary, l.created_at \
          FROM book_edit_log l \
          LEFT JOIN profiles p ON l.editor_did = p.did \
-         WHERE l.book_id = $1 \
+         WHERE l.original_book_id = $1 \
          ORDER BY l.created_at DESC \
          LIMIT 100",
     )
