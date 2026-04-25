@@ -680,21 +680,9 @@ pub async fn remove_series_prereq(
     Ok(())
 }
 
-/// Resolve the canonical `repo_uri` for a series. New series mint records
-/// under `at.nightbo.work`, but a long tail still lives under the legacy
-/// `at.nightbo.series` lexicon. Pull whatever URI the series's articles
-/// actually carry (any chapter row will do), and fall back to the new
-/// lexicon when the series has no chapters yet.
+/// Construct the canonical `repo_uri` for a series — the stable identifier
+/// for the series record: `at://{creator_did}/at.nightbo.work/{series_id}`.
 pub async fn series_repo_uri(pool: &PgPool, series_id: &str) -> crate::Result<String> {
-    if let Some(repo_uri) = sqlx::query_scalar::<_, String>(
-        "SELECT repo_uri FROM series_articles WHERE series_id = $1 LIMIT 1",
-    )
-    .bind(series_id)
-    .fetch_optional(pool)
-    .await?
-    {
-        return Ok(repo_uri);
-    }
     let owner = get_series_owner(pool, series_id).await?;
     Ok(format!("at://{owner}/at.nightbo.work/{series_id}"))
 }
