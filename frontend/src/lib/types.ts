@@ -937,6 +937,14 @@ export interface CourseDetail {
   my_learning_status: CourseLearningStatus | null;
   my_session_progress: SessionProgress[];
   resources: CourseResource[];
+  siblings: CourseSibling[];
+}
+
+export interface CourseSibling {
+  id: string;
+  title: string;
+  semester: string | null;
+  institution: string | null;
 }
 
 export interface CourseResource {

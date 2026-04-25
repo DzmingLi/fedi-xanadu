@@ -950,6 +950,7 @@ export default {
   'course.addTagPlaceholder': '给课程加标签（名字或 tag-id）',
   'course.removeTag': '移除此标签',
   'course.license': '许可证',
+  'course.otherIterations': '其他学期',
   'course.language': '语言',
   'course.myRating': '我的评分',
   'course.clearRating': '清除评分',

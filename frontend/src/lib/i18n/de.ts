@@ -950,6 +950,7 @@ export default {
   'course.addTagPlaceholder': 'Tag hinzufügen (Name oder tag-id)',
   'course.removeTag': 'Diesen Tag entfernen',
   'course.license': 'Lizenz',
+  'course.otherIterations': 'Weitere Semester',
   'course.language': 'Sprache',
   'course.myRating': 'Meine Bewertung',
   'course.clearRating': 'Bewertung löschen',

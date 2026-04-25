@@ -284,6 +284,16 @@
         {#if c.semester}
           <p class="course-semester">{c.semester}</p>
         {/if}
+        {#if detail.siblings.length > 0}
+          <div class="course-siblings" aria-label={t('course.otherIterations')}>
+            <span class="siblings-label">{t('course.otherIterations')}:</span>
+            {#each detail.siblings as s (s.id)}
+              <a class="sibling-chip" href="/course?id={encodeURIComponent(s.id)}">
+                {s.semester || s.title}
+              </a>
+            {/each}
+          </div>
+        {/if}
         {#if detail.authors.length > 0}
           <p class="course-authors">
             {#each detail.authors as a, i}
@@ -719,6 +729,10 @@
   .course-title { font-family: var(--font-serif); font-size: 2rem; font-weight: 400; margin: 0 0 8px; line-height: 1.3; }
   .course-institution { font-size: 14px; color: var(--text-secondary); margin: 4px 0; }
   .course-semester { font-size: 13px; color: var(--text-hint); margin: 2px 0; }
+  .course-siblings { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 4px; font-size: 12px; }
+  .siblings-label { color: var(--text-hint); }
+  .sibling-chip { padding: 2px 9px; border: 1px solid var(--border); border-radius: 3px; color: var(--text-secondary); text-decoration: none; background: var(--bg-white); transition: border-color 0.15s, color 0.15s; }
+  .sibling-chip:hover { border-color: var(--accent); color: var(--accent); }
   .course-authors { font-size: 14px; color: var(--text-secondary); margin: 6px 0; }
   .course-authors a { color: var(--text-primary); text-decoration: none; }
   .course-authors a:hover { color: var(--accent); }
