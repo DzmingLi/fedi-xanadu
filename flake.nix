@@ -4,14 +4,17 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    crane.url = "github:ipetkov/crane";
+    crate2nix = {
+      url = "github:nix-community/crate2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, crane, rust-overlay }:
+  outputs = { self, nixpkgs, flake-utils, crate2nix, rust-overlay }:
     let
       nixosModule = { config, lib, pkgs, ... }:
         let
@@ -262,59 +265,58 @@
     } //
     flake-utils.lib.eachDefaultSystem (system:
       let
-        overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs { inherit system overlays; };
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ (import rust-overlay) ];
+        };
+
+        # edition 2024 / resolver v3 → ≥ rust 1.85; some workspace deps
+        # (atproto-dasl, typst-macros) demand 1.90. Pin a stable release.
+        rustToolchain = pkgs.rust-bin.stable."1.90.0".default.override {
           extensions = [ "rust-src" "rust-analyzer" ];
         };
-        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
-        # Filter out non-Rust directories for build cache efficiency
-        src = pkgs.lib.cleanSourceWith {
-          src = pkgs.lib.cleanSource ./.;
-          filter = path: _type:
-            let rel = pkgs.lib.removePrefix (toString ./. + "/") path;
-            in !(builtins.any (prefix: pkgs.lib.hasPrefix prefix rel) [
-              "frontend/" "docs/" "scripts/" "crates/frontend/"
-            ]);
+        # crate2nix invokes nixpkgs' buildRustCrate. Override its toolchain
+        # to our pinned rust (nixpkgs' default lags edition 2024).
+        buildRustCrateForPkgs = _: pkgs.buildRustCrate.override {
+          rustc = rustToolchain;
+          cargo = rustToolchain;
         };
 
-        # Vendor cargo deps (including git sources)
-        cargoVendorDir = craneLib.vendorCargoDeps {
-          inherit src;
-          outputHashes = {
-            "git+https://github.com/DzmingLi/atproto-auth.git#8f8f91da26671c35a11d42205f78f7037d0e27ba" = "sha256-W4QrqQ3uBf3xNdp8dTupFep+DS7XULGm/oMwe2cdHLc=";
-            "git+https://github.com/DzmingLi/typst-render.git#606ea3b5d0433e29e910c14ce5d124bb5b80b2fc" = "sha256-IIic9W3GIydp6j5btmldvhyv9Dd1rnLxKSU0oedxD/0=";
+        # fx-core embeds migrations via `sqlx::migrate!("../../migrations_pg")`
+        # at compile time. crate2nix builds each crate from its own filtered
+        # source tree, so the workspace-relative path falls outside the
+        # sandbox. Build a self-contained source for fx-core that bundles
+        # migrations_pg next to its sources and rewrites the macro path
+        # accordingly. defaultCrateOverrides can replace `src` (buildRustCrate
+        # reads it from the override-merged crate, unlike preBuild which
+        # bypasses overrides), so this is the cleanest hook.
+        fxCoreSrc = pkgs.runCommand "fx-core-src" { } ''
+          cp -r ${./crates/fx-core} $out
+          chmod -R +w $out
+          cp -r ${./migrations_pg} $out/migrations_pg
+          substituteInPlace $out/src/db.rs \
+            --replace-fail '"../../migrations_pg"' '"./migrations_pg"'
+        '';
+
+        cargoNix = import ./Cargo.nix {
+          inherit pkgs buildRustCrateForPkgs;
+          # SQLX_OFFLINE so the `sqlx::query!` macros resolve against the
+          # cached .sqlx/ files committed with the workspace; otherwise the
+          # build would need a live database connection.
+          defaultCrateOverrides = pkgs.defaultCrateOverrides // {
+            "fx-server"     = _: { SQLX_OFFLINE = "true"; };
+            "fx-client"     = _: { SQLX_OFFLINE = "true"; };
+            "nightboat-cli" = _: { SQLX_OFFLINE = "true"; };
+            "fx-core" = _: {
+              SQLX_OFFLINE = "true";
+              src = fxCoreSrc;
+            };
           };
         };
 
-        commonArgs = {
-          inherit src cargoVendorDir;
-          pname = "nightboat";
-          version = "0.1.0";
-          nativeBuildInputs = with pkgs; [ pkg-config ];
-          buildInputs = with pkgs; [ openssl postgresql ];
-          SQLX_OFFLINE = "true";
-          doCheck = false;
-        };
-
-        # Deps layer — only rebuilds when Cargo.lock changes
-        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-
-        # Server binary (reuses cached deps)
-        nightboat-bin = craneLib.buildPackage (commonArgs // {
-          inherit cargoArtifacts;
-          cargoExtraArgs = "--package fx-server";
-          postInstall = "rm -f $out/bin/nbt 2>/dev/null || true";
-        });
-
-        # CLI binary (reuses same cached deps)
-        nbt_cli = craneLib.buildPackage (commonArgs // {
-          inherit cargoArtifacts;
-          pname = "nightboat-cli";
-          cargoExtraArgs = "--package nightboat-cli";
-          postInstall = "rm -f $out/bin/nightboat 2>/dev/null || true";
-        });
+        nightboat-bin = cargoNix.workspaceMembers."fx-server".build;
+        nbt_cli       = cargoNix.workspaceMembers."nightboat-cli".build;
 
         frontendDist = pkgs.runCommand "nightboat-frontend-dist" {} ''
           cp -r ${./frontend/dist} $out
@@ -339,15 +341,16 @@
           cp -r ${migrationsDrv} $out/share/nightboat/migrations_pg
         '';
 
-        devShells.default = craneLib.devShell {
+        devShells.default = pkgs.mkShell {
           packages = with pkgs; [
+            rustToolchain
             pkg-config
             openssl
             postgresql
             sqlx-cli
             nodejs_22
-            nodePackages.npm
             pandoc
+            crate2nix.packages.${system}.default
           ];
           SQLX_OFFLINE = "true";
         };

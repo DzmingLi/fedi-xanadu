@@ -721,6 +721,7 @@ export default {
 
   // Books
   'nav.books': '图书',
+  'nav.papers': '论文',
   'nav.courses': '课程',
   'books.title': '图书',
   'books.subtitle': '浏览和评论书籍，添加不同版本和购买链接',

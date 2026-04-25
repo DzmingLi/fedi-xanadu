@@ -1,0 +1,4 @@
+{
+  "git+https://github.com/DzmingLi/atproto-auth.git#atproto-auth@0.1.0": "0hf4xgfrca13r03w3xfwgf9s70q924zdrqsakyyvbvc78an5r5an",
+  "git+https://github.com/DzmingLi/typst-render.git#fx-renderer@0.1.0": "0dsph47cm3iq9341bajkb2zq50ajq4d68kldvr5ymrssblr6hzvc"
+}

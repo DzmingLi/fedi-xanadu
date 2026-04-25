@@ -721,6 +721,7 @@ export default {
 
   // Books
   'nav.books': 'Books',
+  'nav.papers': 'Papers',
   'nav.courses': 'Courses',
   'books.title': 'Books',
   'books.subtitle': 'Browse and review books, add editions and purchase links',

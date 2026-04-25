@@ -106,6 +106,7 @@
     <a href="/library">{t('nav.library')}</a>
     <a href="/publications">{t('nav.publications')}</a>
     <a href="/books">{t('nav.books')}</a>
+    <a href="/papers">{t('nav.papers')}</a>
     <a href="/courses">{t('nav.courses')}</a>
     <a href="/listings">{t('nav.listings')}</a>
   </div>
