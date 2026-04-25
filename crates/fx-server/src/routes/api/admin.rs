@@ -1206,14 +1206,24 @@ pub async fn admin_migrate_pijul_to_blob(
 
     for (repo_uri, rows) in groups {
         let repo_node_id = fx_core::util::uri_to_node_id(&repo_uri);
-        let scratch_dir = base.join(&repo_node_id);
 
-        // The "is this a series?" heuristic: repo_uri is under the series
-        // NSID (via its migration: repo_uri = at://did/at.nightbo.work/id
-        // for chapters, or the article's own at_uri for standalones). Fall
-        // back to "multiple rows share repo_uri" for safety.
-        let is_series = repo_uri.contains(&format!("/{}/", fx_atproto::lexicon::WORK))
+        // The "is this a series?" heuristic: repo_uri is under the legacy
+        // series NSID (the article_repos_rewrite migration backfilled chapter
+        // rows with `at://{did}/at.nightbo.series/{id}` synthetic uris) OR
+        // multiple rows share the repo_uri (multi-chapter set).
+        let is_series = repo_uri.contains("/at.nightbo.series/")
+            || repo_uri.contains(&format!("/{}/", fx_atproto::lexicon::WORK))
             || rows.len() > 1;
+
+        // Legacy on-disk naming: series pijul repos lived at `series_{rkey}/`
+        // (NOT at `uri_to_node_id` of the synthesized series at-uri).
+        // Standalone articles always lived at `uri_to_node_id(at_uri)/`.
+        let scratch_dir = if is_series {
+            let rkey = repo_uri.rsplit('/').next().unwrap_or("");
+            base.join(format!("series_{rkey}"))
+        } else {
+            base.join(&repo_node_id)
+        };
 
         if is_series {
             // Copy the entire scratch tree into {blob_cache}/{series_node_id}/.
