@@ -12,27 +12,30 @@
   let loading = $state(true);
   let error = $state('');
 
-  // Build heading tree: group level-2+ headings under their level-1 parent
-  interface HeadingGroup {
-    heading: SeriesHeading;           // level-1 chapter heading
-    sections: SeriesHeading[];        // level-2+ section headings (with article_uri)
-  }
+  // TOC layout: top-level headings split into two kinds.
+  //  - 'group'   — meta.yaml chapter group (article_uri=null), wraps its child
+  //                chapter rows beneath an h2 title.
+  //  - 'article' — chapter that lives directly at the top level (no group),
+  //                rendered as a clickable item on its own.
+  type TocEntry =
+    | { kind: 'group'; heading: SeriesHeading; sections: SeriesHeading[] }
+    | { kind: 'article'; heading: SeriesHeading };
 
-  let headingGroups = $derived.by((): HeadingGroup[] => {
+  let tocEntries = $derived.by((): TocEntry[] => {
     if (!headings.length) return [];
-    const groups: HeadingGroup[] = [];
-    const idMap = new Map<number, SeriesHeading>();
-    for (const h of headings) idMap.set(h.id, h);
-
-    // Top-level headings become chapter groups
+    const entries: TocEntry[] = [];
     const topLevel = headings.filter(h => !h.parent_heading_id);
-    for (const ch of topLevel) {
-      const sections = headings.filter(
-        h => h.parent_heading_id === ch.id && h.article_uri
-      );
-      groups.push({ heading: ch, sections });
+    for (const h of topLevel) {
+      if (h.article_uri) {
+        entries.push({ kind: 'article', heading: h });
+      } else {
+        const sections = headings.filter(
+          c => c.parent_heading_id === h.id && c.article_uri
+        );
+        entries.push({ kind: 'group', heading: h, sections });
+      }
     }
-    return groups;
+    return entries;
   });
 
   // Votes per article
@@ -244,36 +247,49 @@
     {/if}
   </div>
 
-  {#if headingGroups.length > 0}
-    <!-- Hierarchical TOC: chapter groups with sections -->
+  {#if tocEntries.length > 0}
     <div class="toc-chapters">
-      {#each headingGroups as group (group.heading.id)}
-        <div class="toc-chapter">
-          <h2 class="chapter-title">{group.heading.title}</h2>
-          {#if group.sections.length > 0}
-            <div class="series-articles">
-              {#each group.sections as sec, i (sec.id)}
-                {@const article = detail.articles.find(a => a.article_uri === sec.article_uri)}
-                {#if article}
-                  {@render articleItem(article, i)}
-                {:else}
-                  <!-- article_uri exists but not in detail.articles — render as plain link -->
-                  <div class="series-item">
-                    <div class="item-number">{i + 1}</div>
-                    <div class="item-content">
-                      <a href="/article?uri={encodeURIComponent(sec.article_uri!)}&series_id={encodeURIComponent(id)}" class="item-title">
-                        {sec.title}
-                      </a>
+      {#each tocEntries as entry, idx (entry.heading.id)}
+        {#if entry.kind === 'group'}
+          <div class="toc-chapter">
+            <h2 class="chapter-title">{entry.heading.title}</h2>
+            {#if entry.sections.length > 0}
+              <div class="series-articles">
+                {#each entry.sections as sec, i (sec.id)}
+                  {@const article = detail.articles.find(a => a.article_uri === sec.article_uri)}
+                  {#if article}
+                    {@render articleItem(article, i)}
+                  {:else}
+                    <div class="series-item">
+                      <div class="item-number">{i + 1}</div>
+                      <div class="item-content">
+                        <a href="/article?uri={encodeURIComponent(sec.article_uri!)}&series_id={encodeURIComponent(id)}" class="item-title">
+                          {sec.title}
+                        </a>
+                      </div>
                     </div>
-                  </div>
-                {/if}
-              {/each}
-            </div>
+                  {/if}
+                {/each}
+              </div>
+            {:else}
+              <p class="toc-empty">（暂无章节）</p>
+            {/if}
+          </div>
+        {:else}
+          {@const article = detail.articles.find(a => a.article_uri === entry.heading.article_uri)}
+          {#if article}
+            {@render articleItem(article, idx)}
           {:else}
-            <!-- chapter heading with no child sections — show articles directly -->
-            <p class="toc-empty">（暂无章节）</p>
+            <div class="series-item">
+              <div class="item-number">{idx + 1}</div>
+              <div class="item-content">
+                <a href="/article?uri={encodeURIComponent(entry.heading.article_uri!)}&series_id={encodeURIComponent(id)}" class="item-title">
+                  {entry.heading.title}
+                </a>
+              </div>
+            </div>
           {/if}
-        </div>
+        {/if}
       {/each}
     </div>
   {:else}
