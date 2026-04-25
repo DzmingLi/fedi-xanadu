@@ -468,13 +468,17 @@ async fn compile_series_inner(
         }
         let _ = tokio::fs::write(&cache_file, &html).await;
 
+        // Globally-unique-within-series anchor prefix. anchor_stem alone
+        // collides when several chapters share a stem (e.g. every chapter
+        // is `chapterN/index.md`). source_path is unique per chapter by
+        // construction, so use it for namespacing the heading anchors.
+        let anchor_scope = ch.source_path.replace('/', ":");
         let headings = fx_renderer::heading_extract::extract_headings(&html);
         for h in headings {
-            // Prefix chapter stem onto each anchor so two chapters with the
-            // same heading text (e.g. "Introduction") don't collide on the
-            // (series_id, anchor) UNIQUE constraint and can both exist as
-            // distinct fragment targets.
-            let scoped_anchor = format!("{anchor_stem}/{}", h.anchor);
+            // Prefix the chapter scope onto each anchor so two chapters
+            // with the same heading text (e.g. "Introduction") don't
+            // collide on the (series_id, anchor) UNIQUE constraint.
+            let scoped_anchor = format!("{anchor_scope}/{}", h.anchor);
             sqlx::query(
                 "INSERT INTO series_headings \
                     (series_id, level, title, anchor, repo_uri, source_path, order_index) \
