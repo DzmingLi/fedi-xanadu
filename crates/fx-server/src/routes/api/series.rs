@@ -442,6 +442,17 @@ async fn compile_series_inner(
     sqlx::query("DELETE FROM series_headings WHERE series_id = $1")
         .bind(series_id).execute(&state.pool).await?;
 
+    // Read meta.yaml chapter groups (if any) so we can synthesise level-1
+    // group headings and parent each section to its declared group.
+    let groups = fx_core::meta::read_series_meta(&series_root)
+        .map(|m| m.chapters)
+        .unwrap_or_default();
+    let group_for_section: std::collections::HashMap<String, &fx_core::meta::ChapterGroup> = groups
+        .iter()
+        .flat_map(|g| g.sections.iter().map(move |s| (s.clone(), g)))
+        .collect();
+    let mut group_id_by_title: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+
     let mut total_headings = 0usize;
     let mut order_index: i32 = 0;
     // Heading nesting is recovered from the level monotonicity of the
@@ -453,6 +464,40 @@ async fn compile_series_inner(
 
     for ch in &chapters {
         stack.clear();
+
+        // Insert/find the chapter-group row this section belongs to (if any).
+        // Group headings live at level 1; section headings extracted from the
+        // chapter HTML attach as level-2+ children under it.
+        let group_id: Option<i32> = if let Some(g) = group_for_section.get(&ch.source_path) {
+            if let Some(id) = group_id_by_title.get(&g.title) {
+                Some(*id)
+            } else {
+                let group_anchor = format!("group:{}", g.title.replace([' ', '/'], "-"));
+                let id: i32 = sqlx::query_scalar(
+                    "INSERT INTO series_headings \
+                        (series_id, level, title, anchor, repo_uri, source_path, parent_heading_id, order_index) \
+                     VALUES ($1, 1, $2, $3, NULL, NULL, NULL, $4) \
+                     RETURNING id",
+                )
+                .bind(series_id)
+                .bind(&g.title)
+                .bind(&group_anchor)
+                .bind(order_index)
+                .fetch_one(&state.pool).await?;
+                group_id_by_title.insert(g.title.clone(), id);
+                order_index += 1;
+                total_headings += 1;
+                Some(id)
+            }
+        } else {
+            None
+        };
+        if let Some(gid) = group_id {
+            // Treat the group as the "level-0" parent for this chapter so
+            // section headings attach to it via the stack walk below.
+            stack.push((0, gid));
+        }
+
         let source_file = series_root.join(&ch.file_path);
         let Ok(src) = tokio::fs::read_to_string(&source_file).await else {
             continue;

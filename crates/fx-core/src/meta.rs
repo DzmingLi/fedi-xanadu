@@ -66,15 +66,35 @@ pub struct SeriesMeta {
     /// page and `split_level` only controls per-file subsection splitting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub split_level: Option<u32>,
-    /// Ordered list of chapter file paths relative to the repo root.
+    /// Ordered list of chapter groups. Each group has a title (the level-1
+    /// table-of-contents entry) and an ordered list of section file paths
+    /// relative to the repo root. compile_series materialises one
+    /// `series_headings` row per group with that title and threads the
+    /// group's sections as level-2 children.
+    ///
     /// Only meaningful for markdown series — typst series compile main.typ
     /// and derive chapters from heading splits at runtime.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub chapters: Vec<String>,
+    pub chapters: Vec<ChapterGroup>,
     /// Relative path (within the repo) to the cover image. Authoritative —
     /// stored in the source tree so it travels with the bundle.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChapterGroup {
+    pub title: String,
+    pub sections: Vec<String>,
+}
+
+impl SeriesMeta {
+    /// Flatten chapter groups into the section file paths in declared order.
+    /// Used by `compile_series` to enumerate all chapter sources without
+    /// caring about grouping when grouping isn't needed.
+    pub fn section_paths(&self) -> impl Iterator<Item = &str> {
+        self.chapters.iter().flat_map(|g| g.sections.iter().map(String::as_str))
+    }
 }
 
 /// Read meta.yaml, set (or clear) the cover field, write it back.
@@ -298,14 +318,24 @@ mod tests {
             category: Some("lecture".into()),
             topics: vec!["a".into(), "b".into()],
             split_level: Some(2),
-            chapters: vec!["README.md".into(), "ch0/ch0.md".into()],
+            chapters: vec![
+                ChapterGroup {
+                    title: "Preface".into(),
+                    sections: vec!["README.md".into()],
+                },
+                ChapterGroup {
+                    title: "Chapter 0".into(),
+                    sections: vec!["ch0/ch0.md".into()],
+                },
+            ],
             ..Default::default()
         };
         let yaml = serde_yml::to_string(&meta).unwrap();
         let back: SeriesMeta = serde_yml::from_str(&yaml).unwrap();
         assert_eq!(back.title, meta.title);
         assert_eq!(back.description, meta.description);
-        assert_eq!(back.chapters, meta.chapters);
+        assert_eq!(back.chapters.len(), meta.chapters.len());
+        assert_eq!(back.chapters[1].sections, vec!["ch0/ch0.md".to_string()]);
         assert_eq!(back.split_level, meta.split_level);
     }
 
