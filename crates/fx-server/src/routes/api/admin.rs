@@ -1361,7 +1361,27 @@ pub async fn admin_migrate_pijul_to_blob(
                 }
             };
 
-            let source_file = scratch_dir.join(&r.source_path);
+            // Resolve the actual source file. Schema backfill picked
+            // `main.{ext}` for standalone articles, but the legacy publish
+            // flow wrote `content.{ext}` — fall back to that name when main
+            // is absent. Update DB-side source_path/file_path on success
+            // so future code reads it correctly.
+            let mut source_file = scratch_dir.join(&r.source_path);
+            let mut effective_source_path = r.source_path.clone();
+            if !source_file.is_file() {
+                if let Some(stem) = std::path::Path::new(&r.source_path).file_stem().and_then(|s| s.to_str()) {
+                    if stem == "main" {
+                        let ext = std::path::Path::new(&r.source_path)
+                            .extension().and_then(|e| e.to_str()).unwrap_or("md");
+                        let alt = format!("content.{ext}");
+                        let alt_path = scratch_dir.join(&alt);
+                        if alt_path.is_file() {
+                            source_file = alt_path;
+                            effective_source_path = alt;
+                        }
+                    }
+                }
+            }
             if !source_file.is_file() {
                 skipped_missing.push(serde_json::json!({
                     "repo_uri": repo_uri,
@@ -1370,6 +1390,10 @@ pub async fn admin_migrate_pijul_to_blob(
                 }));
                 continue;
             }
+            // entry_rel below is computed from the resolved source_file
+            // relative to scratch_dir, so the fallback name is honored
+            // automatically without further plumbing.
+            let _ = effective_source_path;
 
             let target_node_id = fx_core::util::uri_to_node_id(&at_uri);
             let target_dir = state.blob_cache_path.join(&target_node_id);
