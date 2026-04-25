@@ -9,12 +9,11 @@
     <p>NightBoat 是一个基于 <a href="https://atproto.com">AT Protocol</a> 的去中心化知识分享平台。</p>
     <ul>
       <li><strong>前置知识感知</strong> — 每篇文章标注所需前置知识，帮助读者判断是否准备好阅读</li>
-      <li><strong>技能树系统</strong> — 社区共建知识图谱，浏览、fork、投票选出最佳学习路径</li>
+      <li><strong>技能树系统</strong> — 社区共建知识图谱，浏览、采用、投票选出最佳学习路径</li>
       <li><strong>系列讲义</strong> — 将多篇文章组织成有序课程，支持章节间的前置依赖</li>
       <li><strong>收藏夹（书签系统）</strong> — 收藏文章到自定义文件夹，打造个人知识库</li>
       <li><strong>草稿箱</strong> — 随时保存未完成的文章，草稿同步到你的 PDS</li>
       <li><strong>去中心化</strong> — 你的文章存储在你自己的 AT Protocol PDS 上，不依赖单一平台</li>
-      <li><strong>Fork 机制</strong> — 像代码一样 fork 文章，社区择优</li>
     </ul>
   </section>
 
@@ -31,7 +30,7 @@
     </ul>
 
     <h3>技能树（Skill Tree）</h3>
-    <p>技能树是 tag 之间的层级关系图谱。每个人都可以创建自己的技能树，也可以 fork 别人的。</p>
+    <p>技能树是 tag 之间的层级关系图谱。每个人都可以创建自己的技能树。</p>
     <p>社区投票决定哪些技能树最有价值 — 高赞技能树自然涌现为推荐学习路径。</p>
     <p>你可以「采用」一棵技能树，它将成为你的活跃知识图谱，帮助你追踪学习进度。</p>
 
@@ -92,9 +91,6 @@
 
 // 参考文献引用
 根据 Martin-Löf @Martin-Lof-1972 的工作...</code></pre>
-
-    <h4>Fork 系列</h4>
-    <p>Fork 一个系列 = fork 整个仓库。你可以修改任何章节，添加新内容，系统会跟踪 pijul diff。</p>
 
     <h3>书架（书签系统）</h3>
     <p>收藏你喜欢的文章，组织成个人知识库：</p>

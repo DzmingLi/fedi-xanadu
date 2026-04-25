@@ -2,22 +2,13 @@
   import {
     getSeries, listSeriesFiles, readSeriesFile, writeSeriesFile, deleteSeriesFile,
     compileSeries, addSeriesPrereq, removeSeriesPrereq,
-    listCollaborators, inviteCollaborator, removeCollaborator,
-    listChannels, readChannelFile, writeChannelFile,
-    channelDiff, applyChannelChange,
-    channelLogDetails, getSeriesChangeDetail, unrecordSeriesChange,
   } from '../lib/api';
-  import type { ChangeInfo } from '../lib/api';
-  import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import type { SeriesDetail, SeriesArticle } from '../lib/types';
-  import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
-  import TypstEditor from 'pijul-editor/TypstEditor.svelte';
-  import JsonView from 'pijul-editor/JsonView.svelte';
-  import ChannelPanel from 'pijul-editor/ChannelPanel.svelte';
-  import VersionPanel from 'pijul-editor/VersionPanel.svelte';
-  import FilePanel from 'pijul-editor/FilePanel.svelte';
-  import type { DiffLine, VersionInfo } from 'pijul-editor/VersionPanel.svelte';
+  import MarkdownEditor from 'nbt-editor/MarkdownEditor.svelte';
+  import TypstEditor from 'nbt-editor/TypstEditor.svelte';
+  import JsonView from 'nbt-editor/JsonView.svelte';
+  import FilePanel from 'nbt-editor/FilePanel.svelte';
 
   let { id } = $props<{ id: string }>();
 
@@ -28,25 +19,7 @@
   let originalContent = $state('');
   let loading = $state(true);
   let error = $state('');
-
-  // Channel state
-  let channels = $state<string[]>(['main']);
-  let currentChannel = $state('main');
-
-  // Version panel state
-  let recording = $state(false);
-  let versions = $state<VersionInfo[]>([]);
-  let loadingHistory = $state(false);
-
-  let currentDiffLines = $derived.by((): DiffLine[] => {
-    if (editorContent === originalContent) return [];
-    const oldLines = originalContent.split('\n');
-    const newLines = editorContent.split('\n');
-    const lines: DiffLine[] = [];
-    for (const l of oldLines) { if (!newLines.includes(l)) lines.push({ type: 'del', text: l }); }
-    for (const l of newLines) { if (!oldLines.includes(l)) lines.push({ type: 'add', text: l }); }
-    return lines;
-  });
+  let saving = $state(false);
 
   // Compile state
   let compiling = $state(false);
@@ -63,27 +36,17 @@
   async function loadSeries() {
     loading = true;
     try {
-      const [d, f, chs, collabs] = await Promise.all([
+      const [d, f] = await Promise.all([
         getSeries(id),
         listSeriesFiles(id),
-        listChannels(id).catch(() => ['main']),
-        listCollaborators(id).catch(() => []),
       ]);
       detail = d;
       files = f;
-      channels = chs;
-
-      const auth = getAuth();
-      if (auth) {
-        const myCollab = collabs.find(c => c.user_did === auth.did);
-        if (myCollab) currentChannel = myCollab.channel_name;
-      }
 
       const firstFile = f.find(item => !(item as any).is_dir);
       if (firstFile && !activeFile) {
         await openFile(firstFile.path);
       }
-      await loadHistory();
     } catch (e: any) {
       error = e.message || 'Failed to load';
     }
@@ -94,13 +57,7 @@
     if (editorContent !== originalContent && activeFile && !confirm(t('seriesEditor.unsavedChanges'))) return;
     activeFile = path;
     try {
-      let content: string;
-      if (currentChannel === 'main') {
-        content = await readSeriesFile(id, path);
-      } else {
-        const res = await readChannelFile(id, currentChannel, path);
-        content = res.content;
-      }
+      const content = await readSeriesFile(id, path);
       editorContent = content;
       originalContent = content;
     } catch {
@@ -109,44 +66,20 @@
     }
   }
 
-  async function doRecord(message: string) {
+  async function saveFile() {
     if (!activeFile) return;
-    recording = true;
+    saving = true;
     try {
-      if (currentChannel === 'main') {
-        await writeSeriesFile(id, activeFile, editorContent, message);
-      } else {
-        await writeChannelFile(id, currentChannel, activeFile, editorContent, message);
-      }
+      await writeSeriesFile(id, activeFile, editorContent);
       originalContent = editorContent;
-      await loadHistory();
     } catch (e: any) {
-      alert('Record failed: ' + (e?.message || e));
+      alert('Save failed: ' + (e?.message || e));
     }
-    recording = false;
-  }
-
-  async function loadHistory() {
-    loadingHistory = true;
-    try {
-      const infos = await channelLogDetails(id, currentChannel);
-      versions = infos.map((info: ChangeInfo, idx: number) => ({
-        id: idx,
-        change_hash: info.hash,
-        message: info.message || `Change ${idx + 1}`,
-        created_at: '',
-        unrecordable: idx === infos.length - 1,
-      }));
-    } catch { versions = []; }
-    loadingHistory = false;
+    saving = false;
   }
 
   async function createFile(path: string) {
-    if (currentChannel === 'main') {
-      await writeSeriesFile(id, path, '', `Create ${path}`);
-    } else {
-      await writeChannelFile(id, currentChannel, path, '', `Create ${path}`);
-    }
+    await writeSeriesFile(id, path, '', `Create ${path}`);
     files = await listSeriesFiles(id);
     await openFile(path);
   }
@@ -161,13 +94,6 @@
       const next = files.find(f => !(f as any).is_dir);
       if (next) await openFile(next.path);
     }
-  }
-
-  function switchChannel(ch: string) {
-    if (editorContent !== originalContent && !confirm(t('seriesEditor.unsavedChanges'))) return;
-    currentChannel = ch;
-    if (activeFile) openFile(activeFile);
-    loadHistory();
   }
 
   async function compile() {
@@ -228,7 +154,7 @@
   function onKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
-      doRecord('update');
+      saveFile();
     }
   }
 </script>
@@ -245,32 +171,13 @@
     <div class="title-area">
       <span class="series-title">{detail.series.title}</span>
       <a href="/series?id={encodeURIComponent(id)}" class="view-link">↗ {t('seriesEditor.viewSeries')}</a>
-      {#if currentChannel !== 'main'}
-        <span class="channel-badge">{currentChannel}</span>
-      {/if}
       {#if editorContent !== originalContent}<span class="dirty-dot">●</span>{/if}
+      <button class="save-btn" onclick={saveFile} disabled={saving || editorContent === originalContent}>
+        {saving ? '...' : t('common.save')}
+      </button>
     </div>
 
     <div class="editor-body">
-      <!-- Left: Version panel -->
-      <aside class="version-panel">
-        <VersionPanel
-          {versions}
-          {loadingHistory}
-          {recording}
-          onRecord={doRecord}
-          onUnrecord={async (v) => {
-            await unrecordSeriesChange(id, v.change_hash);
-            if (activeFile) await openFile(activeFile);
-            await loadHistory();
-          }}
-          onFetchDiff={async (v) => {
-            const detail = await getSeriesChangeDetail(id, v.change_hash);
-            return detail.lines.map(l => ({ type: l.kind === 'add' ? 'add' as const : l.kind === 'del' ? 'del' as const : 'same' as const, text: l.content }));
-          }}
-        />
-      </aside>
-
       <!-- File panel -->
       <aside class="file-panel">
         <FilePanel
@@ -373,20 +280,6 @@
           </div>
         {/if}
 
-        <!-- Channel panel at bottom of right panel -->
-        <div class="channel-section">
-          <ChannelPanel
-            {currentChannel}
-            {channels}
-            currentUserDid={getAuth()?.did || ''}
-            onChannelChange={switchChannel}
-            fetchCollaborators={() => listCollaborators(id)}
-            doInvite={(identifier) => inviteCollaborator(id, identifier).then(() => {})}
-            doRemove={(did) => removeCollaborator(id, did)}
-            fetchDiff={(target, current) => channelDiff(id, target, current)}
-            doApply={(target, source, hash) => applyChannelChange(id, target, source, hash)}
-          />
-        </div>
       </aside>
     </div>
   </div>

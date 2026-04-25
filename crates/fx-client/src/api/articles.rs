@@ -1,4 +1,4 @@
-//! Articles API: list, get, create, update, delete, fork, content.
+//! Articles API: list, get, create, update, delete, content.
 
 use std::collections::HashMap;
 
@@ -51,21 +51,10 @@ pub struct ArticlePrereqRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ForkWithTitle {
-    pub fork_uri: String,
-    pub forked_uri: String,
-    pub vote_score: i32,
-    pub title: String,
-    pub did: String,
-    pub author_handle: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArticleFullResponse {
     pub article: Article,
     pub content: ArticleContent,
     pub prereqs: Vec<ArticlePrereqRow>,
-    pub forks: Vec<ForkWithTitle>,
     pub votes: ArticleVoteSummary,
     pub series_context: Vec<serde_json::Value>,
     pub translations: Vec<Article>,
@@ -137,13 +126,6 @@ pub struct UpdateArticleInput {
     pub summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ForkArticleInput {
-    pub uri: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_format: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -236,12 +218,6 @@ impl FxClient {
             .await
     }
 
-    /// Get article forks.
-    pub async fn get_article_forks(&self, uri: &str) -> ClientResult<Vec<ForkWithTitle>> {
-        self.get_with_query("/articles/by-uri/forks", &UriQuery { uri })
-            .await
-    }
-
     /// Get full article page data in a single request.
     pub async fn get_article_full(&self, uri: &str) -> ClientResult<ArticleFullResponse> {
         self.get_with_query("/articles/full", &UriQuery { uri })
@@ -262,11 +238,6 @@ impl FxClient {
     pub async fn delete_article(&self, uri: &str) -> ClientResult<()> {
         self.delete_with_body("/articles/delete", &serde_json::json!({ "uri": uri }))
             .await
-    }
-
-    /// Fork an article, optionally converting format.
-    pub async fn fork_article(&self, input: &ForkArticleInput) -> ClientResult<Article> {
-        self.post("/articles/fork", input).await
     }
 
     /// Convert content between formats (no auth required).

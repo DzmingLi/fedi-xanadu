@@ -6,7 +6,6 @@
 //!   - Question upvote:         +10
 //!   - Content downvote:         -2
 //!   - Downvoting others:        -1  (cost to the voter, discourages frivolous downvotes)
-//!   - Fork voted up:            +5
 //!   - Comment votes:        no effect (prevents comment farming)
 //!
 //! The computed value is materialized in `profiles.reputation` and updated
@@ -20,7 +19,6 @@ use crate::Result;
 const CONTENT_UPVOTE: i64 = 10;
 const CONTENT_DOWNVOTE: i64 = -2;
 const DOWNVOTE_COST: i64 = -1;
-const FORK_UPVOTE: i64 = 5;
 
 /// Recalculate and store reputation for a single user from scratch.
 pub async fn recalc_reputation(pool: &PgPool, did: &str) -> Result<i64> {
@@ -63,28 +61,7 @@ async fn compute_reputation(pool: &PgPool, did: &str) -> Result<i64> {
     .fetch_one(pool)
     .await?;
 
-    // 3. Fork votes received (+5 per upvote on forks of user's articles)
-    let fork_rep: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(\
-            CASE WHEN v.value > 0 THEN $2 ELSE 0 END\
-         ), 0) \
-         FROM votes v \
-         JOIN articles forked_a \
-             ON article_uri(forked_a.repo_uri, forked_a.source_path) = v.target_uri \
-         JOIN forks f \
-             ON f.forked_repo_uri = forked_a.repo_uri \
-            AND f.forked_source_path = forked_a.source_path \
-         JOIN articles source_a \
-             ON source_a.repo_uri = f.source_repo_uri \
-            AND source_a.source_path = f.source_source_path \
-         WHERE source_a.author_did = $1",
-    )
-    .bind(did)
-    .bind(FORK_UPVOTE)
-    .fetch_one(pool)
-    .await?;
-
-    let total = content_rep + (downvote_cost * DOWNVOTE_COST) + fork_rep;
+    let total = content_rep + (downvote_cost * DOWNVOTE_COST);
     Ok(total.max(0))
 }
 

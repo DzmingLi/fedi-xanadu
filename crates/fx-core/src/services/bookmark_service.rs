@@ -38,21 +38,26 @@ pub async fn list_bookmarks(pool: &PgPool, did: &str) -> crate::Result<Vec<Bookm
     Ok(rows)
 }
 
-/// `article_uri` is a localization at_uri; resolved to composite key on insert.
+/// `article_uri` may be a localization at_uri OR a synthetic
+/// `nightboat-chapter://...` URI for series chapters; resolved to the
+/// composite `(repo_uri, source_path)` key.
 pub async fn add_bookmark(
     pool: &PgPool,
     did: &str,
     article_uri: &str,
     folder_path: &str,
 ) -> crate::Result<()> {
+    let Some((repo_uri, source_path)) = super::series_service::resolve_to_repo_path(pool, article_uri).await? else {
+        return Err(crate::Error::NotFound { entity: "article", id: article_uri.to_string() });
+    };
     sqlx::query(
         "INSERT INTO user_bookmarks (did, repo_uri, source_path, folder_path) \
-         SELECT $1, repo_uri, source_path, $3 \
-         FROM article_localizations WHERE at_uri = $2 \
+         VALUES ($1, $2, $3, $4) \
          ON CONFLICT (did, repo_uri, source_path) DO UPDATE SET folder_path = EXCLUDED.folder_path",
     )
     .bind(did)
-    .bind(article_uri)
+    .bind(&repo_uri)
+    .bind(&source_path)
     .bind(folder_path)
     .execute(pool)
     .await?;
@@ -64,14 +69,15 @@ pub async fn remove_bookmark(
     did: &str,
     article_uri: &str,
 ) -> crate::Result<()> {
+    let Some((repo_uri, source_path)) = super::series_service::resolve_to_repo_path(pool, article_uri).await? else {
+        return Ok(());
+    };
     sqlx::query(
-        "DELETE FROM user_bookmarks \
-         WHERE did = $1 \
-         AND (repo_uri, source_path) IN \
-             (SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $2)",
+        "DELETE FROM user_bookmarks WHERE did = $1 AND repo_uri = $2 AND source_path = $3",
     )
         .bind(did)
-        .bind(article_uri)
+        .bind(&repo_uri)
+        .bind(&source_path)
         .execute(pool)
         .await?;
     Ok(())
@@ -83,15 +89,17 @@ pub async fn move_bookmark(
     article_uri: &str,
     folder_path: &str,
 ) -> crate::Result<()> {
+    let Some((repo_uri, source_path)) = super::series_service::resolve_to_repo_path(pool, article_uri).await? else {
+        return Ok(());
+    };
     sqlx::query(
         "UPDATE user_bookmarks SET folder_path = $1 \
-         WHERE did = $2 \
-         AND (repo_uri, source_path) IN \
-             (SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $3)",
+         WHERE did = $2 AND repo_uri = $3 AND source_path = $4",
     )
         .bind(folder_path)
         .bind(did)
-        .bind(article_uri)
+        .bind(&repo_uri)
+        .bind(&source_path)
         .execute(pool)
         .await?;
     Ok(())

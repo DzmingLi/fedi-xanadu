@@ -12,7 +12,7 @@ use fx_core::util::tid;
 use super::UriQuery;
 
 /// Rebuild the full PDS record for a skill tree from current DB state and
-/// put it under the owner's repo. Called after create/fork and any edge or
+/// put it under the owner's repo. Called after create and any edge or
 /// prereq mutation so external consumers see a consistent snapshot.
 async fn publish_skill_tree(state: &AppState, token: &str, tree_uri: &str) {
     let Ok(tree) = skill_tree_service::get_skill_tree(&state.pool, tree_uri).await else {
@@ -44,7 +44,6 @@ async fn publish_skill_tree(state: &AppState, token: &str, tree_uri: &str) {
     });
     if let Some(d) = tree.description { record["description"] = serde_json::Value::String(d); }
     if let Some(t) = tree.tag_id      { record["tagId"]       = serde_json::Value::String(t); }
-    if let Some(f) = tree.forked_from { record["forkedFrom"]  = serde_json::Value::String(f); }
 
     pds_put_record(state, token, fx_atproto::lexicon::SKILL_TREE, rkey, record, "publish skill tree").await;
 }
@@ -119,22 +118,6 @@ pub async fn get_skill_tree_detail(
 ) -> ApiResult<Json<skill_tree_service::SkillTreeDetailResponse>> {
     let detail = skill_tree_service::get_skill_tree_detail(&state.pool, &uri).await?;
     Ok(Json(detail))
-}
-
-#[derive(serde::Deserialize)]
-pub(crate) struct ForkSkillTreeInput {
-    uri: String,
-}
-
-pub async fn fork_skill_tree(
-    State(state): State<AppState>,
-    WriteAuth(user): WriteAuth,
-    Json(input): Json<ForkSkillTreeInput>,
-) -> ApiResult<(StatusCode, Json<skill_tree_service::SkillTreeRow>)> {
-    let new_uri = format!("at://{}/at.nightbo.skilltree/{}", user.did, tid());
-    let row = skill_tree_service::fork_skill_tree(&state.pool, &input.uri, &new_uri, &user.did).await?;
-    publish_skill_tree(&state, &user.token, &new_uri).await;
-    Ok((StatusCode::CREATED, Json(row)))
 }
 
 #[derive(serde::Deserialize)]

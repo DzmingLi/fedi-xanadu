@@ -56,11 +56,6 @@ pub enum TreeCommand {
         /// Child tag ID
         child: String,
     },
-    /// Fork a skill tree
-    Fork {
-        /// Source skill tree AT URI
-        uri: String,
-    },
     /// Adopt a skill tree as your active tree
     Adopt {
         /// Skill tree AT URI
@@ -324,22 +319,6 @@ pub async fn handle_tree(base: &str, config: &Config, action: TreeCommand) -> Re
                 .error_for_status().context("Remove edge failed")?;
 
             println!("Removed: {parent} -> {child}");
-        }
-
-        TreeCommand::Fork { uri } => {
-            let token = config.token()?;
-            let resp: serde_json::Value = client()
-                .post(format!("{base}/skill-trees/fork"))
-                .bearer_auth(token)
-                .json(&serde_json::json!({ "uri": uri }))
-                .send().await?
-                .error_for_status().context("Fork failed")?
-                .json().await?;
-
-            let new_uri = resp["at_uri"].as_str().unwrap_or("?");
-            let title = resp["title"].as_str().unwrap_or("?");
-            println!("Forked: {title}");
-            println!("URI: {new_uri}");
         }
 
         TreeCommand::Adopt { uri } => {

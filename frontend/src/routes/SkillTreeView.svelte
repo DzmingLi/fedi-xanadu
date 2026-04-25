@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getSkillTree, forkSkillTree, adoptSkillTree, addSkillTreeEdge, removeSkillTreeEdge, addSkillTreePrereq, removeSkillTreePrereq, castVote, listTags } from '../lib/api';
+  import { getSkillTree, adoptSkillTree, addSkillTreeEdge, removeSkillTreeEdge, addSkillTreePrereq, removeSkillTreePrereq, castVote, listTags } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { tagName as resolveTagName } from '../lib/display';
   import { t, getLocale } from '../lib/i18n/index.svelte';
@@ -81,11 +81,6 @@
     await load(uri);
   }
 
-  async function doFork() {
-    const result = await forkSkillTree(uri);
-    window.location.href = `/skill-tree?uri=${encodeURIComponent(result.at_uri)}`;
-  }
-
   async function doAdopt() {
     await adoptSkillTree(uri);
     alert(t('skills.adopted'));
@@ -111,16 +106,12 @@
     <div class="tree-actions">
       {#if isLoggedIn}
         <button class="btn" onclick={doAdopt}>{t('skillTree.adopt')}</button>
-        <button class="btn" onclick={doFork}>Fork</button>
         <button class="btn" onclick={() => castVote(uri, 1)}>👍</button>
       {/if}
     </div>
   </div>
   {#if detail.tree.description}
     <p class="desc">{detail.tree.description}</p>
-  {/if}
-  {#if detail.tree.forked_from}
-    <p class="forked-info">Forked from <a href="/skill-tree?uri={encodeURIComponent(detail.tree.forked_from)}">{detail.tree.forked_from.slice(0, 40)}...</a></p>
   {/if}
 
   <!-- DAG visualization -->
@@ -264,8 +255,6 @@
   }
   .btn:hover { border-color: var(--accent); color: var(--accent); }
   .desc { font-size: 14px; color: var(--text-secondary); margin: 0 0 12px; }
-  .forked-info { font-size: 13px; color: var(--text-hint); margin: 0 0 16px; }
-  .forked-info a { color: var(--accent); }
 
   .tree-visual {
     margin-bottom: 24px;

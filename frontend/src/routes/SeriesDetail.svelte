@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getSeries, getSeriesHeadings, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks, getMyVote, forkSeries, uploadSeriesCover, removeSeriesCover } from '../lib/api';
+  import { getSeries, getSeriesHeadings, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks, getMyVote, uploadSeriesCover, removeSeriesCover } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import CommentThread from '../lib/components/CommentThread.svelte';
@@ -45,7 +45,6 @@
   let seriesVotes = $state<VoteSummary | null>(null);
   let mySeriesVote = $state(0);
   let commentThread: CommentThread | undefined = $state();
-  let forking = $state(false);
 
   let isLoggedIn = $derived(!!getAuth());
   let isOwner = $derived(isLoggedIn && detail?.series.created_by === getAuth()?.did);
@@ -134,17 +133,6 @@
     const newValue = mySeriesVote === value ? 0 : value;
     seriesVotes = await castVote(seriesUri, newValue);
     mySeriesVote = newValue;
-  }
-
-  async function doForkSeries() {
-    if (!isLoggedIn || forking) return;
-    forking = true;
-    try {
-      const forked = await forkSeries(id);
-      window.location.href = `/series?id=${encodeURIComponent(forked.id)}`;
-    } catch {
-      forking = false;
-    }
   }
 
   // Build a map of prereqs for visualization
@@ -307,11 +295,6 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill={mySeriesVote < 0 ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/></svg>
       </button>
     </div>
-
-    <button class="action-btn labeled-btn" onclick={doForkSeries} disabled={!isLoggedIn || forking} title={t('article.fork')}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
-      <span class="btn-label">{forking ? '...' : t('article.fork')}</span>
-    </button>
 
     {#if isOwner}
       <div class="action-separator"></div>

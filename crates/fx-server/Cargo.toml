@@ -12,6 +12,7 @@ path = "src/main.rs"
 fx-core.workspace = true
 fx-renderer.workspace = true
 fx-atproto.workspace = true
+fx-validator.workspace = true
 
 axum.workspace = true
 tokio.workspace = true

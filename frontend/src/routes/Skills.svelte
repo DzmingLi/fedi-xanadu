@@ -1004,7 +1004,6 @@
                 {#if tree.tag_id}
                   <span class="field-badge">{tree.tag_names ? resolveTagName(tree.tag_names, tree.tag_name || tree.tag_id, tree.tag_id) : (tree.tag_name || tree.tag_id)}</span>
                 {/if}
-                {#if tree.forked_from}<span class="forked-badge">Fork</span>{/if}
                 {#if tree.description}<p class="tree-desc">{tree.description}</p>{/if}
                 <div class="tree-meta">
                   <span>{tree.author_handle ? `@${tree.author_handle}` : tree.did.slice(0, 20)}</span>
@@ -1444,10 +1443,6 @@
     color: var(--text-primary); text-decoration: none;
   }
   .tree-title:hover { color: var(--accent); }
-  .forked-badge {
-    font-size: 11px; background: var(--bg-gray, #f0f0f0);
-    color: var(--text-hint); padding: 1px 6px; border-radius: 3px; margin-left: 6px;
-  }
   .field-badge {
     font-size: 11px; background: rgba(95,155,101,0.12);
     color: var(--accent); padding: 1px 8px; border-radius: 3px; margin-left: 6px;

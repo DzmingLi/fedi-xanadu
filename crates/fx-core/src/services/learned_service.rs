@@ -6,17 +6,22 @@ use sqlx::PgPool;
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct LearnedMark {
     pub did: String,
+    /// Synthetic article URI (`nightboat://article/{repo_uri}/{source_path}`).
     pub article_uri: String,
     pub learned_at: DateTime<Utc>,
 }
 
-/// Mark an article as learned by a user.
+/// Mark an article as learned by a user. Accepts at_uri or chapter URI.
 pub async fn mark_learned(pool: &PgPool, did: &str, article_uri: &str) -> crate::Result<()> {
+    let Some((repo_uri, source_path)) = super::series_service::resolve_to_repo_path(pool, article_uri).await? else {
+        return Err(crate::Error::NotFound { entity: "article", id: article_uri.to_string() });
+    };
     sqlx::query(
-        "INSERT INTO learned_marks (did, article_uri) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        "INSERT INTO learned_marks (did, repo_uri, source_path) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
     )
     .bind(did)
-    .bind(article_uri)
+    .bind(&repo_uri)
+    .bind(&source_path)
     .execute(pool)
     .await?;
     Ok(())
@@ -24,9 +29,13 @@ pub async fn mark_learned(pool: &PgPool, did: &str, article_uri: &str) -> crate:
 
 /// Remove the learned mark.
 pub async fn unmark_learned(pool: &PgPool, did: &str, article_uri: &str) -> crate::Result<()> {
-    sqlx::query("DELETE FROM learned_marks WHERE did = $1 AND article_uri = $2")
+    let Some((repo_uri, source_path)) = super::series_service::resolve_to_repo_path(pool, article_uri).await? else {
+        return Ok(());
+    };
+    sqlx::query("DELETE FROM learned_marks WHERE did = $1 AND repo_uri = $2 AND source_path = $3")
         .bind(did)
-        .bind(article_uri)
+        .bind(&repo_uri)
+        .bind(&source_path)
         .execute(pool)
         .await?;
     Ok(())
@@ -34,11 +43,15 @@ pub async fn unmark_learned(pool: &PgPool, did: &str, article_uri: &str) -> crat
 
 /// Check if a user has learned a specific article.
 pub async fn is_learned(pool: &PgPool, did: &str, article_uri: &str) -> crate::Result<bool> {
+    let Some((repo_uri, source_path)) = super::series_service::resolve_to_repo_path(pool, article_uri).await? else {
+        return Ok(false);
+    };
     let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM learned_marks WHERE did = $1 AND article_uri = $2)",
+        "SELECT EXISTS(SELECT 1 FROM learned_marks WHERE did = $1 AND repo_uri = $2 AND source_path = $3)",
     )
     .bind(did)
-    .bind(article_uri)
+    .bind(&repo_uri)
+    .bind(&source_path)
     .fetch_one(pool)
     .await?;
     Ok(exists)
@@ -47,7 +60,8 @@ pub async fn is_learned(pool: &PgPool, did: &str, article_uri: &str) -> crate::R
 /// List all learned articles for a user.
 pub async fn list_learned(pool: &PgPool, did: &str) -> crate::Result<Vec<LearnedMark>> {
     let rows = sqlx::query_as::<_, LearnedMark>(
-        "SELECT did, article_uri, learned_at FROM learned_marks WHERE did = $1 ORDER BY learned_at DESC",
+        "SELECT did, article_uri(repo_uri, source_path) AS article_uri, learned_at \
+         FROM learned_marks WHERE did = $1 ORDER BY learned_at DESC",
     )
     .bind(did)
     .fetch_all(pool)
@@ -61,7 +75,7 @@ pub async fn derived_skills(pool: &PgPool, did: &str) -> crate::Result<Vec<Strin
     let tags = sqlx::query_scalar::<_, String>(
         "SELECT DISTINCT ct.tag_id \
          FROM learned_marks lm \
-         JOIN content_teaches ct ON ct.content_uri = lm.article_uri \
+         JOIN content_teaches ct ON ct.content_uri = article_uri(lm.repo_uri, lm.source_path) \
          WHERE lm.did = $1",
     )
     .bind(did)

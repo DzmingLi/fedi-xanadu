@@ -24,7 +24,6 @@ pub mod short_review_service;
 pub mod member_service;
 pub mod version_service;
 pub mod collaboration_service;
-pub mod discussion_service;
 pub mod recommendation_service;
 pub mod reputation_service;
 pub mod listing_service;

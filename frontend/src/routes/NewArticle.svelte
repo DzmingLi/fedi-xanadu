@@ -1,16 +1,13 @@
 <script lang="ts">
-  import { listTags, searchTags, lookupTag, createArticle, listArticles, getArticle, getArticleContent, forkArticle, convertContent, uploadImage, updateArticle, saveArticle, recordArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, getArticleHistory, getArticleDiff, unrecordArticleChange, listArticleCollaborators, inviteArticleCollaborator, removeArticleCollaborator, listArticleChannels, readArticleChannelFile, writeArticleChannelFile, articleChannelDiff, applyArticleChannelChange } from '../lib/api';
-  import ChannelPanel from 'pijul-editor/ChannelPanel.svelte';
-  import VersionPanel from 'pijul-editor/VersionPanel.svelte';
-  import type { DiffLine } from 'pijul-editor/VersionPanel.svelte';
+  import { listTags, searchTags, lookupTag, createArticle, listArticles, getArticle, getArticleContent, convertContent, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, listArticleCollaborators, inviteArticleCollaborator, removeArticleCollaborator } from '../lib/api';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import { getLangPrefs } from '../lib/langPrefs.svelte';
-  import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
-  import TypstEditor from 'pijul-editor/TypstEditor.svelte';
-  import type { Tag, Article, BookEdition, ContentFormat, PrereqType, ArticleVersionInfo } from '../lib/types';
+  import MarkdownEditor from 'nbt-editor/MarkdownEditor.svelte';
+  import TypstEditor from 'nbt-editor/TypstEditor.svelte';
+  import type { Tag, Article, BookEdition, ContentFormat, PrereqType } from '../lib/types';
 
-  let { forkOf = '', editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
+  let { editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
   let isEditing = $state(false);
   // svelte-ignore state_referenced_locally
   let currentDraftId = $state(initialDraftId);
@@ -22,7 +19,7 @@
   $effect(() => {
     // Touch reactive state to subscribe
     const _t = title, _d = summary, _c = content, _f = contentFormat, _l = lang;
-    if (isEditing || forkSource || !_t.trim()) return;
+    if (isEditing || !_t.trim()) return;
     clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(() => {
       if (!savingDraft) handleSaveDraft();
@@ -54,174 +51,16 @@
   let relatedTags = $state<string[]>([]);
   let submitting = $state(false);
   let error = $state('');
-  let forkSource = $state('');
   let uploadingImage = $state(false);
   let savedArticleUri = $state(''); // Set after first save, needed for image upload
-  let showDiff = $state(false);
-  let originalContent = $state(''); // Original content for fork diff
   let loadingFile = $state(false);
   let converting = $state(false);
-  let originalFormat = $state<ContentFormat | ''>(''); // Track source format for fork conversion
-
-  // --- Channel state ---
-  let articleChannels = $state<string[]>(['main']);
-  let currentArticleChannel = $state('main');
 
   // --- UI state ---
   let sidebarOpen = $state(true);
-  let versionPanelOpen = $state(true);
-  let lastSavedContent = $state(''); // For diff computation in version panel
-  let saving = $state(false);
-
-  // --- Version panel state ---
-  let versionHistory = $state<ArticleVersionInfo[]>([]);
-  let recording = $state(false);
-  let loadingHistory = $state(false);
-
-  // --- Sidebar quick-record popup ---
-  let showRecordInput = $state(false);
-  let recordMessage = $state('');
-
-  async function loadHistory() {
-    if (!savedArticleUri) return;
-    loadingHistory = true;
-    try {
-      versionHistory = await getArticleHistory(savedArticleUri);
-    } catch { /* ok */ }
-    loadingHistory = false;
-  }
-
-  async function doUnrecord(v: ArticleVersionInfo) {
-    if (!confirm(t('version.confirmUnrecord'))) return;
-    try {
-      await unrecordArticleChange(savedArticleUri, v.id);
-      await loadHistory();
-      // Reload content from server after unrecord
-      const c = await getArticleContent(savedArticleUri);
-      content = c.source;
-      lastSavedContent = c.source;
-    } catch (e: any) {
-      error = e.message;
-    }
-  }
-
-  async function doRecord(message: string) {
-    if (!title.trim() || !content.trim()) {
-      error = t('newArticle.fillRequired');
-      return;
-    }
-    recording = true;
-    error = '';
-    try {
-      const msg = message;
-
-      if (!savedArticleUri) {
-        // New article: publish first, which auto-records the initial change
-        const article = await createArticle({
-          title: title.trim(),
-          summary: summary.trim() || undefined,
-          content: content.trim(),
-          content_format: contentFormat,
-          lang: lang || getLocale(),
-          license: restricted ? 'All-Rights-Reserved' : (license || undefined),
-          translation_of: translationOf || undefined,
-          restricted: restricted || undefined,
-          category: category || undefined,
-          book_id: bookId || undefined,
-          edition_id: editionId || undefined,
-          tags: selectedTags,
-          prereqs,
-          related: relatedTags,
-        });
-        savedArticleUri = article.at_uri;
-        lastSavedContent = content;
-        isEditing = true;
-        await loadHistory();
-      } else {
-        // Existing article: save + record
-        if (content !== lastSavedContent) {
-          await saveArticle(savedArticleUri, {
-            title: title.trim(),
-            summary: summary.trim(),
-            content: content.trim(),
-          });
-          lastSavedContent = content;
-        }
-        versionHistory = await recordArticle(savedArticleUri, msg);
-      }
-    } catch (e: any) {
-      error = e.message;
-    } finally {
-      recording = false;
-    }
-  }
-
-  async function doSave() {
-    if (!savedArticleUri || saving) return;
-    saving = true;
-    error = '';
-    try {
-      await saveArticle(savedArticleUri, {
-        title: title.trim(),
-        summary: summary.trim(),
-        content: content.trim(),
-      });
-      lastSavedContent = content;
-    } catch (e: any) {
-      error = e.message;
-    } finally {
-      saving = false;
-    }
-  }
-
-  // Simple line-based diff for the version panel (current changes)
-  function computeSimpleDiff(oldText: string, newText: string): DiffLine[] {
-    const oldLines = oldText.split('\n');
-    const newLines = newText.split('\n');
-    const result: DiffLine[] = [];
-    const m = oldLines.length, n = newLines.length;
-    const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
-    for (let i = 1; i <= m; i++)
-      for (let j = 1; j <= n; j++)
-        dp[i][j] = oldLines[i-1] === newLines[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
-    let i = m, j = n;
-    const ops: DiffLine[] = [];
-    while (i > 0 || j > 0) {
-      if (i > 0 && j > 0 && oldLines[i-1] === newLines[j-1]) {
-        ops.push({ type: 'same', text: oldLines[i-1] }); i--; j--;
-      } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
-        ops.push({ type: 'add', text: newLines[j-1] }); j--;
-      } else {
-        ops.push({ type: 'del', text: oldLines[i-1] }); i--;
-      }
-    }
-    return ops.reverse();
-  }
-
-  let currentDiffLines = $derived(
-    savedArticleUri && content !== lastSavedContent
-      ? computeSimpleDiff(lastSavedContent, content)
-      : (!savedArticleUri && content.trim())
-        ? content.split('\n').map(l => ({ type: 'add' as const, text: l }))
-        : []
-  );
-  let hasUnsavedChanges = $derived(savedArticleUri ? content !== lastSavedContent : false);
 
   async function handleFormatChange(newFormat: ContentFormat) {
-    const oldFormat = contentFormat;
     contentFormat = newFormat;
-    if (!forkSource || !content.trim() || oldFormat === newFormat) return;
-    converting = true;
-    error = '';
-    try {
-      const result = await convertContent(content, oldFormat, newFormat);
-      content = result.content;
-    } catch (e: any) {
-      error = `${t('newArticle.convertError')}: ${e.message}`;
-      contentFormat = oldFormat;
-    } finally {
-      converting = false;
-    }
   }
 
   // Multi-language versions
@@ -355,7 +194,6 @@
         title = a.title;
         summary = a.summary || '';
         content = c.source;
-        lastSavedContent = c.source;
         contentFormat = a.content_format;
         lang = a.lang || 'zh';
         license = a.license || 'CC-BY-SA-4.0';
@@ -363,9 +201,6 @@
         console.error('Failed to load article for edit:', err);
         error = t('newArticle.loadFailed').replace('{err}', err?.message ?? String(err));
       });
-      loadHistory();
-      // Load channels for collaboration
-      listArticleChannels(editUri).then(chs => { articleChannels = chs; }).catch(() => {});
     } else if (initialDraftId) {
       listDrafts().then(drafts => {
         const d = drafts.find(d => d.id === initialDraftId);
@@ -378,18 +213,6 @@
         license = d.license || 'CC-BY-SA-4.0';
         try { selectedTags = JSON.parse(d.tags); } catch { selectedTags = []; }
         try { prereqs = JSON.parse(d.prereqs); } catch { prereqs = []; }
-      });
-    } else if (forkOf) {
-      Promise.all([getArticle(forkOf), getArticleContent(forkOf)]).then(([a, c]) => {
-        title = `Fork: ${a.title}`;
-        summary = a.summary || '';
-        content = c.source;
-        originalContent = c.source;
-        contentFormat = a.content_format;
-        originalFormat = a.content_format;
-        lang = a.lang || 'zh';
-        license = a.license || 'CC-BY-SA-4.0';
-        forkSource = forkOf;
       });
     }
   });
@@ -445,9 +268,7 @@
           related: relatedTags,
         });
         savedArticleUri = article.at_uri;
-        lastSavedContent = content;
         isEditing = true;
-        loadHistory();
       } catch (err: any) {
         error = err.message;
         uploadingImage = false;
@@ -492,50 +313,11 @@
         related: relatedTags,
       });
       savedArticleUri = article.at_uri;
-      lastSavedContent = content;
       isEditing = true;
-      loadHistory();
     }
     const result = await uploadImage(savedArticleUri, file);
     return { src: result.filename, alt: result.filename };
   }
-
-  // Fork diff (reused from original)
-  let diffLines = $derived(
-    forkSource && showDiff ? computeSimpleDiff(originalContent, content) : []
-  );
-
-  interface DiffHunk { lines: DiffLine[]; collapsed?: number; }
-  let diffHunks = $derived.by((): DiffHunk[] => {
-    if (diffLines.length === 0) return [];
-    const CONTEXT = 3;
-    const show = new Uint8Array(diffLines.length);
-    for (let i = 0; i < diffLines.length; i++) {
-      if (diffLines[i].type !== 'same') {
-        for (let j = Math.max(0, i - CONTEXT); j <= Math.min(diffLines.length - 1, i + CONTEXT); j++) {
-          show[j] = 1;
-        }
-      }
-    }
-    const hunks: DiffHunk[] = [];
-    let i = 0;
-    while (i < diffLines.length) {
-      if (show[i]) {
-        const lines: DiffLine[] = [];
-        while (i < diffLines.length && show[i]) {
-          lines.push(diffLines[i]);
-          i++;
-        }
-        hunks.push({ lines });
-      } else {
-        let skip = 0;
-        while (i < diffLines.length && !show[i]) { skip++; i++; }
-        hunks.push({ lines: [], collapsed: skip });
-      }
-    }
-    return hunks;
-  });
-  let hasForkChanges = $derived(forkSource ? content !== originalContent : true);
 
   async function handleFileLoad(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -563,15 +345,6 @@
       loadingFile = false;
       input.value = '';
     }
-  }
-
-  function previewDiff() {
-    if (!title.trim() || !content.trim()) {
-      error = t('newArticle.fillRequired');
-      return;
-    }
-    error = '';
-    showDiff = true;
   }
 
   async function handleSaveDraft() {
@@ -618,19 +391,6 @@
           commit_message: commitMessage.trim() || undefined,
         });
         window.location.href = `/article?uri=${encodeURIComponent(article.at_uri)}`;
-      } else if (forkSource) {
-        const targetFormat = contentFormat !== originalFormat ? contentFormat : undefined;
-        const forked = await forkArticle(forkSource, targetFormat);
-
-        if (hasForkChanges) {
-          await updateArticle(forked.at_uri, {
-            title: title.trim(),
-            summary: summary.trim() || undefined,
-            content: content.trim(),
-            commit_message: 'Initial fork edits',
-          });
-        }
-        window.location.href = `/article?uri=${encodeURIComponent(forked.at_uri)}`;
       } else {
         const article = await createArticle({
           title: title.trim(),
@@ -688,38 +448,8 @@
     <div class="error-banner">{error}</div>
   {/if}
 
-  {#if showDiff && forkSource}
-    <!-- Fork diff overlay -->
-    <div class="diff-overlay">
-      <div class="diff-header">
-        <h3>{t('newArticle.diffPreview')}</h3>
-        <button class="btn-outline" onclick={() => showDiff = false}>{t('newArticle.backToEdit')}</button>
-      </div>
-      {#if !hasForkChanges}
-        <p class="diff-empty">{t('newArticle.noChanges')}</p>
-      {:else}
-        <div class="diff-stats">
-          <span class="diff-add-count">+{diffLines.filter(l => l.type === 'add').length}</span>
-          <span class="diff-del-count">-{diffLines.filter(l => l.type === 'del').length}</span>
-        </div>
-        <pre class="diff-content">{#each diffHunks as hunk}{#if hunk.collapsed}<span class="line-collapse">... {t('newArticle.linesUnchanged', hunk.collapsed)} ...</span>
-{:else}{#each hunk.lines as line}{#if line.type === 'add'}<span class="line-add">+{line.text}</span>
-{:else if line.type === 'del'}<span class="line-del">-{line.text}</span>
-{:else}<span class="line-same"> {line.text}</span>
-{/if}{/each}{/if}{/each}</pre>
-      {/if}
-      <div class="diff-actions">
-        <button class="btn btn-primary" onclick={submit} disabled={submitting || !hasForkChanges}>
-          {submitting ? t('newArticle.publishing') : t('newArticle.confirmFork')}
-        </button>
-      </div>
-    </div>
-  {:else}
-    <!-- Title area -->
+  <!-- Title area -->
     <div class="editor-title-area">
-      {#if forkSource}
-        <div class="fork-hint">{t('newArticle.forkHint')}</div>
-      {/if}
       <input
         class="title-input"
         bind:value={title}
@@ -732,61 +462,10 @@
       />
     </div>
 
-    <!-- Main body: version panel + editor + settings sidebar -->
+    <!-- Main body: editor + settings sidebar -->
     <div class="editor-body">
-      <!-- Left: Version Panel -->
-      {#if versionPanelOpen}
-        <aside class="version-panel">
-          <VersionPanel
-            versions={versionHistory}
-            {loadingHistory}
-            {recording}
-            onRecord={doRecord}
-            onUnrecord={doUnrecord}
-            onFetchDiff={async (v) => {
-              const idx = versionHistory.findIndex(h => h.id === v.id);
-              const prev = idx + 1 < versionHistory.length ? versionHistory[idx + 1] : null;
-              // from=0 is an "empty baseline" on the backend — used for
-              // the first version so its dialog shows all content as
-              // additions instead of an empty diff.
-              const fromId = prev ? prev.id : 0;
-              const diff = await getArticleDiff(savedArticleUri, fromId, v.id);
-              return diff.hunks.flatMap(h => h.lines.map(l => ({
-                type: l.kind === 'add' ? 'add' as const : l.kind === 'remove' ? 'del' as const : 'same' as const,
-                text: l.content,
-              })));
-            }}
-            labels={{
-              diff: t('version.diff'),
-              noChanges: t('version.noChanges'),
-              history: t('version.history'),
-              noHistory: t('version.noHistory'),
-              recordPlaceholder: t('version.recordPlaceholder'),
-              record: t('version.record'),
-            }}
-          />
-        </aside>
-      {/if}
-
       <!-- Center: Editor -->
       <div class="editor-main">
-        <!-- Version panel toggle tab on left edge -->
-        <button
-          class="version-tab"
-          class:open={versionPanelOpen}
-          onclick={() => versionPanelOpen = !versionPanelOpen}
-          title={t('version.togglePanel')}
-          aria-label={t('version.togglePanel')}
-        >
-          <svg width="12" height="22" viewBox="0 0 10 18" fill="currentColor">
-            {#if versionPanelOpen}
-              <polyline points="8,2 2,9 8,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            {:else}
-              <polyline points="2,2 8,9 2,16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            {/if}
-          </svg>
-        </button>
-
         <!-- Editor content area -->
         <div class="editor-content">
           {#if contentFormat === 'markdown'}
@@ -1026,7 +705,7 @@
             <p class="sb-error">{tagError}</p>
           {/if}
 
-          {#if !isEditing && !forkSource}
+          {#if !isEditing}
             <details>
               <summary>{t('newArticle.langVersions')}</summary>
               <button class="btn-add-lang" onclick={addLangVersion}>+ {t('newArticle.addLangVersion')}</button>
@@ -1058,85 +737,28 @@
               {/each}
             </details>
           {/if}
-          {#if isEditing && savedArticleUri && articleChannels.length > 0}
-            <details>
-              <summary>协作</summary>
-              <ChannelPanel
-                currentChannel={currentArticleChannel}
-                channels={articleChannels}
-                currentUserDid={getAuth()?.did || ''}
-                onChannelChange={(ch) => { currentArticleChannel = ch; }}
-                fetchCollaborators={() => listArticleCollaborators(savedArticleUri)}
-                doInvite={(identifier) => inviteArticleCollaborator(savedArticleUri, identifier).then(() => {})}
-                doRemove={(did) => removeArticleCollaborator(savedArticleUri, did)}
-                fetchDiff={(target, current) => articleChannelDiff(savedArticleUri, target, current)}
-                doApply={(target, _source, hash) => applyArticleChannelChange(savedArticleUri, target, hash)}
-              />
-            </details>
-          {/if}
         </aside>
       {/if}
     </div>
 
     <!-- Footer -->
     <div class="editor-footer">
-      {#if isEditing}
-        <span class="footer-status">
-          {#if hasUnsavedChanges}
-            <span class="status-unsaved">{t('version.unsaved')}</span>
-          {:else}
-            <span class="status-saved">{t('version.saved')}</span>
-          {/if}
-        </span>
-        <button class="btn btn-outline" onclick={doSave} disabled={saving || !hasUnsavedChanges}>
-          {saving ? t('newArticle.saving') : t('common.save')}
-        </button>
-      {:else if !forkSource}
-        <button class="btn btn-draft" onclick={handleSaveDraft} disabled={savingDraft}>
-          {savingDraft
-            ? t('newArticle.saving')
-            : draftSaved
-              ? t('newArticle.saved')
-              : currentDraftId
-                ? t('newArticle.updateDraft')
-                : t('newArticle.saveDraft')}
-        </button>
-      {/if}
+      <button class="btn btn-draft" onclick={handleSaveDraft} disabled={savingDraft}>
+        {savingDraft
+          ? t('newArticle.saving')
+          : draftSaved
+            ? t('newArticle.saved')
+            : currentDraftId
+              ? t('newArticle.updateDraft')
+              : t('newArticle.saveDraft')}
+      </button>
 
       <div class="footer-spacer"></div>
 
-      {#if forkSource}
-        <button class="btn btn-outline" onclick={previewDiff}>
-          {t('newArticle.previewDiff')}
-        </button>
-        <button class="btn btn-primary" onclick={previewDiff} disabled={submitting}>
-          {submitting ? t('newArticle.publishing') : t('newArticle.publish')}
-        </button>
-      {:else}
-        <!-- Record button with popup input -->
-        <div class="record-group">
-          {#if showRecordInput}
-            <div class="record-popup">
-              <input
-                class="record-msg-input"
-                bind:value={recordMessage}
-                placeholder={t('version.recordPlaceholder')}
-                maxlength={200}
-                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doRecord(recordMessage.trim() || 'Update'); recordMessage = ''; showRecordInput = false; } if (e.key === 'Escape') { showRecordInput = false; } }}
-              />
-              <button class="btn btn-primary btn-sm" onclick={() => { doRecord(recordMessage.trim() || 'Update'); recordMessage = ''; showRecordInput = false; }} disabled={recording || (!title.trim() || !content.trim())}>
-                {recording ? '...' : t('version.record')}
-              </button>
-            </div>
-          {/if}
-          <button class="btn btn-record" onclick={() => { showRecordInput = !showRecordInput; }} disabled={recording}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            {t('version.record')}
-          </button>
-        </div>
-      {/if}
+      <button class="btn btn-primary" onclick={submit} disabled={submitting || !title.trim() || !content.trim()}>
+        {submitting ? t('newArticle.publishing') : t('newArticle.publish')}
+      </button>
     </div>
-  {/if}
 </div>
 
 <style>
@@ -1166,11 +788,6 @@
     box-sizing: border-box;
     padding-left: 1rem;
     padding-right: 1rem;
-  }
-  .fork-hint {
-    font-size: 13px;
-    color: var(--accent);
-    margin-bottom: 4px;
   }
   .title-input {
     display: block;
@@ -1637,53 +1254,6 @@
   }
   .btn-record:hover:not(:disabled) { opacity: 0.9; }
   .btn-record:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  /* === Fork diff overlay === */
-  .diff-overlay {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px;
-    max-width: 800px;
-    margin: 0 auto;
-  }
-  .diff-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-  }
-  .diff-header h3 {
-    font-family: var(--font-serif);
-    font-weight: 400;
-    font-size: 16px;
-    margin: 0;
-  }
-  .diff-stats { font-size: 13px; margin-bottom: 8px; display: flex; gap: 12px; }
-  .diff-add-count { color: #22863a; }
-  .diff-del-count { color: #cb2431; }
-  .diff-empty {
-    color: var(--text-hint);
-    text-align: center;
-    padding: 2rem 0;
-  }
-  .diff-content {
-    font-family: var(--font-mono, monospace);
-    font-size: 12px;
-    line-height: 1.5;
-    overflow-x: auto;
-    max-height: 60vh;
-    overflow-y: auto;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 8px 0;
-    margin: 0 0 12px;
-    background: #fafafa;
-  }
-  .diff-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
 
   /* === Responsive === */
   @media (max-width: 900px) {

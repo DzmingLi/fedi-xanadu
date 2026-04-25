@@ -9,6 +9,7 @@
 
 pub mod path;
 pub mod extract;
+pub mod inject;
 pub mod scan;
 mod validate;
 
@@ -18,15 +19,16 @@ pub use validate::{validate, validate_files};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
+    #[default]
     Md,
     Typst,
 }
 
 /// Raw metadata extracted from a single file's frontmatter / `#metadata` block.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct FileMeta {
     /// POSIX path relative to repo root, normalized (no `./`, `..`, duplicate `/`).
     pub path: String,
@@ -46,6 +48,16 @@ pub struct FileMeta {
     pub translator: Option<String>,
     #[serde(default)]
     pub translation_notes: Option<String>,
+    /// Article-level fields injected by the publish path (read back here for
+    /// re-indexing the AppView from PDS).
+    #[serde(default)]
+    pub license: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub cover: Option<String>,
+    #[serde(default)]
+    pub related: Vec<String>,
 }
 
 /// One language version of an article.

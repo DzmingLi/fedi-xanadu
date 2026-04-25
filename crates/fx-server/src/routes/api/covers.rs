@@ -291,9 +291,9 @@ async fn persist_series_cover(repo_path: &std::path::Path, cover: Option<String>
 
 /// Write the cover file into the article/series blob cache. The blob cache
 /// is the single filesystem source of truth for locally-authored content in
-/// the blob storage model. Covers are not currently uploaded as PDS blobs
-/// of their own — TODO(cover-as-blob) is to include covers in the article's
-/// `content.files[]` so fork/clone carries them, but that's a separate pass.
+/// the blob storage model. Cover blobs are appended to the article record's
+/// top-level `files[]` via `append_file_to_article_record` on upload; the
+/// on-disk copy here just keeps the renderer happy.
 async fn write_cover_to_repo(
     state: &AppState,
     repo_uri: &str,
@@ -317,8 +317,7 @@ async fn write_cover_to_repo(
 }
 
 /// Write the cover selection into the article source's format-native metadata
-/// slot so fork/clone preserves it. Returns whether the file changed (so the
-/// caller can emit a pijul patch).
+/// slot so it travels with the source files. Returns whether the file changed.
 ///
 /// * markdown: `cover:` in YAML frontmatter at top of `content.md`
 /// * typst:    `#metadata(("cover": "...")) <nbt-article>` at top of `content.typ`
@@ -405,11 +404,12 @@ fn rewrite_html_article_cover(source: &str, cover: Option<String>) -> String {
     }
 }
 
-/// After updating the article's markdown frontmatter cover, the source
-/// file lives under blob_cache and is already written to disk. The matching
-/// PDS record update (embedding the new cover in the `content.files[]`
-/// entry) is TODO(cover-as-blob); for now the DB row is the authoritative
-/// cover pointer and this is a no-op.
+/// After the article's source-format cover metadata (markdown frontmatter,
+/// typst directive, etc.) is updated on disk, the upload path already
+/// `append_file_to_article_record`s the new cover blob into the record's
+/// `files[]`, and the source file change is staged into blob_cache. The
+/// "set cover by reference" path points at an already-uploaded file so the
+/// record is in sync without an extra write. No-op intentionally.
 async fn record_article_cover_meta(_state: &AppState, _repo_uri: &str, _did: &str) {}
 
 /// Delete every cover.{ext} in the blob cache dir.
@@ -480,7 +480,7 @@ pub async fn upload_article_cover(
     tokio::fs::write(repo_path.join(&cover_file), &data).await?;
 
     // 3. Append the cover to the article's blob bundle (content_manifest
-    //    + PDS at.nightbo.work record) so fork/clone carries it.
+    //    + PDS at.nightbo.work record).
     super::articles::append_file_to_article_manifest(
         &state, &q.uri, &cover_file, &blob, data.len(), mime,
     ).await?;
@@ -594,7 +594,7 @@ pub async fn upload_series_cover(
     let mime = mime_for_image_ext(&ext);
 
     // Upload/synthesize as a blob, materialize to blob_cache for local
-    // serving, then set `cover` on the series PDS record.
+    // serving, then append the cover to the series PDS record's files[].
     let blob = crate::auth::upload_or_local_blob(
         &state, &user.token, &user.did, data.clone(), mime,
     ).await;
@@ -602,7 +602,9 @@ pub async fn upload_series_cover(
     tokio::fs::create_dir_all(&repo_path).await?;
     purge_other_exts(&repo_path, &ext).await;
     tokio::fs::write(repo_path.join(&cover_file), &data).await?;
-    super::articles::set_cover_on_series_record(&state, &user.token, &user.did, &q.id, &blob).await;
+    super::articles::append_file_to_series_record(
+        &state, &user.token, &user.did, &q.id, &cover_file, &blob, mime,
+    ).await;
 
     let cover_url = format!("/api/covers/s-{node_id}");
     sqlx::query("UPDATE series SET cover_url = $1, cover_file = $2 WHERE id = $3")
@@ -657,9 +659,8 @@ async fn set_series_cover_reference_inner(
         )));
     }
 
-    // Persist the cover selection into the series' metadata slot so
-    // downstream fork/clone sees it when/if we reintroduce cross-chapter
-    // series metadata files.
+    // Persist the cover selection into the series' metadata slot when/if we
+    // reintroduce cross-chapter series metadata files.
     persist_series_cover(&repo_path, Some(file.to_string())).await;
 
     let cover_url = format!("/api/covers/s-{node_id}");
@@ -694,7 +695,9 @@ pub async fn admin_upload_series_cover(
     tokio::fs::create_dir_all(&repo_path).await?;
     purge_other_exts(&repo_path, &ext).await;
     tokio::fs::write(repo_path.join(&cover_file), &data).await?;
-    super::articles::set_cover_on_series_record(&state, "", &owner_did, &q.id, &blob).await;
+    super::articles::append_file_to_series_record(
+        &state, "", &owner_did, &q.id, &cover_file, &blob, mime,
+    ).await;
 
     let cover_url = format!("/api/covers/s-{node_id}");
     sqlx::query("UPDATE series SET cover_url = $1, cover_file = $2 WHERE id = $3")

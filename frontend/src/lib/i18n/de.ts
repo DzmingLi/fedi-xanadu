@@ -102,7 +102,6 @@ export default {
   'notification.commentReply': 'hat auf deinen Kommentar geantwortet',
   'notification.articleComment': 'hat deinen Artikel kommentiert',
   'notification.newFollower': 'folgt dir',
-  'notification.articleFork': 'hat deinen Artikel geforkt',
   'notification.markAllRead': 'Alle als gelesen markieren',
   'notification.empty': 'Keine Benachrichtigungen',
   'notification.justNow': 'gerade eben',
@@ -147,11 +146,9 @@ export default {
 
   // Article
   'article.prereqs': 'Voraussetzungen',
-  'article.forks': 'Forks',
   'article.translations': 'Andere Sprachen',
   'article.bookmark': 'Lesezeichen',
   'article.bookmarked': 'Gespeichert',
-  'article.fork': 'Fork',
   'article.upvote': 'Dafür',
   'article.downvote': 'Dagegen',
   'article.loginToVote': 'Zum Abstimmen anmelden',
@@ -176,9 +173,7 @@ export default {
   'article.sessionExpired': 'Sitzung abgelaufen, bitte erneut anmelden',
   'article.postFailed': 'Kommentar konnte nicht gesendet werden',
   'article.writeReply': 'Antwort schreiben...',
-  'article.viewAllForks': 'Alle {0} Forks ansehen →',
   'article.versionHistory': 'Versionsverlauf',
-  'article.forkedFrom': 'Geforkt von',
   'article.noCover': 'Kein Cover',
   'article.uploadCover': 'Cover hochladen',
   'article.changeCover': 'Cover ändern',
@@ -219,8 +214,6 @@ export default {
   // NewArticle
   'newArticle.title': 'Neuer Artikel',
   'newArticle.editTitle': 'Artikel bearbeiten',
-  'newArticle.forkTitle': 'Artikel forken',
-  'newArticle.forkHint': 'Bearbeitung eines Forks — ändere und veröffentliche deine Version',
   'newArticle.titleLabel': 'Titel',
   'newArticle.summaryLabel': 'Zusammenfassung',
   'newArticle.summaryPlaceholder': 'Kurze Zusammenfassung, auf Karten und oben im Artikel angezeigt',
@@ -261,9 +254,6 @@ export default {
   'newArticle.relatedPlaceholder': 'Konzeptname eingeben, Enter zum Hinzufügen',
   'newArticle.prereqsPlaceholder': 'Vorkenntnis-Tag eingeben, Enter zum Hinzufügen',
   'newArticle.tagNotFound': 'Tag „{name}" nicht gefunden. Bitte zuerst in der Hierarchie anlegen.',
-  'newArticle.diffPreview': 'Diff-Vorschau',
-  'newArticle.backToEdit': 'Zurück zur Bearbeitung',
-  'newArticle.confirmFork': 'Fork veröffentlichen',
   'newArticle.saving': 'Wird gespeichert...',
   'newArticle.saved': 'Gespeichert!',
   'newArticle.updateDraft': 'Entwurf aktualisieren',
@@ -476,7 +466,7 @@ export default {
   'skills.communityTrees': 'Fähigkeitsbäume der Community',
   'skills.statusHint': 'Klicken zum Umschalten · Doppelklick, um Tag zu öffnen',
   'skills.createTree': 'Fähigkeitsbaum erstellen',
-  'skills.browseHint': 'Durchstöbere die Fähigkeitsbäume der Community. Übernimm einen, der dir gefällt, oder forke und passe ihn an.',
+  'skills.browseHint': 'Durchstöbere die Fähigkeitsbäume der Community. Übernimm einen, der dir gefällt.',
   'skills.noTrees': 'Noch keine Fähigkeitsbäume',
   'skills.noSkillsInGroup': 'Noch keine Fähigkeiten in dieser Gruppe.',
   'skills.nextToLearn': 'Als Nächstes lernen',
@@ -539,10 +529,6 @@ export default {
   'newSkillTree.prereqHint': 'Definiere Lernabhängigkeiten zwischen Tags. Eine Voraussetzung muss beherrscht werden, bevor die Zielfähigkeit freigeschaltet wird.',
   'newSkillTree.prereqFromPlaceholder': 'Voraussetzungs-Tag',
   'newSkillTree.prereqToPlaceholder': 'Ziel-Tag',
-
-  // Forks
-  'forks.backToOriginal': '← Zurück zum Original',
-  'forks.createHint': 'Klicke bei einem Artikel auf "Fork", um deine eigene Version zu erstellen',
 
   // Tags
   'tags.articles': 'Artikel',

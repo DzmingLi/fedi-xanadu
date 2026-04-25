@@ -1057,439 +1057,93 @@ pub async fn admin_rebuild_series_index(
     )))
 }
 
-/// GET /api/admin/consistency/pijul — previously reported mismatches
-/// between the `articles`/`series` tables and the on-disk pijul repo store.
-/// Pijul storage is gone, so this endpoint is a no-op. Kept for wire-format
-/// stability (CLI may still call it); returns an empty report shape.
-pub async fn check_pijul_consistency(
-    State(_state): State<AppState>,
-    _admin: AdminAuth,
-) -> ApiResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({
-        "article_missing_repo": [],
-        "series_missing_repo": [],
-        "orphan_dirs": [],
-        "total_dirs_scanned": 0,
-    })))
-}
-
 #[derive(serde::Deserialize)]
-pub struct MigratePijulInput {
-    /// Filesystem path of the legacy pijul scratch tree
-    /// (e.g. /var/lib/nightboat/pijul-store). Each article/series had its files
-    /// under {pijul_scratch_path}/{uri_to_node_id(repo_uri)}/.
-    pub pijul_scratch_path: String,
-    /// Dry-run: compute what would change, don't write anything.
+pub struct ReindexProbeInput {
+    /// PDS DID of the record's repo (e.g. did:plc:...).
+    pub did: String,
+    /// rkey of the at.nightbo.work record.
+    pub rkey: String,
+    /// PDS endpoint to query. Optional — defaults to the user's resolved PDS
+    /// when unset (TODO: use plc resolver).
     #[serde(default)]
-    pub dry_run: bool,
+    pub pds_url: Option<String>,
 }
 
-/// One-shot migration: walk every `article_localizations` row with
-/// `content_storage = 'pijul'`, read its source files from the legacy pijul
-/// scratch tree, synthesize a blob manifest (local CIDs via blake3), populate
-/// `blob_cache_path/{node_id}/`, and flip the row to `content_storage='blob'`.
-/// Migrates a legacy pijul scratch tree into the blob model.
-///
-/// Two shapes of `repo_uri` are present in the DB after the earlier schema
-/// rewrite:
-///   1. Standalone article: exactly one `article_localizations` row per
-///      repo_uri. The whole scratch dir belongs to this one article.
-///   2. Series: many `article_localizations` rows share the same repo_uri
-///      (which IS the series's `at.nightbo.work` at-uri). The scratch dir
-///      holds the entire series bundle — chapter sources, shared bibliography,
-///      figures, etc.
-///
-/// For standalone articles we preserve the existing behavior: each source
-/// file's subtree under scratch_dir becomes the article's blob manifest.
-///
-/// For series: we copy every file under `{pijul_scratch}/{series_node_id}/`
-/// (minus derived dirs: .pijul, cache, _rendered) into
-/// `{blob_cache}/{series_node_id}/` and synthesize the series's
-/// `chapters[]` + `files[]` shape directly on each chapter's DB row. No
-/// at_uri is minted — chapters stay at_uri=NULL by design. No PDS write
-/// (admin has no user session; federation happens when the author
-/// re-publishes).
-///
-/// Idempotent: rows already at `content_storage='blob'` are skipped.
-pub async fn admin_migrate_pijul_to_blob(
+/// Probe the bundle self-describability of a single `at.nightbo.work` record:
+/// fetches the record, walks `files[]`, downloads each blob, and runs the
+/// fx-validator extractors to recover article/series metadata. Returns the
+/// extracted shape so we can verify the round-trip without committing to a
+/// DB-sync semantics yet.
+pub async fn admin_reindex_probe(
     State(state): State<AppState>,
     _admin: AdminAuth,
-    Json(input): Json<MigratePijulInput>,
+    Json(input): Json<ReindexProbeInput>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    use std::path::{Path, PathBuf};
+    let pds_url = input.pds_url.clone().unwrap_or_else(|| state.pds_url.clone());
+    let record = state.at_client.get_record(
+        &pds_url, "", &input.did,
+        fx_atproto::lexicon::WORK, &input.rkey,
+    ).await.map_err(|e| AppError(fx_core::Error::Internal(format!("get_record: {e}"))))?;
 
-    fn is_derived(path: &Path) -> bool {
-        let s = path.to_string_lossy();
-        s.starts_with(".pijul/")
-            || s.starts_with("cache/")
-            || s.starts_with("_rendered/")
-            || s == ".pijul.toml"
-            || s == "content.html"
-            || s == "summary.html"
-            || s.ends_with(".swp")
+    let value = record.get("value").cloned().unwrap_or(serde_json::Value::Null);
+    let files = value.get("files").and_then(|f| f.as_array()).cloned().unwrap_or_default();
+
+    // Pull each file into memory.
+    let mut blobs: Vec<(String, String, Vec<u8>)> = Vec::new(); // (path, mime, bytes)
+    for f in &files {
+        let path = f.get("path").and_then(|p| p.as_str()).unwrap_or("").to_string();
+        let mime = f.get("mime").and_then(|m| m.as_str()).unwrap_or("application/octet-stream").to_string();
+        let cid = f.get("blob")
+            .and_then(|b| b.get("ref"))
+            .and_then(|r| r.get("$link"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("")
+            .to_string();
+        if path.is_empty() || cid.is_empty() { continue }
+        let bytes = state.at_client.get_blob(&pds_url, &input.did, &cid).await
+            .unwrap_or_default();
+        blobs.push((path, mime, bytes));
     }
 
-    fn walk_files(root: &Path) -> Vec<PathBuf> {
-        let mut out = Vec::new();
-        let mut stack = vec![root.to_path_buf()];
-        while let Some(d) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&d) else { continue };
-            for e in entries.flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if matches!(name, ".pijul" | "cache" | "_rendered") { continue; }
-                    stack.push(p);
-                } else {
-                    out.push(p);
-                }
-            }
-        }
-        out
-    }
+    // Article-level: pick an entry file by extension priority.
+    let article_meta = blobs.iter().find_map(|(path, _mime, bytes)| {
+        let text = std::str::from_utf8(bytes).ok()?;
+        if path.ends_with(".md") {
+            fx_validator::extract::md::extract(path, text).ok()
+        } else if path == "main.typ" || path.ends_with("/main.typ") || path == "content.typ" {
+            fx_validator::extract::typst::extract(path, text).ok()
+        } else { None }
+    });
 
-    fn mime_for(rel: &Path) -> String {
-        let ext = rel.extension().and_then(|e| e.to_str()).unwrap_or("");
-        match ext {
-            "md"   => "text/markdown",
-            "typ"  => "text/x-typst",
-            "html" => "text/html",
-            "bib"  => "application/x-bibtex",
-            "png"  => "image/png",
-            "jpg" | "jpeg" => "image/jpeg",
-            "gif"  => "image/gif",
-            "svg"  => "image/svg+xml",
-            "pdf"  => "application/pdf",
-            "txt"  => "text/plain",
-            "yaml" | "yml" => "application/yaml",
-            "json" => "application/json",
-            _      => "application/octet-stream",
-        }.to_string()
-    }
+    // HTML sidecar: meta.json next to a content.html.
+    let html_meta = if blobs.iter().any(|(p, _, _)| p == "content.html") {
+        blobs.iter().find_map(|(path, _, bytes)| {
+            (path == "meta.json").then(|| std::str::from_utf8(bytes).ok())
+                .flatten()
+                .and_then(|s| fx_validator::extract::html::extract("content.html", s).ok())
+        })
+    } else { None };
 
-    let base = std::path::PathBuf::from(&input.pijul_scratch_path);
-    if !base.is_dir() {
-        return Err(AppError(fx_core::Error::BadRequest(
-            format!("pijul_scratch_path {:?} is not a directory", base),
-        )));
-    }
-
-    // Group pijul-backed rows by repo_uri: standalone → exactly one, series → many.
-    #[derive(Debug)]
-    struct RowInfo {
-        source_path: String,
-        lang: String,
-        at_uri: Option<String>,
-        content_format: String,
-    }
-    let rows: Vec<(String, String, String, Option<String>, String)> = sqlx::query_as(
-        "SELECT l.repo_uri, l.source_path, l.lang, l.at_uri, l.content_format::text \
-         FROM article_localizations l \
-         WHERE l.content_storage = 'pijul'",
-    )
-    .fetch_all(&state.pool)
-    .await?;
-
-    let mut groups: std::collections::BTreeMap<String, Vec<RowInfo>> =
-        std::collections::BTreeMap::new();
-    for (repo_uri, source_path, lang, at_uri, content_format) in rows {
-        groups.entry(repo_uri).or_default().push(RowInfo {
-            source_path, lang, at_uri, content_format,
-        });
-    }
-
-    let mut migrated_articles = 0usize;
-    let mut migrated_chapters = 0usize;
-    let mut series_migrated = 0usize;
-    let mut skipped_missing = Vec::<serde_json::Value>::new();
-    let mut errors = Vec::<serde_json::Value>::new();
-
-    for (repo_uri, rows) in groups {
-        let repo_node_id = fx_core::util::uri_to_node_id(&repo_uri);
-
-        // The "is this a series?" heuristic: repo_uri is under the legacy
-        // series NSID (the article_repos_rewrite migration backfilled chapter
-        // rows with `at://{did}/at.nightbo.series/{id}` synthetic uris) OR
-        // multiple rows share the repo_uri (multi-chapter set).
-        let is_series = repo_uri.contains("/at.nightbo.series/")
-            || repo_uri.contains(&format!("/{}/", fx_atproto::lexicon::WORK))
-            || rows.len() > 1;
-
-        // Legacy on-disk naming: series pijul repos lived at `series_{rkey}/`
-        // (NOT at `uri_to_node_id` of the synthesized series at-uri).
-        // Standalone articles always lived at `uri_to_node_id(at_uri)/`.
-        let scratch_dir = if is_series {
-            let rkey = repo_uri.rsplit('/').next().unwrap_or("");
-            base.join(format!("series_{rkey}"))
-        } else {
-            base.join(&repo_node_id)
-        };
-
-        if is_series {
-            // Copy the entire scratch tree into {blob_cache}/{series_node_id}/.
-            if !scratch_dir.is_dir() {
-                skipped_missing.push(serde_json::json!({
-                    "repo_uri": repo_uri,
-                    "reason": format!("series scratch dir not found at {:?}", scratch_dir),
-                }));
-                continue;
-            }
-            let target_dir = state.blob_cache_path.join(&repo_node_id);
-            if !input.dry_run {
-                if let Err(e) = tokio::fs::create_dir_all(&target_dir).await {
-                    errors.push(serde_json::json!({
-                        "repo_uri": repo_uri,
-                        "stage": "mkdir-series", "error": e.to_string(),
-                    }));
-                    continue;
-                }
-            }
-
-            // Build the canonical `files[]` (union of every source file in
-            // the bundle). Each chapter's manifest points at this same set.
-            let mut series_files = Vec::<serde_json::Value>::new();
-            for abs in walk_files(&scratch_dir) {
-                let rel = match abs.strip_prefix(&scratch_dir) {
-                    Ok(r) => r.to_path_buf(),
-                    Err(_) => continue,
-                };
-                if is_derived(&rel) { continue; }
-
-                let bytes = match std::fs::read(&abs) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        errors.push(serde_json::json!({
-                            "repo_uri": repo_uri,
-                            "stage": "read", "file": rel.to_string_lossy(),
-                            "error": e.to_string(),
-                        }));
-                        continue;
-                    }
-                };
-                let cid = format!("local:{}", blake3::hash(&bytes).to_hex());
-                let mime = mime_for(&rel);
-                let size = bytes.len() as u64;
-
-                if !input.dry_run {
-                    let dest = target_dir.join(&rel);
-                    if let Some(parent) = dest.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    if let Err(e) = std::fs::write(&dest, &bytes) {
-                        errors.push(serde_json::json!({
-                            "repo_uri": repo_uri,
-                            "stage": "write", "file": rel.to_string_lossy(),
-                            "error": e.to_string(),
-                        }));
-                        continue;
-                    }
-                }
-
-                series_files.push(serde_json::json!({
-                    "path": rel.to_string_lossy(),
-                    "cid": cid,
-                    "size": size,
-                    "mime": mime,
-                }));
-            }
-
-            // Flip each chapter row to blob storage with the shared manifest
-            // pointing at its own entry. at_uri stays NULL.
-            for r in &rows {
-                let manifest = serde_json::json!({
-                    "entry": r.source_path,
-                    "files": series_files,
-                    "pds_url": state.pds_url,
-                });
-                if !input.dry_run {
-                    if let Err(e) = sqlx::query(
-                        "UPDATE article_localizations \
-                         SET content_storage = 'blob', content_manifest = $1, updated_at = NOW() \
-                         WHERE repo_uri = $2 AND source_path = $3 AND lang = $4",
-                    )
-                    .bind(&manifest)
-                    .bind(&repo_uri)
-                    .bind(&r.source_path)
-                    .bind(&r.lang)
-                    .execute(&state.pool).await
-                    {
-                        errors.push(serde_json::json!({
-                            "repo_uri": repo_uri, "source_path": r.source_path,
-                            "stage": "db-update-chapter", "error": e.to_string(),
-                        }));
-                        continue;
-                    }
-                }
-                migrated_chapters += 1;
-                let _ = r.at_uri; // chapters never had one; nothing to mint.
-            }
-
-            // Also stamp heading_anchor on series_articles rows that don't
-            // have one — the anchor is the chapter's source_path file stem
-            // for stability across re-publishes.
-            if !input.dry_run {
-                for r in &rows {
-                    let anchor_stem = std::path::Path::new(&r.source_path)
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("chapter")
-                        .to_string();
-                    let _ = sqlx::query(
-                        "UPDATE series_articles SET heading_anchor = COALESCE(heading_anchor, $1) \
-                         WHERE repo_uri = $2 AND source_path = $3",
-                    )
-                    .bind(&anchor_stem).bind(&repo_uri).bind(&r.source_path)
-                    .execute(&state.pool).await;
-                }
-            }
-
-            series_migrated += 1;
-        } else {
-            // Standalone article: one row, per-article scratch dir with its
-            // own files tree.
-            let r = &rows[0];
-            let at_uri = match r.at_uri.clone() {
-                Some(u) => u,
-                None => {
-                    errors.push(serde_json::json!({
-                        "repo_uri": repo_uri,
-                        "source_path": r.source_path,
-                        "stage": "no-at-uri", "error":
-                            "standalone article has no at_uri; cannot migrate without one",
-                    }));
-                    continue;
-                }
-            };
-
-            // Resolve the actual source file. Schema backfill picked
-            // `main.{ext}` for standalone articles, but the legacy publish
-            // flow wrote `content.{ext}` — fall back to that name when main
-            // is absent. Update DB-side source_path/file_path on success
-            // so future code reads it correctly.
-            let mut source_file = scratch_dir.join(&r.source_path);
-            let mut effective_source_path = r.source_path.clone();
-            if !source_file.is_file() {
-                if let Some(stem) = std::path::Path::new(&r.source_path).file_stem().and_then(|s| s.to_str()) {
-                    if stem == "main" {
-                        let ext = std::path::Path::new(&r.source_path)
-                            .extension().and_then(|e| e.to_str()).unwrap_or("md");
-                        let alt = format!("content.{ext}");
-                        let alt_path = scratch_dir.join(&alt);
-                        if alt_path.is_file() {
-                            source_file = alt_path;
-                            effective_source_path = alt;
-                        }
-                    }
-                }
-            }
-            if !source_file.is_file() {
-                skipped_missing.push(serde_json::json!({
-                    "repo_uri": repo_uri,
-                    "source_path": r.source_path,
-                    "reason": format!("source not found at {:?}", source_file),
-                }));
-                continue;
-            }
-            // entry_rel below is computed from the resolved source_file
-            // relative to scratch_dir, so the fallback name is honored
-            // automatically without further plumbing.
-            let _ = effective_source_path;
-
-            let target_node_id = fx_core::util::uri_to_node_id(&at_uri);
-            let target_dir = state.blob_cache_path.join(&target_node_id);
-            if !input.dry_run {
-                if let Err(e) = tokio::fs::create_dir_all(&target_dir).await {
-                    errors.push(serde_json::json!({
-                        "repo_uri": repo_uri, "source_path": r.source_path,
-                        "stage": "mkdir", "error": e.to_string(),
-                    }));
-                    continue;
-                }
-            }
-
-            let src_ext = fx_renderer::format_extension(&r.content_format);
-            let entry_rel = source_file.strip_prefix(&scratch_dir)
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| format!("content.{src_ext}"));
-
-            let mut manifest_files = Vec::<serde_json::Value>::new();
-            for abs in walk_files(&scratch_dir) {
-                let rel = match abs.strip_prefix(&scratch_dir) {
-                    Ok(r) => r.to_path_buf(),
-                    Err(_) => continue,
-                };
-                if is_derived(&rel) { continue; }
-
-                let bytes = match std::fs::read(&abs) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        errors.push(serde_json::json!({
-                            "repo_uri": repo_uri, "source_path": r.source_path,
-                            "stage": "read", "file": rel.to_string_lossy(),
-                            "error": e.to_string(),
-                        }));
-                        continue;
-                    }
-                };
-                let cid = format!("local:{}", blake3::hash(&bytes).to_hex());
-                let mime = mime_for(&rel);
-                let size = bytes.len() as u64;
-
-                if !input.dry_run {
-                    let dest = target_dir.join(&rel);
-                    if let Some(parent) = dest.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    if let Err(e) = std::fs::write(&dest, &bytes) {
-                        errors.push(serde_json::json!({
-                            "repo_uri": repo_uri, "source_path": r.source_path,
-                            "stage": "write", "file": rel.to_string_lossy(),
-                            "error": e.to_string(),
-                        }));
-                        continue;
-                    }
-                }
-
-                manifest_files.push(serde_json::json!({
-                    "path": rel.to_string_lossy(),
-                    "cid": cid,
-                    "size": size,
-                    "mime": mime,
-                }));
-            }
-
-            let manifest = serde_json::json!({
-                "entry": entry_rel,
-                "files": manifest_files,
-                "pds_url": state.pds_url,
-            });
-            if !input.dry_run {
-                if let Err(e) = sqlx::query(
-                    "UPDATE article_localizations \
-                     SET content_storage = 'blob', content_manifest = $1, updated_at = NOW() \
-                     WHERE at_uri = $2",
-                )
-                .bind(&manifest).bind(&at_uri)
-                .execute(&state.pool).await
-                {
-                    errors.push(serde_json::json!({
-                        "repo_uri": repo_uri, "source_path": r.source_path,
-                        "stage": "db-update", "error": e.to_string(),
-                    }));
-                    continue;
-                }
-            }
-            migrated_articles += 1;
-        }
-    }
+    // Series-level: try main.typ <nbt-series> first, fall back to meta.yml.
+    let series_meta = blobs.iter().find_map(|(path, _, bytes)| {
+        let text = std::str::from_utf8(bytes).ok()?;
+        if path == "main.typ" {
+            fx_validator::extract::series::extract_typst_main(path, text).ok().flatten()
+        } else { None }
+    }).or_else(|| {
+        blobs.iter().find_map(|(path, _, bytes)| {
+            (path == "meta.yml").then(|| std::str::from_utf8(bytes).ok())
+                .flatten()
+                .and_then(|s| fx_validator::extract::series::extract_meta_yml(path, s).ok())
+        })
+    });
 
     Ok(Json(serde_json::json!({
-        "dry_run": input.dry_run,
-        "migrated_articles": migrated_articles,
-        "migrated_chapters": migrated_chapters,
-        "series_migrated": series_migrated,
-        "skipped_missing": skipped_missing,
-        "errors": errors,
+        "did": input.did,
+        "rkey": input.rkey,
+        "files": files.iter().map(|f| f.get("path").cloned().unwrap_or_default()).collect::<Vec<_>>(),
+        "article_meta": article_meta,
+        "html_meta": html_meta,
+        "series_meta": series_meta,
     })))
 }
-

@@ -12,4 +12,4 @@ export type Article = { repo_uri: string, source_path: string, author_did: strin
  * ATProto record URI for this specific localization. NULL for series
  * chapters and for server-only Q&A.
  */
-at_uri: string | null, file_path: string, title: string, summary: string, summary_html: string, content_hash: string | null, content_format: ContentFormat, translator_did: string | null, paper_venue: string | null, paper_year: number | null, paper_accepted: boolean | null, vote_score: number, bookmark_count: number, comment_count: number, fork_count: number, created_at: string, updated_at: string, };
+at_uri: string | null, file_path: string, title: string, summary: string, summary_html: string, content_hash: string | null, content_format: ContentFormat, translator_did: string | null, paper_venue: string | null, paper_year: number | null, paper_accepted: boolean | null, vote_score: number, bookmark_count: number, comment_count: number, created_at: string, updated_at: string, };

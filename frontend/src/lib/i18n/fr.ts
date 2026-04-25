@@ -102,7 +102,6 @@ export default {
   'notification.commentReply': 'a répondu à votre commentaire',
   'notification.articleComment': 'a commenté votre article',
   'notification.newFollower': 'vous suit',
-  'notification.articleFork': 'a forké votre article',
   'notification.markAllRead': 'Tout marquer comme lu',
   'notification.empty': 'Aucune notification',
   'notification.justNow': 'à l\'instant',
@@ -147,11 +146,9 @@ export default {
 
   // Article
   'article.prereqs': 'Prérequis',
-  'article.forks': 'Forks',
   'article.translations': 'Autres langues',
   'article.bookmark': 'Favori',
   'article.bookmarked': 'Dans les favoris',
-  'article.fork': 'Fork',
   'article.upvote': 'Pour',
   'article.downvote': 'Contre',
   'article.loginToVote': 'Connectez-vous pour voter',
@@ -176,9 +173,7 @@ export default {
   'article.sessionExpired': 'Session expirée, veuillez vous reconnecter',
   'article.postFailed': 'Échec de la publication',
   'article.writeReply': 'Écrire une réponse...',
-  'article.viewAllForks': 'Voir les {0} forks →',
   'article.versionHistory': 'Historique des versions',
-  'article.forkedFrom': 'Forké depuis',
   'article.noCover': 'Pas de couverture',
   'article.uploadCover': 'Ajouter une couverture',
   'article.changeCover': 'Changer la couverture',
@@ -219,8 +214,6 @@ export default {
   // NewArticle
   'newArticle.title': 'Nouvel article',
   'newArticle.editTitle': 'Modifier l\'article',
-  'newArticle.forkTitle': 'Fork de l\'article',
-  'newArticle.forkHint': 'Fork en cours — modifiez et publiez votre version',
   'newArticle.titleLabel': 'Titre',
   'newArticle.summaryLabel': 'Résumé',
   'newArticle.summaryPlaceholder': 'Bref résumé affiché sur les cartes et en tête de l\'article',
@@ -261,9 +254,6 @@ export default {
   'newArticle.relatedPlaceholder': 'Saisir un concept, Entrée pour ajouter',
   'newArticle.prereqsPlaceholder': 'Saisir un prérequis, Entrée pour ajouter',
   'newArticle.tagNotFound': 'Tag « {name} » introuvable. Créez-le d\'abord sur la page de hiérarchie.',
-  'newArticle.diffPreview': 'Aperçu des modifications',
-  'newArticle.backToEdit': 'Retour à l\'éditeur',
-  'newArticle.confirmFork': 'Publier le fork',
   'newArticle.saving': 'Enregistrement...',
   'newArticle.saved': 'Enregistré !',
   'newArticle.updateDraft': 'Mettre à jour le brouillon',
@@ -476,7 +466,7 @@ export default {
   'skills.communityTrees': 'Arbres communautaires',
   'skills.statusHint': 'Cliquer pour changer · Double-clic pour entrer dans le tag',
   'skills.createTree': 'Créer un arbre',
-  'skills.browseHint': 'Parcourez les arbres partagés. Adoptez-en un ou forkez-le pour le personnaliser.',
+  'skills.browseHint': 'Parcourez les arbres partagés. Adoptez-en un.',
   'skills.noTrees': 'Aucun arbre de compétences',
   'skills.noSkillsInGroup': 'Aucune compétence dans ce groupe pour l\'instant.',
   'skills.nextToLearn': 'À apprendre ensuite',
@@ -539,10 +529,6 @@ export default {
   'newSkillTree.prereqHint': 'Définissez les dépendances d\'apprentissage entre les tags. Un prérequis doit être maîtrisé avant que la compétence cible ne soit débloquée.',
   'newSkillTree.prereqFromPlaceholder': 'Tag prérequis',
   'newSkillTree.prereqToPlaceholder': 'Tag cible',
-
-  // Forks
-  'forks.backToOriginal': '← Retour à l\'original',
-  'forks.createHint': 'Cliquez sur « Fork » sur un article pour créer votre propre version',
 
   // Tags
   'tags.articles': 'articles',

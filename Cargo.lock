@@ -1817,6 +1817,7 @@ dependencies = [
  "fx-atproto",
  "fx-core",
  "fx-renderer",
+ "fx-validator",
  "rand 0.10.1",
  "regex-lite",
  "reqwest",

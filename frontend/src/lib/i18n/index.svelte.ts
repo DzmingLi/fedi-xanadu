@@ -56,7 +56,7 @@ export function setLocale(newLocale: Locale) {
 
 /**
  * Translate a key with optional positional interpolation.
- *   t('article.viewAllForks', 5) -> "View all 5 forks ->"
+ *   t('home.bookmarks', 5) -> "5 bookmarks"
  * Placeholders are `{0}`, `{1}`, etc.
  *
  * No cross-locale fallback: if a key is absent from the active locale we

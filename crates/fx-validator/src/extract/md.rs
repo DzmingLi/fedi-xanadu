@@ -16,13 +16,18 @@ struct RawFrontmatter {
     #[serde(alias = "translation-of", alias = "translation_of")]
     translation_of: Option<String>,
     title: Option<String>,
-    #[serde(rename = "abstract")]
+    #[serde(rename = "abstract", alias = "description")]
     abstract_: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "teaches")]
     tags: Vec<String>,
     translator: Option<String>,
     #[serde(alias = "translation-notes", alias = "translation_notes")]
     translation_notes: Option<String>,
+    license: Option<String>,
+    category: Option<String>,
+    cover: Option<String>,
+    #[serde(default)]
+    related: Vec<String>,
 }
 
 pub fn extract(path: &str, content: &str) -> Result<FileMeta, ValidationError> {
@@ -42,6 +47,10 @@ pub fn extract(path: &str, content: &str) -> Result<FileMeta, ValidationError> {
         tags: raw.tags,
         translator: raw.translator,
         translation_notes: raw.translation_notes,
+        license: raw.license,
+        category: raw.category,
+        cover: raw.cover,
+        related: raw.related,
     })
 }
 

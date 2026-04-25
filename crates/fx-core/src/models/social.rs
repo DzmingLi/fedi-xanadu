@@ -12,16 +12,6 @@ pub struct Vote {
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
-pub struct Fork {
-    pub fork_uri: String,
-    pub source_uri: String,
-    pub forked_uri: String,
-    pub pijul_patch_hash: Option<String>,
-    pub vote_score: i32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
-#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct UserSkill {
     pub did: String,
     /// The tag (concept) the user has lit. Every language label that

@@ -14,7 +14,6 @@ pub struct SkillTreeRow {
     pub title: String,
     pub description: Option<String>,
     pub tag_id: Option<String>,
-    pub forked_from: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -31,7 +30,6 @@ pub struct SkillTreeListRow {
     #[ts(type = "Record<string, string> | null")]
 
     pub tag_names: Option<sqlx::types::Json<HashMap<String, String>>>,
-    pub forked_from: Option<String>,
     pub created_at: DateTime<Utc>,
     pub score: i64,
     pub edge_count: i64,
@@ -71,7 +69,7 @@ pub struct CreateSkillTree {
     pub prereqs: Vec<(String, String, String)>,
 }
 
-const TREE_SELECT: &str = "SELECT at_uri, did, title, description, tag_id, forked_from, created_at FROM skill_trees";
+const TREE_SELECT: &str = "SELECT at_uri, did, title, description, tag_id, created_at FROM skill_trees";
 
 pub async fn list_skill_trees(pool: &PgPool, limit: i64) -> Result<Vec<SkillTreeListRow>> {
     // `skill_trees.tag_id` is a tag (concept); surface its canonical label
@@ -82,7 +80,7 @@ pub async fn list_skill_trees(pool: &PgPool, limit: i64) -> Result<Vec<SkillTree
          st.tag_id AS tag_id, \
          tag_canonical_label(st.tag_id) AS tag_name, \
          tag_label_map(st.tag_id) AS tag_names, \
-         st.forked_from, st.created_at, \
+         st.created_at, \
          COALESCE((SELECT SUM(CASE WHEN v.value > 0 THEN 1 WHEN v.value < 0 THEN -1 ELSE 0 END) FROM votes v WHERE v.target_uri = st.at_uri), 0) AS score, \
          (SELECT COUNT(*) FROM skill_tree_edges e WHERE e.tree_uri = st.at_uri) AS edge_count, \
          (SELECT COUNT(*) FROM user_active_tree ua WHERE ua.tree_uri = st.at_uri) AS adopt_count \
@@ -183,48 +181,6 @@ pub async fn create_skill_tree(
     tx.commit().await?;
 
     get_skill_tree(pool, at_uri).await
-}
-
-pub async fn fork_skill_tree(
-    pool: &PgPool,
-    source_uri: &str,
-    new_uri: &str,
-    did: &str,
-) -> Result<SkillTreeRow> {
-    let source = get_skill_tree(pool, source_uri).await?;
-    let new_title = format!("Fork: {}", source.title);
-
-    sqlx::query(
-        "INSERT INTO skill_trees (at_uri, did, title, description, tag_id, forked_from) VALUES ($1, $2, $3, $4, $5, $6)",
-    )
-    .bind(new_uri)
-    .bind(did)
-    .bind(&new_title)
-    .bind(&source.description)
-    .bind(&source.tag_id)
-    .bind(source_uri)
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        "INSERT INTO skill_tree_edges (tree_uri, parent_tag, child_tag) \
-         SELECT $1, parent_tag, child_tag FROM skill_tree_edges WHERE tree_uri = $2",
-    )
-    .bind(new_uri)
-    .bind(source_uri)
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        "INSERT INTO skill_tree_prereqs (tree_uri, from_tag, to_tag, prereq_type) \
-         SELECT $1, from_tag, to_tag, prereq_type FROM skill_tree_prereqs WHERE tree_uri = $2",
-    )
-    .bind(new_uri)
-    .bind(source_uri)
-    .execute(pool)
-    .await?;
-
-    get_skill_tree(pool, new_uri).await
 }
 
 pub async fn add_edge(

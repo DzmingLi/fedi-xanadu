@@ -1,6 +1,6 @@
 import type {
   Tag, Article, ArticleContent, ArticlePrereqRow, ContentTeachRow, ContentPrereqBulkRow,
-  ForkWithTitle, UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
+  UserSkill, GraphData, TagTreeEntry, CreateArticle, BookmarkWithTitle,
   AuthUser, VoteSummary, Series, SeriesDetail, SeriesTreeNode, SeriesHeading, ProfileData, SeriesContextItem,
   SkillTree, SkillTreeDetail, SkillTreeEdge, SkillTreePrereq, UserTagPrereq, FrontierSkill, Comment, Draft, CommentVoteResult, MyCommentVote,
   ArticleFullResponse, Notification, QuestionDetail, AccessGrant, UserSettings,
@@ -121,9 +121,6 @@ export const getArticleContent = (uri: string) => get<ArticleContent>(`/articles
 import { getLocale as currentLocale } from './i18n/index.svelte';
 export const getArticlePrereqs = (uri: string) =>
   get<ArticlePrereqRow[]>(`/articles/by-uri/prereqs?uri=${encodeURIComponent(uri)}&locale=${encodeURIComponent(currentLocale())}`);
-export const getArticleForks = (uri: string) => get<ForkWithTitle[]>(`/articles/by-uri/forks?uri=${encodeURIComponent(uri)}`);
-export const getForkAhead = (forkUri: string, originalUri: string) =>
-  get<string[]>(`/articles/by-uri/fork-ahead?fork_uri=${encodeURIComponent(forkUri)}&original_uri=${encodeURIComponent(originalUri)}`);
 export const createArticle = (data: CreateArticle) => post<Article>('/articles', data);
 export const getAllArticleTeaches = () => get<ContentTeachRow[]>('/articles/all-teaches');
 export const getAllArticlePrereqs = () => get<ContentPrereqBulkRow[]>('/articles/all-prereqs');
@@ -290,7 +287,6 @@ export const getSeriesHeadings = (id: string) => get<SeriesHeading[]>(`/series/$
 export const reorderSeriesArticles = (series_id: string, article_uris: string[]) =>
   put<void>(`/series/${encodeURIComponent(series_id)}/articles/reorder`, { article_uris });
 export const compileSeries = (id: string) => post<{ articles_created: number; articles_updated: number; total_headings: number }>(`/series/${encodeURIComponent(id)}/compile`, {});
-export const forkSeries = (id: string) => post<Series>(`/series/${encodeURIComponent(id)}/fork`, {});
 export const listSeriesFiles = (id: string) => get<{ path: string; size: number }[]>(`/series/${encodeURIComponent(id)}/files`);
 export const readSeriesFile = (id: string, path: string) => get<string>(`/series/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`);
 export const writeSeriesFile = (id: string, path: string, content: string, message?: string) =>
@@ -307,35 +303,11 @@ export interface Collaborator {
   invited_by: string | null;
   created_at: string;
 }
-export interface ChannelDiffResult {
-  only_in_a: string[];
-  only_in_b: string[];
-}
 export const listCollaborators = (id: string) => get<Collaborator[]>(`/series/${encodeURIComponent(id)}/collaborators`);
 export const inviteCollaborator = (id: string, identifier: string, role?: string) =>
   post<Collaborator>(`/series/${encodeURIComponent(id)}/collaborators`, { identifier, role });
 export const removeCollaborator = (id: string, did: string) =>
   del<void>(`/series/${encodeURIComponent(id)}/collaborators/${encodeURIComponent(did)}`);
-export const listChannels = (id: string) => get<string[]>(`/series/${encodeURIComponent(id)}/channels`);
-export const readChannelFile = (id: string, channel: string, path: string) =>
-  get<{ content: string }>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/file?path=${encodeURIComponent(path)}`);
-export const writeChannelFile = (id: string, channel: string, path: string, content: string, message?: string) =>
-  put<{ change_hash: string; merkle: string }>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/file`, { path, content, message });
-export const channelLog = (id: string, channel: string) =>
-  get<string[]>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/log`);
-export interface ChangeInfo { hash: string; message: string; author_did?: string }
-export interface ChangeLine { kind: 'add' | 'del' | 'same'; content: string }
-export interface ChangeDetail { lines: ChangeLine[] }
-export const channelLogDetails = (id: string, channel: string) =>
-  get<ChangeInfo[]>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(channel)}/log-details`);
-export const getSeriesChangeDetail = (id: string, hash: string) =>
-  get<ChangeDetail>(`/series/${encodeURIComponent(id)}/change/${encodeURIComponent(hash)}`);
-export const unrecordSeriesChange = (id: string, hash: string) =>
-  post<void>(`/series/${encodeURIComponent(id)}/change/${encodeURIComponent(hash)}/unrecord`, {});
-export const applyChannelChange = (id: string, targetChannel: string, sourceChannel: string, changeHash: string) =>
-  post<void>(`/series/${encodeURIComponent(id)}/channel/${encodeURIComponent(targetChannel)}/apply`, { source_channel: sourceChannel, change_hash: changeHash });
-export const channelDiff = (id: string, a: string, b: string) =>
-  get<ChannelDiffResult>(`/series/${encodeURIComponent(id)}/channel-diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
 
 // Article Collaboration
 export const listArticleCollaborators = (uri: string) => get<ArticleCollaborator[]>(`/articles/collaborators?uri=${encodeURIComponent(uri)}`);
@@ -343,17 +315,6 @@ export const inviteArticleCollaborator = (uri: string, identifier: string, role?
   post<ArticleCollaborator>('/articles/collaborators', { uri, identifier, role });
 export const removeArticleCollaborator = (uri: string, user_did: string) =>
   del<void>('/articles/collaborators/remove', { uri, user_did });
-export const listArticleChannels = (uri: string) => get<string[]>(`/articles/channels?uri=${encodeURIComponent(uri)}`);
-export const readArticleChannelFile = (uri: string, channel: string, path?: string) =>
-  get<{ content: string }>(`/articles/channel/file?uri=${encodeURIComponent(uri)}&channel=${encodeURIComponent(channel)}${path ? `&path=${encodeURIComponent(path)}` : ''}`);
-export const writeArticleChannelFile = (uri: string, channel: string, content: string, message?: string, path?: string) =>
-  put<{ change_hash: string; merkle: string }>('/articles/channel/file', { uri, channel, content, message, path });
-export const articleChannelLog = (uri: string, channel: string) =>
-  get<string[]>(`/articles/channel/log?uri=${encodeURIComponent(uri)}&channel=${encodeURIComponent(channel)}`);
-export const applyArticleChannelChange = (uri: string, targetChannel: string, changeHash: string) =>
-  post<void>('/articles/channel/apply', { uri, target_channel: targetChannel, change_hash: changeHash });
-export const articleChannelDiff = (uri: string, a: string, b: string) =>
-  get<ChannelDiffResult>(`/articles/channel-diff?uri=${encodeURIComponent(uri)}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
 
 export interface ArticleCollaborator {
   article_uri: string;
@@ -364,48 +325,11 @@ export interface ArticleCollaborator {
   created_at: string;
 }
 
-// Discussions
-export interface Discussion {
-  id: string;
-  target_uri: string;
-  source_uri: string;
-  author_did: string;
-  title: string;
-  body: string | null;
-  status: string;
-  created_at: string;
-  updated_at: string;
-}
-export interface DiscussionChange {
-  id: number;
-  discussion_id: string;
-  change_hash: string;
-  added_by: string;
-  added_at: string;
-  applied: boolean;
-  applied_at: string | null;
-}
-export interface DiscussionDetail {
-  discussion: Discussion;
-  changes: DiscussionChange[];
-}
-export const createDiscussion = (data: { target_uri: string; source_uri: string; title: string; body?: string; change_hashes: string[] }) =>
-  post<Discussion>('/discussions', data);
-export const listDiscussions = (uri: string) => get<Discussion[]>(`/discussions?uri=${encodeURIComponent(uri)}`);
-export const getDiscussion = (id: string) => get<DiscussionDetail>(`/discussions/${encodeURIComponent(id)}`);
-export const updateDiscussionStatus = (id: string, status: string) =>
-  put<void>(`/discussions/${encodeURIComponent(id)}/status`, { status });
-export const applyDiscussionChange = (id: string, changeHash: string) =>
-  post<{ has_conflicts: boolean }>(`/discussions/${encodeURIComponent(id)}/apply`, { change_hash: changeHash });
-export const applyAllDiscussionChanges = (id: string) =>
-  post<{ has_conflicts: boolean; applied: number }>(`/discussions/${encodeURIComponent(id)}/apply-all`, {});
-
 // Skill Trees
 export const listSkillTrees = () => get<SkillTree[]>('/skill-trees');
 export const getSkillTree = (uri: string) => get<SkillTreeDetail>(`/skill-trees/by-uri?uri=${encodeURIComponent(uri)}`);
 export const createSkillTree = (data: { title: string; description?: string; tag_id?: string; edges: SkillTreeEdge[]; prereqs?: SkillTreePrereq[] }) =>
   post<SkillTree>('/skill-trees', data);
-export const forkSkillTree = (uri: string) => post<SkillTree>('/skill-trees/fork', { uri });
 export const addSkillTreeEdge = (tree_uri: string, parent_tag: string, child_tag: string) =>
   post<void>('/skill-trees/edges', { tree_uri, parent_tag, child_tag });
 export const removeSkillTreeEdge = (tree_uri: string, parent_tag: string, child_tag: string) =>
@@ -465,13 +389,6 @@ export const listBlockedDids = () => get<string[]>('/blocks/dids');
 // Reports
 export const createReport = (target_did: string, kind: string, reason: string, target_uri?: string) =>
   post<Report>('/reports', { target_did, target_uri, kind, reason });
-
-// Fork
-export const forkArticle = (uri: string, targetFormat?: string) => post<Article>('/articles/fork', { uri, target_format: targetFormat });
-
-// Cross-fork apply
-export const applyChange = (data: { source_uri: string; target_uri: string; change_hash: string }) =>
-  post<{ has_conflicts: boolean; content: string }>('/articles/apply-change', data);
 
 // Format conversion
 export const convertContent = (content: string, from: string, to: string) =>

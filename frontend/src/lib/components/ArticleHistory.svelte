@@ -1,11 +1,9 @@
 <script lang="ts">
-  import { getArticleHistory, getArticleDiff, unrecordArticleChange, applyChange } from '../api';
+  import { getArticleHistory, getArticleDiff, unrecordArticleChange } from '../api';
   import type { ArticleVersionInfo, VersionDiff } from '../types';
   import { t } from '../i18n/index.svelte';
 
-  let { uri, isOwner = false, applyTargetUri = '' }: { uri: string; isOwner?: boolean; applyTargetUri?: string } = $props();
-  let applying = $state<string | null>(null);
-  let applyResult = $state<{ has_conflicts: boolean; content: string } | null>(null);
+  let { uri, isOwner = false }: { uri: string; isOwner?: boolean } = $props();
 
   let versions = $state<ArticleVersionInfo[]>([]);
   let selectedVersion = $state<ArticleVersionInfo | null>(null);
@@ -64,30 +62,6 @@
     }
   }
 
-  async function doApply(v: ArticleVersionInfo) {
-    if (!applyTargetUri) return;
-    if (!confirm(t('history.applyConfirm', v.message))) return;
-    applying = v.change_hash;
-    error = '';
-    applyResult = null;
-    try {
-      const result = await applyChange({
-        source_uri: uri,
-        target_uri: applyTargetUri,
-        change_hash: v.change_hash,
-      });
-      applyResult = result;
-      if (result.has_conflicts) {
-        // Navigate to editor with conflict content for manual resolution
-        window.location.href = `/new?edit_uri=${encodeURIComponent(applyTargetUri)}&resolve_conflicts=1`;
-      }
-    } catch (e: any) {
-      error = e.message;
-    } finally {
-      applying = null;
-    }
-  }
-
   function formatDate(s: string) {
     return new Intl.DateTimeFormat('zh-CN', {
       month: '2-digit', day: '2-digit',
@@ -135,16 +109,6 @@
               {unrecording === v.id ? '…' : t('history.unrecord')}
             </button>
           {/if}
-          {#if applyTargetUri && v.change_hash !== 'fork-initial'}
-            <button
-              class="apply-btn"
-              disabled={applying !== null}
-              title={t('history.applyHint')}
-              onclick={(e) => { e.stopPropagation(); doApply(v); }}
-            >
-              {applying === v.change_hash ? '…' : t('history.apply')}
-            </button>
-          {/if}
         </div>
       {/each}
     {/if}
@@ -170,12 +134,6 @@
 {:else if line.kind === 'remove'}<span class="line-del">-{line.content}</span>
 {:else}<span class="line-ctx"> {line.content}</span>
 {/if}{/each}{/each}</pre>
-    {/if}
-
-    {#if applyResult && !applyResult.has_conflicts}
-      <p class="apply-success">{t('history.applySuccess')}</p>
-    {:else if applyResult && applyResult.has_conflicts}
-      <p class="apply-conflict">{t('history.applyConflict')}</p>
     {/if}
   </div>
 </div>
@@ -284,41 +242,6 @@
     border-color: var(--border);
     color: var(--text-hint);
     cursor: not-allowed;
-  }
-
-  .apply-btn {
-    position: absolute;
-    right: 60px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 11px;
-    padding: 2px 6px;
-    border: 1px solid #2563eb;
-    color: #2563eb;
-    background: none;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .apply-btn:hover:not(:disabled) {
-    background: #2563eb;
-    color: white;
-  }
-  .apply-btn:disabled {
-    border-color: var(--border);
-    color: var(--text-hint);
-    cursor: not-allowed;
-  }
-
-  .apply-success {
-    padding: 12px;
-    color: #16a34a;
-    font-size: 13px;
-  }
-  .apply-conflict {
-    padding: 12px;
-    color: #d97706;
-    font-size: 13px;
   }
 
   .diff-panel {

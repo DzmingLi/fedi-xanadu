@@ -26,6 +26,11 @@ use typst_syntax::{ast, parse, SyntaxKind, SyntaxNode};
 
 use super::TYPST_LABEL;
 
+/// Article-level label written by the publish path. The extractor accepts
+/// either this or [`TYPST_LABEL`] (which is the older translation-pair
+/// label) — fields are a strict superset, kept on one Raw struct.
+const NBT_ARTICLE_LABEL: &str = "nbt-article";
+
 #[derive(Debug, Default)]
 struct Raw {
     lang: Option<String>,
@@ -35,6 +40,10 @@ struct Raw {
     tags: Vec<String>,
     translator: Option<String>,
     translation_notes: Option<String>,
+    license: Option<String>,
+    category: Option<String>,
+    cover: Option<String>,
+    related: Vec<String>,
 }
 
 pub fn extract(path: &str, content: &str) -> Result<FileMeta, ValidationError> {
@@ -59,6 +68,10 @@ pub fn extract(path: &str, content: &str) -> Result<FileMeta, ValidationError> {
         tags: raw.tags,
         translator: raw.translator,
         translation_notes: raw.translation_notes,
+        license: raw.license,
+        category: raw.category,
+        cover: raw.cover,
+        related: raw.related,
     })
 }
 
@@ -115,15 +128,16 @@ fn node_of_expr<'a>(call_node: &'a SyntaxNode, _expr: &ast::Expr<'_>) -> Option<
 }
 
 /// Returns true if among the siblings immediately following the metadata call
-/// (skipping whitespace and parbreaks) the first non-trivial node is the label
-/// `<nightboat-translation>`.
+/// (skipping whitespace and parbreaks) the first non-trivial node is one of
+/// our recognised labels (`<nbt-article>` or `<nightboat-translation>`).
 fn followed_by_our_label(siblings_after: &[&SyntaxNode]) -> bool {
     for n in siblings_after {
         match n.kind() {
             SyntaxKind::Space | SyntaxKind::Parbreak => continue,
             SyntaxKind::Label => {
-                // label text includes angle brackets: `<nightboat-translation>`
-                return n.text().as_str() == format!("<{}>", TYPST_LABEL);
+                let s = n.text().as_str();
+                return s == format!("<{NBT_ARTICLE_LABEL}>")
+                    || s == format!("<{TYPST_LABEL}>");
             }
             _ => return false,
         }
@@ -167,7 +181,7 @@ fn parse_dict(path: &str, dict_node: &SyntaxNode) -> Result<Raw, ValidationError
                         raw.translation_of = Some(expect_string(path, &key, named.expr())?)
                     }
                     "title" => raw.title = Some(expect_string(path, &key, named.expr())?),
-                    "abstract" => raw.abstract_ = Some(expect_string(path, &key, named.expr())?),
+                    "abstract" | "description" => raw.abstract_ = Some(expect_string(path, &key, named.expr())?),
                     "translator" => {
                         raw.translator = Some(expect_string(path, &key, named.expr())?)
                     }
@@ -175,7 +189,11 @@ fn parse_dict(path: &str, dict_node: &SyntaxNode) -> Result<Raw, ValidationError
                         raw.translation_notes =
                             Some(expect_string(path, &key, named.expr())?)
                     }
-                    "tags" => raw.tags = expect_string_array(path, &key, named.expr())?,
+                    "tags" | "teaches" => raw.tags = expect_string_array(path, &key, named.expr())?,
+                    "license" => raw.license = Some(expect_string(path, &key, named.expr())?),
+                    "category" => raw.category = Some(expect_string(path, &key, named.expr())?),
+                    "cover" => raw.cover = Some(expect_string(path, &key, named.expr())?),
+                    "related" => raw.related = expect_string_array(path, &key, named.expr())?,
                     other => {
                         return Err(ValidationError::MetadataParseError {
                             path: path.to_string(),
@@ -304,5 +322,53 @@ mod tests {
             extract("main.typ", src).unwrap_err(),
             ValidationError::MissingLang { .. }
         ));
+    }
+
+    #[test]
+    fn accepts_nbt_article_label() {
+        let src = r#"
+#metadata((
+  title: "Hi",
+  lang: "zh",
+  license: "CC-BY-SA-4.0",
+  category: "lecture",
+  tags: ("calculus", "analysis"),
+  related: ("history",),
+)) <nbt-article>
+
+= Body
+"#;
+        let meta = extract("a/main.typ", src).unwrap();
+        assert_eq!(meta.lang, "zh");
+        assert_eq!(meta.title.as_deref(), Some("Hi"));
+        assert_eq!(meta.license.as_deref(), Some("CC-BY-SA-4.0"));
+        assert_eq!(meta.category.as_deref(), Some("lecture"));
+        assert_eq!(meta.tags, vec!["calculus".to_string(), "analysis".to_string()]);
+        assert_eq!(meta.related, vec!["history".to_string()]);
+    }
+
+    #[test]
+    fn nbt_article_inject_extract_round_trip() {
+        use crate::inject::{Metadata, typst as itypst};
+        let m = Metadata {
+            title: Some("T".into()),
+            abstract_: Some("D".into()),
+            lang: Some("en".into()),
+            category: Some("lecture".into()),
+            license: Some("CC-BY-4.0".into()),
+            cover: Some("Figure/c.png".into()),
+            tags: vec!["a".into(), "b".into()],
+            related: vec!["c".into()],
+        };
+        let injected = itypst::merge("= Body\n", &m);
+        let out = extract("main.typ", &injected).unwrap();
+        assert_eq!(out.title.as_deref(), Some("T"));
+        assert_eq!(out.abstract_.as_deref(), Some("D"));
+        assert_eq!(out.lang, "en");
+        assert_eq!(out.category.as_deref(), Some("lecture"));
+        assert_eq!(out.license.as_deref(), Some("CC-BY-4.0"));
+        assert_eq!(out.cover.as_deref(), Some("Figure/c.png"));
+        assert_eq!(out.tags, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(out.related, vec!["c".to_string()]);
     }
 }

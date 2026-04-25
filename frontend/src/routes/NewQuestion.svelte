@@ -5,7 +5,7 @@
   import { toast } from '../lib/components/Toast.svelte';
   import { tagStore } from '../lib/tagStore.svelte';
   import type { Tag, ContentFormat, PrereqType } from '../lib/types';
-  import MarkdownEditor from 'pijul-editor/MarkdownEditor.svelte';
+  import MarkdownEditor from 'nbt-editor/MarkdownEditor.svelte';
 
   let locale = $derived(getLocale());
   $effect(() => { tagStore.ensure(); });

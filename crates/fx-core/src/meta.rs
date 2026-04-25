@@ -72,8 +72,7 @@ pub struct SeriesMeta {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chapters: Vec<String>,
     /// Relative path (within the repo) to the cover image. Authoritative —
-    /// surviving fork/clone — so a cloned series keeps its cover selection
-    /// without needing the original database.
+    /// stored in the source tree so it travels with the bundle.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
 }
@@ -112,9 +111,8 @@ pub struct Frontmatter {
     pub category: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
-    /// Relative path (within the article's pijul repo) to a cover image.
-    /// Authoritative — surviving fork/clone — so other consumers keep the
-    /// cover selection without needing the origin database.
+    /// Relative path (within the article's source bundle) to a cover image.
+    /// Authoritative — stored in the source tree so it travels with the bundle.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -136,14 +134,37 @@ pub struct Frontmatter {
 pub fn rewrite_markdown_cover(source: &str, cover: Option<String>) -> String {
     let (mut fm, body) = split_frontmatter(source);
     fm.cover = cover;
-    let yaml = serde_yml::to_string(&fm).unwrap_or_default();
+    write_markdown_with_frontmatter(&fm, body)
+}
+
+/// Merge `incoming` into the existing markdown frontmatter (or create one).
+/// Fields on `incoming` overwrite existing values when set; `None`/empty on
+/// `incoming` leaves the existing value alone. Used by the publish path to
+/// stamp title/desc/lang/license/category/teaches/prereqs/related into the
+/// bundle source so the file is self-describing for re-indexing.
+pub fn merge_markdown_frontmatter(source: &str, incoming: &Frontmatter) -> String {
+    let (mut fm, body) = split_frontmatter(source);
+    if incoming.title.is_some()       { fm.title = incoming.title.clone(); }
+    if incoming.description.is_some() { fm.description = incoming.description.clone(); }
+    if incoming.lang.is_some()        { fm.lang = incoming.lang.clone(); }
+    if incoming.category.is_some()    { fm.category = incoming.category.clone(); }
+    if incoming.license.is_some()     { fm.license = incoming.license.clone(); }
+    if incoming.cover.is_some()       { fm.cover = incoming.cover.clone(); }
+    if !incoming.teaches.is_empty()   { fm.teaches = incoming.teaches.clone(); }
+    if !incoming.prereqs.is_empty()   { fm.prereqs = incoming.prereqs.clone(); }
+    if !incoming.related.is_empty()   { fm.related = incoming.related.clone(); }
+    write_markdown_with_frontmatter(&fm, body)
+}
+
+fn write_markdown_with_frontmatter(fm: &Frontmatter, body: &str) -> String {
+    let yaml = serde_yml::to_string(fm).unwrap_or_default();
     let trimmed = yaml.trim_end();
-    // Empty frontmatter (everything optional/empty) → emit no block.
     if trimmed.is_empty() || trimmed == "{}" {
         return body.to_string();
     }
     format!("---\n{trimmed}\n---\n{body}")
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrereqEntry {
@@ -335,5 +356,46 @@ mod tests {
             extract_first_heading("<h1 class=\"x\">With <em>tags</em></h1>", "html").as_deref(),
             Some("With tags"),
         );
+    }
+
+    #[test]
+    fn merge_frontmatter_into_bare_body() {
+        let body = "# Hi\n\nbody\n";
+        let fm = Frontmatter {
+            title: Some("Hi".into()),
+            lang: Some("zh".into()),
+            license: Some("CC-BY-SA-4.0".into()),
+            teaches: vec!["calculus".into()],
+            ..Default::default()
+        };
+        let out = merge_markdown_frontmatter(body, &fm);
+        assert!(out.starts_with("---\n"), "got: {out}");
+        let (parsed, parsed_body) = split_frontmatter(&out);
+        assert_eq!(parsed.title.as_deref(), Some("Hi"));
+        assert_eq!(parsed.lang.as_deref(), Some("zh"));
+        assert_eq!(parsed.license.as_deref(), Some("CC-BY-SA-4.0"));
+        assert_eq!(parsed.teaches, vec!["calculus".to_string()]);
+        assert_eq!(parsed_body, body);
+    }
+
+    #[test]
+    fn merge_frontmatter_overrides_existing_title_keeps_others() {
+        let src = "---\ntitle: Old\nlang: en\n---\nbody\n";
+        let fm = Frontmatter {
+            title: Some("New".into()),
+            ..Default::default()
+        };
+        let out = merge_markdown_frontmatter(src, &fm);
+        let (parsed, _) = split_frontmatter(&out);
+        assert_eq!(parsed.title.as_deref(), Some("New"));
+        assert_eq!(parsed.lang.as_deref(), Some("en"), "lang should survive");
+    }
+
+    #[test]
+    fn merge_frontmatter_empty_input_is_noop() {
+        let body = "# Hi\n\nbody\n";
+        let fm = Frontmatter::default();
+        let out = merge_markdown_frontmatter(body, &fm);
+        assert_eq!(out, body);
     }
 }

@@ -8,6 +8,8 @@
 
 pub mod md;
 pub mod typst;
+pub mod html;
+pub mod series;
 
 use crate::{FileMeta, ValidationError};
 

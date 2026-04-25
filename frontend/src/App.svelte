@@ -53,7 +53,6 @@
   const lazyNewSkillTree = () => import('./routes/NewSkillTree.svelte');
   const lazyGuide = () => import('./routes/Guide.svelte');
   const lazyRoadmap = () => import('./routes/Roadmap.svelte');
-  const lazyForks = () => import('./routes/Forks.svelte');
   const lazyDrafts = () => import('./routes/Drafts.svelte');
   const lazyNotifications = () => import('./routes/Notifications.svelte');
   const lazyQuestions = () => import('./routes/Questions.svelte');
@@ -66,7 +65,6 @@
   const lazyBookSeriesList = () => import('./routes/BookSeriesList.svelte');
   const lazyBookSeriesDetail = () => import('./routes/BookSeriesDetail.svelte');
   const lazySeriesEditor = () => import('./routes/SeriesEditor.svelte');
-  const lazyDiscussion = () => import('./routes/Discussion.svelte');
   const lazyCreator = () => import('./routes/CreatorDashboard.svelte');
   const lazyThoughts = () => import('./routes/Thoughts.svelte');
   const lazyAuthor = () => import('./routes/AuthorDetail.svelte');
@@ -131,7 +129,7 @@
   </div>
   <div class="editor-container">
     {#await lazyNewArticle() then mod}
-      <mod.default forkOf={route.params.fork_of || ''} editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} />
+      <mod.default editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} />
     {/await}
   </div>
 {:else if route.page === 'series-editor'}
@@ -239,14 +237,6 @@
     {:else if route.page === 'skill-tree-new'}
       {#await lazyNewSkillTree() then mod}
         <mod.default />
-      {/await}
-    {:else if route.page === 'discussion'}
-      {#await lazyDiscussion() then mod}
-        <mod.default id={route.params.id || ''} />
-      {/await}
-    {:else if route.page === 'forks'}
-      {#await lazyForks() then mod}
-        <mod.default uri={route.params.uri || ''} />
       {/await}
     {:else if route.page === 'drafts'}
       {#await lazyDrafts() then mod}

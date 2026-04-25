@@ -15,9 +15,6 @@ pub struct Record {
     pub description: Option<String>,
     /// Parent→child tag edges forming the tree hierarchy.
     pub edges: Vec<serde_json::Value>,
-    /// If this tree is a fork, the original tree's at-uri.
-    #[serde(rename = "forkedFrom", default, skip_serializing_if = "Option::is_none")]
-    pub forked_from: Option<String>,
     /// Cross-edge prerequisites that don't follow the parent/child hierarchy.
     pub prereqs: Vec<serde_json::Value>,
     /// Root tag of this tree, if any.

@@ -29,7 +29,6 @@ pub const ARTICLE_BASE_ANY_LANG: &str = "\
     COALESCE(v.vote_score, 0) AS vote_score, \
     COALESCE(b.bookmark_count, 0) AS bookmark_count, \
     COALESCE(cm.comment_count, 0) AS comment_count, \
-    COALESCE(fk.fork_count, 0) AS fork_count, \
     a.created_at, a.updated_at \
     FROM articles a \
     JOIN article_localizations l \
@@ -42,9 +41,7 @@ pub const ARTICLE_BASE_ANY_LANG: &str = "\
     LEFT JOIN (SELECT repo_uri, source_path, COUNT(*) AS bookmark_count FROM user_bookmarks GROUP BY repo_uri, source_path) b \
         ON b.repo_uri = a.repo_uri AND b.source_path = a.source_path \
     LEFT JOIN (SELECT content_uri, COUNT(*) AS comment_count FROM comments GROUP BY content_uri) cm \
-        ON cm.content_uri = article_uri(a.repo_uri, a.source_path) \
-    LEFT JOIN (SELECT source_repo_uri, source_source_path, COUNT(*) AS fork_count FROM forks GROUP BY source_repo_uri, source_source_path) fk \
-        ON fk.source_repo_uri = a.repo_uri AND fk.source_source_path = a.source_path";
+        ON cm.content_uri = article_uri(a.repo_uri, a.source_path)";
 
 /// Fetch any specific localization (source or translation) as an [`Article`],
 /// looked up by its ATProto record URI. Unlike [`get_article`], which is
@@ -98,7 +95,6 @@ pub const ARTICLE_BASE: &str = "\
     COALESCE(v.vote_score, 0) AS vote_score, \
     COALESCE(b.bookmark_count, 0) AS bookmark_count, \
     COALESCE(cm.comment_count, 0) AS comment_count, \
-    COALESCE(fk.fork_count, 0) AS fork_count, \
     a.created_at, a.updated_at \
     FROM articles a \
     JOIN article_localizations l \
@@ -112,9 +108,7 @@ pub const ARTICLE_BASE: &str = "\
     LEFT JOIN (SELECT repo_uri, source_path, COUNT(*) AS bookmark_count FROM user_bookmarks GROUP BY repo_uri, source_path) b \
         ON b.repo_uri = a.repo_uri AND b.source_path = a.source_path \
     LEFT JOIN (SELECT content_uri, COUNT(*) AS comment_count FROM comments GROUP BY content_uri) cm \
-        ON cm.content_uri = article_uri(a.repo_uri, a.source_path) \
-    LEFT JOIN (SELECT source_repo_uri, source_source_path, COUNT(*) AS fork_count FROM forks GROUP BY source_repo_uri, source_source_path) fk \
-        ON fk.source_repo_uri = a.repo_uri AND fk.source_source_path = a.source_path";
+        ON cm.content_uri = article_uri(a.repo_uri, a.source_path)";
 
 /// Build article SELECT with instance-appropriate visibility filter.
 fn visible(mode: InstanceMode) -> String {
@@ -405,7 +399,6 @@ pub async fn get_translations(pool: &PgPool, mode: InstanceMode, uri: &str) -> c
             COALESCE(v.vote_score, 0) AS vote_score, \
             COALESCE(b.bookmark_count, 0) AS bookmark_count, \
             COALESCE(cm.comment_count, 0) AS comment_count, \
-            COALESCE(fk.fork_count, 0) AS fork_count, \
             a.created_at, a.updated_at \
          FROM articles a \
          JOIN article_localizations l \
@@ -419,8 +412,6 @@ pub async fn get_translations(pool: &PgPool, mode: InstanceMode, uri: &str) -> c
              ON b.repo_uri = a.repo_uri AND b.source_path = a.source_path \
          LEFT JOIN (SELECT content_uri, COUNT(*) AS comment_count FROM comments GROUP BY content_uri) cm \
              ON cm.content_uri = article_uri(a.repo_uri, a.source_path) \
-         LEFT JOIN (SELECT source_repo_uri, source_source_path, COUNT(*) AS fork_count FROM forks GROUP BY source_repo_uri, source_source_path) fk \
-             ON fk.source_repo_uri = a.repo_uri AND fk.source_source_path = a.source_path \
          WHERE (a.repo_uri, a.source_path) IN ( \
              SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $1 \
          ) AND l.at_uri IS DISTINCT FROM $1 AND {} \
@@ -465,6 +456,17 @@ pub async fn get_article_any_visibility(pool: &PgPool, uri: &str) -> crate::Resu
 }
 
 pub async fn get_article_owner(pool: &PgPool, uri: &str) -> crate::Result<String> {
+    if let Some((series_id, source_path)) = super::series_service::parse_chapter_uri(uri) {
+        let repo_uri = super::series_service::series_repo_uri(pool, &series_id).await?;
+        return sqlx::query_scalar::<_, String>(
+            "SELECT author_did FROM articles WHERE repo_uri = $1 AND source_path = $2",
+        )
+            .bind(&repo_uri)
+            .bind(&source_path)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() });
+    }
     sqlx::query_scalar::<_, String>(
         "SELECT a.author_did FROM articles a \
          JOIN article_localizations l \
@@ -540,21 +542,21 @@ pub async fn get_article_prereqs(pool: &PgPool, uri: &str, _locale: &str) -> cra
     // Edges are tag-level: content_prereqs only stores tag_id (concept).
     // For URL compatibility, we surface a canonical label id as `tag_id`
     // — the frontend's `tagStore` handles per-locale sibling lookup.
-    // content_prereqs.content_uri now stores the synthetic article URI.
-    // Resolve the caller's at_uri to the synthetic form.
+    // content_prereqs.content_uri stores the synthetic article URI; resolve
+    // the caller's URI (at_uri or `nightboat-chapter://...`) to that form.
+    let Some(synth) = super::series_service::resolve_to_synthetic_uri(pool, uri).await? else {
+        return Ok(vec![]);
+    };
     let rows = sqlx::query_as::<_, ArticlePrereqRow>(
         "SELECT cp.tag_id AS tag_id, \
                 cp.prereq_type, \
                 tag_canonical_label(cp.tag_id) AS tag_name, \
                 tag_label_map(cp.tag_id) AS tag_names \
          FROM content_prereqs cp \
-         WHERE cp.content_uri IN ( \
-             SELECT article_uri(repo_uri, source_path) \
-             FROM article_localizations WHERE at_uri = $1 \
-         ) \
+         WHERE cp.content_uri = $1 \
          ORDER BY cp.prereq_type, cp.tag_id",
     )
-    .bind(uri)
+    .bind(&synth)
     .fetch_all(pool)
     .await?;
     Ok(rows)
@@ -563,77 +565,15 @@ pub async fn get_article_prereqs(pool: &PgPool, uri: &str, _locale: &str) -> cra
 /// Concepts this article touches without teaching (see content_related).
 /// Returns just tag_ids; the frontend localizes via tagStore.
 pub async fn get_article_related(pool: &PgPool, uri: &str) -> crate::Result<Vec<String>> {
+    let Some(synth) = super::series_service::resolve_to_synthetic_uri(pool, uri).await? else {
+        return Ok(vec![]);
+    };
     let rows = sqlx::query_scalar::<_, String>(
         "SELECT tag_id FROM content_related \
-         WHERE content_uri IN ( \
-             SELECT article_uri(repo_uri, source_path) \
-             FROM article_localizations WHERE at_uri = $1 \
-         ) \
+         WHERE content_uri = $1 \
          ORDER BY tag_id",
     )
-    .bind(uri)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows)
-}
-
-/// Origin info for a forked article. The composite key replaces the old
-/// single-column `source_uri`.
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, ts_rs::TS)]
-#[ts(export, export_to = "../../frontend/src/lib/generated/")]
-pub struct ForkSourceInfo {
-    pub source_repo_uri: String,
-    pub source_source_path: String,
-    pub title: String,
-    pub license: String,
-    pub lang: String,
-    pub author_did: String,
-    pub author_handle: Option<String>,
-    pub author_display_name: Option<String>,
-    pub author_avatar: Option<String>,
-}
-
-/// Full metadata about a forked article's origin. `forked_uri` is any of the
-/// forked article's localizations' at_uri; the fork record is composite-keyed.
-pub async fn get_fork_source(pool: &PgPool, forked_uri: &str) -> crate::Result<Option<ForkSourceInfo>> {
-    let row = sqlx::query_as::<_, ForkSourceInfo>(
-        "SELECT f.source_repo_uri, f.source_source_path, \
-                sl.title, a.license, sl.lang, a.author_did, \
-                p.handle AS author_handle, p.display_name AS author_display_name, \
-                p.avatar_url AS author_avatar \
-         FROM forks f \
-         JOIN articles a \
-             ON a.repo_uri = f.source_repo_uri AND a.source_path = f.source_source_path \
-         JOIN article_localizations sl \
-             ON sl.repo_uri = a.repo_uri AND sl.source_path = a.source_path \
-            AND sl.file_path = a.source_path \
-         LEFT JOIN profiles p ON p.did = a.author_did \
-         WHERE (f.forked_repo_uri, f.forked_source_path) IN ( \
-             SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $1 \
-         ) LIMIT 1",
-    )
-    .bind(forked_uri)
-    .fetch_optional(pool)
-    .await?;
-    Ok(row)
-}
-
-pub async fn get_article_forks(pool: &PgPool, uri: &str) -> crate::Result<Vec<ForkWithTitle>> {
-    let rows = sqlx::query_as::<_, ForkWithTitle>(
-        "SELECT f.fork_uri, f.forked_repo_uri, f.forked_source_path, f.vote_score, \
-                fl.title, a.author_did, p.handle AS author_handle \
-         FROM forks f \
-         JOIN articles a \
-             ON a.repo_uri = f.forked_repo_uri AND a.source_path = f.forked_source_path \
-         JOIN article_localizations fl \
-             ON fl.repo_uri = a.repo_uri AND fl.source_path = a.source_path \
-            AND fl.file_path = a.source_path \
-         LEFT JOIN profiles p ON p.did = a.author_did \
-         WHERE (f.source_repo_uri, f.source_source_path) IN ( \
-             SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $1 \
-         ) ORDER BY f.vote_score DESC",
-    )
-    .bind(uri)
+    .bind(&synth)
     .fetch_all(pool)
     .await?;
     Ok(rows)
@@ -1272,7 +1212,6 @@ async fn add_translation_localization(
          COALESCE(v.vote_score, 0) AS vote_score, \
          COALESCE(b.bookmark_count, 0) AS bookmark_count, \
          COALESCE(cm.comment_count, 0) AS comment_count, \
-         COALESCE(fk.fork_count, 0) AS fork_count, \
          a.created_at, a.updated_at \
          FROM articles a \
          JOIN article_localizations l \
@@ -1286,104 +1225,9 @@ async fn add_translation_localization(
              ON b.repo_uri = a.repo_uri AND b.source_path = a.source_path \
          LEFT JOIN (SELECT content_uri, COUNT(*) AS comment_count FROM comments GROUP BY content_uri) cm \
              ON cm.content_uri = article_uri(a.repo_uri, a.source_path) \
-         LEFT JOIN (SELECT source_repo_uri, source_source_path, COUNT(*) AS fork_count FROM forks GROUP BY source_repo_uri, source_source_path) fk \
-             ON fk.source_repo_uri = a.repo_uri AND fk.source_source_path = a.source_path \
          WHERE l.at_uri = $1",
     )
         .bind(at_uri)
-        .fetch_one(pool)
-        .await?;
-    Ok(article)
-}
-
-/// Create a fork record: insert the forked article, copy tags/prereqs,
-/// and insert the forks row.
-pub async fn create_fork_record(
-    pool: &PgPool,
-    fork_uri: &str,
-    source_uri: &str,
-    forked_uri: &str,
-    did: &str,
-    source: &Article,
-    visibility: &str,
-) -> crate::Result<Article> {
-    // Fork target is a new standalone article. repo_uri = forked_uri,
-    // source_path = main.<ext> matching the source's content_format.
-    let source_path = format!(
-        "main.{}",
-        match source.content_format.as_str() {
-            "markdown" => "md",
-            "html" => "html",
-            _ => "typ",
-        }
-    );
-    let repo_uri = forked_uri.to_string();
-    let synth_forked = format!("nightboat://article/{repo_uri}/{source_path}");
-
-    let mut tx = pool.begin().await?;
-
-    sqlx::query(
-        "INSERT INTO articles (repo_uri, source_path, author_did, license, prereq_threshold, visibility) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
-    )
-    .bind(&repo_uri)
-    .bind(&source_path)
-    .bind(did)
-    .bind(&source.license)
-    .bind(source.prereq_threshold)
-    .bind(visibility)
-    .execute(&mut *tx)
-    .await?;
-
-    sqlx::query(
-        "INSERT INTO article_localizations (\
-            repo_uri, source_path, lang, at_uri, file_path, \
-            content_format, title, content_hash \
-         ) VALUES ($1, $2, $3, $4, $2, $5, $6, $7)",
-    )
-    .bind(&repo_uri)
-    .bind(&source_path)
-    .bind(&source.lang)
-    .bind(forked_uri)
-    .bind(source.content_format)
-    .bind(format!("Fork: {}", source.title))
-    .bind(&source.content_hash)
-    .execute(&mut *tx)
-    .await?;
-
-    // Copy prereqs/teaches keyed by the source article's synthetic URI.
-    let synth_source = source.synthetic_uri();
-    sqlx::query(
-        "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-         SELECT $1, tag_id, prereq_type FROM content_prereqs WHERE content_uri = $2 \
-         ON CONFLICT DO NOTHING",
-    )
-    .bind(&synth_forked).bind(&synth_source)
-    .execute(&mut *tx).await?;
-
-    sqlx::query(
-        "INSERT INTO content_teaches (content_uri, tag_id) \
-         SELECT $1, tag_id FROM content_teaches WHERE content_uri = $2 \
-         ON CONFLICT DO NOTHING",
-    )
-    .bind(&synth_forked).bind(&synth_source)
-    .execute(&mut *tx).await?;
-
-    sqlx::query(
-        "INSERT INTO forks (fork_uri, source_repo_uri, source_source_path, forked_repo_uri, forked_source_path) \
-         VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(fork_uri)
-    .bind(&source.repo_uri).bind(&source.source_path)
-    .bind(&repo_uri).bind(&source_path)
-    .execute(&mut *tx).await?;
-
-    tx.commit().await?;
-    // source_uri retained in signature for caller compatibility.
-    let _ = source_uri;
-
-    let article = sqlx::query_as::<_, Article>(&format!("{ARTICLE_BASE} WHERE l.at_uri = $1"))
-        .bind(forked_uri)
         .fetch_one(pool)
         .await?;
     Ok(article)

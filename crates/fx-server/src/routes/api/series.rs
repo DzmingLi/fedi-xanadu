@@ -85,31 +85,67 @@ pub async fn create_series(
     // Register creator as owner collaborator
     let _ = collaboration_service::register_owner(&state.pool, &id, &user.did).await;
 
-    // Publish the series record to PDS (rkey = series id). Chapters +
-    // files are merged in by `merge_chapter_into_series_record` as each
-    // chapter is published. The record starts with empty arrays to satisfy
-    // the lexicon's `required: [chapters, files]`.
-    //
-    // `contentFormat` defaults to typst — the most-demanding format for
-    // cross-chapter compile. It's overwritten as soon as the first chapter
-    // publishes with a different format (one format per series).
-    let mut record = serde_json::json!({
-        "$type":         fx_atproto::lexicon::WORK,
-        "seriesId":      id,
-        "title":         input.title,
-        "lang":          lang,
-        "category":      category,
-        "topics":        topics,
-        "contentFormat": "typst",
-        "chapters":      [],
-        "files":         [],
-        "createdAt":     now_rfc3339(),
+    // Stamp series-level metadata into a `meta.yml` at the bundle root, then
+    // upload it as the first file in the PDS record so the bundle is
+    // self-describing. Per the unified `at.nightbo.work` lexicon, the record
+    // carries only `files[]` + `createdAt`; chapter-level files are merged
+    // in by `merge_chapter_into_series_record` on each chapter publish.
+    let series_repo_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::WORK, &id);
+    let mut files: Vec<serde_json::Value> = Vec::new();
+    let meta_yaml = build_series_meta_yaml(
+        &input.title, input.summary.as_deref(), lang, category, &topics,
+    );
+    let node_id = fx_core::util::uri_to_node_id(&series_repo_uri);
+    let cache = state.blob_cache_path.join(&node_id);
+    if tokio::fs::create_dir_all(&cache).await.is_ok() {
+        let _ = tokio::fs::write(cache.join("meta.yml"), meta_yaml.as_bytes()).await;
+    }
+    let blob = crate::auth::upload_or_local_blob(
+        &state, &user.token, &user.did, meta_yaml.as_bytes().to_vec(), "application/yaml",
+    ).await;
+    let cid = blob.get("ref").and_then(|r| r.get("$link"))
+        .and_then(|c| c.as_str()).unwrap_or_default().to_string();
+    files.push(serde_json::json!({
+        "path": "meta.yml",
+        "blob": blob,
+        "mime": "application/yaml",
+    }));
+    let _ = cid;
+    let record = serde_json::json!({
+        "$type":     fx_atproto::lexicon::WORK,
+        "files":     files,
+        "createdAt": now_rfc3339(),
     });
-    if let Some(ref s) = input.summary { record["summary"] = serde_json::Value::String(s.clone()); }
-    if let Some(ref ld) = input.long_description { record["longDescription"] = serde_json::Value::String(ld.clone()); }
     pds_create_record(&state, &user.token, fx_atproto::lexicon::WORK, record, Some(id.clone()), "create series").await;
 
     Ok((StatusCode::CREATED, Json(row)))
+}
+
+fn build_series_meta_yaml(
+    title: &str,
+    description: Option<&str>,
+    lang: &str,
+    category: &str,
+    topics: &[String],
+) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    writeln!(out, "title: {}", yaml_str(title)).ok();
+    if let Some(d) = description.filter(|s| !s.is_empty()) {
+        writeln!(out, "description: {}", yaml_str(d)).ok();
+    }
+    if !lang.is_empty()     { writeln!(out, "lang: {}", yaml_str(lang)).ok(); }
+    if !category.is_empty() { writeln!(out, "category: {}", yaml_str(category)).ok(); }
+    if !topics.is_empty() {
+        writeln!(out, "topics:").ok();
+        for t in topics { writeln!(out, "  - {}", yaml_str(t)).ok(); }
+    }
+    out
+}
+
+fn yaml_str(s: &str) -> String {
+    // Always-quoted YAML scalar — sidesteps colon/leading-dash/etc edge cases.
+    format!("\"{}\"", s.replace('\\', r"\\").replace('"', r#"\""#))
 }
 
 pub async fn get_series_detail(
@@ -270,21 +306,57 @@ pub async fn reorder_articles(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// Series-level shared-resource endpoints (GET /res/*, POST /resource,
-// GET /resources) were backed by the series pijul repo. With the move to
-// per-chapter blob articles, shared resources no longer have a home —
-// chapters carry their own `content.files[]` bundle. The endpoints below are
-// left in place to keep the frontend wire-format stable, but return empty /
-// 404 until a new cross-chapter resource model is designed.
+// Series-level shared resource endpoint. Under the unified `at.nightbo.work`
+// model the series record's `files[]` covers both chapter sources and
+// cross-chapter assets (figures, bibliographies, etc). On disk those land in
+// `{blob_cache}/{uri_to_node_id(series_repo_uri)}/`, so serving a series
+// resource is just static file serving from that directory.
+//
+// `upload_resource` and `list_resources` below stay no-op until we expose
+// the bundle's files[] as a separate listing API; today the chapter publish
+// flow is what materializes shared assets into the series cache directory.
 
 pub async fn serve_file(
-    State(_state): State<AppState>,
-    Path((_id, _file_path)): Path<(String, String)>,
+    State(state): State<AppState>,
+    Path((id, file_path)): Path<(String, String)>,
 ) -> axum::response::Response<axum::body::Body> {
-    use axum::http::StatusCode;
+    use axum::http::{StatusCode, header};
     use axum::response::Response;
     use axum::body::Body;
-    Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
+
+    if file_path.is_empty() || file_path.contains("..") || file_path.starts_with('/') {
+        return Response::builder().status(StatusCode::BAD_REQUEST).body(Body::empty()).unwrap();
+    }
+    let Ok(series_repo_uri) = series_service::series_repo_uri(&state.pool, &id).await else {
+        return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
+    };
+    let node_id = fx_core::util::uri_to_node_id(&series_repo_uri);
+    let path = state.blob_cache_path.join(&node_id).join(&file_path);
+    let Ok(bytes) = tokio::fs::read(&path).await else {
+        return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
+    };
+    let mime = match std::path::Path::new(&file_path).extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("webp") => "image/webp",
+        Some("pdf") => "application/pdf",
+        Some("md") => "text/markdown",
+        Some("typ") => "text/x-typst",
+        Some("html" | "htm") => "text/html",
+        Some("bib") => "application/x-bibtex",
+        Some("json") => "application/json",
+        Some("yaml" | "yml") => "application/yaml",
+        Some("txt") => "text/plain",
+        _ => "application/octet-stream",
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, mime)
+        .header(header::CACHE_CONTROL, "public, max-age=300")
+        .body(Body::from(bytes))
+        .unwrap()
 }
 
 pub async fn upload_resource(

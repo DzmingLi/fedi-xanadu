@@ -10,7 +10,6 @@ pub(crate) mod book_series;
 pub(crate) mod short_reviews;
 mod comments;
 mod creator;
-mod discussions;
 mod drafts;
 mod follows;
 mod graph;
@@ -90,7 +89,6 @@ pub fn routes() -> Router<AppState> {
         .merge(article_routes())
         .merge(vote_routes())
         .merge(comment_routes())
-        .merge(discussion_routes())
         .merge(skill_routes())
         .merge(skill_tree_routes())
         .merge(bookmark_routes())
@@ -196,7 +194,6 @@ fn article_routes() -> Router<AppState> {
         .route("/articles/at/{handle}/{slug_maybe_lang}", get(articles::get_article_by_slug))
         .route("/articles/by-uri/content", get(articles::get_article_content))
         .route("/articles/by-uri/prereqs", get(articles::get_article_prereqs))
-        .route("/articles/by-uri/forks", get(articles::get_article_forks))
         .route("/articles/full", get(articles::get_article_full))
         // Mutations (proper verbs)
         .route("/articles/update", put(articles::update_article))
@@ -254,7 +251,6 @@ fn skill_tree_routes() -> Router<AppState> {
     Router::new()
         .route("/skill-trees", get(skill_trees::list_skill_trees).post(skill_trees::create_skill_tree))
         .route("/skill-trees/by-uri", get(skill_trees::get_skill_tree_detail))
-        .route("/skill-trees/fork", post(skill_trees::fork_skill_tree))
         .route("/skill-trees/edges", post(skill_trees::add_skill_tree_edge))
         .route("/skill-trees/edges/remove", delete(skill_trees::remove_skill_tree_edge))
         .route("/skill-trees/prereqs", post(skill_trees::add_skill_tree_prereq))
@@ -325,13 +321,6 @@ fn series_routes() -> Router<AppState> {
         // Collaboration
         .route("/series/{id}/collaborators", get(series::list_collaborators).post(series::invite_collaborator))
         .route("/series/{id}/collaborators/{did}", delete(series::remove_collaborator))
-}
-
-fn discussion_routes() -> Router<AppState> {
-    Router::new()
-        .route("/discussions", get(discussions::list_discussions).post(discussions::create_discussion))
-        .route("/discussions/{id}", get(discussions::get_discussion))
-        .route("/discussions/{id}/status", put(discussions::update_status))
 }
 
 fn notification_routes() -> Router<AppState> {
@@ -448,8 +437,7 @@ fn search_routes() -> Router<AppState> {
 fn admin_routes() -> Router<AppState> {
     Router::new()
         .route("/admin/platform-users", get(admin::list_platform_users).post(admin::create_platform_user))
-        .route("/admin/consistency/pijul", get(admin::check_pijul_consistency))
-        .route("/admin/migrate-pijul-to-blob", post(admin::admin_migrate_pijul_to_blob))
+        .route("/admin/reindex/probe", post(admin::admin_reindex_probe))
         .route("/admin/articles", post(admin::admin_create_article))
         .route("/admin/articles/update", put(admin::admin_update_article))
         .route("/admin/articles/delete", delete(admin::admin_delete_article))
@@ -689,7 +677,6 @@ mod tests {
             .route("/api/articles", get(|| async { "list_articles" }).post(|| async { "create_article" }))
             .route("/api/articles/by-uri", get(|| async { "get_article" }))
             .route("/api/articles/by-uri/content", get(|| async { "get_content" }))
-            .route("/api/articles/fork", axum::routing::post(|| async { "fork" }))
             .route("/api/articles/update", axum::routing::put(|| async { "update" }))
             .route("/api/articles/delete", axum::routing::delete(|| async { "delete" }))
             // votes
@@ -880,12 +867,6 @@ mod tests {
     async fn articles_post_resolves() {
         let router = stub_router();
         assert_eq!(request(&router, Method::POST, "/api/articles").await, StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn articles_fork_post_resolves() {
-        let router = stub_router();
-        assert_eq!(request(&router, Method::POST, "/api/articles/fork").await, StatusCode::OK);
     }
 
     #[tokio::test]

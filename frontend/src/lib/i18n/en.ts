@@ -102,7 +102,6 @@ export default {
   'notification.commentReply': 'replied to your comment',
   'notification.articleComment': 'commented on your article',
   'notification.newFollower': 'followed you',
-  'notification.articleFork': 'forked your article',
   'notification.markAllRead': 'Mark all read',
   'notification.empty': 'No notifications',
   'notification.justNow': 'just now',
@@ -147,11 +146,9 @@ export default {
 
   // Article
   'article.prereqs': 'Prerequisites',
-  'article.forks': 'Forks',
   'article.translations': 'Other languages',
   'article.bookmark': 'Bookmark',
   'article.bookmarked': 'Bookmarked',
-  'article.fork': 'Fork',
   'article.upvote': 'Upvote',
   'article.downvote': 'Downvote',
   'article.loginToVote': 'Log in to vote',
@@ -176,9 +173,7 @@ export default {
   'article.sessionExpired': 'Session expired, please log in again',
   'article.postFailed': 'Failed to post comment',
   'article.writeReply': 'Write a reply...',
-  'article.viewAllForks': 'View all {0} forks →',
   'article.versionHistory': 'Version History',
-  'article.forkedFrom': 'Forked from',
   'article.noCover': 'No cover',
   'article.uploadCover': 'Upload cover',
   'article.changeCover': 'Change cover',
@@ -219,8 +214,6 @@ export default {
   // NewArticle
   'newArticle.title': 'New Article',
   'newArticle.editTitle': 'Edit Article',
-  'newArticle.forkTitle': 'Fork Article',
-  'newArticle.forkHint': 'Editing a fork — modify and publish your version',
   'newArticle.titleLabel': 'Title',
   'newArticle.summaryLabel': 'Summary',
   'newArticle.summaryPlaceholder': 'Short abstract shown on cards and at the top of the article',
@@ -261,9 +254,6 @@ export default {
   'newArticle.relatedPlaceholder': 'Type concept name, press Enter to add',
   'newArticle.prereqsPlaceholder': 'Type prereq tag, press Enter to add',
   'newArticle.tagNotFound': 'Tag "{name}" not found. Please mint it on the hierarchy page first.',
-  'newArticle.diffPreview': 'Diff Preview',
-  'newArticle.backToEdit': 'Back to Edit',
-  'newArticle.confirmFork': 'Publish Fork',
   'newArticle.saving': 'Saving...',
   'newArticle.saved': 'Saved!',
   'newArticle.updateDraft': 'Update Draft',
@@ -476,7 +466,7 @@ export default {
   'skills.communityTrees': 'Community Skill Trees',
   'skills.statusHint': 'Click to toggle · Double-click to enter tag',
   'skills.createTree': 'Create Skill Tree',
-  'skills.browseHint': 'Browse community skill trees. Adopt one you like, or fork and customize.',
+  'skills.browseHint': 'Browse community skill trees. Adopt one you like.',
   'skills.noTrees': 'No skill trees yet',
   'skills.noSkillsInGroup': 'No skills in this group yet.',
   'skills.nextToLearn': 'Next to Learn',
@@ -539,10 +529,6 @@ export default {
   'newSkillTree.prereqHint': 'Define learning dependencies between tags. A prerequisite must be mastered before the target skill is unlocked.',
   'newSkillTree.prereqFromPlaceholder': 'Prerequisite tag',
   'newSkillTree.prereqToPlaceholder': 'Target tag',
-
-  // Forks
-  'forks.backToOriginal': '← Back to original',
-  'forks.createHint': 'Click "Fork" on any article to create your own version',
 
   // Tags
   'tags.articles': 'articles',

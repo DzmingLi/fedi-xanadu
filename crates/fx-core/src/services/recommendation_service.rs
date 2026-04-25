@@ -275,7 +275,6 @@ SELECT a.repo_uri, a.source_path, a.author_did,
        COALESCE(vs.score, 0) AS vote_score,
        COALESCE(bk.cnt,   0) AS bookmark_count,
        COALESCE(cm.cnt,   0) AS comment_count,
-       COALESCE(fk.cnt,   0) AS fork_count,
        a.created_at, a.updated_at
 FROM scored sc
 JOIN articles a ON a.repo_uri = sc.repo_uri AND a.source_path = sc.source_path
@@ -291,8 +290,6 @@ LEFT JOIN (SELECT repo_uri, source_path, COUNT(*) AS cnt FROM user_bookmarks GRO
     ON bk.repo_uri = a.repo_uri AND bk.source_path = a.source_path
 LEFT JOIN (SELECT content_uri, COUNT(*) AS cnt FROM comments GROUP BY content_uri) cm
     ON cm.content_uri = article_uri(a.repo_uri, a.source_path)
-LEFT JOIN (SELECT source_repo_uri, source_source_path, COUNT(*) AS cnt FROM forks GROUP BY source_repo_uri, source_source_path) fk
-    ON fk.source_repo_uri = a.repo_uri AND fk.source_source_path = a.source_path
 ORDER BY
     (sc.quality_score   * 2.0)
   + (sc.trending_score  * 1.5)
@@ -355,7 +352,6 @@ questions AS (
            COALESCE(v.score, 0) AS vote_score,
            COALESCE(bk.cnt,   0) AS bookmark_count,
            COALESCE(cm.cnt,   0) AS comment_count,
-           COALESCE(fk.cnt,   0) AS fork_count,
            a.created_at, a.updated_at,
            article_uri(a.repo_uri, a.source_path) AS synth_uri
     FROM articles a
@@ -371,8 +367,6 @@ questions AS (
         ON bk.repo_uri = a.repo_uri AND bk.source_path = a.source_path
     LEFT JOIN (SELECT content_uri, COUNT(*) AS cnt FROM comments GROUP BY content_uri) cm
         ON cm.content_uri = article_uri(a.repo_uri, a.source_path)
-    LEFT JOIN (SELECT source_repo_uri, source_source_path, COUNT(*) AS cnt FROM forks GROUP BY source_repo_uri, source_source_path) fk
-        ON fk.source_repo_uri = a.repo_uri AND fk.source_source_path = a.source_path
     WHERE {vis} AND a.kind = 'question'
 ),
 scored AS (
@@ -403,7 +397,7 @@ SELECT repo_uri, source_path, author_did,
        lang, at_uri, file_path, title, summary, summary_html,
        content_hash, content_format, translator_did,
        paper_venue, paper_year, paper_accepted,
-       vote_score, bookmark_count, comment_count, fork_count, created_at, updated_at
+       vote_score, bookmark_count, comment_count, created_at, updated_at
 FROM scored
 ORDER BY
     (answerability * 6.0)

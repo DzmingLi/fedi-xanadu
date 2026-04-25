@@ -102,7 +102,6 @@ export default {
   'notification.commentReply': '回复了你的评论',
   'notification.articleComment': '评论了你的文章',
   'notification.newFollower': '关注了你',
-  'notification.articleFork': '转制了你的文章',
   'notification.markAllRead': '全部已读',
   'notification.empty': '暂无通知',
   'notification.justNow': '刚刚',
@@ -147,11 +146,9 @@ export default {
 
   // Article
   'article.prereqs': '前置知识',
-  'article.forks': '分叉',
   'article.translations': '其他语言版本',
   'article.bookmark': '收藏',
   'article.bookmarked': '已收藏',
-  'article.fork': 'Fork',
   'article.upvote': '赞',
   'article.downvote': '踩',
   'article.loginToVote': '登录后可投票',
@@ -176,9 +173,7 @@ export default {
   'article.sessionExpired': '登录已过期，请重新登录',
   'article.postFailed': '发布失败',
   'article.writeReply': '写回复...',
-  'article.viewAllForks': '查看全部 {0} 个 fork →',
   'article.versionHistory': '版本历史',
-  'article.forkedFrom': '改编自',
   'article.noCover': '暂无封面',
   'article.uploadCover': '上传封面',
   'article.changeCover': '更换封面',
@@ -219,8 +214,6 @@ export default {
   // NewArticle
   'newArticle.title': '新文章',
   'newArticle.editTitle': '编辑文章',
-  'newArticle.forkTitle': 'Fork 文章',
-  'newArticle.forkHint': '正在 fork 文章，编辑内容后发布',
   'newArticle.titleLabel': '标题',
   'newArticle.summaryLabel': '摘要',
   'newArticle.summaryPlaceholder': '显示在卡片和正文顶部的简短摘要',
@@ -261,9 +254,6 @@ export default {
   'newArticle.relatedPlaceholder': '输入概念名，回车添加',
   'newArticle.prereqsPlaceholder': '输入前置标签名，回车添加',
   'newArticle.tagNotFound': '未找到标签 "{name}"，请先到层级页创建。',
-  'newArticle.diffPreview': '变更预览',
-  'newArticle.backToEdit': '返回编辑',
-  'newArticle.confirmFork': '确认发布 Fork',
   'newArticle.saving': '保存中...',
   'newArticle.saved': '已保存',
   'newArticle.updateDraft': '更新草稿',
@@ -476,7 +466,7 @@ export default {
   'skills.communityTrees': '社区技能树',
   'skills.statusHint': '单击切换状态 · 双击进入标签',
   'skills.createTree': '创建技能树',
-  'skills.browseHint': '浏览社区分享的技能树，采用你喜欢的，或 fork 后自定义',
+  'skills.browseHint': '浏览社区分享的技能树，采用你喜欢的',
   'skills.noTrees': '还没有技能树',
   'skills.noSkillsInGroup': '该分组暂无技能。',
   'skills.nextToLearn': '下一步学什么',
@@ -539,10 +529,6 @@ export default {
   'newSkillTree.prereqHint': '定义技能之间的学习依赖。前置技能需要先掌握，目标技能才会解锁。',
   'newSkillTree.prereqFromPlaceholder': '前置技能 tag',
   'newSkillTree.prereqToPlaceholder': '目标技能 tag',
-
-  // Forks
-  'forks.backToOriginal': '← 返回原文',
-  'forks.createHint': '点击文章页面的「Fork」按钮创建你自己的版本',
 
   // Tags
   'tags.articles': '篇文章',

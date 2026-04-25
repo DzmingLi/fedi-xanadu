@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport, getForkAhead, applyChange, listDiscussions, createDiscussion, listArticleAuthors, uploadArticleCover, removeArticleCover } from '../lib/api';
+  import { getArticleFull, listBookmarks, addBookmark, removeBookmark, castVote, deleteArticle, markLearned as apiMarkLearned, unmarkLearned as apiUnmarkLearned, setRestricted, grantAccess, revokeAccess, listAccessGrants, blockUser as apiBlockUser, createReport, listArticleAuthors, uploadArticleCover, removeArticleCover } from '../lib/api';
   import type { ArticleAuthor } from '../lib/api';
-  import type { Discussion } from '../lib/api';
   import ArticleHistory from '../lib/components/ArticleHistory.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import { timeAgo } from '../lib/utils';
@@ -12,15 +11,13 @@
   import { t, LANG_NAMES } from '../lib/i18n/index.svelte';
   import CommentThread from '../lib/components/CommentThread.svelte';
   import SeriesSidebar from '../lib/components/SeriesSidebar.svelte';
-  import type { Article, ArticleContent, ArticlePrereqRow, ForkWithTitle, ForkSourceInfo, BookmarkWithTitle, VoteSummary, SeriesContextItem, AccessGrant } from '../lib/types';
+  import type { Article, ArticleContent, ArticlePrereqRow, BookmarkWithTitle, VoteSummary, SeriesContextItem, AccessGrant } from '../lib/types';
 
   let { uri, seriesId = '' }: { uri: string; seriesId?: string } = $props();
 
   let article = $state<Article | null>(null);
   let content = $state<ArticleContent | null>(null);
   let prereqs = $state<ArticlePrereqRow[]>([]);
-  let forks = $state<ForkWithTitle[]>([]);
-  let forkSource = $state<ForkSourceInfo | null>(null);
   let translations = $state<Article[]>([]);
   let error = $state('');
   let bookmarks = $state<BookmarkWithTitle[]>([]);
@@ -67,22 +64,8 @@
   let activeId = $state('');
 
   let contentEl: HTMLDivElement | undefined = $state();
-  let topForks = $derived(forks.slice(0, 3));
   let quotePopup = $state<{ x: number; y: number; text: string } | null>(null);
 
-  // Fork ahead changes
-  let forkAheadMap = $state(new Map<string, string[]>());
-  let forkAheadLoading = $state(new Set<string>());
-  let applyingChange = $state('');
-
-  // Discussions / PR
-  let prTab = $state<'pr' | 'forks'>('pr');
-  let discussions = $state<Discussion[]>([]);
-  let openDiscussions = $derived(discussions.filter(d => d.status === 'open'));
-  let showCreateDisc = $state(false);
-  let discTitle = $state('');
-  let discBody = $state('');
-  let creatingDisc = $state(false);
   let commentThread: CommentThread | undefined = $state();
 
   $effect(() => {
@@ -104,8 +87,6 @@
       article = data.article;
       content = data.content;
       prereqs = data.prereqs;
-      forks = data.forks;
-      forkSource = data.fork_source;
       votes = { target_uri: uri, score: data.votes.score, upvotes: data.votes.upvotes, downvotes: data.votes.downvotes };
       seriesContext = data.series_context;
       translations = data.translations;
@@ -127,8 +108,6 @@
         bookmarks = bookmarks.filter(b => b.article_uri !== uri);
       }
       commentThread?.loadComments();
-      // Load discussions
-      listDiscussions(uri).then(d => { discussions = d; }).catch(() => {});
     }).catch(e => {
       if (ac.signal.aborted) return;
       error = e.message;
@@ -202,67 +181,6 @@
       await apiMarkLearned(uri);
     }
     learned = !learned;
-  }
-
-  function doFork() {
-    if (!article) return;
-    window.location.href = `/new?fork_of=${encodeURIComponent(article.at_uri)}`;
-  }
-
-  async function loadForkAhead(forkUri: string) {
-    if (forkAheadMap.has(forkUri)) {
-      // Toggle: clear if already loaded
-      forkAheadMap.delete(forkUri);
-      forkAheadMap = new Map(forkAheadMap);
-      return;
-    }
-    forkAheadLoading.add(forkUri);
-    forkAheadLoading = new Set(forkAheadLoading);
-    try {
-      const ahead = await getForkAhead(forkUri, uri);
-      forkAheadMap.set(forkUri, ahead);
-      forkAheadMap = new Map(forkAheadMap);
-    } catch { /* */ }
-    forkAheadLoading.delete(forkUri);
-    forkAheadLoading = new Set(forkAheadLoading);
-  }
-
-  async function applyForkChange(forkUri: string, changeHash: string) {
-    applyingChange = changeHash;
-    try {
-      const result = await applyChange({ source_uri: forkUri, target_uri: uri, change_hash: changeHash });
-      if (result.has_conflicts) {
-        alert('应用成功但存在冲突，请编辑解决');
-      }
-      // Reload article content and fork ahead
-      const full = await getArticleFull(uri);
-      if (full.content) content = full.content;
-      // Refresh ahead list
-      const ahead = await getForkAhead(forkUri, uri);
-      forkAheadMap.set(forkUri, ahead);
-      forkAheadMap = new Map(forkAheadMap);
-    } catch { /* */ }
-    applyingChange = '';
-  }
-
-  async function doCreateDiscussion() {
-    if (!article || !forkSource || !discTitle.trim()) return;
-    creatingDisc = true;
-    try {
-      const ahead = await getForkAhead(uri, forkSource.source_uri);
-      const disc = await createDiscussion({
-        target_uri: forkSource.source_uri,
-        source_uri: uri,
-        title: discTitle.trim(),
-        body: discBody.trim() || undefined,
-        change_hashes: ahead,
-      });
-      showCreateDisc = false;
-      discTitle = '';
-      discBody = '';
-      window.location.href = `/discussion?id=${encodeURIComponent(disc.id)}`;
-    } catch { /* */ }
-    creatingDisc = false;
   }
 
   function doEdit() {
@@ -497,7 +415,7 @@ try {
   <p class="meta">Loading...</p>
 {:else}
   <div class="article-layout">
-    {#if tocItems.length > 0 || seriesId || topForks.length > 0}
+    {#if tocItems.length > 0 || seriesId}
       <aside class="article-sidebar">
         <div class="sidebar-sticky">
           {#if tocItems.length > 0}
@@ -514,23 +432,6 @@ try {
           {#if seriesId}
             <div class="sidebar-series">
               <SeriesSidebar {seriesId} currentUri={uri} />
-            </div>
-          {/if}
-          {#if topForks.length > 0}
-            <div class="sidebar-forks">
-              <span class="sidebar-forks-title">Forks ({forks.length})</span>
-              {#each topForks as f}
-                <a href="/article?uri={encodeURIComponent(f.forked_uri)}" class="sidebar-fork-item">
-                  <span class="sf-title">{f.title}</span>
-                  <span class="sf-meta">
-                    {f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}
-                    <span class="sf-score">+{f.vote_score}</span>
-                  </span>
-                </a>
-              {/each}
-              {#if forks.length > 3}
-                <a href="/forks?uri={encodeURIComponent(uri)}" class="sidebar-fork-more">{t('article.viewAllForks', forks.length)}</a>
-              {/if}
             </div>
           {/if}
         </div>
@@ -571,28 +472,6 @@ try {
             </div>
           </div>
         {/each}
-      {/if}
-
-      {#if forkSource && /^CC-BY-/i.test(forkSource.license)}
-        <!-- CC BY attribution: required when redistributing a derivative work -->
-        <a class="fork-attrib" href="/article?uri={encodeURIComponent(forkSource.source_uri)}">
-          <svg class="fork-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
-          <span class="fork-label">{t('article.forkedFrom')}</span>
-          {#if forkSource.author_avatar}
-            <img src={forkSource.author_avatar} alt="" class="fork-avatar" />
-          {:else}
-            <span class="fork-avatar placeholder">{(forkSource.author_display_name || forkSource.author_handle || '?').charAt(0).toUpperCase()}</span>
-          {/if}
-          <span class="fork-author-name">
-            {forkSource.author_display_name || forkSource.author_handle || forkSource.did.slice(0, 12)}
-          </span>
-          {#if forkSource.author_handle && forkSource.author_display_name}
-            <span class="fork-author-handle">@{forkSource.author_handle}</span>
-          {/if}
-          <span class="fork-sep">·</span>
-          <span class="fork-source-title">{forkSource.title}</span>
-          <span class="fork-license">{forkSource.license}</span>
-        </a>
       {/if}
 
       {#if isOwner}
@@ -745,20 +624,6 @@ try {
           <span class="btn-label">{learned ? '已学会' : '学会'}</span>
         </button>
 
-        {#if article.license !== 'All-Rights-Reserved'}
-          <button class="action-btn labeled-btn" onclick={doFork} disabled={!isLoggedIn} title={t('article.fork')}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
-            <span class="btn-label">{t('article.fork')}</span>
-          </button>
-        {/if}
-
-        {#if forkSource && isOwner}
-          <button class="action-btn labeled-btn" onclick={() => { showCreateDisc = true; }} title="提交贡献给原文">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-            <span class="btn-label">提交贡献</span>
-          </button>
-        {/if}
-
         {#if isLoggedIn && !isOwner}
           <div class="action-separator"></div>
           <button class="action-btn" onclick={() => { reportOpen = true; }} title={t('report.report')}>
@@ -832,136 +697,18 @@ try {
         </div>
       {/if}
 
-      <!-- Create discussion modal -->
-      {#if showCreateDisc}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="report-overlay" onclick={() => { showCreateDisc = false; }}>
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="report-modal" onclick={(e) => e.stopPropagation()}>
-            <h3>提交贡献</h3>
-            <p class="disc-hint">将此 fork 的修改提交给原文作者审查</p>
-            <input type="text" class="disc-title-input" placeholder="标题（例如：修正定理 3.2 的证明）" bind:value={discTitle} />
-            <textarea class="disc-body-input" placeholder="说明（可选）" bind:value={discBody} rows="3"></textarea>
-            <div class="disc-modal-actions">
-              <button onclick={() => { showCreateDisc = false; }}>取消</button>
-              <button class="disc-submit-btn" onclick={doCreateDiscussion} disabled={creatingDisc || !discTitle.trim()}>
-                {creatingDisc ? '提交中...' : '提交'}
-              </button>
-            </div>
-          </div>
-        </div>
-      {/if}
-
       <!-- Version history -->
-      {#if isOwner || forkSource}
+      {#if isOwner}
         <details class="history-section">
           <summary>{t('article.versionHistory')}</summary>
           <div class="history-wrap">
-            <ArticleHistory {uri} {isOwner} applyTargetUri={forkSource?.source_uri || ''} />
+            <ArticleHistory {uri} {isOwner} />
           </div>
         </details>
       {/if}
 
       <!-- Comments -->
       <CommentThread bind:this={commentThread} contentUri={uri} {contentEl} />
-
-      <!-- Pull Requests & Forks -->
-      {#if discussions.length > 0 || forks.length > 0}
-        <details class="pr-section">
-          <summary>
-            Pull Requests & Forks
-            {#if openDiscussions.length > 0}
-              <span class="pr-count">{openDiscussions.length} PR</span>
-            {/if}
-            {#if forks.length > 0}
-              <span class="pr-forks-count">{forks.length} Forks</span>
-            {/if}
-          </summary>
-          <div class="pr-body">
-            <!-- PR tab bar -->
-            <div class="pr-tabs">
-              <button class="pr-tab" class:active={prTab === 'pr'} onclick={() => { prTab = 'pr'; }}>
-                PR ({discussions.length})
-              </button>
-              <button class="pr-tab" class:active={prTab === 'forks'} onclick={() => { prTab = 'forks'; }}>
-                Forks ({forks.length})
-              </button>
-            </div>
-
-            {#if prTab === 'pr'}
-              {#if discussions.length === 0}
-                <p class="pr-empty">暂无 Pull Request</p>
-              {:else}
-                <div class="pr-list">
-                  {#each discussions as d (d.id)}
-                    <a href="/discussion?id={encodeURIComponent(d.id)}" class="disc-link">
-                      <span class="disc-link-title">{d.title}</span>
-                      <span class="disc-link-status {d.status === 'open' ? 'status-open' : d.status === 'merged' ? 'status-merged' : 'status-closed'}">
-                        {d.status === 'open' ? '开放' : d.status === 'merged' ? '已合并' : '已关闭'}
-                      </span>
-                      <span class="disc-link-date">{d.created_at.split('T')[0]}</span>
-                    </a>
-                  {/each}
-                </div>
-              {/if}
-            {:else}
-              {#if forks.length === 0}
-                <p class="pr-empty">暂无 Fork</p>
-              {:else}
-                <div class="pr-fork-list">
-                  {#each forks as f (f.fork_uri)}
-                    <div class="fork-contrib-item">
-                      <div class="fork-contrib-header">
-                        <a href="/article?uri={encodeURIComponent(f.forked_uri)}" class="fork-contrib-title">{f.title}</a>
-                        <span class="fork-contrib-author">{f.author_handle ? `@${f.author_handle}` : f.did.slice(0, 16) + '…'}</span>
-                        <span class="fork-contrib-score">+{f.vote_score}</span>
-                        <button
-                          class="fork-expand-btn"
-                          onclick={() => loadForkAhead(f.forked_uri)}
-                          disabled={forkAheadLoading.has(f.forked_uri)}
-                        >
-                          {#if forkAheadLoading.has(f.forked_uri)}
-                            ...
-                          {:else if forkAheadMap.has(f.forked_uri)}
-                            收起
-                          {:else}
-                            查看 changes
-                          {/if}
-                        </button>
-                      </div>
-                      {#if forkAheadMap.has(f.forked_uri)}
-                        {@const ahead = forkAheadMap.get(f.forked_uri)!}
-                        {#if ahead.length === 0}
-                          <p class="fork-no-changes">与原文完全同步</p>
-                        {:else}
-                          <div class="fork-changes-list">
-                            {#each ahead as hash}
-                              <div class="fork-change-row">
-                                <code class="fork-change-hash">{hash.slice(0, 16)}…</code>
-                                {#if isOwner}
-                                  <button
-                                    class="fork-apply-btn"
-                                    onclick={() => applyForkChange(f.forked_uri, hash)}
-                                    disabled={applyingChange === hash}
-                                  >
-                                    {applyingChange === hash ? '...' : '应用'}
-                                  </button>
-                                {/if}
-                              </div>
-                            {/each}
-                          </div>
-                        {/if}
-                      {/if}
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            {/if}
-          </div>
-        </details>
-      {/if}
 
     </article>
   </div>
@@ -1126,49 +873,6 @@ try {
     overflow: hidden; clip: rect(0,0,0,0); border: 0;
   }
 
-  /* CC BY attribution banner — required when republishing a derivative. */
-  .fork-attrib {
-    display: inline-flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 6px 10px;
-    margin-bottom: 0.75rem;
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    border-radius: 4px;
-    background: var(--bg-hover, #f6f6f1);
-    font-size: 12px;
-    color: var(--text-secondary);
-    text-decoration: none;
-    transition: background 0.15s;
-  }
-  .fork-attrib:hover { background: var(--bg-white, #fff); }
-  .fork-attrib .fork-icon { color: var(--accent); flex-shrink: 0; }
-  .fork-attrib .fork-label { color: var(--text-hint); }
-  .fork-attrib .fork-avatar {
-    width: 18px; height: 18px; border-radius: 50%; object-fit: cover;
-    background: var(--bg-hover, #eee);
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 600; color: var(--text-secondary);
-  }
-  .fork-attrib .fork-author-name { color: var(--text-primary); font-weight: 500; }
-  .fork-attrib .fork-author-handle { color: var(--text-hint); font-size: 11px; }
-  .fork-attrib .fork-sep { color: var(--text-hint); }
-  .fork-attrib .fork-source-title {
-    color: var(--text-primary);
-    max-width: 240px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .fork-attrib .fork-license {
-    margin-left: auto;
-    font-family: var(--font-mono, monospace);
-    font-size: 10px;
-    padding: 1px 6px;
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    color: var(--text-hint);
-  }
   .lang-current {
     color: var(--accent);
     font-weight: 600;
@@ -1333,57 +1037,7 @@ try {
     margin: 0 4px;
   }
 
-  /* Sidebar forks */
-  .sidebar-forks {
-    margin-top: 1.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-  }
-  .sidebar-forks-title {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-hint);
-    display: block;
-    margin-bottom: 8px;
-  }
-  .sidebar-fork-item {
-    display: block;
-    padding: 4px 0;
-    text-decoration: none;
-    transition: color 0.15s;
-  }
-  .sidebar-fork-item:hover { text-decoration: none; }
-  .sf-title {
-    display: block;
-    font-size: 12px;
-    color: var(--text-secondary);
-    line-height: 1.3;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .sidebar-fork-item:hover .sf-title { color: var(--accent); }
-  .sf-meta {
-    font-size: 11px;
-    color: var(--text-hint);
-  }
-  .sf-score {
-    color: var(--accent);
-    margin-left: 4px;
-  }
-  .sidebar-fork-more {
-    display: block;
-    font-size: 12px;
-    color: var(--accent);
-    margin-top: 6px;
-    text-decoration: none;
-  }
-  .sidebar-fork-more:hover { text-decoration: underline; }
-
-
-  /* Left floating sidebar (TOC, series nav, forks) — positioned in left viewport margin */
+  /* Left floating sidebar (TOC, series nav) — positioned in left viewport margin */
   .toc {
     border-left: 2px solid var(--border);
     padding-left: 0.75rem;
@@ -1629,215 +1283,6 @@ try {
   .history-section summary:hover { color: var(--text-primary); }
   .history-section[open] summary { border-bottom: 1px solid var(--border); }
   .history-wrap { padding: 0; }
-
-  /* Fork contributions */
-  .fork-contributions {
-    padding: 8px 16px;
-  }
-  .fork-contrib-item {
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .fork-contrib-item:last-child { border-bottom: none; }
-  .fork-contrib-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .fork-contrib-title {
-    font-family: var(--font-serif);
-    font-size: 14px;
-    color: var(--text-primary);
-    text-decoration: none;
-  }
-  .fork-contrib-title:hover { color: var(--accent); }
-  .fork-contrib-author {
-    font-size: 12px;
-    color: var(--text-hint);
-  }
-  .fork-contrib-score {
-    font-size: 12px;
-    color: var(--accent);
-  }
-  .fork-expand-btn {
-    margin-left: auto;
-    padding: 2px 8px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: none;
-    font-size: 11px;
-    color: var(--text-secondary);
-    cursor: pointer;
-  }
-  .fork-expand-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .fork-expand-btn:disabled { opacity: 0.5; cursor: wait; }
-  .fork-no-changes {
-    font-size: 12px;
-    color: var(--text-hint);
-    margin: 4px 0 0 0;
-  }
-  .fork-changes-list {
-    margin-top: 6px;
-  }
-  .fork-change-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 3px 0;
-  }
-  .fork-change-hash {
-    font-size: 11px;
-    color: var(--text-secondary);
-  }
-  .fork-apply-btn {
-    padding: 2px 10px;
-    border: 1px solid var(--accent);
-    border-radius: 3px;
-    background: none;
-    color: var(--accent);
-    font-size: 11px;
-    cursor: pointer;
-  }
-  .fork-apply-btn:hover { background: var(--accent); color: white; }
-  .fork-apply-btn:disabled { opacity: 0.5; cursor: wait; }
-
-  /* Pull Requests section */
-  .pr-section {
-    margin-top: 2rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .pr-section summary {
-    padding: 10px 16px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    cursor: pointer;
-    background: var(--bg-hover);
-    user-select: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .pr-section summary:hover { color: var(--text-primary); }
-  .pr-section[open] summary { border-bottom: 1px solid var(--border); }
-  .pr-count {
-    font-size: 11px;
-    background: var(--accent);
-    color: white;
-    padding: 1px 6px;
-    border-radius: 8px;
-    font-weight: 600;
-  }
-  .pr-body {
-    padding: 0;
-  }
-  .pr-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border);
-  }
-  .pr-tab {
-    flex: 1;
-    padding: 8px 16px;
-    border: none;
-    background: none;
-    font-size: 13px;
-    color: var(--text-hint);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: all 0.15s;
-  }
-  .pr-tab:hover { color: var(--text-primary); }
-  .pr-tab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    font-weight: 500;
-  }
-  .pr-list, .pr-fork-list {
-    padding: 8px 16px;
-  }
-  .pr-empty {
-    padding: 16px;
-    text-align: center;
-    font-size: 13px;
-    color: var(--text-hint);
-  }
-  .pr-forks-count {
-    font-size: 11px;
-    background: var(--bg-gray, #eee);
-    color: var(--text-secondary);
-    padding: 1px 6px;
-    border-radius: 8px;
-  }
-  .disc-link {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 0;
-    text-decoration: none;
-    border-bottom: 1px solid var(--border);
-  }
-  .disc-link:last-child { border-bottom: none; }
-  .disc-link-title {
-    flex: 1;
-    font-size: 14px;
-    color: var(--text-primary);
-  }
-  .disc-link:hover .disc-link-title { color: var(--accent); }
-  .disc-link-status {
-    font-size: 10px;
-    padding: 1px 6px;
-    border-radius: 3px;
-  }
-  .disc-link-date {
-    font-size: 11px;
-    color: var(--text-hint);
-  }
-  .disc-hint {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin: 0 0 12px;
-  }
-  .disc-title-input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 14px;
-    margin-bottom: 8px;
-    box-sizing: border-box;
-  }
-  .disc-body-input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 13px;
-    resize: vertical;
-    margin-bottom: 12px;
-    box-sizing: border-box;
-  }
-  .disc-modal-actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-  }
-  .disc-modal-actions button {
-    padding: 6px 16px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: none;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .disc-submit-btn {
-    background: var(--accent) !important;
-    border-color: var(--accent) !important;
-    color: white !important;
-  }
-  .disc-submit-btn:disabled { opacity: 0.5; cursor: not-allowed !important; }
 
   /* Access control panel */
   .access-panel {

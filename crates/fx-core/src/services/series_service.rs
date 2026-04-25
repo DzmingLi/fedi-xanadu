@@ -532,6 +532,36 @@ pub async fn series_repo_uri(pool: &PgPool, series_id: &str) -> crate::Result<St
     Ok(format!("at://{owner}/at.nightbo.work/{series_id}"))
 }
 
+/// Resolve any article-side URI (at_uri or `nightboat-chapter://...`) to
+/// its `(repo_uri, source_path)` composite key — the canonical
+/// identifier for an article in the post-rewrite schema. Returns `None`
+/// only if `uri` doesn't resolve to any known article.
+pub async fn resolve_to_repo_path(pool: &PgPool, uri: &str) -> crate::Result<Option<(String, String)>> {
+    if let Some((series_id, source_path)) = parse_chapter_uri(uri) {
+        let repo_uri = series_repo_uri(pool, &series_id).await?;
+        return Ok(Some((repo_uri, source_path)));
+    }
+    let row: Option<(String, String)> = sqlx::query_as(
+        "SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $1 LIMIT 1",
+    )
+    .bind(uri)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+/// Resolve any article-side URI to its synthetic article URI
+/// (`nightboat://article/{repo_uri}/{source_path}`). Series chapters use
+/// the synthetic URI directly as the lookup key for vote/comment/etc
+/// targets; standalone articles resolve their `at_uri` via
+/// `article_localizations` to recover `(repo_uri, source_path)`.
+///
+/// Returns `None` only if `uri` doesn't resolve to any known article.
+pub async fn resolve_to_synthetic_uri(pool: &PgPool, uri: &str) -> crate::Result<Option<String>> {
+    Ok(resolve_to_repo_path(pool, uri).await?
+        .map(|(r, p)| format!("nightboat://article/{r}/{p}")))
+}
+
 pub async fn get_series_owner(pool: &PgPool, series_id: &str) -> crate::Result<String> {
     let owner = sqlx::query_scalar::<_, String>(
         "SELECT created_by FROM series WHERE id = $1",

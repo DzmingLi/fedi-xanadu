@@ -22,8 +22,6 @@ export const routes: Route[] = [
   { pattern: '/profile', page: 'profile' },
   { pattern: '/skill-tree/new', page: 'skill-tree-new' },
   { pattern: '/skill-tree', page: 'skill-tree' },
-  { pattern: '/discussion', page: 'discussion' },
-  { pattern: '/forks', page: 'forks' },
   { pattern: '/drafts', page: 'drafts' },
   { pattern: '/creator', page: 'creator' },
   { pattern: '/notifications', page: 'notifications' },

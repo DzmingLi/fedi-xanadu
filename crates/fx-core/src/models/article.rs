@@ -108,8 +108,6 @@ pub struct Article {
     pub bookmark_count: i64,
     #[ts(type = "number")]
     pub comment_count: i64,
-    #[ts(type = "number")]
-    pub fork_count: i64,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -313,15 +311,3 @@ pub struct ArticlePrereqRow {
     pub tag_names: sqlx::types::Json<HashMap<String, String>>,
 }
 
-/// Summary of one fork's target, used in fork-list responses.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
-#[ts(export, export_to = "../../frontend/src/lib/generated/")]
-pub struct ForkWithTitle {
-    pub fork_uri: String,
-    pub forked_repo_uri: String,
-    pub forked_source_path: String,
-    pub vote_score: i32,
-    pub title: String,
-    pub author_did: String,
-    pub author_handle: Option<String>,
-}

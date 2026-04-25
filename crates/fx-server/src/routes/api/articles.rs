@@ -614,14 +614,6 @@ pub async fn get_article_prereqs(
     Ok(Json(prereqs))
 }
 
-pub async fn get_article_forks(
-    State(state): State<AppState>,
-    Query(UriQuery { uri }): Query<UriQuery>,
-) -> ApiResult<Json<Vec<ForkWithTitle>>> {
-    let forks = article_service::get_article_forks(&state.pool, &uri).await?;
-    Ok(Json(forks))
-}
-
 /// Result of publishing article content: repo path + resolved summary.
 pub(super) struct PublishResult {
     /// Repo root where this article was written. Currently only read by
@@ -664,6 +656,198 @@ pub(super) enum PublishTarget<'a> {
     SeriesChapter { series_repo_uri: &'a str, chapter_path: &'a str },
 }
 
+/// Inject CreateArticle metadata into the source content so the bundle file
+/// is self-describing — every DB-side metadata field is recoverable by
+/// re-parsing the bundle source. Format-native slots:
+/// - markdown: YAML frontmatter (`fx_core::meta::merge_markdown_frontmatter`)
+/// - typst:    `#metadata((...)) <nbt-article>` directive (`fx_validator::inject::typst`)
+/// - html:     no in-source injection — `meta.json` sibling is written
+///             alongside the bundle blob by [`html_meta_sibling`].
+pub(super) fn inject_publish_metadata(content: &str, input: &CreateArticle) -> String {
+    match input.content_format {
+        ContentFormat::Markdown => {
+            let fm = fx_core::meta::Frontmatter {
+                title: Some(input.title.clone()).filter(|s| !s.is_empty()),
+                description: input.summary.clone().filter(|s| !s.is_empty()),
+                lang: input.lang.clone().filter(|s| !s.is_empty()),
+                category: input.category.clone().filter(|s| !s.is_empty()),
+                license: input.license.clone().filter(|s| !s.is_empty()),
+                cover: None,
+                teaches: input.tags.clone(),
+                prereqs: input.prereqs.iter().map(|p| fx_core::meta::PrereqEntry {
+                    tag: p.tag_id.clone(),
+                    prereq_type: Some(p.prereq_type.as_str().to_string())
+                        .filter(|s| s != "required"),
+                }).collect(),
+                related: input.related.clone(),
+            };
+            fx_core::meta::merge_markdown_frontmatter(content, &fm)
+        }
+        ContentFormat::Typst => {
+            let meta = fx_validator::inject::Metadata {
+                title: Some(input.title.clone()).filter(|s| !s.is_empty()),
+                abstract_: input.summary.clone().filter(|s| !s.is_empty()),
+                lang: input.lang.clone().filter(|s| !s.is_empty()),
+                category: input.category.clone().filter(|s| !s.is_empty()),
+                license: input.license.clone().filter(|s| !s.is_empty()),
+                cover: None,
+                tags: input.tags.clone(),
+                related: input.related.clone(),
+            };
+            fx_validator::inject::typst::merge(content, &meta)
+        }
+        ContentFormat::Html => {
+            // HTML stays untouched on disk; metadata travels in a sibling
+            // `meta.json` written by [`html_meta_sibling`].
+            content.to_string()
+        }
+    }
+}
+
+/// For a typst series, write series-level metadata (title/desc/lang/
+/// category/topics) into the `<nbt-series>` directive of the bundle's
+/// `main.typ`, replacing any earlier `meta.yml` fallback. Idempotent:
+/// re-running on every chapter publish keeps the directive in sync with DB.
+pub(super) async fn sync_typst_nbt_series_from_db(
+    state: &AppState,
+    token: &str,
+    did: &str,
+    series_id: &str,
+    series_repo_uri: &str,
+) {
+    // Pull series-level fields from DB.
+    let row: Option<(String, Option<String>, Option<String>, Option<String>, Option<sqlx::types::Json<Vec<String>>>)> =
+        sqlx::query_as(
+            "SELECT title, summary, lang, category, topics \
+             FROM series WHERE id = $1",
+        )
+        .bind(series_id)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten();
+    let Some((title, summary, lang, category, topics)) = row else { return };
+
+    let node_id = uri_to_node_id(series_repo_uri);
+    let cache = state.blob_cache_path.join(&node_id);
+    let main_path = cache.join("main.typ");
+    let existing = tokio::fs::read_to_string(&main_path).await.unwrap_or_default();
+    let meta = fx_validator::inject::Metadata {
+        title: Some(title).filter(|s| !s.is_empty()),
+        abstract_: summary.filter(|s| !s.is_empty()),
+        lang: lang.filter(|s| !s.is_empty()),
+        category: category.filter(|s| !s.is_empty()),
+        license: None,
+        cover: None,
+        tags: topics.map(|j| j.0).unwrap_or_default(),
+        related: vec![],
+    };
+    let updated = fx_validator::inject::typst::merge_series(&existing, &meta);
+    if updated == existing { return; }
+
+    if tokio::fs::create_dir_all(&cache).await.is_err() { return; }
+    if tokio::fs::write(&main_path, updated.as_bytes()).await.is_err() { return; }
+
+    // Upload main.typ as a blob and append to the series record's files[].
+    let bytes = updated.as_bytes().to_vec();
+    let blob = crate::auth::upload_or_local_blob(state, token, did, bytes, "text/x-typst").await;
+    append_file_to_series_record(state, token, did, series_id, "main.typ", &blob, "text/x-typst").await;
+
+    // Drop the meta.yml fallback — typst series describe themselves via
+    // main.typ now.
+    let _ = tokio::fs::remove_file(cache.join("meta.yml")).await;
+    drop_file_from_series_record(state, token, did, series_id, "meta.yml").await;
+}
+
+/// Helper inverse of `append_file_to_series_record`: remove a file entry by
+/// path from the series's PDS record. Best-effort; failures logged.
+pub(super) async fn drop_file_from_series_record(
+    state: &AppState,
+    token: &str,
+    owner_did: &str,
+    series_id: &str,
+    path: &str,
+) {
+    let Some(pds) = crate::auth::pds_session(&state.pool, token).await else { return };
+    let Ok(existing) = state.at_client.get_record(
+        &pds.pds_url, &pds.access_jwt, owner_did,
+        fx_atproto::lexicon::WORK, series_id,
+    ).await else { return };
+    let mut record = existing.get("value").cloned().unwrap_or_else(|| serde_json::json!({}));
+    let removed = if let Some(arr) = record.get_mut("files").and_then(|f| f.as_array_mut()) {
+        let before = arr.len();
+        arr.retain(|f| f.get("path").and_then(|p| p.as_str()) != Some(path));
+        before != arr.len()
+    } else { false };
+    if !removed { return }
+    if let Err(e) = state.at_client.put_record(
+        &pds.pds_url, &pds.access_jwt,
+        &fx_atproto::client::PutRecordInput {
+            repo: pds.did.clone(),
+            collection: fx_atproto::lexicon::WORK.to_string(),
+            rkey: series_id.to_string(),
+            record,
+        },
+    ).await {
+        crate::auth::log_pds_error("drop file from series record", e);
+    }
+}
+
+/// HTML-only side-effect: upload the meta.json sibling as a blob and append
+/// it to the publish manifest so it's part of the bundle and lands in the
+/// PDS record's `files[]`. No-op for non-HTML formats.
+pub(super) async fn add_meta_sibling_to_manifest(
+    state: &AppState,
+    token: &str,
+    did: &str,
+    input: &CreateArticle,
+    at_uri: &str,
+    publish: &mut PublishResult,
+) -> Result<(), AppError> {
+    let Some(json) = html_meta_sibling(input) else { return Ok(()); };
+    let Some(manifest) = publish.blob_manifest.as_mut() else { return Ok(()); };
+
+    // Stage on disk so re-renders see it.
+    let node_id = uri_to_node_id(at_uri);
+    let stage = state.blob_cache_path.join(&node_id);
+    tokio::fs::create_dir_all(&stage).await?;
+    tokio::fs::write(stage.join("meta.json"), json.as_bytes()).await?;
+
+    let blob = crate::auth::upload_or_local_blob(
+        state, token, did, json.as_bytes().to_vec(), "application/json",
+    ).await;
+    if let Some(arr) = manifest.get_mut("files").and_then(|f| f.as_array_mut()) {
+        arr.push(serde_json::json!({
+            "path": "meta.json",
+            "cid": blob_cid(&blob),
+            "size": json.len() as u64,
+            "mime": "application/json",
+        }));
+    }
+    Ok(())
+}
+
+/// For HTML articles, return the canonical `meta.json` sibling content
+/// reflecting `input`. Returns `None` for non-HTML formats.
+pub(super) fn html_meta_sibling(input: &CreateArticle) -> Option<String> {
+    if input.content_format != ContentFormat::Html { return None; }
+    let mut obj = serde_json::Map::new();
+    if !input.title.is_empty()         { obj.insert("title".into(), input.title.clone().into()); }
+    if let Some(s) = input.summary.as_deref().filter(|s| !s.is_empty()) { obj.insert("description".into(), s.into()); }
+    if let Some(s) = input.lang.as_deref().filter(|s| !s.is_empty())    { obj.insert("lang".into(), s.into()); }
+    if let Some(s) = input.category.as_deref().filter(|s| !s.is_empty()) { obj.insert("category".into(), s.into()); }
+    if let Some(s) = input.license.as_deref().filter(|s| !s.is_empty()) { obj.insert("license".into(), s.into()); }
+    if !input.tags.is_empty()    { obj.insert("tags".into(), input.tags.clone().into()); }
+    if !input.related.is_empty() { obj.insert("related".into(), input.related.clone().into()); }
+    if !input.prereqs.is_empty() {
+        let pr: Vec<serde_json::Value> = input.prereqs.iter().map(|p| {
+            serde_json::json!({ "tag": p.tag_id, "type": p.prereq_type.as_str() })
+        }).collect();
+        obj.insert("prereqs".into(), pr.into());
+    }
+    Some(serde_json::to_string_pretty(&obj).unwrap_or_default())
+}
+
 /// PDS-blob publish path — the one canonical publish path. Uploads
 /// `content.{ext}` and `summary.{ext}` as PDS blobs under the author's DID,
 /// materializes them into the blob cache for rendering, and returns a
@@ -671,9 +855,7 @@ pub(super) enum PublishTarget<'a> {
 /// and mirrors into the `at.nightbo.work` record's `content` union.
 ///
 /// No pijul, no knot, no scratch. Updates are new blobs replacing the old
-/// manifest — no change history. Fork (future) will promote a blob article
-/// to pijul by initializing a repo with the current manifest files as the
-/// initial change.
+/// manifest — no change history.
 pub(super) async fn publish_article_blob(
     state: &AppState,
     at_uri: &str,
@@ -907,15 +1089,29 @@ async fn save_category_metadata(state: &AppState, at_uri: &str, input: &CreateAr
     }
 }
 
-/// Build the PDS-side `at.nightbo.work` record body. `content` is the
-/// `#content` sub-object (`{entry, contentFormat, files}`), rebuilt from a
-/// blob manifest so each file is a proper `$type: blob` ref that external
-/// AppViews can fetch via `com.atproto.sync.getBlob`.
+/// Build the PDS-side `at.nightbo.work` record body. Per the unified
+/// `at.nightbo.work` lexicon, the record only carries `files` (every source
+/// + asset blob) and `createdAt`. All other metadata (title, description,
+/// tags, license, content format, entry, chapter list, anchors) lives
+/// inside the bundle in format-native slots so the record stays honest to
+/// the schema and the bundle is self-describing for re-indexing.
 pub(super) fn build_article_record(
     input: &CreateArticle,
     manifest: &serde_json::Value,
 ) -> serde_json::Value {
-    let files: Vec<serde_json::Value> = manifest
+    let _ = input;
+    let files = files_from_manifest(manifest);
+    serde_json::json!({
+        "$type": fx_atproto::lexicon::WORK,
+        "files": files,
+        "createdAt": now_rfc3339(),
+    })
+}
+
+/// Convert a blob manifest into the `files[]` array shape required by the
+/// `at.nightbo.work` record (per-file `{path, blob, mime}`).
+pub(super) fn files_from_manifest(manifest: &serde_json::Value) -> Vec<serde_json::Value> {
+    manifest
         .get("files")
         .and_then(|f| f.as_array())
         .map(|arr| arr.iter().map(|f| {
@@ -933,59 +1129,54 @@ pub(super) fn build_article_record(
                 "mime": mime,
             })
         }).collect())
-        .unwrap_or_default();
-    serde_json::json!({
-        "$type": fx_atproto::lexicon::WORK,
-        "title": input.title,
-        "description": input.summary.as_deref().unwrap_or(""),
-        "tags": input.tags,
-        "license": input.license.as_deref().unwrap_or(""),
-        "content": {
-            "entry": manifest.get("entry").cloned().unwrap_or(serde_json::Value::Null),
-            "contentFormat": input.content_format.as_str(),
-            "files": files,
-        },
-        "createdAt": now_rfc3339(),
-    })
+        .unwrap_or_default()
 }
 
-/// Set the `cover` blob on a series's PDS record. Fetches the current
-/// record, replaces `cover` with the provided blob ref, and writes it back
-/// via `putRecord`. Best-effort: failures are logged but do not block.
-pub(super) async fn set_cover_on_series_record(
+/// Append a single file (cover, image, etc.) to a series's PDS record's
+/// `files[]`. The minimal lexicon stores everything in `files[]`; covers and
+/// other assets are just bundle entries. Fetches → upserts by path → puts.
+/// Best-effort: failures are logged but do not block.
+pub(super) async fn append_file_to_series_record(
     state: &AppState,
     token: &str,
     owner_did: &str,
     series_id: &str,
-    cover_blob: &serde_json::Value,
+    path: &str,
+    blob: &serde_json::Value,
+    mime: &str,
 ) {
     let Some(pds) = crate::auth::pds_session(&state.pool, token).await else {
-        tracing::warn!("no PDS session; skipping series cover record write for {series_id}");
+        tracing::warn!("no PDS session; skipping series file append for {series_id}");
         return;
     };
     let mut record = match state.at_client.get_record(
         &pds.pds_url, &pds.access_jwt, owner_did,
         fx_atproto::lexicon::WORK, series_id,
     ).await {
-        Ok(r) => r.get("value").cloned().unwrap_or_else(|| serde_json::json!({
-            "$type": fx_atproto::lexicon::WORK,
-            "seriesId": series_id,
-            "title": "",
-            "chapters": [],
-            "createdAt": now_rfc3339(),
-        })),
+        Ok(r) => r.get("value").cloned().unwrap_or_else(|| seed_series_record()),
         Err(e) => {
             tracing::warn!("series record {series_id} fetch failed (will create fresh): {e}");
-            serde_json::json!({
-                "$type": fx_atproto::lexicon::WORK,
-                "seriesId": series_id,
-                "title": "",
-                "chapters": [],
-                "createdAt": now_rfc3339(),
-            })
+            seed_series_record()
         }
     };
-    record["cover"] = cover_blob.clone();
+    let entry = serde_json::json!({
+        "path": path,
+        "blob": blob,
+        "mime": mime,
+    });
+    let files = record.get_mut("files").and_then(|c| c.as_array_mut());
+    match files {
+        Some(arr) => {
+            if let Some(pos) = arr.iter().position(|f| f.get("path").and_then(|p| p.as_str()) == Some(path)) {
+                arr[pos] = entry;
+            } else {
+                arr.push(entry);
+            }
+        }
+        None => {
+            record["files"] = serde_json::Value::Array(vec![entry]);
+        }
+    }
     if let Err(e) = state.at_client.put_record(
         &pds.pds_url, &pds.access_jwt,
         &fx_atproto::client::PutRecordInput {
@@ -995,22 +1186,20 @@ pub(super) async fn set_cover_on_series_record(
             record,
         },
     ).await {
-        crate::auth::log_pds_error("set cover on series record", e);
+        crate::auth::log_pds_error("append file to series record", e);
     }
 }
 
-/// Merge a chapter into a series's PDS record.
+/// Merge a chapter's blob files into a series's PDS record.
 ///
-/// Under the unified-series lexicon, a series is ONE big record that carries
-/// every chapter's metadata (`chapters[]`) and every source/asset file
-/// (`files[]`). There is no per-chapter PDS record. On publish we:
+/// Under the minimal `at.nightbo.work` lexicon, the record carries only
+/// `files[]` and `createdAt`. Chapter ordering, titles, and anchors are
+/// tracked in DB columns (and embedded in the bundle source files). On
+/// publish we:
 ///   1. Fetch the current series record (or seed a skeleton if absent).
-///   2. Upsert the chapter entry (`{title, entry, anchor, orderIndex}`) into
-///      `chapters[]` — replacing any existing item whose `entry` matches so
-///      re-publish is idempotent.
-///   3. Merge `chapter_files` into `files[]`, deduped by `path`. Replaces
+///   2. Merge `chapter_files` into `files[]`, deduped by `path`. Replaces
 ///      existing entries when paths collide (blob CIDs change on re-publish).
-///   4. putRecord the updated value back to the user's PDS.
+///   3. putRecord the updated value back to the user's PDS.
 ///
 /// Best-effort: without a PDS session we log + skip. DB side-effects happen
 /// regardless; the PDS lags until the author re-publishes under a real
@@ -1020,10 +1209,6 @@ pub(super) async fn merge_chapter_into_series_record(
     token: &str,
     owner_did: &str,
     series_id: &str,
-    title: &str,
-    entry: &str,
-    anchor: &str,
-    order_index: i64,
     chapter_files: &[serde_json::Value],
 ) {
     let Some(pds) = crate::auth::pds_session(&state.pool, token).await else {
@@ -1036,40 +1221,13 @@ pub(super) async fn merge_chapter_into_series_record(
         &pds.pds_url, &pds.access_jwt, owner_did,
         fx_atproto::lexicon::WORK, series_id,
     ).await {
-        Ok(r) => r.get("value").cloned().unwrap_or_else(|| seed_series_record(series_id)),
+        Ok(r) => r.get("value").cloned().unwrap_or_else(|| seed_series_record()),
         Err(e) => {
             tracing::warn!("series record {series_id} fetch failed (will create fresh): {e}");
-            seed_series_record(series_id)
+            seed_series_record()
         }
     };
 
-    // 1. Upsert chapter entry by `entry` path — stable identity across
-    //    re-publishes.
-    let new_chapter = serde_json::json!({
-        "title":      title,
-        "entry":      entry,
-        "anchor":     anchor,
-        "orderIndex": order_index,
-    });
-    let chapters = record
-        .get_mut("chapters")
-        .and_then(|c| c.as_array_mut());
-    match chapters {
-        Some(arr) => {
-            if let Some(pos) = arr.iter().position(|c| {
-                c.get("entry").and_then(|e| e.as_str()) == Some(entry)
-            }) {
-                arr[pos] = new_chapter;
-            } else {
-                arr.push(new_chapter);
-            }
-        }
-        None => {
-            record["chapters"] = serde_json::json!([new_chapter]);
-        }
-    }
-
-    // 2. Merge chapter files into `files[]`, deduped by path.
     let files = record
         .get_mut("files")
         .and_then(|c| c.as_array_mut());
@@ -1104,15 +1262,11 @@ pub(super) async fn merge_chapter_into_series_record(
     }
 }
 
-fn seed_series_record(series_id: &str) -> serde_json::Value {
+fn seed_series_record() -> serde_json::Value {
     serde_json::json!({
-        "$type":       fx_atproto::lexicon::WORK,
-        "seriesId":    series_id,
-        "title":       "",
-        "contentFormat": "typst",
-        "chapters":    [],
-        "files":       [],
-        "createdAt":   now_rfc3339(),
+        "$type":     fx_atproto::lexicon::WORK,
+        "files":     [],
+        "createdAt": now_rfc3339(),
     })
 }
 
@@ -1170,12 +1324,17 @@ async fn create_standalone_article_handler(
 ) -> ApiResult<(StatusCode, Json<Article>)> {
     let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::WORK, tid());
 
-    let publish = publish_article_blob(
-        state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
+    let augmented = inject_publish_metadata(&input.content, input);
+    let mut publish = publish_article_blob(
+        state, &at_uri, &user.did, &user.token, &augmented, input.content_format,
         SummaryInput { user_source: input.summary.as_deref() },
     ).await?;
 
-    let hash = content_hash(&input.content);
+    // HTML carries metadata in a sibling `meta.json`, not inside the source.
+    // Upload it as a blob and append to the manifest so it's part of the bundle.
+    add_meta_sibling_to_manifest(state, &user.token, &user.did, input, &at_uri, &mut publish).await?;
+
+    let hash = content_hash(&augmented);
 
     let translation_group = if let Some(ref source_uri) = input.translation_of {
         #[allow(deprecated)]
@@ -1249,8 +1408,9 @@ async fn create_series_chapter_handler(
     let src_ext = fx_renderer::format_extension(input.content_format.as_str());
     let source_path = fx_core::meta::default_chapter_path(&chapter_tid, src_ext);
 
+    let augmented = inject_publish_metadata(&input.content, input);
     let publish = publish_article_blob_to(
-        state, &user.did, &user.token, &input.content, input.content_format,
+        state, &user.did, &user.token, &augmented, input.content_format,
         SummaryInput { user_source: input.summary.as_deref() },
         PublishTarget::SeriesChapter {
             series_repo_uri: &series_repo_uri,
@@ -1258,7 +1418,7 @@ async fn create_series_chapter_handler(
         },
     ).await?;
 
-    let hash = content_hash(&input.content);
+    let hash = content_hash(&augmented);
     let anchor = chapter_tid.clone();
 
     let article = article_service::create_series_chapter(
@@ -1275,16 +1435,25 @@ async fn create_series_chapter_handler(
         &state.pool, &series_id, &series_repo_uri, &source_path, Some(&anchor),
     ).await?;
 
-    // Merge this chapter into the series's PDS record (chapters[] + files[]).
+    // Merge this chapter's blob files into the series's PDS record. The
+    // record only carries files[]; chapter ordering/title/anchor live in DB
+    // columns and inside the bundle's source files.
+    let _ = order_index;
     if !input.restricted.unwrap_or(false) {
         if let Some(ref manifest) = publish.blob_manifest {
             let file_refs = chapter_file_refs_from_manifest(manifest);
             merge_chapter_into_series_record(
-                state, &user.token, &user.did, &series_id,
-                &input.title, &source_path, &anchor,
-                order_index as i64, &file_refs,
+                state, &user.token, &user.did, &series_id, &file_refs,
             ).await;
         }
+    }
+
+    // For typst series, the canonical series-level metadata slot is the
+    // `<nbt-series>` directive in `main.typ` (per the at.nightbo.work
+    // lexicon). Sync it from DB on every chapter publish, and retire the
+    // meta.yml fallback we wrote at create_series time.
+    if input.content_format == ContentFormat::Typst {
+        sync_typst_nbt_series_from_db(state, &user.token, &user.did, &series_id, &series_repo_uri).await;
     }
 
     // Chapter-specific metadata (book_id / course_id / note fields) is
@@ -1387,8 +1556,9 @@ async fn create_standalone_multipart(
         }
     }
 
+    let augmented = inject_publish_metadata(&input.content, input);
     let mut publish = publish_article_blob(
-        state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
+        state, &at_uri, &user.did, &user.token, &augmented, input.content_format,
         SummaryInput { user_source: input.summary.as_deref() },
     ).await?;
 
@@ -1408,7 +1578,9 @@ async fn create_standalone_multipart(
         }
     }
 
-    let hash = content_hash(&input.content);
+    add_meta_sibling_to_manifest(state, &user.token, &user.did, input, &at_uri, &mut publish).await?;
+
+    let hash = content_hash(&augmented);
 
     let translation_group = if let Some(ref source_uri) = input.translation_of {
         #[allow(deprecated)]
@@ -1503,8 +1675,9 @@ async fn create_series_chapter_multipart(
     let source_path = fx_core::meta::default_chapter_path(&chapter_tid, src_ext);
     let anchor = chapter_tid.clone();
 
+    let augmented = inject_publish_metadata(&input.content, input);
     let mut publish = publish_article_blob_to(
-        state, &user.did, &user.token, &input.content, input.content_format,
+        state, &user.did, &user.token, &augmented, input.content_format,
         SummaryInput { user_source: input.summary.as_deref() },
         PublishTarget::SeriesChapter {
             series_repo_uri: &series_repo_uri,
@@ -1542,7 +1715,7 @@ async fn create_series_chapter_multipart(
         publish.blob_manifest.clone(),
     ).await?;
 
-    let order_index = series_service::add_series_chapter(
+    let _order_index = series_service::add_series_chapter(
         &state.pool, &series_id, &series_repo_uri, &source_path, Some(&anchor),
     ).await?;
 
@@ -1550,9 +1723,7 @@ async fn create_series_chapter_multipart(
         if let Some(ref manifest) = publish.blob_manifest {
             let file_refs = chapter_file_refs_from_manifest(manifest);
             merge_chapter_into_series_record(
-                state, &user.token, &user.did, &series_id,
-                &input.title, &source_path, &anchor,
-                order_index as i64, &file_refs,
+                state, &user.token, &user.did, &series_id, &file_refs,
             ).await;
         }
     }
@@ -1569,8 +1740,6 @@ pub struct ArticleFullResponse {
     prereqs: Vec<ArticlePrereqRow>,
     /// Tag ids this article mentions without teaching (content_related).
     related: Vec<String>,
-    forks: Vec<ForkWithTitle>,
-    fork_source: Option<fx_core::services::article_service::ForkSourceInfo>,
     votes: ArticleVoteSummary,
     series_context: Vec<fx_core::services::series_service::SeriesContextItem>,
     translations: Vec<Article>,
@@ -1601,11 +1770,10 @@ pub async fn get_article_full(
     let locale = q.locale.as_deref().unwrap_or("en").to_string();
 
     let mode = state.instance_mode;
-    let (article, prereqs, related, forks, vote_summary, series_ctx, translations) = tokio::try_join!(
+    let (article, prereqs, related, vote_summary, series_ctx, translations) = tokio::try_join!(
         article_service::get_article(&state.pool, mode, &uri),
         article_service::get_article_prereqs(&state.pool, &uri, &locale),
         article_service::get_article_related(&state.pool, &uri),
-        article_service::get_article_forks(&state.pool, &uri),
         vote_service::get_vote_summary(&state.pool, &uri),
         series_service::get_series_context(&state.pool, &uri),
         article_service::get_translations(&state.pool, mode, &uri),
@@ -1622,6 +1790,7 @@ pub async fn get_article_full(
         ArticleContent { source: String::new(), html: String::new() }
     };
 
+    let synth_uri = series_service::resolve_to_synthetic_uri(&state.pool, &uri).await.ok().flatten();
     let (my_vote, is_bookmarked, learned) = if let Some(ref u) = user {
         let (mv, bk, lr) = tokio::join!(
             vote_service::get_my_vote(&state.pool, &uri, &u.did),
@@ -1630,14 +1799,15 @@ pub async fn get_article_full(
         );
         (
             mv.unwrap_or(0),
-            bk.map(|bks| bks.iter().any(|b| b.article_uri == uri)).unwrap_or(false),
+            bk.map(|bks| {
+                let target = synth_uri.as_deref().unwrap_or(uri.as_str());
+                bks.iter().any(|b| b.article_uri == target)
+            }).unwrap_or(false),
             lr.unwrap_or(false),
         )
     } else {
         (0, false, false)
     };
-
-    let fork_source = article_service::get_fork_source(&state.pool, &uri).await.unwrap_or(None);
 
     let paper = if article.category == "paper" {
         article_service::get_paper_metadata(&state.pool, &uri).await.unwrap_or(None)
@@ -1655,8 +1825,6 @@ pub async fn get_article_full(
         content,
         prereqs,
         related,
-        forks,
-        fork_source,
         votes: ArticleVoteSummary {
             score: vote_summary.score,
             upvotes: vote_summary.upvotes,
@@ -1840,10 +2008,17 @@ pub async fn upload_image(
         return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
     }
 
-    // Upload the resource as a PDS blob and stage it into the article's
+    // Upload the resource as a PDS blob and stage it into the appropriate
     // blob_cache dir so the renderer sees it alongside the entry file.
-    let node_id = uri_to_node_id(&uri);
-    let stage_path = state.blob_cache_path.join(&node_id);
+    // Chapter URIs route to the SERIES blob_cache (one bundle for the
+    // whole series); standalone articles use their own per-article dir.
+    let chapter = series_service::parse_chapter_uri(&uri);
+    let stage_path = if let Some((ref series_id, _)) = chapter {
+        let series_repo_uri = series_service::series_repo_uri(&state.pool, series_id).await?;
+        state.blob_cache_path.join(uri_to_node_id(&series_repo_uri))
+    } else {
+        state.blob_cache_path.join(uri_to_node_id(&uri))
+    };
     let dest = stage_path.join(&safe_name);
     if let Some(parent) = dest.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -1860,20 +2035,30 @@ pub async fn upload_image(
     let size = data.len();
     let blob = crate::auth::pds_upload_blob(&state, &user.token, data.clone(), mime).await;
 
-    // Patch the article's manifest + PDS record so the resource shows up in
-    // `content.files[]`. Failures are non-fatal — the local filesystem copy
-    // still renders correctly; the record just falls out of sync until the
-    // next full publish.
+    // Patch the manifest + PDS record so the resource shows up in `files[]`.
+    // For chapter uploads the file goes to the series record; for standalone
+    // articles it goes to the article's own record + manifest. Failures are
+    // non-fatal — the on-disk copy still renders correctly until the next
+    // full publish.
     if let Some(blob_ref) = blob {
-        if let Err(e) = append_file_to_article_manifest(
-            &state, &uri, &safe_name, &blob_ref, size, mime,
-        ).await {
-            tracing::warn!("append file to manifest failed: {e:?}");
-        }
-        if let Err(e) = append_file_to_article_record(
-            &state, &user.token, &user.did, &uri, &safe_name, &blob_ref, size, mime,
-        ).await {
-            tracing::warn!("patch article record failed: {e:?}");
+        match chapter {
+            Some((series_id, _)) => {
+                append_file_to_series_record(
+                    &state, &user.token, &user.did, &series_id, &safe_name, &blob_ref, mime,
+                ).await;
+            }
+            None => {
+                if let Err(e) = append_file_to_article_manifest(
+                    &state, &uri, &safe_name, &blob_ref, size, mime,
+                ).await {
+                    tracing::warn!("append file to manifest failed: {e:?}");
+                }
+                if let Err(e) = append_file_to_article_record(
+                    &state, &user.token, &user.did, &uri, &safe_name, &blob_ref, size, mime,
+                ).await {
+                    tracing::warn!("patch article record failed: {e:?}");
+                }
+            }
         }
     }
 
@@ -1931,8 +2116,8 @@ pub(super) async fn append_file_to_article_manifest(
 }
 
 /// Re-fetch the article record on the user's PDS, append the new file entry
-/// to `content.files[]`, and putRecord it back. Doesn't touch content.entry
-/// or any other field.
+/// to top-level `files[]`, and putRecord it back. Per the minimal lexicon
+/// the record carries only `files[]` and `createdAt`.
 pub(super) async fn append_file_to_article_record(
     state: &AppState,
     token: &str,
@@ -1943,6 +2128,7 @@ pub(super) async fn append_file_to_article_record(
     size: usize,
     mime: &str,
 ) -> Result<(), AppError> {
+    let _ = size;
     let Some(rkey) = article_uri.rsplit('/').next() else {
         return Ok(());
     };
@@ -1960,12 +2146,12 @@ pub(super) async fn append_file_to_article_record(
         }
     };
     let mut record = existing.get("value").cloned().unwrap_or_else(|| serde_json::json!({}));
-    let files = record.pointer_mut("/content/files").and_then(|f| f.as_array_mut());
     let entry = serde_json::json!({
         "path": path,
         "blob": blob,
         "mime": mime,
     });
+    let files = record.get_mut("files").and_then(|f| f.as_array_mut());
     match files {
         Some(arr) => {
             if let Some(pos) = arr.iter().position(|f| f.get("path").and_then(|p| p.as_str()) == Some(path)) {
@@ -1975,9 +2161,7 @@ pub(super) async fn append_file_to_article_record(
             }
         }
         None => {
-            // No content at all yet — nothing sensible to patch; skip.
-            let _ = size; // silence unused warning in this branch
-            return Ok(());
+            record["files"] = serde_json::Value::Array(vec![entry]);
         }
     }
     if let Err(e) = state.at_client.put_record(
@@ -2112,12 +2296,26 @@ pub async fn update_article(
         let _ = input.commit_message;
         let _ = input.record;
         let content_format: ContentFormat = format.parse().unwrap_or(ContentFormat::Markdown);
+        // Markdown updates merge title/description into the bundle's
+        // frontmatter so the on-disk source stays self-describing. Other
+        // fields (lang/license/tags/...) stick from the initial publish since
+        // they're not in `UpdateArticleInput`.
+        let augmented = if content_format == ContentFormat::Markdown {
+            let fm = fx_core::meta::Frontmatter {
+                title: input.title.clone().filter(|s| !s.is_empty()),
+                description: input.summary.clone().filter(|s| !s.is_empty()),
+                ..Default::default()
+            };
+            fx_core::meta::merge_markdown_frontmatter(content, &fm)
+        } else {
+            content.clone()
+        };
         let republish = publish_article_blob(
-            &state, &input.uri, &user.did, &user.token, content, content_format,
+            &state, &input.uri, &user.did, &user.token, &augmented, content_format,
             SummaryInput { user_source: input.summary.as_deref() },
         ).await?;
 
-        let hash = content_hash(content);
+        let hash = content_hash(&augmented);
         article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;
 
         if let Some(manifest) = republish.blob_manifest.clone() {

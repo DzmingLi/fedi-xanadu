@@ -583,23 +583,6 @@ mod tests {
         }
 
         #[test]
-        fn fork_article_input_serialization() {
-            let with_format = ForkArticleInput {
-                uri: "at://did:plc:x/app.article/tid".into(),
-                target_format: Some("latex".into()),
-            };
-            let json = serde_json::to_value(&with_format).unwrap();
-            assert_eq!(json["target_format"], "latex");
-
-            let without = ForkArticleInput {
-                uri: "at://did:plc:x/app.article/tid".into(),
-                target_format: None,
-            };
-            let json = serde_json::to_value(&without).unwrap();
-            assert!(json.get("target_format").is_none());
-        }
-
-        #[test]
         fn convert_input_roundtrip() {
             let input = ConvertInput {
                 content: "\\section{Hi}".into(),
@@ -693,21 +676,6 @@ mod tests {
             let json = r#"{"filename":"abc123.png"}"#;
             let resp: ImageUploadResponse = serde_json::from_str(json).unwrap();
             assert_eq!(resp.filename, "abc123.png");
-        }
-
-        #[test]
-        fn fork_with_title_deserialization() {
-            let json = serde_json::json!({
-                "fork_uri": "at://did:plc:x/app.article/fork1",
-                "forked_uri": "at://did:plc:y/app.article/orig",
-                "vote_score": 3,
-                "title": "My Fork",
-                "did": "did:plc:x",
-                "author_handle": "bob"
-            });
-            let fork: ForkWithTitle = serde_json::from_value(json).unwrap();
-            assert_eq!(fork.title, "My Fork");
-            assert_eq!(fork.vote_score, 3);
         }
 
         // ---- Auth ----

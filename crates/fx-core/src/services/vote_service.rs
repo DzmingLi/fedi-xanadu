@@ -2,6 +2,20 @@ use sqlx::PgPool;
 
 use crate::Result;
 
+/// Normalize an article-side `target_uri` to the synthetic article URI form
+/// used as the canonical key in `votes.target_uri`. Accepts at_uri and
+/// `nightboat-chapter://` URIs; non-article targets pass through unchanged
+/// (e.g. comment/skill-tree URIs vote against their own at_uri).
+async fn normalize_vote_target(pool: &PgPool, target_uri: &str) -> Result<String> {
+    if target_uri.starts_with("nightboat://article/") {
+        return Ok(target_uri.to_string());
+    }
+    if let Some(synth) = super::series_service::resolve_to_synthetic_uri(pool, target_uri).await? {
+        return Ok(synth);
+    }
+    Ok(target_uri.to_string())
+}
+
 #[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct VoteSummary {
@@ -24,12 +38,13 @@ pub async fn cast_vote(
     value: i32,
 ) -> Result<VoteSummary> {
     let value = value.clamp(-1, 1);
+    let target_uri = normalize_vote_target(pool, target_uri).await?;
 
     let mut tx = pool.begin().await?;
 
     if value == 0 {
         sqlx::query("DELETE FROM votes WHERE target_uri = $1 AND did = $2")
-            .bind(target_uri)
+            .bind(&target_uri)
             .bind(did)
             .execute(&mut *tx)
             .await?;
@@ -39,14 +54,14 @@ pub async fn cast_vote(
              ON CONFLICT(target_uri, did) DO UPDATE SET value = EXCLUDED.value, at_uri = EXCLUDED.at_uri",
         )
         .bind(at_uri)
-        .bind(target_uri)
+        .bind(&target_uri)
         .bind(did)
         .bind(value)
         .execute(&mut *tx)
         .await?;
     }
 
-    let summary = vote_summary_in_tx(&mut tx, target_uri).await?;
+    let summary = vote_summary_in_tx(&mut tx, &target_uri).await?;
 
     tx.commit().await?;
 
@@ -54,6 +69,8 @@ pub async fn cast_vote(
 }
 
 pub async fn get_vote_summary(pool: &PgPool, target_uri: &str) -> Result<VoteSummary> {
+    let target_uri = normalize_vote_target(pool, target_uri).await?;
+    let target_uri = target_uri.as_str();
     #[derive(sqlx::FromRow)]
     struct Row {
         score: i64,
@@ -163,10 +180,11 @@ pub async fn get_vote_summaries_batch(pool: &PgPool, target_uris: &[String]) -> 
 }
 
 pub async fn get_my_vote(pool: &PgPool, target_uri: &str, did: &str) -> Result<i32> {
+    let target_uri = normalize_vote_target(pool, target_uri).await?;
     let value: Option<i32> = sqlx::query_scalar(
         "SELECT value FROM votes WHERE target_uri = $1 AND did = $2",
     )
-    .bind(target_uri)
+    .bind(&target_uri)
     .bind(did)
     .fetch_optional(pool)
     .await?;

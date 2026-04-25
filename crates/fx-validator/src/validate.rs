@@ -202,12 +202,7 @@ mod tests {
             path: path.into(),
             format: Format::Md,
             lang: lang.into(),
-            translation_of: None,
-            title: None,
-            abstract_: None,
-            tags: vec![],
-            translator: None,
-            translation_notes: None,
+            ..Default::default()
         }
     }
 

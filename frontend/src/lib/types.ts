@@ -58,7 +58,6 @@ export interface Article {
   vote_score: number;
   bookmark_count: number;
   comment_count: number;
-  fork_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -73,15 +72,6 @@ export interface ArticlePrereqRow {
   prereq_type: PrereqType;
   tag_name: string;
   tag_names: Record<string, string>;
-}
-
-export interface ForkWithTitle {
-  fork_uri: string;
-  forked_uri: string;
-  vote_score: number;
-  title: string;
-  did: string;
-  author_handle: string | null;
 }
 
 export interface UserSkill {
@@ -418,7 +408,6 @@ export interface SkillTree {
   tag_id: string | null;
   tag_name?: string | null;
   tag_names?: Record<string, string> | null;
-  forked_from: string | null;
   created_at: string;
   score?: number;
   edge_count?: number;
@@ -465,17 +454,6 @@ export interface SeriesContextItem {
   next: { article_uri: string; title: string }[];
 }
 
-export interface ForkSourceInfo {
-  source_uri: string;
-  title: string;
-  license: string;
-  lang: string;
-  did: string;
-  author_handle: string | null;
-  author_display_name: string | null;
-  author_avatar: string | null;
-}
-
 export interface PaperMetadata {
   article_uri: string;
   venue: string | null;
@@ -499,8 +477,6 @@ export interface ArticleFullResponse {
   content: ArticleContent;
   prereqs: ArticlePrereqRow[];
   related: string[];
-  forks: ForkWithTitle[];
-  fork_source: ForkSourceInfo | null;
   votes: VoteSummary;
   series_context: SeriesContextItem[];
   translations: Article[];
@@ -698,7 +674,7 @@ export interface Notification {
   recipient_did: string;
   actor_did: string;
   actor_handle: string | null;
-  kind: 'comment_reply' | 'article_comment' | 'new_follower' | 'article_fork' | 'new_answer' | 'invite_answer';
+  kind: 'comment_reply' | 'article_comment' | 'new_follower' | 'new_answer' | 'invite_answer';
   target_uri: string | null;
   target_title: string | null;
   context_id: string | null;

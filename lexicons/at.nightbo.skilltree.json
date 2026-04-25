@@ -13,7 +13,6 @@
           "title":       { "type": "string", "maxLength": 500 },
           "description": { "type": "string", "maxLength": 10000 },
           "tagId":       { "type": "string", "maxLength": 64, "description": "Root tag of this tree, if any." },
-          "forkedFrom":  { "type": "string", "format": "at-uri", "description": "If this tree is a fork, the original tree's at-uri." },
           "edges": {
             "type": "array",
             "description": "Parent→child tag edges forming the tree hierarchy.",
