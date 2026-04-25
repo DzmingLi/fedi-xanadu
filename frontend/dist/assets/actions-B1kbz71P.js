@@ -1,0 +1,1 @@
+import{d8 as c,db as n,dc as o,dd as i,de as m}from"./index-B24xXRJm.js";function b(t,e,f){c(()=>{var r=n(()=>e(t,f==null?void 0:f())||{});if(f&&(r!=null&&r.update)){var a=!1,d={};o(()=>{var s=f();i(s),a&&m(d,s)&&(d=s,r.update(s))}),a=!0}if(r!=null&&r.destroy)return()=>r.destroy()})}export{b as a};

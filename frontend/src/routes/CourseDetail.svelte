@@ -152,41 +152,37 @@
   let totalSessions = $derived(detail?.sessions?.length ?? 0);
   let doneSessions = $derived(Array.from(sessionDone.values()).filter(v => v).length);
 
-  // Auto-group attachment kinds into columns. Each column appears only
-  // when at least one session has an entry of that group. Inside a
-  // column, required chips come first, then optional in a dimmer style.
-  // The grouping is fixed (not per-course config) — we found the cost
-  // of customizable columns isn't worth the saved space, and a stable
-  // layout makes courses easier to scan side-by-side.
-  type AttachGroup = 'video' | 'materials' | 'hw' | 'discussion' | 'misc';
-  function attachGroup(kind: string): AttachGroup {
-    switch (kind) {
-      case 'video': return 'video';
-      case 'homework': return 'hw';
-      case 'discussion': return 'discussion';
-      case 'notes':
-      case 'slides':
-      case 'handout':
-      case 'reading':
-      case 'summary':
-      case 'outline':
-        return 'materials';
-      default:
-        return 'misc';
-    }
+  // Each attachment kind becomes its own column, in a fixed order. A
+  // column shows up only when at least one session has an entry of
+  // that kind. `code`/`other` collapse into a single "misc" column so
+  // we don't sprout columns for one-off oddities. Column order matches
+  // the typical reading flow: watch the lecture → take notes / read →
+  // homework / discussion → odds and ends.
+  const KIND_COLUMNS: { id: string; kinds: string[]; labelKey: string }[] = [
+    { id: 'video',      kinds: ['video'],      labelKey: 'course.video' },
+    { id: 'notes',      kinds: ['notes'],      labelKey: 'course.notes' },
+    { id: 'slides',     kinds: ['slides'],     labelKey: 'course.slides' },
+    { id: 'handout',    kinds: ['handout'],    labelKey: 'course.handout' },
+    { id: 'reading',    kinds: ['reading'],    labelKey: 'course.reading' },
+    { id: 'outline',    kinds: ['outline'],    labelKey: 'course.outline' },
+    { id: 'summary',    kinds: ['summary'],    labelKey: 'course.summary' },
+    { id: 'homework',   kinds: ['homework'],   labelKey: 'course.hw' },
+    { id: 'discussion', kinds: ['discussion'], labelKey: 'course.discussion' },
+    { id: 'misc',       kinds: ['code', 'other'], labelKey: 'course.misc' },
+  ];
+  function groupForKind(kind: string): string {
+    const col = KIND_COLUMNS.find(c => c.kinds.includes(kind));
+    return col?.id ?? 'misc';
   }
-  function groupAttachments(s: import('../lib/types').CourseSession, group: AttachGroup) {
-    return (s.attachments ?? []).filter(a => attachGroup(a.kind) === group);
+  function groupAttachments(s: import('../lib/types').CourseSession, group: string) {
+    return (s.attachments ?? []).filter(a => groupForKind(a.kind) === group);
   }
-  let hasVideo = $derived(detail?.sessions.some(s => groupAttachments(s, 'video').length > 0) ?? false);
-  let hasMaterials = $derived(detail?.sessions.some(s => groupAttachments(s, 'materials').length > 0) ?? false);
-  let hasHw = $derived(detail?.sessions.some(s => groupAttachments(s, 'hw').length > 0) ?? false);
-  let hasDiscussion = $derived(detail?.sessions.some(s => groupAttachments(s, 'discussion').length > 0) ?? false);
-  let hasMisc = $derived(detail?.sessions.some(s => groupAttachments(s, 'misc').length > 0) ?? false);
-  let colCount = $derived(
-    2 + (hasVideo ? 1 : 0) + (hasMaterials ? 1 : 0) + (hasHw ? 1 : 0)
-      + (hasDiscussion ? 1 : 0) + (hasMisc ? 1 : 0) + (isOwner ? 1 : 0),
+  let visibleColumns = $derived(
+    KIND_COLUMNS.filter(col =>
+      detail?.sessions.some(s => groupAttachments(s, col.id).length > 0) ?? false,
+    ),
   );
+  let colCount = $derived(2 + visibleColumns.length + (isOwner ? 1 : 0));
 
   function attachIcon(kind: string): string {
     switch (kind) {
@@ -440,11 +436,9 @@
                 <tr>
                   <th>#</th>
                   <th>{t('course.topic')}</th>
-                  {#if hasVideo}<th>{t('course.video')}</th>{/if}
-                  {#if hasMaterials}<th>{t('course.materials')}</th>{/if}
-                  {#if hasHw}<th>{t('course.hw')}</th>{/if}
-                  {#if hasDiscussion}<th>{t('course.discussion')}</th>{/if}
-                  {#if hasMisc}<th>{t('course.misc')}</th>{/if}
+                  {#each visibleColumns as col}
+                    <th>{t(col.labelKey)}</th>
+                  {/each}
                   {#if isOwner}<th class="session-actions-col"></th>{/if}
                 </tr>
               </thead>
@@ -479,27 +473,22 @@
                           </div>
                         {/if}
                       </td>
-                      {#snippet chipCell(group: 'video' | 'materials' | 'hw' | 'discussion' | 'misc')}
-                        <td class="session-cell-{group}">
-                          {#each groupAttachments(s, group).filter(a => a.required) as a}
+                      {#each visibleColumns as col}
+                        <td class="session-cell-{col.id}">
+                          {#each groupAttachments(s, col.id).filter(a => a.required) as a}
                             <a href={a.url} target="_blank" rel="noopener"
                                class="res-chip res-chip-{a.kind}" title={a.label}>
                               <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
                             </a>
                           {/each}
-                          {#each groupAttachments(s, group).filter(a => !a.required) as a}
+                          {#each groupAttachments(s, col.id).filter(a => !a.required) as a}
                             <a href={a.url} target="_blank" rel="noopener"
                                class="res-chip res-chip-{a.kind} res-chip-optional" title={a.label}>
                               <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
                             </a>
                           {/each}
                         </td>
-                      {/snippet}
-                      {#if hasVideo}{@render chipCell('video')}{/if}
-                      {#if hasMaterials}{@render chipCell('materials')}{/if}
-                      {#if hasHw}{@render chipCell('hw')}{/if}
-                      {#if hasDiscussion}{@render chipCell('discussion')}{/if}
-                      {#if hasMisc}{@render chipCell('misc')}{/if}
+                      {/each}
                     {/if}
                     {#if isOwner}
                       <td class="session-actions">
