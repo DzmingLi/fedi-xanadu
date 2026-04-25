@@ -201,11 +201,9 @@ pub async fn create_series(
 ) -> crate::Result<SeriesRow> {
     let mut tx = pool.begin().await?;
 
-    // pijul_node_id column remains NULLABLE in the schema while the
-    // pijul-to-blob migration is in flight; we always write NULL now.
     sqlx::query(
-        "INSERT INTO series (id, title, summary, summary_html, long_description, order_index, created_by, lang, category, pijul_node_id) \
-         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, NULL)",
+        "INSERT INTO series (id, title, summary, summary_html, long_description, order_index, created_by, lang, category) \
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)",
     )
     .bind(id)
     .bind(title)
@@ -315,7 +313,9 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
     .await?;
 
     let prereqs = sqlx::query_as::<_, SeriesPrereqRow>(
-        "SELECT article_uri, prereq_article_uri FROM series_article_prereqs WHERE series_id = $1",
+        "SELECT article_uri(repo_uri, source_path) AS article_uri, \
+                article_uri(prereq_repo_uri, prereq_source_path) AS prereq_article_uri \
+         FROM series_article_prereqs WHERE series_id = $1",
     )
     .bind(id)
     .fetch_all(pool)
@@ -471,18 +471,25 @@ pub async fn remove_series_article(
     series_id: &str,
     article_uri: &str,
 ) -> crate::Result<()> {
-    // Also remove prereq edges involving this article
+    let Some((repo_uri, source_path)) = resolve_to_repo_path(pool, article_uri).await? else {
+        return Ok(());
+    };
     sqlx::query(
-        "DELETE FROM series_article_prereqs WHERE series_id = $1 AND (article_uri = $2 OR prereq_article_uri = $2)",
+        "DELETE FROM series_article_prereqs \
+         WHERE series_id = $1 \
+           AND ((repo_uri = $2 AND source_path = $3) \
+             OR (prereq_repo_uri = $2 AND prereq_source_path = $3))",
     )
     .bind(series_id)
-    .bind(article_uri)
+    .bind(&repo_uri)
+    .bind(&source_path)
     .execute(pool)
     .await?;
 
-    sqlx::query("DELETE FROM series_articles WHERE series_id = $1 AND article_uri = $2")
+    sqlx::query("DELETE FROM series_articles WHERE series_id = $1 AND repo_uri = $2 AND source_path = $3")
         .bind(series_id)
-        .bind(article_uri)
+        .bind(&repo_uri)
+        .bind(&source_path)
         .execute(pool)
         .await?;
 
@@ -495,13 +502,22 @@ pub async fn add_series_prereq(
     article_uri: &str,
     prereq_article_uri: &str,
 ) -> crate::Result<()> {
+    let Some((repo_uri, source_path)) = resolve_to_repo_path(pool, article_uri).await? else {
+        return Err(Error::NotFound { entity: "article", id: article_uri.to_string() });
+    };
+    let Some((prereq_repo_uri, prereq_source_path)) = resolve_to_repo_path(pool, prereq_article_uri).await? else {
+        return Err(Error::NotFound { entity: "article", id: prereq_article_uri.to_string() });
+    };
     sqlx::query(
-        "INSERT INTO series_article_prereqs (series_id, article_uri, prereq_article_uri) \
-         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        "INSERT INTO series_article_prereqs \
+            (series_id, repo_uri, source_path, prereq_repo_uri, prereq_source_path) \
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
     )
     .bind(series_id)
-    .bind(article_uri)
-    .bind(prereq_article_uri)
+    .bind(&repo_uri)
+    .bind(&source_path)
+    .bind(&prereq_repo_uri)
+    .bind(&prereq_source_path)
     .execute(pool)
     .await?;
     Ok(())
@@ -513,13 +529,22 @@ pub async fn remove_series_prereq(
     article_uri: &str,
     prereq_article_uri: &str,
 ) -> crate::Result<()> {
+    let Some((repo_uri, source_path)) = resolve_to_repo_path(pool, article_uri).await? else {
+        return Ok(());
+    };
+    let Some((prereq_repo_uri, prereq_source_path)) = resolve_to_repo_path(pool, prereq_article_uri).await? else {
+        return Ok(());
+    };
     sqlx::query(
         "DELETE FROM series_article_prereqs \
-         WHERE series_id = $1 AND article_uri = $2 AND prereq_article_uri = $3",
+         WHERE series_id = $1 AND repo_uri = $2 AND source_path = $3 \
+           AND prereq_repo_uri = $4 AND prereq_source_path = $5",
     )
     .bind(series_id)
-    .bind(article_uri)
-    .bind(prereq_article_uri)
+    .bind(&repo_uri)
+    .bind(&source_path)
+    .bind(&prereq_repo_uri)
+    .bind(&prereq_source_path)
     .execute(pool)
     .await?;
     Ok(())
@@ -626,12 +651,17 @@ pub async fn reorder_series_articles(
     article_uris: &[String],
 ) -> crate::Result<()> {
     for (i, uri) in article_uris.iter().enumerate() {
+        let Some((repo_uri, source_path)) = resolve_to_repo_path(pool, uri).await? else {
+            continue;
+        };
         sqlx::query(
-            "UPDATE series_articles SET order_index = $1 WHERE series_id = $2 AND article_uri = $3",
+            "UPDATE series_articles SET order_index = $1 \
+             WHERE series_id = $2 AND repo_uri = $3 AND source_path = $4",
         )
         .bind(i as i32)
         .bind(series_id)
-        .bind(uri)
+        .bind(&repo_uri)
+        .bind(&source_path)
         .execute(pool)
         .await?;
     }
