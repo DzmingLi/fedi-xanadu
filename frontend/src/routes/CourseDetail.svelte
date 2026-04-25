@@ -152,28 +152,29 @@
   let totalSessions = $derived(detail?.sessions?.length ?? 0);
   let doneSessions = $derived(Array.from(sessionDone.values()).filter(v => v).length);
 
-  // Detect which resource types exist across all sessions
-  let hasMaterials = $derived(detail?.sessions.some(s => (s.materials ?? []).some(m => !m.optional)) ?? false);
-  let hasSupplementary = $derived(detail?.sessions.some(s => (s.materials ?? []).some(m => m.optional)) ?? false);
-  let hasVideo = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'video')) ?? false);
-  let hasHw = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'hw')) ?? false);
-  let hasDiscussion = $derived(detail?.sessions.some(s => s.resources.some(r => r.type === 'discussion')) ?? false);
-  let colCount = $derived(2 + (hasMaterials ? 1 : 0) + (hasSupplementary ? 1 : 0) + (hasVideo ? 1 : 0) + (hasHw ? 1 : 0) + (hasDiscussion ? 1 : 0) + (isOwner ? 1 : 0));
+  // Single attachments column — render as chips. Required first, then
+  // supplementary in a dimmed sub-row.
+  let hasAttachments = $derived(
+    detail?.sessions.some(s => (s.attachments ?? []).length > 0) ?? false,
+  );
+  let colCount = $derived(2 + (hasAttachments ? 1 : 0) + (isOwner ? 1 : 0));
 
-  // Helper to get resources by type
-  function getResources(session: import('../lib/types').CourseSession, type: string) {
-    return session.resources.filter(r => r.type === type);
-  }
-
-  // Icon per material kind (falsy kind → no icon)
-  function matIcon(kind?: string | null): string {
+  // Icon per attachment kind. Empty string → caller can fall back to the
+  // label without prefix; we only return real icons for kinds where one
+  // adds information beyond the label text.
+  function attachIcon(kind: string): string {
     switch (kind) {
+      case 'video': return '▶';
       case 'reading': return '📘';
       case 'slides': return '🖼️';
       case 'handout': return '📄';
       case 'summary': return '📝';
       case 'notes': return '📓';
-      default: return '';
+      case 'code': return '⚙';
+      case 'homework': return '✎';
+      case 'discussion': return '💬';
+      case 'outline': return '🗒';
+      default: return '🔗';
     }
   }
 
@@ -413,17 +414,14 @@
                 <tr>
                   <th>#</th>
                   <th>{t('course.topic')}</th>
-                  {#if hasMaterials}<th>{t('course.materials')}</th>{/if}
-                  {#if hasSupplementary}<th>{t('course.supplementary')}</th>{/if}
-                  {#if hasVideo}<th>{t('course.video')}</th>{/if}
-                  {#if hasDiscussion}<th>{t('course.discussion')}</th>{/if}
-                  {#if hasHw}<th>{t('course.hw')}</th>{/if}
+                  {#if hasAttachments}<th>{t('course.materials')}</th>{/if}
                   {#if isOwner}<th class="session-actions-col"></th>{/if}
                 </tr>
               </thead>
               <tbody>
                 {#each detail.sessions as s}
-                  {@const isExam = (s.materials?.length ?? 0) === 0 && s.resources.length === 0}
+                  {@const atts = s.attachments ?? []}
+                  {@const isExam = atts.length === 0}
                   <tr class:session-exam={isExam}>
                     <td class="session-num">
                       {s.sort_order}
@@ -451,54 +449,20 @@
                           </div>
                         {/if}
                       </td>
-                      {#if hasMaterials}
+                      {#if hasAttachments}
                         <td class="session-materials">
-                          {#each (s.materials ?? []).filter(m => !m.optional) as m}
-                            {#if m.url}
-                              <a href={m.url} target="_blank" rel="noopener" class="res-link res-mat" title={m.label}>
-                                {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
-                              </a>
-                            {:else}
-                              <span class="res-mat-plain" title={m.label}>
-                                {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
-                              </span>
-                            {/if}
+                          {#each atts.filter(a => a.required) as a}
+                            <a href={a.url} target="_blank" rel="noopener"
+                               class="res-chip res-chip-{a.kind}" title={a.label}>
+                              <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
+                            </a>
                           {/each}
-                        </td>
-                      {/if}
-                      {#if hasSupplementary}
-                        <td class="session-materials">
-                          {#each (s.materials ?? []).filter(m => m.optional) as m}
-                            {#if m.url}
-                              <a href={m.url} target="_blank" rel="noopener" class="res-link res-mat" title={m.label}>
-                                {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
-                              </a>
-                            {:else}
-                              <span class="res-mat-plain" title={m.label}>
-                                {#if matIcon(m.kind)}<span class="mat-icon">{matIcon(m.kind)}</span>{/if}{m.label}
-                              </span>
-                            {/if}
-                          {/each}
-                        </td>
-                      {/if}
-                      {#if hasVideo}
-                        <td class="session-video">
-                          {#each getResources(s, 'video') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-video">&#9654; {r.label}</a>
-                          {/each}
-                        </td>
-                      {/if}
-                      {#if hasDiscussion}
-                        <td class="session-disc">
-                          {#each getResources(s, 'discussion') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-disc">&#128172; {r.label}</a>
-                          {/each}
-                        </td>
-                      {/if}
-                      {#if hasHw}
-                        <td class="session-hw">
-                          {#each getResources(s, 'hw') as r}
-                            <a href={r.url} target="_blank" rel="noopener" class="res-link res-hw">&#9998; {r.label}</a>
+                          {#each atts.filter(a => !a.required) as a}
+                            <a href={a.url} target="_blank" rel="noopener"
+                               class="res-chip res-chip-{a.kind} res-chip-optional"
+                               title={a.label}>
+                              <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
+                            </a>
                           {/each}
                         </td>
                       {/if}
@@ -773,20 +737,24 @@
   .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
   .session-topic { color: var(--text-primary); width: 40%; }
   .session-video { white-space: nowrap; }
-  .session-hw { white-space: nowrap; }
-  .session-materials { max-width: 260px; }
-  .session-materials > * { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
-  .session-materials > *:last-child { margin-bottom: 0; }
-  .mat-icon { margin-right: 3px; font-size: 11px; }
-  .res-mat { font-size: 11px; color: var(--text-primary); background: var(--bg-hover, #f5f5f5); padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; }
-  a.res-mat { color: var(--text-primary); }
-  a.res-mat:hover { color: var(--accent); text-decoration: none; opacity: 0.85; }
-  .res-mat-plain { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
-  .res-link { font-size: 11px; padding: 2px 8px; border-radius: 3px; text-decoration: none; white-space: nowrap; transition: opacity 0.15s; }
-  .res-link:hover { opacity: 0.8; text-decoration: none; }
-  .res-video { background: rgba(220,38,38,0.1); color: #dc2626; }
-  .res-hw { background: rgba(16,185,129,0.1); color: #059669; }
-  .res-disc { background: rgba(168,85,247,0.1); color: #7c3aed; }
+  .session-materials { max-width: 360px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .res-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; padding: 2px 8px; border-radius: 3px;
+    text-decoration: none; white-space: nowrap;
+    background: var(--bg-hover, #f5f5f5); color: var(--text-primary);
+    transition: opacity 0.15s;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  }
+  .res-chip:hover { opacity: 0.85; text-decoration: none; }
+  .chip-icon { font-size: 11px; flex-shrink: 0; }
+  /* Per-kind tinting: video reads as primary action, others stay subtler.
+     We don't tint every kind — visual noise scales fast and chip text
+     already carries meaning. */
+  .res-chip-video { background: rgba(220,38,38,0.10); color: #dc2626; }
+  .res-chip-homework { background: rgba(16,185,129,0.10); color: #059669; }
+  .res-chip-discussion { background: rgba(168,85,247,0.10); color: #7c3aed; }
+  .res-chip-optional { opacity: 0.65; font-style: italic; }
   .session-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .session-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(95,155,101,0.08); color: var(--accent); text-decoration: none; }
   .session-tag:hover { background: rgba(95,155,101,0.18); text-decoration: none; }

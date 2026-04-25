@@ -847,18 +847,30 @@ export interface CoursePrereq {
 }
 
 export interface SessionResource {
-  type: string;  // "video" | "notes" | "hw" | "discussion"
+  type: string;  // legacy — kept around in case any caller still references it
   url: string;
   label: string;
 }
 
-export type MaterialKind = 'reading' | 'slides' | 'handout' | 'summary' | 'notes';
+export type AttachmentKind =
+  | 'video'
+  | 'slides'
+  | 'notes'
+  | 'handout'
+  | 'reading'
+  | 'code'
+  | 'homework'
+  | 'discussion'
+  | 'outline'
+  | 'summary'
+  | 'other';
 
-export interface Material {
-  kind?: MaterialKind | null;
+export interface Attachment {
+  kind: AttachmentKind;
   label: string;
-  url?: string | null;
-  optional?: boolean;
+  url: string;
+  /** Required reading vs. supplementary / further-reading. */
+  required: boolean;
 }
 
 export interface CourseSession {
@@ -867,8 +879,7 @@ export interface CourseSession {
   sort_order: number;
   topic?: string | null;
   date?: string | null;
-  materials: Material[];
-  resources: SessionResource[];
+  attachments: Attachment[];
   tags: CourseTag[];
   prereqs: CourseTag[];
 }

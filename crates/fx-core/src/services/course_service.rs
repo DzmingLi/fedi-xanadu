@@ -129,27 +129,39 @@ pub struct CoursePrereqRow {
     pub institution: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionResource {
-    pub r#type: String,
-    pub url: String,
-    pub label: String,
+/// Anything attached to a session — video, paper, slide deck, problem
+/// set. The previous schema split this into `materials` and `resources`
+/// arrays based on display preference; now it's one flat array and the
+/// frontend decides how to group / render based on `kind`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AttachmentKind {
+    Video,
+    Slides,
+    Notes,
+    Handout,
+    Reading,
+    Code,
+    Homework,
+    Discussion,
+    Outline,
+    Summary,
+    Other,
 }
 
-/// A single study/lecture material entry. `kind` is an optional hint used
-/// by the UI to pick an icon (reading, slides, handout, summary, notes).
-/// `optional` splits required reading from supplementary / further-reading
-/// items; the UI renders them in separate columns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Material {
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub kind: Option<String>,
+pub struct Attachment {
+    pub kind: AttachmentKind,
     pub label: String,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub url: Option<String>,
-    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
-    pub optional: bool,
+    pub url: String,
+    /// Required reading vs. supplementary / further-reading. The UI uses
+    /// this to dim or section off optional entries. Defaults to `true`
+    /// so callers that don't care get the sensible default.
+    #[serde(default = "default_required")]
+    pub required: bool,
 }
+
+fn default_required() -> bool { true }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct CourseSessionRow {
@@ -159,8 +171,7 @@ pub struct CourseSessionRow {
     pub topic: Option<String>,
     pub date: Option<String>,
     #[sqlx(default)]
-    pub materials: sqlx::types::Json<Vec<Material>>,
-    pub resources: sqlx::types::Json<Vec<SessionResource>>,
+    pub attachments: sqlx::types::Json<Vec<Attachment>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -288,7 +299,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str, viewer_did: Option<&str>
 
     // Fetch sessions with their tags and prereqs
     let session_rows = sqlx::query_as::<_, CourseSessionRow>(
-        "SELECT id, course_id, sort_order, topic, date, materials, resources \
+        "SELECT id, course_id, sort_order, topic, date, attachments \
          FROM course_sessions WHERE course_id = $1 ORDER BY sort_order",
     ).bind(id).fetch_all(pool).await?;
 
@@ -519,9 +530,7 @@ pub struct CreateSession {
     pub topic: Option<String>,
     pub date: Option<String>,
     #[serde(default)]
-    pub materials: Vec<Material>,
-    #[serde(default)]
-    pub resources: Vec<SessionResource>,
+    pub attachments: Vec<Attachment>,
     pub sort_order: Option<i32>,
 }
 
@@ -529,8 +538,7 @@ pub struct CreateSession {
 pub struct UpdateSession {
     pub topic: Option<String>,
     pub date: Option<String>,
-    pub materials: Option<Vec<Material>>,
-    pub resources: Option<Vec<SessionResource>>,
+    pub attachments: Option<Vec<Attachment>>,
     pub sort_order: Option<i32>,
 }
 
@@ -546,13 +554,12 @@ pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, in
     };
 
     sqlx::query(
-        "INSERT INTO course_sessions (id, course_id, sort_order, topic, date, materials, resources) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO course_sessions (id, course_id, sort_order, topic, date, attachments) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(session_id).bind(course_id).bind(sort_order)
     .bind(&input.topic).bind(&input.date)
-    .bind(sqlx::types::Json(&input.materials))
-    .bind(sqlx::types::Json(&input.resources))
+    .bind(sqlx::types::Json(&input.attachments))
     .execute(pool).await?;
 
     get_session(pool, session_id).await
@@ -560,7 +567,7 @@ pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, in
 
 pub async fn get_session(pool: &PgPool, session_id: &str) -> crate::Result<CourseSessionRow> {
     sqlx::query_as::<_, CourseSessionRow>(
-        "SELECT id, course_id, sort_order, topic, date, materials, resources \
+        "SELECT id, course_id, sort_order, topic, date, attachments \
          FROM course_sessions WHERE id = $1",
     )
     .bind(session_id).fetch_one(pool).await
@@ -572,13 +579,12 @@ pub async fn update_session(pool: &PgPool, session_id: &str, input: &UpdateSessi
 
     sqlx::query(
         "UPDATE course_sessions SET \
-         topic = $1, date = $2, materials = $3, resources = $4, sort_order = $5 \
-         WHERE id = $6",
+         topic = $1, date = $2, attachments = $3, sort_order = $4 \
+         WHERE id = $5",
     )
     .bind(input.topic.as_ref().or(cur.topic.as_ref()))
     .bind(input.date.as_ref().or(cur.date.as_ref()))
-    .bind(sqlx::types::Json(input.materials.as_ref().unwrap_or(&cur.materials.0)))
-    .bind(sqlx::types::Json(input.resources.as_ref().unwrap_or(&cur.resources.0)))
+    .bind(sqlx::types::Json(input.attachments.as_ref().unwrap_or(&cur.attachments.0)))
     .bind(input.sort_order.unwrap_or(cur.sort_order))
     .bind(session_id)
     .execute(pool).await?;

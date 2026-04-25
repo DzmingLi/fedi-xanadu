@@ -5,6 +5,30 @@ use clap::Subcommand;
 
 use crate::{Config, client};
 
+/// Parse a list of "kind:label:url" strings into Attachment-shaped JSON
+/// values. `required` flags every entry the same way; AddSession/Update
+/// build their full list by chaining one call per requirement bucket.
+/// Entries with the wrong arity are skipped silently — clap rejects
+/// truly malformed input, and a stray ":" in a URL still works because
+/// we splitn(3).
+fn parse_attachments(items: &[String], required: bool) -> Vec<serde_json::Value> {
+    items
+        .iter()
+        .filter_map(|s| {
+            let parts: Vec<&str> = s.splitn(3, ':').collect();
+            if parts.len() != 3 || parts[2].is_empty() {
+                return None;
+            }
+            Some(serde_json::json!({
+                "kind": parts[0],
+                "label": parts[1],
+                "url": parts[2],
+                "required": required,
+            }))
+        })
+        .collect()
+}
+
 #[derive(Subcommand)]
 pub enum CourseCommand {
     /// List published courses
@@ -75,12 +99,15 @@ pub enum CourseCommand {
         /// Date
         #[arg(long)]
         date: Option<String>,
-        /// Materials as "kind:label:url" (e.g. "reading:§1 Intro:https://...", "handout:Handout:https://..."). kind ∈ {reading, slides, handout, summary, notes} or empty.
-        #[arg(long, value_delimiter = ',')]
-        material: Vec<String>,
-        /// Resources as "type:label:url" — video, hw, or discussion only
-        #[arg(long, value_delimiter = ',')]
-        resource: Vec<String>,
+        /// Attachment as "kind:label:url". kind ∈ {video, slides, notes,
+        /// handout, reading, code, homework, discussion, outline,
+        /// summary, other}. Repeatable; each one is a required item.
+        #[arg(long)]
+        attachment: Vec<String>,
+        /// Same shape as --attachment but marks the entry as supplementary
+        /// / further-reading rather than required.
+        #[arg(long)]
+        optional: Vec<String>,
         /// Sort order (auto-increments if omitted)
         #[arg(long)]
         order: Option<i32>,
@@ -103,12 +130,13 @@ pub enum CourseCommand {
         /// Topic
         #[arg(short, long)]
         topic: Option<String>,
-        /// Materials as "kind:label:url" (replaces all materials)
-        #[arg(long, value_delimiter = ',')]
-        material: Vec<String>,
-        /// Resources as "type:label:url" (replaces all resources) — video, hw, discussion only
-        #[arg(long, value_delimiter = ',')]
-        resource: Vec<String>,
+        /// Required attachments as "kind:label:url" (replaces the
+        /// session's required-attachment list).
+        #[arg(long)]
+        attachment: Vec<String>,
+        /// Supplementary attachments — same shape, marked optional.
+        #[arg(long)]
+        optional: Vec<String>,
     },
     /// Delete a session
     #[command(name = "rm-session")]
@@ -344,33 +372,16 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
             println!("Updated course {id}");
         }
 
-        CourseCommand::AddSession { course_id, topic, date, material, resource, order, tags, prereqs } => {
-            let materials: Vec<serde_json::Value> = material.iter().filter_map(|s| {
-                let parts: Vec<&str> = s.splitn(3, ':').collect();
-                match parts.len() {
-                    3 => {
-                        let kind = if parts[0].is_empty() { serde_json::Value::Null } else { serde_json::Value::String(parts[0].to_string()) };
-                        Some(serde_json::json!({"kind": kind, "label": parts[1], "url": parts[2]}))
-                    }
-                    2 => {
-                        let kind = if parts[0].is_empty() { serde_json::Value::Null } else { serde_json::Value::String(parts[0].to_string()) };
-                        Some(serde_json::json!({"kind": kind, "label": parts[1]}))
-                    }
-                    _ => None,
-                }
-            }).collect();
-            let resources: Vec<serde_json::Value> = resource.iter().filter_map(|s| {
-                let parts: Vec<&str> = s.splitn(3, ':').collect();
-                if parts.len() == 3 {
-                    Some(serde_json::json!({"type": parts[0], "label": parts[1], "url": parts[2]}))
-                } else { None }
-            }).collect();
+        CourseCommand::AddSession { course_id, topic, date, attachment, optional, order, tags, prereqs } => {
+            let attachments = parse_attachments(&attachment, true)
+                .into_iter()
+                .chain(parse_attachments(&optional, false))
+                .collect::<Vec<_>>();
 
             let body = serde_json::json!({
                 "topic": topic,
                 "date": date,
-                "materials": materials,
-                "resources": resources,
+                "attachments": attachments,
                 "sort_order": order,
             });
 
@@ -415,35 +426,21 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
             }
         }
 
-        CourseCommand::UpdateSession { course_id, session_id, topic, material, resource } => {
+        CourseCommand::UpdateSession { course_id, session_id, topic, attachment, optional } => {
             let mut body = serde_json::json!({
                 "topic": topic,
             });
-            if !material.is_empty() {
-                let materials: Vec<serde_json::Value> = material.iter().filter_map(|s| {
-                    let parts: Vec<&str> = s.splitn(3, ':').collect();
-                    match parts.len() {
-                        3 => {
-                            let kind = if parts[0].is_empty() { serde_json::Value::Null } else { serde_json::Value::String(parts[0].to_string()) };
-                            Some(serde_json::json!({"kind": kind, "label": parts[1], "url": parts[2]}))
-                        }
-                        2 => {
-                            let kind = if parts[0].is_empty() { serde_json::Value::Null } else { serde_json::Value::String(parts[0].to_string()) };
-                            Some(serde_json::json!({"kind": kind, "label": parts[1]}))
-                        }
-                        _ => None,
-                    }
-                }).collect();
-                body["materials"] = serde_json::json!(materials);
-            }
-            if !resource.is_empty() {
-                let resources: Vec<serde_json::Value> = resource.iter().filter_map(|s| {
-                    let parts: Vec<&str> = s.splitn(3, ':').collect();
-                    if parts.len() == 3 {
-                        Some(serde_json::json!({"type": parts[0], "label": parts[1], "url": parts[2]}))
-                    } else { None }
-                }).collect();
-                body["resources"] = serde_json::json!(resources);
+            // The new schema treats attachments as an atomic list — passing
+            // either flag means "replace the whole list", so we only set
+            // the field on the body when the user actually provided one.
+            // Mixing required + supplementary in a single replace call:
+            // pass both flags; the server stores both in one Vec.
+            if !attachment.is_empty() || !optional.is_empty() {
+                let attachments = parse_attachments(&attachment, true)
+                    .into_iter()
+                    .chain(parse_attachments(&optional, false))
+                    .collect::<Vec<_>>();
+                body["attachments"] = serde_json::json!(attachments);
             }
 
             client()
@@ -533,15 +530,22 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
             for (i, s) in sessions.iter().enumerate() {
                 let sort_order = s.get("order").and_then(|v| v.as_integer()).unwrap_or((i + 1) as i64);
 
-                // Build resources array from TOML
-                let mut resources = Vec::new();
-                if let Some(res_arr) = s.get("resources").and_then(|v| v.as_array()) {
-                    // New format: [[session.resources]]
-                    for r in res_arr {
-                        resources.push(serde_json::json!({
-                            "type": r.get("type").and_then(|v| v.as_str()).unwrap_or("notes"),
-                            "url": r.get("url").and_then(|v| v.as_str()).unwrap_or(""),
-                            "label": r.get("label").and_then(|v| v.as_str()).unwrap_or(""),
+                // [[session.attachments]] entries: kind, label, url, required (default true)
+                let mut attachments = Vec::new();
+                if let Some(arr) = s.get("attachments").and_then(|v| v.as_array()) {
+                    for a in arr {
+                        let kind = a.get("kind").and_then(|v| v.as_str()).unwrap_or("other");
+                        let label = a.get("label").and_then(|v| v.as_str()).unwrap_or("");
+                        let url = a.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                        if url.is_empty() {
+                            continue;
+                        }
+                        let required = a.get("required").and_then(|v| v.as_bool()).unwrap_or(true);
+                        attachments.push(serde_json::json!({
+                            "kind": kind,
+                            "label": label,
+                            "url": url,
+                            "required": required,
                         }));
                     }
                 }
@@ -549,8 +553,7 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
                 let body = serde_json::json!({
                     "topic": s.get("topic").and_then(|v| v.as_str()),
                     "date": s.get("date").and_then(|v| v.as_str()),
-                    "readings": s.get("readings").and_then(|v| v.as_str()),
-                    "resources": resources,
+                    "attachments": attachments,
                     "sort_order": sort_order,
                 });
 
@@ -560,8 +563,7 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
                     // Check if anything changed
                     let changed = body["topic"] != ex["topic"]
                         || body["date"] != ex["date"]
-                        || body["readings"] != ex["readings"]
-                        || body["resources"] != ex["resources"];
+                        || body["attachments"] != ex["attachments"];
 
                     if !changed {
                         skipped += 1;
