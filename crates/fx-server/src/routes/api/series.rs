@@ -444,8 +444,15 @@ async fn compile_series_inner(
 
     let mut total_headings = 0usize;
     let mut order_index: i32 = 0;
+    // Heading nesting is recovered from the level monotonicity of the
+    // extracted h*'s via a parent stack: each new heading's parent is the
+    // most-recent ancestor whose level is strictly smaller. Walking
+    // chapters in order and resetting the stack per chapter keeps section
+    // hierarchy local to each chapter (no cross-chapter parents).
+    let mut stack: Vec<(i32, i32)> = Vec::new(); // (level, db_id)
 
     for ch in &chapters {
+        stack.clear();
         let source_file = series_root.join(&ch.file_path);
         let Ok(src) = tokio::fs::read_to_string(&source_file).await else {
             continue;
@@ -475,23 +482,33 @@ async fn compile_series_inner(
         let anchor_scope = ch.source_path.replace('/', ":");
         let headings = fx_renderer::heading_extract::extract_headings(&html);
         for h in headings {
+            let level = h.level as i32;
+            // Pop the stack until the top has strictly-smaller level —
+            // that's this heading's nearest ancestor.
+            while stack.last().is_some_and(|(l, _)| *l >= level) {
+                stack.pop();
+            }
+            let parent_id = stack.last().map(|(_, id)| *id);
             // Prefix the chapter scope onto each anchor so two chapters
             // with the same heading text (e.g. "Introduction") don't
             // collide on the (series_id, anchor) UNIQUE constraint.
             let scoped_anchor = format!("{anchor_scope}/{}", h.anchor);
-            sqlx::query(
+            let id: i32 = sqlx::query_scalar(
                 "INSERT INTO series_headings \
-                    (series_id, level, title, anchor, repo_uri, source_path, order_index) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    (series_id, level, title, anchor, repo_uri, source_path, parent_heading_id, order_index) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+                 RETURNING id",
             )
             .bind(series_id)
-            .bind(h.level as i32)
+            .bind(level)
             .bind(&h.title)
             .bind(&scoped_anchor)
             .bind(&series_repo_uri)
             .bind(&ch.source_path)
+            .bind(parent_id)
             .bind(order_index)
-            .execute(&state.pool).await?;
+            .fetch_one(&state.pool).await?;
+            stack.push((level, id));
             order_index += 1;
             total_headings += 1;
         }
