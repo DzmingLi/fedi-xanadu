@@ -438,6 +438,7 @@ fn admin_routes() -> Router<AppState> {
     Router::new()
         .route("/admin/platform-users", get(admin::list_platform_users).post(admin::create_platform_user))
         .route("/admin/reindex/probe", post(admin::admin_reindex_probe))
+        .route("/admin/series/{id}/compile", post(series::admin_compile_series))
         .route("/admin/articles", post(admin::admin_create_article))
         .route("/admin/articles/update", put(admin::admin_update_article))
         .route("/admin/articles/delete", delete(admin::admin_delete_article))

@@ -406,11 +406,28 @@ pub async fn compile_series(
 ) -> ApiResult<Json<CompileResult>> {
     let owner = series_service::get_series_owner(&state.pool, &series_id).await?;
     require_owner(Some(&owner), &user.did)?;
+    compile_series_inner(&state, &series_id).await.map(Json)
+}
 
+/// Admin variant: same compile, no owner check. Used to backfill heading
+/// data for series whose owner accounts are inactive (most legacy series
+/// authored under `did:local:*` shells).
+pub async fn admin_compile_series(
+    State(state): State<AppState>,
+    _admin: crate::auth::AdminAuth,
+    Path(series_id): Path<String>,
+) -> ApiResult<Json<CompileResult>> {
+    compile_series_inner(&state, &series_id).await.map(Json)
+}
+
+async fn compile_series_inner(
+    state: &AppState,
+    series_id: &str,
+) -> ApiResult<CompileResult> {
     let Some((series_repo_uri, chapters)) =
-        series_service::get_series_chapters_for_render(&state.pool, &series_id).await?
+        series_service::get_series_chapters_for_render(&state.pool, series_id).await?
     else {
-        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: series_id }));
+        return Err(AppError(fx_core::Error::NotFound { entity: "series", id: series_id.to_string() }));
     };
 
     if chapters.is_empty() {
@@ -423,7 +440,7 @@ pub async fn compile_series(
     let series_root = state.blob_cache_path.join(&series_node_id);
 
     sqlx::query("DELETE FROM series_headings WHERE series_id = $1")
-        .bind(&series_id).execute(&state.pool).await?;
+        .bind(series_id).execute(&state.pool).await?;
 
     let mut total_headings = 0usize;
     let mut order_index: i32 = 0;
@@ -458,7 +475,7 @@ pub async fn compile_series(
                     (series_id, level, title, anchor, repo_uri, source_path, order_index) \
                  VALUES ($1, $2, $3, $4, $5, $6, $7)",
             )
-            .bind(&series_id)
+            .bind(series_id)
             .bind(h.level as i32)
             .bind(&h.title)
             .bind(&h.anchor)
@@ -471,11 +488,11 @@ pub async fn compile_series(
         }
     }
 
-    Ok(Json(CompileResult {
+    Ok(CompileResult {
         articles_created: 0,
         articles_updated: chapters.len(),
         total_headings,
-    }))
+    })
 }
 
 // ---- Get headings (TOC) ----
