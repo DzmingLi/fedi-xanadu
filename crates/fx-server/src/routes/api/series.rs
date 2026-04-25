@@ -489,8 +489,13 @@ pub async fn get_headings(
     State(state): State<AppState>,
     Path(series_id): Path<String>,
 ) -> ApiResult<Json<Vec<series_service::SeriesHeadingRow>>> {
+    // article_uri column was dropped in the rewrite migration; synthesise it
+    // from the (repo_uri, source_path) composite when both are present.
     let rows = sqlx::query_as::<_, series_service::SeriesHeadingRow>(
-        "SELECT id, series_id, level, title, anchor, article_uri, parent_heading_id, order_index \
+        "SELECT id, series_id, level, title, anchor, \
+                CASE WHEN repo_uri IS NULL OR source_path IS NULL THEN NULL \
+                     ELSE article_uri(repo_uri, source_path) END AS article_uri, \
+                parent_heading_id, order_index \
          FROM series_headings WHERE series_id = $1 ORDER BY order_index",
     )
     .bind(&series_id)
