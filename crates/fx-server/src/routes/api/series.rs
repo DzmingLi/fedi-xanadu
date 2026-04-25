@@ -520,43 +520,40 @@ async fn compile_series_inner(
         }
         let _ = tokio::fs::write(&cache_file, &html).await;
 
-        // Globally-unique-within-series anchor prefix. anchor_stem alone
-        // collides when several chapters share a stem (e.g. every chapter
-        // is `chapterN/index.md`). source_path is unique per chapter by
-        // construction, so use it for namespacing the heading anchors.
-        let anchor_scope = ch.source_path.replace('/', ":");
-        let headings = fx_renderer::heading_extract::extract_headings(&html);
-        for h in headings {
-            let level = h.level as i32;
-            // Pop the stack until the top has strictly-smaller level —
-            // that's this heading's nearest ancestor.
-            while stack.last().is_some_and(|(l, _)| *l >= level) {
-                stack.pop();
-            }
-            let parent_id = stack.last().map(|(_, id)| *id);
-            // Prefix the chapter scope onto each anchor so two chapters
-            // with the same heading text (e.g. "Introduction") don't
-            // collide on the (series_id, anchor) UNIQUE constraint.
-            let scoped_anchor = format!("{anchor_scope}/{}", h.anchor);
-            let id: i32 = sqlx::query_scalar(
-                "INSERT INTO series_headings \
-                    (series_id, level, title, anchor, repo_uri, source_path, parent_heading_id, order_index) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
-                 RETURNING id",
-            )
-            .bind(series_id)
-            .bind(level)
-            .bind(&h.title)
-            .bind(&scoped_anchor)
-            .bind(&series_repo_uri)
-            .bind(&ch.source_path)
-            .bind(parent_id)
-            .bind(order_index)
-            .fetch_one(&state.pool).await?;
-            stack.push((level, id));
-            order_index += 1;
-            total_headings += 1;
-        }
+        // The series TOC carries one row per chapter, parented to the
+        // chapter's group (when meta.yaml declared one). The chapter's
+        // article title is what users click in the sidebar; sub-section
+        // headings inside the rendered HTML belong to the article's own
+        // page-level TOC, not the series's TOC.
+        let chapter_level = if group_id.is_some() { 2 } else { 1 };
+        let chapter_anchor = ch.source_path.replace('/', ":");
+        let chapter_title = lookup_chapter_title(&state.pool, &series_repo_uri, &ch.source_path)
+            .await
+            .unwrap_or_else(|| {
+                std::path::Path::new(&ch.source_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(String::from)
+                    .unwrap_or_else(|| ch.source_path.clone())
+            });
+        let parent_id = stack.last().map(|(_, id)| *id);
+        let _: i32 = sqlx::query_scalar(
+            "INSERT INTO series_headings \
+                (series_id, level, title, anchor, repo_uri, source_path, parent_heading_id, order_index) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+             RETURNING id",
+        )
+        .bind(series_id)
+        .bind(chapter_level)
+        .bind(&chapter_title)
+        .bind(&chapter_anchor)
+        .bind(&series_repo_uri)
+        .bind(&ch.source_path)
+        .bind(parent_id)
+        .bind(order_index)
+        .fetch_one(&state.pool).await?;
+        order_index += 1;
+        total_headings += 1;
     }
 
     Ok(CompileResult {
@@ -564,6 +561,27 @@ async fn compile_series_inner(
         articles_updated: chapters.len(),
         total_headings,
     })
+}
+
+/// Pick a human-readable title for a chapter row. Prefers the source-
+/// language localization (file_path = source_path); falls back to whichever
+/// localization exists.
+async fn lookup_chapter_title(
+    pool: &sqlx::PgPool,
+    repo_uri: &str,
+    source_path: &str,
+) -> Option<String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT title FROM article_localizations \
+         WHERE repo_uri = $1 AND source_path = $2 \
+         ORDER BY (file_path = source_path) DESC, lang LIMIT 1",
+    )
+    .bind(repo_uri)
+    .bind(source_path)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
 }
 
 // ---- Get headings (TOC) ----
