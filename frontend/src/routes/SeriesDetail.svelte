@@ -1,16 +1,47 @@
 <script lang="ts">
   import { getSeries, getSeriesHeadings, getVotesBatch, castVote, addBookmark, removeBookmark, listBookmarks, getMyVote, uploadSeriesCover, removeSeriesCover } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
-  import { t } from '../lib/i18n/index.svelte';
+  import { t, LANG_NAMES } from '../lib/i18n/index.svelte';
   import CommentThread from '../lib/components/CommentThread.svelte';
   import type { SeriesDetail, SeriesArticle, SeriesArticlePrereq, SeriesHeading, VoteSummary, BookmarkWithTitle } from '../lib/types';
 
-  let { id } = $props<{ id: string }>();
+  let { id, lang: langProp } = $props<{ id: string; lang?: string }>();
 
   let detail = $state<SeriesDetail | null>(null);
   let headings = $state<SeriesHeading[]>([]);
   let loading = $state(true);
   let error = $state('');
+
+  // Active lang for this view: explicit URL param wins; otherwise the
+  // series's source lang once it loads. Empty string sentinels mean
+  // "not yet decided / fall back to source".
+  let activeLang = $state<string>(langProp || '');
+
+// Build the chapter URI used to navigate to a chapter article. The
+  // synthetic `article_uri` is keyed by `(repo_uri, source_path)` and stays
+  // lang-agnostic for state lookups (votes, bookmarks); the chapter URI is
+  // what the article page parses to pick the right localization.
+  function chapterReadUri(article: SeriesArticle): string {
+    const path = encodeURIComponent(article.source_path);
+    const langPart = activeLang && detail && activeLang !== detail.series.lang
+      ? `?lang=${encodeURIComponent(activeLang)}`
+      : '';
+    return `nightboat-chapter://${id}/${path}${langPart}`;
+  }
+
+  async function switchLang(next: string) {
+    if (next === activeLang) return;
+    activeLang = next;
+    // Update URL so a refresh keeps the choice.
+    const url = new URL(window.location.href);
+    if (next && detail && next !== detail.series.lang) {
+      url.searchParams.set('lang', next);
+    } else {
+      url.searchParams.delete('lang');
+    }
+    history.replaceState(null, '', url.toString());
+    await loadSeries();
+  }
 
   // TOC layout: top-level headings split into two kinds.
   //  - 'group'   — meta.yaml chapter group (article_uri=null), wraps its child
@@ -63,9 +94,13 @@
     try {
       // Fire bookmarks in parallel with series/headings (doesn't depend on them)
       const bksPromise = getAuth() ? listBookmarks().catch(() => null) : Promise.resolve(null);
-      const [d, h] = await Promise.all([getSeries(id), getSeriesHeadings(id)]);
+      const langArg = activeLang || undefined;
+      const [d, h] = await Promise.all([getSeries(id, langArg), getSeriesHeadings(id, langArg)]);
       detail = d;
       headings = h;
+      // First load: if no lang was explicitly picked, default to the
+      // series's source language so the toggle reflects current state.
+      if (!activeLang) activeLang = d.series.lang;
       document.title = `${d.series.title} — NightBoat`;
 
       // Collect all article URIs for vote fetching
@@ -168,12 +203,12 @@
           {#each prereqMap.get(article.article_uri)! as pUri}
             {@const pArticle = articleByUri.get(pUri)}
             {#if pArticle}
-              <a href="/article?uri={encodeURIComponent(pUri)}&series_id={encodeURIComponent(id)}" class="prereq-link">{pArticle.title}</a>
+              <a href="/article?uri={encodeURIComponent(chapterReadUri(pArticle))}&series_id={encodeURIComponent(id)}" class="prereq-link">{pArticle.title}</a>
             {/if}
           {/each}
         </div>
       {/if}
-      <a href="/article?uri={encodeURIComponent(article.article_uri)}&series_id={encodeURIComponent(id)}" class="item-title">
+      <a href="/article?uri={encodeURIComponent(chapterReadUri(article))}&series_id={encodeURIComponent(id)}" class="item-title">
         {article.title}
       </a>
       {#if article.summary}
@@ -242,6 +277,22 @@
         <span class="lang-current">{detail.series.lang}</span>
         {#each detail.translations as tr (tr.id)}
           <a href="/series?id={encodeURIComponent(tr.id)}" class="lang-link">{tr.lang}</a>
+        {/each}
+      </div>
+    {/if}
+    {#if detail.available_langs && detail.available_langs.length > 1}
+      <!-- In-bundle locales: chapters carry per-locale titles in
+           article_localizations. Toggling reloads the page in the picked
+           locale and re-issues chapter URIs with `?lang=X`. -->
+      <div class="series-translations">
+        {#each detail.available_langs as lang (lang)}
+          {#if lang === activeLang}
+            <span class="lang-current">{LANG_NAMES[lang] || lang}</span>
+          {:else}
+            <button type="button" class="lang-link" onclick={() => switchLang(lang)}>
+              {LANG_NAMES[lang] || lang}
+            </button>
+          {/if}
         {/each}
       </div>
     {/if}
@@ -396,6 +447,11 @@
     color: var(--accent);
     text-decoration: none;
     text-transform: uppercase;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
   }
   .lang-link:hover {
     text-decoration: underline;

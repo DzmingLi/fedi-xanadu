@@ -224,7 +224,7 @@
       {/await}
     {:else if route.page === 'series'}
       {#await lazySeriesDetail() then mod}
-        <mod.default id={route.params.id || ''} />
+        <mod.default id={route.params.id || ''} lang={route.params.lang || ''} />
       {/await}
     {:else if route.page === 'new-series'}
       {#await lazyNewSeries() then mod}

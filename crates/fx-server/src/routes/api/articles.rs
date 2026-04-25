@@ -475,44 +475,55 @@ fn uri_did(article_uri: &str) -> Option<&str> {
 /// trip cleanly through code that splits on `/`.
 pub(super) const CHAPTER_URI_SCHEME: &str = "nightboat-chapter://";
 
-pub(super) fn build_chapter_uri(series_id: &str, source_path: &str) -> String {
-    format!("{CHAPTER_URI_SCHEME}{series_id}/{}", urlencoding::encode(source_path))
-}
-
-/// Parse a `nightboat-chapter://{series_id}/{source_path}` URI. Returns
-/// `None` when the URI is not a chapter URI.
-pub(super) fn parse_chapter_uri(uri: &str) -> Option<(String, String)> {
-    let rest = uri.strip_prefix(CHAPTER_URI_SCHEME)?;
-    let (series_id, encoded_path) = rest.split_once('/')?;
-    let source_path = urlencoding::decode(encoded_path).ok()?.into_owned();
-    Some((series_id.to_string(), source_path))
-}
+/// Re-export the canonical parser/builder from `series_service` so callers in
+/// this module use a single implementation for chapter URIs.
+pub(super) use fx_core::services::series_service::{build_chapter_uri, parse_chapter_uri};
 
 /// Resolve a chapter's on-disk location — source file under the SERIES's
 /// shared blob_cache dir, not a per-chapter dir. Separate path from the
 /// standalone blob resolver because chapters don't have a per-chapter
 /// manifest/at_uri to look up.
+///
+/// `lang` selects which `article_localizations` row drives the source
+/// `file_path` and the cache key:
+/// - `None`     → source language (file_path = source_path), cache lives
+///                under `cache/{anchor}.html` so existing renders stay valid.
+/// - `Some(l)`  → that locale's `file_path` (e.g. `i18n/zh/...`), with cache
+///                segregated under `cache/{lang}/{anchor}.html`.
 async fn resolve_chapter_location(
     state: &AppState,
     series_id: &str,
     source_path: &str,
+    lang: Option<&str>,
 ) -> Option<ArticleLocation> {
-    // Look up the chapter row; also gives us the series repo_uri.
-    let row: Option<(String, Option<String>)> = sqlx::query_as(
-        "SELECT sa.repo_uri, sa.heading_anchor FROM series_articles sa \
+    // Pull the series repo, the chapter's heading_anchor, and the file_path
+    // for the requested localization in one round-trip. The CASE picks the
+    // source-lang row (file_path = source_path) when lang is unspecified,
+    // and the lang-specific row otherwise.
+    let row: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT sa.repo_uri, sa.heading_anchor, l.file_path \
+         FROM series_articles sa \
+         LEFT JOIN article_localizations l \
+             ON l.repo_uri = sa.repo_uri AND l.source_path = sa.source_path \
+            AND CASE WHEN $3::text IS NULL \
+                     THEN l.file_path = sa.source_path \
+                     ELSE l.lang = $3 END \
          WHERE sa.series_id = $1 AND sa.source_path = $2",
     )
     .bind(series_id)
     .bind(source_path)
+    .bind(lang)
     .fetch_optional(&state.pool)
     .await
     .ok()
     .flatten();
-    let (series_repo_uri, anchor) = row?;
+    let (series_repo_uri, anchor, file_path) = row?;
 
     let node_id = uri_to_node_id(&series_repo_uri);
     let repo_path = state.blob_cache_path.join(&node_id);
-    let content_path = repo_path.join(source_path);
+    // Fall back to source_path so a missing localization row still resolves
+    // to *something* readable (avoids a 500 if data is mid-migration).
+    let content_path = repo_path.join(file_path.as_deref().unwrap_or(source_path));
     let anchor_stem = anchor
         .clone()
         .or_else(|| std::path::Path::new(source_path)
@@ -520,7 +531,10 @@ async fn resolve_chapter_location(
             .and_then(|s| s.to_str())
             .map(String::from))
         .unwrap_or_else(|| "chapter".to_string());
-    let cache_path = repo_path.join("cache").join(format!("{anchor_stem}.html"));
+    let cache_path = match lang {
+        Some(l) => repo_path.join("cache").join(l).join(format!("{anchor_stem}.html")),
+        None => repo_path.join("cache").join(format!("{anchor_stem}.html")),
+    };
     Some(ArticleLocation {
         node_id,
         repo_path,
@@ -542,8 +556,8 @@ pub(super) async fn resolve_location(
     article_uri: &str,
     format: &str,
 ) -> Option<ArticleLocation> {
-    if let Some((series_id, source_path)) = parse_chapter_uri(article_uri) {
-        return resolve_chapter_location(state, &series_id, &source_path).await;
+    if let Some(c) = parse_chapter_uri(article_uri) {
+        return resolve_chapter_location(state, &c.series_id, &c.source_path, c.lang.as_deref()).await;
     }
 
     let src_ext = fx_renderer::format_extension(format);
@@ -2013,8 +2027,8 @@ pub async fn upload_image(
     // Chapter URIs route to the SERIES blob_cache (one bundle for the
     // whole series); standalone articles use their own per-article dir.
     let chapter = series_service::parse_chapter_uri(&uri);
-    let stage_path = if let Some((ref series_id, _)) = chapter {
-        let series_repo_uri = series_service::series_repo_uri(&state.pool, series_id).await?;
+    let stage_path = if let Some(ref c) = chapter {
+        let series_repo_uri = series_service::series_repo_uri(&state.pool, &c.series_id).await?;
         state.blob_cache_path.join(uri_to_node_id(&series_repo_uri))
     } else {
         state.blob_cache_path.join(uri_to_node_id(&uri))
@@ -2042,9 +2056,9 @@ pub async fn upload_image(
     // full publish.
     if let Some(blob_ref) = blob {
         match chapter {
-            Some((series_id, _)) => {
+            Some(c) => {
                 append_file_to_series_record(
-                    &state, &user.token, &user.did, &series_id, &safe_name, &blob_ref, mime,
+                    &state, &user.token, &user.did, &c.series_id, &safe_name, &blob_ref, mime,
                 ).await;
             }
             None => {

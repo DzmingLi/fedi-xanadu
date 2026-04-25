@@ -261,7 +261,10 @@ export const removeSeriesCover = (id: string) =>
 
 // Series
 export const listSeries = () => get<Series[]>('/series');
-export const getSeries = (id: string) => get<SeriesDetail>(`/series/${encodeURIComponent(id)}`);
+export const getSeries = (id: string, lang?: string) => {
+  const q = lang ? `?lang=${encodeURIComponent(lang)}` : '';
+  return get<SeriesDetail>(`/series/${encodeURIComponent(id)}${q}`);
+};
 export const createSeries = (data: {
   title: string;
   summary?: string;
@@ -283,7 +286,10 @@ export const removeSeriesPrereq = (series_id: string, article_uri: string, prere
 export const getSeriesContext = (uri: string) => get<SeriesContextItem[]>(`/series/context?uri=${encodeURIComponent(uri)}`);
 export const getAllSeriesArticles = () => get<{ series_id: string; article_uri: string }[]>('/series/all-articles');
 export const getSeriesTree = (id: string) => get<SeriesTreeNode>(`/series/${encodeURIComponent(id)}/tree`);
-export const getSeriesHeadings = (id: string) => get<SeriesHeading[]>(`/series/${encodeURIComponent(id)}/headings`);
+export const getSeriesHeadings = (id: string, lang?: string) => {
+  const q = lang ? `?lang=${encodeURIComponent(lang)}` : '';
+  return get<SeriesHeading[]>(`/series/${encodeURIComponent(id)}/headings${q}`);
+};
 export const reorderSeriesArticles = (series_id: string, article_uris: string[]) =>
   put<void>(`/series/${encodeURIComponent(series_id)}/articles/reorder`, { article_uris });
 export const compileSeries = (id: string) => post<{ articles_created: number; articles_updated: number; total_headings: number }>(`/series/${encodeURIComponent(id)}/compile`, {});

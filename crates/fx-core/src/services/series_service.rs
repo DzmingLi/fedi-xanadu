@@ -4,14 +4,77 @@ use sqlx::PgPool;
 
 use crate::error::Error;
 
-/// Parse a synthetic chapter URI —
-/// `nightboat-chapter://{series_id}/{source_path_urlencoded}` — used to
-/// address series chapters that carry no per-chapter at_uri. Returns
-/// `(series_id, source_path)` when the URI matches the scheme.
-pub fn parse_chapter_uri(uri: &str) -> Option<(String, String)> {
+/// A parsed `nightboat-chapter://` URI. Series chapters share one PDS record
+/// per series (no per-chapter at_uri), so we synthesise this URI to address
+/// individual chapters; when the bundle carries multiple locales, the
+/// `?lang=` segment selects which `article_localizations` row drives the
+/// rendered file/title. Absent `lang` means "source language" — the row
+/// where `file_path = source_path`.
+#[derive(Debug, Clone)]
+pub struct ChapterUri {
+    pub series_id: String,
+    pub source_path: String,
+    pub lang: Option<String>,
+}
+
+/// Parse `nightboat-chapter://{series_id}/{source_path}[?lang={lang}]`.
+/// Returns `None` when the URI doesn't match the scheme.
+pub fn parse_chapter_uri(uri: &str) -> Option<ChapterUri> {
     let rest = uri.strip_prefix("nightboat-chapter://")?;
-    let (series_id, encoded) = rest.split_once('/')?;
-    Some((series_id.to_string(), decode_uri_component(encoded)))
+    let (series_id, after) = rest.split_once('/')?;
+    let (encoded, lang) = match after.split_once('?') {
+        Some((path, query)) => (path, parse_lang_param(query)),
+        None => (after, None),
+    };
+    Some(ChapterUri {
+        series_id: series_id.to_string(),
+        source_path: decode_uri_component(encoded),
+        lang,
+    })
+}
+
+/// Build a chapter URI. `lang = None` produces the legacy form (resolves to
+/// source language); `Some(x)` appends `?lang=x` so callers can address a
+/// specific locale.
+pub fn build_chapter_uri(series_id: &str, source_path: &str, lang: Option<&str>) -> String {
+    let encoded = url_encode_path(source_path);
+    match lang {
+        Some(l) => format!("nightboat-chapter://{series_id}/{encoded}?lang={l}"),
+        None => format!("nightboat-chapter://{series_id}/{encoded}"),
+    }
+}
+
+/// Pull `lang=...` from a chapter URI's query string. The query carries only
+/// `lang`, so we don't need a full URL parser.
+fn parse_lang_param(query: &str) -> Option<String> {
+    for pair in query.split('&') {
+        if let Some(v) = pair.strip_prefix("lang=") {
+            if !v.is_empty() {
+                return Some(decode_uri_component(v));
+            }
+        }
+    }
+    None
+}
+
+/// Percent-encode characters that can't appear unescaped in the path
+/// segment of a chapter URI. Mirrors the subset of `urlencoding::encode`
+/// behaviour we need without taking a dep in fx-core.
+fn url_encode_path(s: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        let safe = b.is_ascii_alphanumeric()
+            || matches!(b, b'-' | b'_' | b'.' | b'~' | b'/');
+        if safe {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0x0f) as usize] as char);
+        }
+    }
+    out
 }
 
 /// Minimal percent-decode for the synthetic chapter URI path segment (the
@@ -95,7 +158,15 @@ pub struct SeriesListRow {
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SeriesArticleRow {
     pub series_id: String,
+    /// Synthetic article URI (`nightboat://article/{repo_uri}/{source_path}`)
+    /// — the stable identity used for vote/bookmark/comment lookups. Stays
+    /// lang-agnostic so per-article state is shared across locales.
     pub article_uri: String,
+    /// Source path within the series bundle. Surfaced separately so the
+    /// frontend can build lang-aware chapter URIs
+    /// (`nightboat-chapter://{series_id}/{source_path}?lang=…`) for
+    /// navigation without having to parse the synthetic article URI.
+    pub source_path: String,
     pub title: String,
     pub summary: String,
     pub lang: String,
@@ -117,7 +188,15 @@ pub struct SeriesDetailResponse {
     pub series: SeriesRow,
     pub articles: Vec<SeriesArticleRow>,
     pub prereqs: Vec<SeriesPrereqRow>,
+    /// Legacy: cross-series translation links. Empty in the new model where
+    /// per-chapter translations live in `article_localizations` and are
+    /// switched on via `available_langs` instead.
     pub translations: Vec<SeriesRow>,
+    /// Languages with at least one chapter localization, e.g. `["en", "zh"]`.
+    /// Sorted with the series's source language first so the frontend can
+    /// render a stable lang toggle. Single-locale series get a one-element
+    /// list (no toggle needed).
+    pub available_langs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -288,7 +367,11 @@ pub async fn list_series_by_creator(pool: &PgPool, did: &str) -> crate::Result<V
     Ok(rows)
 }
 
-pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesDetailResponse> {
+pub async fn get_series_detail(
+    pool: &PgPool,
+    id: &str,
+    lang: Option<&str>,
+) -> crate::Result<SeriesDetailResponse> {
     let series = sqlx::query_as::<_, SeriesRow>(
         "SELECT s.id, s.title, s.summary, s.summary_html, s.long_description, s.order_index, s.created_by, \
                 p.handle AS author_handle, p.display_name AS author_display_name, p.avatar_url AS author_avatar, \
@@ -303,9 +386,26 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
         id: id.to_string(),
     })?;
 
-    let articles = sqlx::query_as::<_, SeriesArticleRow>(
-        "SELECT sa.series_id, \
+    // The article list reflects the requested locale: when `lang` is set,
+    // pick that language's title/summary; otherwise pin to the source
+    // language (file_path = source_path). Either way the synthetic
+    // `article_uri(...)` is the same — the actual lang-specific fetch is
+    // dispatched by chapter URI on the article page.
+    let articles_sql = match lang {
+        Some(_) => "SELECT sa.series_id, \
                 article_uri(sa.repo_uri, sa.source_path) AS article_uri, \
+                sa.source_path, \
+                l.title, COALESCE(l.summary, '') AS summary, l.lang, \
+                sa.order_index, sa.heading_title, sa.heading_anchor \
+         FROM series_articles sa \
+         JOIN articles a ON a.repo_uri = sa.repo_uri AND a.source_path = sa.source_path \
+         JOIN article_localizations l \
+             ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+            AND l.lang = $2 \
+         WHERE sa.series_id = $1 ORDER BY sa.order_index",
+        None => "SELECT sa.series_id, \
+                article_uri(sa.repo_uri, sa.source_path) AS article_uri, \
+                sa.source_path, \
                 l.title, COALESCE(l.summary, '') AS summary, l.lang, \
                 sa.order_index, sa.heading_title, sa.heading_anchor \
          FROM series_articles sa \
@@ -314,10 +414,14 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
              ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
             AND l.file_path = a.source_path \
          WHERE sa.series_id = $1 ORDER BY sa.order_index",
-    )
-    .bind(id)
-    .fetch_all(pool)
-    .await?;
+    };
+    let articles = {
+        let q = sqlx::query_as::<_, SeriesArticleRow>(articles_sql).bind(id);
+        match lang {
+            Some(l) => q.bind(l).fetch_all(pool).await?,
+            None => q.fetch_all(pool).await?,
+        }
+    };
 
     let prereqs = sqlx::query_as::<_, SeriesPrereqRow>(
         "SELECT article_uri(repo_uri, source_path) AS article_uri, \
@@ -328,6 +432,24 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
     .fetch_all(pool)
     .await?;
 
+    // List languages with at least one chapter localization, with the
+    // series's source language first so the frontend renders a stable
+    // toggle order.
+    let mut available_langs: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT l.lang \
+         FROM article_localizations l \
+         JOIN series_articles sa \
+           ON sa.repo_uri = l.repo_uri AND sa.source_path = l.source_path \
+         WHERE sa.series_id = $1",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?;
+    available_langs.sort_by(|a, b| {
+        let prio = |x: &str| if x == series.lang { 0 } else { 1 };
+        prio(a).cmp(&prio(b)).then_with(|| a.cmp(b))
+    });
+
     let translations = get_series_translations(pool, id).await?;
 
     Ok(SeriesDetailResponse {
@@ -335,6 +457,7 @@ pub async fn get_series_detail(pool: &PgPool, id: &str) -> crate::Result<SeriesD
         articles,
         prereqs,
         translations,
+        available_langs,
     })
 }
 
@@ -569,9 +692,9 @@ pub async fn series_repo_uri(pool: &PgPool, series_id: &str) -> crate::Result<St
 /// identifier for an article in the post-rewrite schema. Returns `None`
 /// only if `uri` doesn't resolve to any known article.
 pub async fn resolve_to_repo_path(pool: &PgPool, uri: &str) -> crate::Result<Option<(String, String)>> {
-    if let Some((series_id, source_path)) = parse_chapter_uri(uri) {
-        let repo_uri = series_repo_uri(pool, &series_id).await?;
-        return Ok(Some((repo_uri, source_path)));
+    if let Some(c) = parse_chapter_uri(uri) {
+        let repo_uri = series_repo_uri(pool, &c.series_id).await?;
+        return Ok(Some((repo_uri, c.source_path)));
     }
     let row: Option<(String, String)> = sqlx::query_as(
         "SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $1 LIMIT 1",
@@ -635,6 +758,7 @@ pub async fn get_series_tree(pool: &PgPool, root_id: &str) -> crate::Result<Seri
     let articles = sqlx::query_as::<_, SeriesArticleRow>(
         "SELECT sa.series_id, \
                 article_uri(sa.repo_uri, sa.source_path) AS article_uri, \
+                sa.source_path, \
                 l.title, COALESCE(l.summary, '') AS summary, l.lang, \
                 sa.order_index, sa.heading_title, sa.heading_anchor \
          FROM series_articles sa \

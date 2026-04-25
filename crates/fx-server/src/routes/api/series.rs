@@ -148,11 +148,17 @@ fn yaml_str(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', r"\\").replace('"', r#"\""#))
 }
 
+#[derive(serde::Deserialize)]
+pub struct SeriesDetailQuery {
+    pub lang: Option<String>,
+}
+
 pub async fn get_series_detail(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(q): Query<SeriesDetailQuery>,
 ) -> ApiResult<Json<series_service::SeriesDetailResponse>> {
-    let detail = series_service::get_series_detail(&state.pool, &id).await?;
+    let detail = series_service::get_series_detail(&state.pool, &id, q.lang.as_deref()).await?;
     Ok(Json(detail))
 }
 
@@ -586,13 +592,21 @@ async fn lookup_chapter_title(
 
 // ---- Get headings (TOC) ----
 
+#[derive(serde::Deserialize)]
+pub struct HeadingsQuery {
+    pub lang: Option<String>,
+}
+
 pub async fn get_headings(
     State(state): State<AppState>,
     Path(series_id): Path<String>,
+    Query(q): Query<HeadingsQuery>,
 ) -> ApiResult<Json<Vec<series_service::SeriesHeadingRow>>> {
     // The DB row carries (repo_uri, source_path); the wire format flattens
     // that into a `nightboat-chapter://` URI for leaf headings and `null` for
-    // group headings.
+    // group headings. When the caller picks a non-source language, also
+    // override the chapter title to that locale's translation so the TOC
+    // reads in the chosen language.
     #[derive(sqlx::FromRow)]
     struct Row {
         id: i32,
@@ -601,12 +615,13 @@ pub async fn get_headings(
         title: String,
         anchor: String,
         source_path: Option<String>,
+        repo_uri: Option<String>,
         parent_heading_id: Option<i32>,
         order_index: i32,
     }
 
     let raw = sqlx::query_as::<_, Row>(
-        "SELECT id, series_id, level, title, anchor, source_path, \
+        "SELECT id, series_id, level, title, anchor, source_path, repo_uri, \
                 parent_heading_id, order_index \
          FROM series_headings WHERE series_id = $1 ORDER BY order_index",
     )
@@ -614,16 +629,46 @@ pub async fn get_headings(
     .fetch_all(&state.pool)
     .await?;
 
-    let rows = raw.into_iter().map(|r| series_service::SeriesHeadingRow {
-        article_uri: r.source_path.as_deref()
-            .map(|sp| super::articles::build_chapter_uri(&r.series_id, sp)),
-        id: r.id,
-        series_id: r.series_id,
-        level: r.level,
-        title: r.title,
-        anchor: r.anchor,
-        parent_heading_id: r.parent_heading_id,
-        order_index: r.order_index,
+    // Pre-load the requested lang's titles in one query so we don't N+1.
+    let localized: std::collections::HashMap<(String, String), String> = if let Some(lang) = q.lang.as_deref() {
+        let pairs: Vec<(String, String, String)> = sqlx::query_as(
+            "SELECT l.repo_uri, l.source_path, l.title \
+             FROM article_localizations l \
+             JOIN series_articles sa \
+               ON sa.repo_uri = l.repo_uri AND sa.source_path = l.source_path \
+             WHERE sa.series_id = $1 AND l.lang = $2",
+        )
+        .bind(&series_id)
+        .bind(lang)
+        .fetch_all(&state.pool)
+        .await?;
+        pairs.into_iter().map(|(r, s, t)| ((r, s), t)).collect()
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    let lang_for_uri = q.lang.as_deref();
+    let rows = raw.into_iter().map(|r| {
+        let title = match (&r.repo_uri, &r.source_path) {
+            (Some(repo), Some(src)) => localized
+                .get(&(repo.clone(), src.clone()))
+                .cloned()
+                .unwrap_or(r.title),
+            _ => r.title,
+        };
+        let article_uri = r.source_path.as_deref().map(|sp| {
+            series_service::build_chapter_uri(&r.series_id, sp, lang_for_uri)
+        });
+        series_service::SeriesHeadingRow {
+            article_uri,
+            id: r.id,
+            series_id: r.series_id,
+            level: r.level,
+            title,
+            anchor: r.anchor,
+            parent_heading_id: r.parent_heading_id,
+            order_index: r.order_index,
+        }
     }).collect();
 
     Ok(Json(rows))

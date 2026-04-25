@@ -3,4 +3,17 @@ import type { SeriesArticleRow } from "./SeriesArticleRow";
 import type { SeriesPrereqRow } from "./SeriesPrereqRow";
 import type { SeriesRow } from "./SeriesRow";
 
-export type SeriesDetailResponse = { series: SeriesRow, articles: Array<SeriesArticleRow>, prereqs: Array<SeriesPrereqRow>, translations: Array<SeriesRow>, };
+export type SeriesDetailResponse = { series: SeriesRow, articles: Array<SeriesArticleRow>, prereqs: Array<SeriesPrereqRow>, 
+/**
+ * Legacy: cross-series translation links. Empty in the new model where
+ * per-chapter translations live in `article_localizations` and are
+ * switched on via `available_langs` instead.
+ */
+translations: Array<SeriesRow>, 
+/**
+ * Languages with at least one chapter localization, e.g. `["en", "zh"]`.
+ * Sorted with the series's source language first so the frontend can
+ * render a stable lang toggle. Single-locale series get a one-element
+ * list (no toggle needed).
+ */
+available_langs: Array<string>, };

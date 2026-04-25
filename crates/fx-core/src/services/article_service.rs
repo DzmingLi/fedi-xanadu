@@ -115,6 +115,13 @@ fn visible(mode: InstanceMode) -> String {
     format!("{ARTICLE_BASE} WHERE {}", visibility_filter(mode))
 }
 
+/// Variant that joins `article_localizations` without pinning to the source
+/// language. Callers (chapter URIs with explicit `?lang=`) supply the lang
+/// filter themselves so any locale can be rendered.
+fn visible_any_lang(mode: InstanceMode) -> String {
+    format!("{ARTICLE_BASE_ANY_LANG} WHERE {}", visibility_filter(mode))
+}
+
 // ---- Row types local to this service ----
 
 #[derive(Debug, Clone, serde::Serialize, sqlx::FromRow, ts_rs::TS)]
@@ -224,17 +231,32 @@ pub async fn list_answers(pool: &PgPool, mode: InstanceMode, question_uri: &str,
 }
 
 pub async fn get_article(pool: &PgPool, mode: InstanceMode, uri: &str) -> crate::Result<Article> {
-    if let Some((series_id, source_path)) = super::series_service::parse_chapter_uri(uri) {
-        let repo_uri = super::series_service::series_repo_uri(pool, &series_id).await?;
-        return sqlx::query_as::<_, Article>(&format!(
-            "{} AND a.repo_uri = $1 AND a.source_path = $2",
-            visible(mode)
-        ))
-        .bind(&repo_uri)
-        .bind(&source_path)
-        .fetch_optional(pool)
-        .await?
-        .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() });
+    if let Some(c) = super::series_service::parse_chapter_uri(uri) {
+        let repo_uri = super::series_service::series_repo_uri(pool, &c.series_id).await?;
+        // ARTICLE_BASE pins to source-language (file_path = source_path); when
+        // the URI carries a `?lang=` segment, swap that join for the lang-
+        // explicit one so titles/summaries/file_path come from the requested
+        // localization row.
+        let sql = match c.lang.as_deref() {
+            Some(_) => format!(
+                "{} AND a.repo_uri = $1 AND a.source_path = $2 AND l.lang = $3",
+                visible_any_lang(mode)
+            ),
+            None => format!(
+                "{} AND a.repo_uri = $1 AND a.source_path = $2",
+                visible(mode)
+            ),
+        };
+        let mut q = sqlx::query_as::<_, Article>(&sql)
+            .bind(&repo_uri)
+            .bind(&c.source_path);
+        if let Some(lang) = c.lang.as_deref() {
+            q = q.bind(lang);
+        }
+        return q
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() });
     }
     sqlx::query_as::<_, Article>(&format!("{} AND l.at_uri = $1", visible(mode)))
         .bind(uri)
@@ -385,6 +407,34 @@ pub async fn get_answers_by_did(pool: &PgPool, mode: InstanceMode, did: &str, li
 /// template pins the source-language localization; here we want EVERY other
 /// localization, each as its own display row.
 pub async fn get_translations(pool: &PgPool, mode: InstanceMode, uri: &str) -> crate::Result<Vec<Article>> {
+    // Series chapters have no per-locale at_uri; address them by composite
+    // key (repo_uri, source_path) and exclude the lang the caller is
+    // currently viewing. Each row's at_uri is rewritten to a chapter URI
+    // carrying `?lang=<other>` so the frontend can navigate to it directly.
+    if let Some(c) = super::series_service::parse_chapter_uri(uri) {
+        let repo_uri = super::series_service::series_repo_uri(pool, &c.series_id).await?;
+        let current_lang = chapter_current_lang(pool, &repo_uri, &c.source_path, c.lang.as_deref()).await?;
+        let sql = format!(
+            "{ARTICLE_BASE_ANY_LANG} WHERE a.repo_uri = $1 AND a.source_path = $2 \
+                AND l.lang <> $3 AND {} ORDER BY l.lang",
+            visibility_filter(mode)
+        );
+        let mut rows = sqlx::query_as::<_, Article>(&sql)
+            .bind(&repo_uri)
+            .bind(&c.source_path)
+            .bind(&current_lang)
+            .fetch_all(pool)
+            .await?;
+        for r in &mut rows {
+            r.at_uri = Some(super::series_service::build_chapter_uri(
+                &c.series_id,
+                &c.source_path,
+                Some(&r.lang),
+            ));
+        }
+        return Ok(rows);
+    }
+
     let sql = format!(
         "SELECT a.repo_uri, a.source_path, a.author_did, \
             p.handle AS author_handle, p.display_name AS author_display_name, \
@@ -425,6 +475,31 @@ pub async fn get_translations(pool: &PgPool, mode: InstanceMode, uri: &str) -> c
     Ok(rows)
 }
 
+/// Determine the lang the caller is currently viewing for a chapter URI.
+/// Explicit `?lang=` wins; otherwise we resolve the source language by
+/// finding the localization row whose `file_path` equals `source_path`
+/// (the bundle convention for "no i18n suffix" → original language).
+async fn chapter_current_lang(
+    pool: &PgPool,
+    repo_uri: &str,
+    source_path: &str,
+    explicit: Option<&str>,
+) -> crate::Result<String> {
+    if let Some(l) = explicit {
+        return Ok(l.to_string());
+    }
+    sqlx::query_scalar::<_, String>(
+        "SELECT lang FROM article_localizations \
+         WHERE repo_uri = $1 AND source_path = $2 AND file_path = source_path \
+         LIMIT 1",
+    )
+    .bind(repo_uri)
+    .bind(source_path)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| crate::Error::NotFound { entity: "chapter source localization", id: source_path.to_string() })
+}
+
 pub async fn get_articles_by_uris(pool: &PgPool, mode: InstanceMode, uris: &[String]) -> crate::Result<Vec<Article>> {
     if uris.is_empty() {
         return Ok(vec![]);
@@ -456,13 +531,13 @@ pub async fn get_article_any_visibility(pool: &PgPool, uri: &str) -> crate::Resu
 }
 
 pub async fn get_article_owner(pool: &PgPool, uri: &str) -> crate::Result<String> {
-    if let Some((series_id, source_path)) = super::series_service::parse_chapter_uri(uri) {
-        let repo_uri = super::series_service::series_repo_uri(pool, &series_id).await?;
+    if let Some(c) = super::series_service::parse_chapter_uri(uri) {
+        let repo_uri = super::series_service::series_repo_uri(pool, &c.series_id).await?;
         return sqlx::query_scalar::<_, String>(
             "SELECT author_did FROM articles WHERE repo_uri = $1 AND source_path = $2",
         )
             .bind(&repo_uri)
-            .bind(&source_path)
+            .bind(&c.source_path)
             .fetch_optional(pool)
             .await?
             .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() });
@@ -515,16 +590,16 @@ pub async fn resolve_subject_ref(
 }
 
 pub async fn get_content_format(pool: &PgPool, uri: &str) -> crate::Result<String> {
-    // `nightboat-chapter://{series_id}/{source_path_urlencoded}` — series
+    // `nightboat-chapter://{series_id}/{source_path}[?lang=]` — series
     // chapters have no at_uri. Resolve via composite key instead.
-    if let Some((series_id, source_path)) = super::series_service::parse_chapter_uri(uri) {
-        let repo_uri = super::series_service::series_repo_uri(pool, &series_id).await?;
+    if let Some(c) = super::series_service::parse_chapter_uri(uri) {
+        let repo_uri = super::series_service::series_repo_uri(pool, &c.series_id).await?;
         return sqlx::query_scalar::<_, String>(
             "SELECT content_format::text FROM article_localizations \
              WHERE repo_uri = $1 AND source_path = $2 LIMIT 1",
         )
         .bind(&repo_uri)
-        .bind(&source_path)
+        .bind(&c.source_path)
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| crate::Error::NotFound { entity: "article", id: uri.to_string() });
@@ -1527,14 +1602,14 @@ pub async fn auto_bookmark(pool: &PgPool, did: &str, uri: &str) -> crate::Result
 /// series chapter (which has no at_uri).
 pub async fn check_content_access(pool: &PgPool, uri: &str, viewer_did: Option<&str>) -> crate::Result<bool> {
     let row: Option<(String, String, String, bool)> =
-        if let Some((series_id, source_path)) = super::series_service::parse_chapter_uri(uri) {
-            let repo_uri = super::series_service::series_repo_uri(pool, &series_id).await?;
+        if let Some(c) = super::series_service::parse_chapter_uri(uri) {
+            let repo_uri = super::series_service::series_repo_uri(pool, &c.series_id).await?;
             sqlx::query_as(
                 "SELECT a.author_did, a.repo_uri, a.source_path, a.restricted \
                  FROM articles a \
                  WHERE a.repo_uri = $1 AND a.source_path = $2",
             )
-            .bind(&repo_uri).bind(&source_path)
+            .bind(&repo_uri).bind(&c.source_path)
             .fetch_optional(pool)
             .await?
         } else {
