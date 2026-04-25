@@ -396,10 +396,9 @@ pub struct CompileResult {
 /// typst cross-chapter `@refs` resolve), caches rendered HTML under
 /// `{series_cache}/cache/{anchor}.html`, and rebuilds `series_headings`.
 ///
-/// Chapters have no per-chapter at_uri under the unified-series model, so
-/// each heading row carries the chapter's *synthetic* `nightboat-chapter://`
-/// URI. Callers that need the series id + chapter source_path can parse that
-/// URI or read the accompanying `series_articles.source_path` row.
+/// Each heading row stores `(repo_uri, source_path)` pointing at the chapter
+/// source. The wire format derives a `nightboat-chapter://` URI from those
+/// columns server-side.
 pub async fn compile_series(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
@@ -452,23 +451,19 @@ pub async fn compile_series(
         }
         let _ = tokio::fs::write(&cache_file, &html).await;
 
-        // series_headings.article_uri carries a chapter pointer. Use the
-        // synthetic nightboat-chapter:// URI so downstream consumers can
-        // still dispatch by scheme.
-        let chapter_uri = super::articles::build_chapter_uri(&series_id, &ch.source_path);
-
         let headings = fx_renderer::heading_extract::extract_headings(&html);
         for h in headings {
             sqlx::query(
                 "INSERT INTO series_headings \
-                    (series_id, level, title, anchor, article_uri, order_index) \
-                 VALUES ($1, $2, $3, $4, $5, $6)",
+                    (series_id, level, title, anchor, repo_uri, source_path, order_index) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
             )
             .bind(&series_id)
             .bind(h.level as i32)
             .bind(&h.title)
             .bind(&h.anchor)
-            .bind(&chapter_uri)
+            .bind(&series_repo_uri)
+            .bind(&ch.source_path)
             .bind(order_index)
             .execute(&state.pool).await?;
             order_index += 1;
@@ -489,18 +484,41 @@ pub async fn get_headings(
     State(state): State<AppState>,
     Path(series_id): Path<String>,
 ) -> ApiResult<Json<Vec<series_service::SeriesHeadingRow>>> {
-    // article_uri column was dropped in the rewrite migration; synthesise it
-    // from the (repo_uri, source_path) composite when both are present.
-    let rows = sqlx::query_as::<_, series_service::SeriesHeadingRow>(
-        "SELECT id, series_id, level, title, anchor, \
-                CASE WHEN repo_uri IS NULL OR source_path IS NULL THEN NULL \
-                     ELSE article_uri(repo_uri, source_path) END AS article_uri, \
+    // The DB row carries (repo_uri, source_path); the wire format flattens
+    // that into a `nightboat-chapter://` URI for leaf headings and `null` for
+    // group headings.
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        id: i32,
+        series_id: String,
+        level: i32,
+        title: String,
+        anchor: String,
+        source_path: Option<String>,
+        parent_heading_id: Option<i32>,
+        order_index: i32,
+    }
+
+    let raw = sqlx::query_as::<_, Row>(
+        "SELECT id, series_id, level, title, anchor, source_path, \
                 parent_heading_id, order_index \
          FROM series_headings WHERE series_id = $1 ORDER BY order_index",
     )
     .bind(&series_id)
     .fetch_all(&state.pool)
     .await?;
+
+    let rows = raw.into_iter().map(|r| series_service::SeriesHeadingRow {
+        article_uri: r.source_path.as_deref()
+            .map(|sp| super::articles::build_chapter_uri(&r.series_id, sp)),
+        id: r.id,
+        series_id: r.series_id,
+        level: r.level,
+        title: r.title,
+        anchor: r.anchor,
+        parent_heading_id: r.parent_heading_id,
+        order_index: r.order_index,
+    }).collect();
 
     Ok(Json(rows))
 }

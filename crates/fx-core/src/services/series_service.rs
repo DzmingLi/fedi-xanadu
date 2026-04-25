@@ -152,7 +152,14 @@ pub struct SeriesNavItem {
     pub title: String,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
+/// One row of a series's table-of-contents tree.
+///
+/// `article_uri` is server-derived from the row's `(series_id, source_path)`
+/// composite — present only for leaf headings that point at a chapter file.
+/// Group headings (typst chapter wrappers, etc.) leave it `None`. The wire
+/// format is `nightboat-chapter://{series_id}/{urlencoded source_path}` so
+/// the frontend can route directly without re-synthesising URIs.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct SeriesHeadingRow {
     pub id: i32,
