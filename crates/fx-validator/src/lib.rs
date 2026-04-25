@@ -1,11 +1,11 @@
-//! Validator for NightBoat article repositories.
+//! Validator for NightBoat article bundles.
 //!
-//! Scans a pijul working copy, extracts `lang` / `translation_of` metadata from
-//! each MD and Typst source file, and groups files into logical articles
-//! (one source + N official translations).
-//!
-//! Shared between `pijul-knot` (pre-receive hook) and `fx-core` (indexer) so
-//! both enforce exactly the same rules.
+//! Walks a bundle's source tree, extracts `lang` / `translation_of`
+//! metadata from each MD and Typst source file, and groups files into
+//! logical articles (one source + N official translations). Also writes
+//! metadata back into source files via [`inject`] so a bundle published to
+//! PDS is self-describing — every DB-side field is recoverable by
+//! re-parsing the bundle.
 
 pub mod path;
 pub mod extract;
