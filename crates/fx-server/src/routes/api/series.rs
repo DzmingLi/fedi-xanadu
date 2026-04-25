@@ -470,6 +470,11 @@ async fn compile_series_inner(
 
         let headings = fx_renderer::heading_extract::extract_headings(&html);
         for h in headings {
+            // Prefix chapter stem onto each anchor so two chapters with the
+            // same heading text (e.g. "Introduction") don't collide on the
+            // (series_id, anchor) UNIQUE constraint and can both exist as
+            // distinct fragment targets.
+            let scoped_anchor = format!("{anchor_stem}/{}", h.anchor);
             sqlx::query(
                 "INSERT INTO series_headings \
                     (series_id, level, title, anchor, repo_uri, source_path, order_index) \
@@ -478,7 +483,7 @@ async fn compile_series_inner(
             .bind(series_id)
             .bind(h.level as i32)
             .bind(&h.title)
-            .bind(&h.anchor)
+            .bind(&scoped_anchor)
             .bind(&series_repo_uri)
             .bind(&ch.source_path)
             .bind(order_index)
