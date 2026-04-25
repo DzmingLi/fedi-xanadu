@@ -1147,3 +1147,135 @@ pub async fn admin_reindex_probe(
         "series_meta": series_meta,
     })))
 }
+
+#[derive(serde::Deserialize)]
+pub struct MergeSeriesInput {
+    /// Series whose articles will become the canonical (repo_uri, source_path)
+    /// keys. Already has article_localizations rows in some lang (typically
+    /// en); becomes the surviving series after merge.
+    pub canonical: String,
+    /// Series being merged in. Each of its articles gets its content moved
+    /// into the canonical bundle under `i18n/{lang}/{source_path}` and a new
+    /// article_localizations row keyed (canonical_repo_uri, source_path, lang)
+    /// is inserted. The secondary series + articles + series_articles +
+    /// blob_cache dir are deleted on success.
+    pub secondary: String,
+    /// BCP-47 lang tag of the secondary series (e.g. "zh", "zh-CN", "en").
+    pub lang: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct MergeSeriesOutput {
+    pub merged_articles: usize,
+    pub skipped: Vec<serde_json::Value>,
+    pub canonical_repo_uri: String,
+}
+
+/// Merge `secondary` series into `canonical` as a per-article localization
+/// in `lang`. Articles match by `source_path`. Source files of the secondary
+/// move into the canonical bundle under `i18n/{lang}/{source_path}`. The
+/// secondary series record + DB rows + blob cache directory are removed.
+pub async fn admin_merge_series(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    Json(input): Json<MergeSeriesInput>,
+) -> ApiResult<Json<MergeSeriesOutput>> {
+    use fx_core::services::series_service;
+
+    let canonical_repo_uri = series_service::series_repo_uri(&state.pool, &input.canonical).await?;
+    let secondary_repo_uri = series_service::series_repo_uri(&state.pool, &input.secondary).await?;
+
+    let canonical_node_id = fx_core::util::uri_to_node_id(&canonical_repo_uri);
+    let secondary_node_id = fx_core::util::uri_to_node_id(&secondary_repo_uri);
+    let canonical_root = state.blob_cache_path.join(&canonical_node_id);
+    let secondary_root = state.blob_cache_path.join(&secondary_node_id);
+
+    // Pull secondary's articles.
+    let secondary_articles: Vec<(String, String, String, String, Option<sqlx::types::Json<serde_json::Value>>, String)> = sqlx::query_as(
+        "SELECT al.source_path, al.lang, al.title, al.summary, al.content_manifest, al.file_path \
+         FROM article_localizations al \
+         JOIN series_articles sa \
+             ON sa.repo_uri = al.repo_uri AND sa.source_path = al.source_path \
+         WHERE sa.series_id = $1 AND al.repo_uri = $2",
+    )
+    .bind(&input.secondary)
+    .bind(&secondary_repo_uri)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut merged = 0usize;
+    let mut skipped: Vec<serde_json::Value> = Vec::new();
+
+    for (source_path, _lang, title, summary, _content_manifest, file_path) in &secondary_articles {
+        // Skip if canonical lacks this article — nothing to merge under.
+        let canonical_exists: bool = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM article_localizations \
+             WHERE repo_uri = $1 AND source_path = $2)",
+        )
+        .bind(&canonical_repo_uri)
+        .bind(source_path)
+        .fetch_one(&state.pool)
+        .await?;
+        if !canonical_exists {
+            skipped.push(serde_json::json!({
+                "source_path": source_path,
+                "reason": "no matching article in canonical",
+            }));
+            continue;
+        }
+
+        // Move source file: secondary_root/{file_path} -> canonical_root/i18n/{lang}/{file_path}
+        let canonical_file_path = format!("i18n/{}/{}", input.lang, file_path);
+        let src = secondary_root.join(file_path);
+        let dst = canonical_root.join(&canonical_file_path);
+        if let Some(parent) = dst.parent() { let _ = tokio::fs::create_dir_all(parent).await; }
+        if tokio::fs::try_exists(&src).await.unwrap_or(false) {
+            let _ = tokio::fs::copy(&src, &dst).await;
+        }
+
+        // INSERT (canonical_repo_uri, source_path, lang) row.
+        sqlx::query(
+            "INSERT INTO article_localizations \
+                (repo_uri, source_path, lang, file_path, content_format, title, summary, content_storage) \
+             SELECT $1, $2, $3, $4, content_format, $5, $6, content_storage \
+             FROM article_localizations \
+             WHERE repo_uri = $7 AND source_path = $2 AND lang = $3 \
+             ON CONFLICT (repo_uri, source_path, lang) DO NOTHING",
+        )
+        .bind(&canonical_repo_uri)
+        .bind(source_path)
+        .bind(&input.lang)
+        .bind(&canonical_file_path)
+        .bind(title)
+        .bind(summary)
+        .bind(&secondary_repo_uri)
+        .execute(&state.pool)
+        .await?;
+
+        merged += 1;
+    }
+
+    // Drop secondary side.
+    sqlx::query("DELETE FROM series_articles WHERE series_id = $1")
+        .bind(&input.secondary).execute(&state.pool).await?;
+    sqlx::query("DELETE FROM series_headings WHERE series_id = $1")
+        .bind(&input.secondary).execute(&state.pool).await?;
+    sqlx::query(
+        "DELETE FROM article_localizations \
+         WHERE repo_uri = $1",
+    )
+    .bind(&secondary_repo_uri)
+    .execute(&state.pool).await?;
+    sqlx::query("DELETE FROM articles WHERE repo_uri = $1")
+        .bind(&secondary_repo_uri).execute(&state.pool).await?;
+    sqlx::query("DELETE FROM series WHERE id = $1")
+        .bind(&input.secondary).execute(&state.pool).await?;
+
+    let _ = tokio::fs::remove_dir_all(&secondary_root).await;
+
+    Ok(Json(MergeSeriesOutput {
+        merged_articles: merged,
+        skipped,
+        canonical_repo_uri,
+    }))
+}
