@@ -17,7 +17,14 @@ ALTER TABLE article_localizations
 ALTER TABLE series DROP COLUMN IF EXISTS pijul_node_id;
 
 -- 3. content_format ENUM: remove 'tex'. Postgres does not allow removing a
---    value from an enum in place, so we rebuild the type.
+--    value from an enum in place, so we rebuild the type. Every column
+--    using the old type must be migrated before the old type can be dropped.
+--    Pre-flight: rewrite any 'tex' rows to 'markdown' (closest plain-text
+--    family); we no longer support tex rendering.
+UPDATE article_localizations SET content_format = 'markdown' WHERE content_format::text = 'tex';
+UPDATE drafts                SET content_format = 'markdown' WHERE content_format::text = 'tex';
+UPDATE articles_legacy       SET content_format = 'markdown' WHERE content_format::text = 'tex';
+
 CREATE TYPE content_format_new AS ENUM ('typst', 'markdown', 'html');
 
 ALTER TABLE article_localizations
@@ -27,6 +34,20 @@ ALTER TABLE article_localizations
     USING content_format::text::content_format_new;
 ALTER TABLE article_localizations
     ALTER COLUMN content_format SET DEFAULT 'typst'::content_format_new;
+
+ALTER TABLE drafts
+    ALTER COLUMN content_format DROP DEFAULT;
+ALTER TABLE drafts
+    ALTER COLUMN content_format TYPE content_format_new
+    USING content_format::text::content_format_new;
+ALTER TABLE drafts
+    ALTER COLUMN content_format SET DEFAULT 'typst'::content_format_new;
+
+ALTER TABLE articles_legacy
+    ALTER COLUMN content_format DROP DEFAULT;
+ALTER TABLE articles_legacy
+    ALTER COLUMN content_format TYPE content_format_new
+    USING content_format::text::content_format_new;
 
 DROP TYPE content_format;
 ALTER TYPE content_format_new RENAME TO content_format;
