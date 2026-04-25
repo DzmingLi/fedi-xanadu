@@ -1028,6 +1028,13 @@
                   {:else}
                     <span class="chapter-title">{loc(ch.title_i18n) || ch.title}</span>
                   {/if}
+                  {#if ch.authors && ch.authors.length > 0}
+                    <span class="chapter-authors">
+                      {#each ch.authors as a, i}
+                        <a href="/author?id={encodeURIComponent(a.author_id)}" class="chapter-author">{a.name}</a>{#if a.role !== 'author'}<span class="chapter-author-role"> ({a.role})</span>{/if}{#if i < ch.authors.length - 1}<span class="chapter-author-sep">, </span>{/if}
+                      {/each}
+                    </span>
+                  {/if}
                   <!-- Chapter tags display -->
                   {#if ch.teaches.length > 0 || ch.prereqs.length > 0}
                     <div class="chapter-tag-row">
@@ -2342,6 +2349,25 @@
   .chapter-children {
     border-left: 2px solid var(--border);
     margin-left: 8px;
+  }
+  .chapter-authors {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .chapter-author {
+    color: var(--text-secondary);
+    text-decoration: none;
+  }
+  .chapter-author:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .chapter-author-role {
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+  .chapter-author-sep {
+    color: var(--text-secondary);
   }
 
   /* Short reviews */

@@ -631,6 +631,16 @@ pub struct ChapterPrereq {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct ChapterAuthor {
+    pub author_id: String,
+    pub name: String,
+    /// `author`, `translator`, `editor`. Authors default to "author"; the
+    /// frontend can render a non-author role inline (e.g. "tr." chip).
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct BookChapterWithTags {
     pub id: String,
     pub book_id: String,
@@ -642,6 +652,10 @@ pub struct BookChapterWithTags {
     pub article_uri: Option<String>,
     pub teaches: Vec<String>,
     pub prereqs: Vec<ChapterPrereq>,
+    /// Authors credited at the chapter level (for edited volumes where each
+    /// chapter has its own author roster). Populated from
+    /// `book_chapter_authors`; empty for single-author books.
+    pub authors: Vec<ChapterAuthor>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
@@ -713,11 +727,36 @@ pub async fn list_chapters_with_tags(pool: &PgPool, book_id: &str) -> crate::Res
         prereqs_map.entry(row.content_uri).or_default().push(ChapterPrereq { tag_id: row.tag_id, prereq_type: row.prereq_type });
     }
 
+    // Pull per-chapter authors in one query keyed by chapter_id, joined to
+    // `authors` for the display name. Sorted by (chapter_id, position) so
+    // the frontend can render contributors in the order the book lists them.
+    #[derive(sqlx::FromRow)]
+    struct AuthorRow { chapter_id: String, author_id: String, name: String, role: String }
+    let author_rows = sqlx::query_as::<_, AuthorRow>(
+        "SELECT bca.chapter_id, bca.author_id, a.name, bca.role \
+         FROM book_chapter_authors bca \
+         JOIN authors a ON a.id = bca.author_id \
+         WHERE bca.chapter_id = ANY($1) \
+         ORDER BY bca.chapter_id, bca.position",
+    )
+    .bind(&ids)
+    .fetch_all(pool)
+    .await?;
+    let mut authors_map: std::collections::HashMap<String, Vec<ChapterAuthor>> = std::collections::HashMap::new();
+    for row in author_rows {
+        authors_map.entry(row.chapter_id).or_default().push(ChapterAuthor {
+            author_id: row.author_id,
+            name: row.name,
+            role: row.role,
+        });
+    }
+
     Ok(chapters.into_iter().map(|c| {
         let uri = format!("chapter:{}", c.id);
         BookChapterWithTags {
             teaches: teaches_map.remove(&uri).unwrap_or_default(),
             prereqs: prereqs_map.remove(&uri).unwrap_or_default(),
+            authors: authors_map.remove(&c.id).unwrap_or_default(),
             id: c.id,
             book_id: c.book_id,
             parent_id: c.parent_id,
