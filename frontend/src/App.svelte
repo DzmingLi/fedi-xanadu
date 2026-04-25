@@ -64,6 +64,8 @@
   const lazyBookEdition = () => import('./routes/BookEdition.svelte');
   const lazyBookSeriesList = () => import('./routes/BookSeriesList.svelte');
   const lazyBookSeriesDetail = () => import('./routes/BookSeriesDetail.svelte');
+  const lazyPapers = () => import('./routes/Papers.svelte');
+  const lazyPaperDetail = () => import('./routes/PaperDetail.svelte');
   const lazySeriesEditor = () => import('./routes/SeriesEditor.svelte');
   const lazyCreator = () => import('./routes/CreatorDashboard.svelte');
   const lazyThoughts = () => import('./routes/Thoughts.svelte');
@@ -317,6 +319,28 @@
   <div class="container-wide">
     {#await lazyBookDetail() then mod}
       <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{/if}
+
+{#if route.page === 'paper'}
+  <div class="top-nav-wide">
+    <NavBar />
+  </div>
+  <div class="container-wide">
+    {#await lazyPaperDetail() then mod}
+      <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{/if}
+
+{#if route.page === 'papers'}
+  <div class="top-nav-wide">
+    <NavBar />
+  </div>
+  <div class="container-wide">
+    {#await lazyPapers() then mod}
+      <mod.default />
     {/await}
   </div>
 {/if}

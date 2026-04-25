@@ -536,6 +536,27 @@ export const markAllNotificationsRead = () =>
 // Graph
 export const getGraph = () => get<GraphData>('/graph');
 
+// Papers
+import type { PaperListItem } from './generated/PaperListItem';
+import type { PaperDetailResponse } from './generated/PaperDetailResponse';
+import type { Paper } from './generated/Paper';
+export const listPapers = (limit = 50, offset = 0) =>
+  get<PaperListItem[]>(`/papers?limit=${limit}&offset=${offset}`);
+export const getPaper = (id: string) =>
+  get<PaperDetailResponse>(`/papers/${encodeURIComponent(id)}`);
+export const createPaper = (data: {
+  title: Record<string, string>;
+  abstract_?: Record<string, string>;
+  authors?: string[];
+  venue?: string;
+  venue_kind?: string;
+  year?: number;
+  doi?: string;
+  arxiv_id?: string;
+  bibtex_key?: string;
+  accepted?: boolean;
+}) => post<Paper>('/papers', data);
+
 // Books
 export const listBooks = (limit = 50, offset = 0, exam?: string) => {
   const q = new URLSearchParams({ limit: String(limit), offset: String(offset) });

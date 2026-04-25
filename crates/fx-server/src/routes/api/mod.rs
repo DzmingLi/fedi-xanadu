@@ -40,6 +40,7 @@ mod authorship;
 mod orcid;
 mod publication;
 mod covers;
+mod papers;
 
 use axum::{Json, Router, extract::State, routing::{delete, get, patch, post, put}};
 
@@ -110,6 +111,7 @@ pub fn routes() -> Router<AppState> {
         .merge(member_routes())
         .merge(book_routes())
         .merge(book_series_routes())
+        .merge(paper_routes())
         .merge(render_routes())
         .merge(creator_routes())
         .merge(recommendation_routes())
@@ -538,6 +540,14 @@ fn book_routes() -> Router<AppState> {
         .route("/books/{id}/short-reviews", get(short_reviews::list_book_short_reviews).post(short_reviews::upsert_book_short_review))
         .route("/books/{id}/short-reviews/my", get(short_reviews::get_my_book_short_review).delete(short_reviews::delete_my_book_short_review))
         .route("/book-covers/{id}", get(books::get_cover))
+}
+
+fn paper_routes() -> Router<AppState> {
+    Router::new()
+        .route("/papers", get(papers::list_papers).post(papers::create_paper))
+        .route("/papers/{id}", get(papers::get_paper).delete(papers::delete_paper))
+        .route("/papers/{id}/versions", post(papers::add_version).delete(papers::delete_version))
+        .route("/papers/{id}/authors", post(papers::add_author))
 }
 
 fn book_series_routes() -> Router<AppState> {

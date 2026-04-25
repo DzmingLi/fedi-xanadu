@@ -1759,6 +1759,10 @@ pub struct ArticleFullResponse {
     translations: Vec<Article>,
     #[serde(skip_serializing_if = "Option::is_none")]
     paper: Option<PaperMetadata>,
+    /// When this article is the `kind='native'` version of a Paper entity,
+    /// the parent paper sits here so the frontend can render a link upward.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    paper_entity: Option<fx_core::services::paper_service::Paper>,
     #[serde(skip_serializing_if = "Option::is_none")]
     experience: Option<ExperienceMetadata>,
     my_vote: i32,
@@ -1828,6 +1832,15 @@ pub async fn get_article_full(
     } else {
         None
     };
+    // If this article is the canonical text of a paper (kind='native' version
+    // points at it), surface the parent paper id so the article page can show
+    // a "this is paper X" link upward.
+    let paper_entity = {
+        let synth = series_service::resolve_to_synthetic_uri(&state.pool, &uri)
+            .await.ok().flatten().unwrap_or_else(|| uri.clone());
+        fx_core::services::paper_service::paper_for_native_article(&state.pool, &synth)
+            .await.ok().flatten()
+    };
     let experience = if article.category == "experience" {
         article_service::get_experience_metadata(&state.pool, &uri).await.unwrap_or(None)
     } else {
@@ -1847,6 +1860,7 @@ pub async fn get_article_full(
         series_context: series_ctx,
         translations,
         paper,
+        paper_entity,
         experience,
         my_vote,
         is_bookmarked,
