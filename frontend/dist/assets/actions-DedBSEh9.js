@@ -1,0 +1,1 @@
+import{d2 as n,d5 as c,d6 as o,d7 as i,d8 as m}from"./index-4qgoT4-i.js";function k(d,e,f){n(()=>{var r=c(()=>e(d,f==null?void 0:f())||{});if(f&&(r!=null&&r.update)){var a=!1,t={};o(()=>{var s=f();i(s),a&&m(t,s)&&(t=s,r.update(s))}),a=!0}if(r!=null&&r.destroy)return()=>r.destroy()})}export{k as a};

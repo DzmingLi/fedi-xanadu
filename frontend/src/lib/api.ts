@@ -556,6 +556,9 @@ export const createPaper = (data: {
   bibtex_key?: string;
   accepted?: boolean;
 }) => post<Paper>('/papers', data);
+export const importPaper = (input: { doi?: string; arxiv_id?: string; openalex_id?: string }) =>
+  post<{ paper: Paper; matched_authors: number; unmatched_authors: number; versions: number }>(
+    '/papers/import', input);
 
 // Books
 export const listBooks = (limit = 50, offset = 0, exam?: string) => {

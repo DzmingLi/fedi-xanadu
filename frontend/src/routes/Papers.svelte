@@ -1,11 +1,20 @@
 <script lang="ts">
-  import { listPapers } from '../lib/api';
+  import { listPapers, importPaper } from '../lib/api';
+  import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
+  import { navigate } from '../lib/router';
   import type { PaperListItem } from '../lib/generated/PaperListItem';
 
   let papers = $state<PaperListItem[]>([]);
   let loading = $state(true);
   let error = $state('');
+
+  // DOI / arxiv autofill via OpenAlex. Pasting a DOI → POST /papers/import
+  // hits OpenAlex, builds a paper + version rows + author links in one
+  // round-trip. The user then lands on the new paper page.
+  let importInput = $state('');
+  let importing = $state(false);
+  let importError = $state('');
 
   function loc(field: Record<string, string> | null | undefined): string {
     if (!field) return '';
@@ -25,6 +34,26 @@
       loading = false;
     }
   }
+
+  async function doImport() {
+    const raw = importInput.trim();
+    if (!raw) return;
+    importing = true;
+    importError = '';
+    try {
+      // Heuristic: looks like a DOI if it starts with 10. or doi.org/;
+      // otherwise treat as arxiv id (digits.digits).
+      const body = raw.includes('10.') || raw.includes('doi.org')
+        ? { doi: raw }
+        : { arxiv_id: raw };
+      const result = await importPaper(body);
+      navigate(`/paper?id=${encodeURIComponent(result.paper.id)}`);
+    } catch (e: any) {
+      importError = e?.message || 'Import failed';
+    } finally {
+      importing = false;
+    }
+  }
 </script>
 
 <div class="papers-page">
@@ -33,6 +62,20 @@
     <p class="papers-blurb">
       {t('paper.directoryBlurb') || 'Discussion and notes for academic papers, aggregated across mirrors.'}
     </p>
+    {#if getAuth()}
+      <form class="paper-import" onsubmit={(e) => { e.preventDefault(); doImport(); }}>
+        <input
+          type="text"
+          bind:value={importInput}
+          placeholder={t('paper.importPlaceholder') || 'DOI or arXiv id — e.g. 10.1145/… or 2401.12345'}
+          disabled={importing}
+        />
+        <button type="submit" disabled={importing || !importInput.trim()}>
+          {importing ? (t('paper.importing') || 'Importing…') : (t('paper.importBtn') || 'Import from OpenAlex')}
+        </button>
+        {#if importError}<span class="error">{importError}</span>{/if}
+      </form>
+    {/if}
   </header>
 
   {#if loading}
@@ -67,7 +110,12 @@
 <style>
   .papers-page { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
   .papers-header h1 { margin: 0 0 6px 0; }
-  .papers-blurb { color: var(--text-secondary); margin: 0 0 20px 0; }
+  .papers-blurb { color: var(--text-secondary); margin: 0 0 12px 0; }
+  .paper-import { display: flex; gap: 8px; margin-bottom: 20px; align-items: center; }
+  .paper-import input { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text-primary); }
+  .paper-import button { padding: 8px 14px; border: 1px solid var(--accent); background: var(--accent); color: var(--surface); border-radius: 4px; cursor: pointer; }
+  .paper-import button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .paper-import .error { color: red; font-size: 13px; }
   .paper-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
   .paper-card { padding: 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; }
   .paper-card-title { color: var(--text-primary); text-decoration: none; font-weight: 600; line-height: 1.35; }

@@ -30,6 +30,10 @@
   let learned = $state(false);
   let accessDenied = $state(false);
   let paperMeta = $state<any>(null);
+  /// When this article is the kind='native' version of a Paper entity, the
+  /// parent paper sits here so we can surface a "this is paper X" backlink
+  /// at the top of the article (discussion lives at paper level).
+  let paperEntity = $state<any>(null);
   let experienceMeta = $state<any>(null);
   let articleAuthors = $state<ArticleAuthor[]>([]);
 
@@ -91,6 +95,7 @@
       seriesContext = data.series_context;
       translations = data.translations;
       paperMeta = data.paper || null;
+      paperEntity = (data as any).paper_entity || null;
       experienceMeta = data.experience || null;
       myVote = data.my_vote;
       learned = data.learned;
@@ -503,6 +508,19 @@ try {
 
       <h1 class="article-title">{article.title}</h1>
 
+      {#if paperEntity}
+        <a class="paper-backlink" href="/paper?id={encodeURIComponent(paperEntity.id)}">
+          <span class="paper-backlink-icon">📄</span>
+          <span class="paper-backlink-label">
+            {t('article.paperBacklinkPrefix') || 'This is the canonical text of paper'}
+          </span>
+          <span class="paper-backlink-title">
+            {paperEntity.title?.en || paperEntity.title?.zh || Object.values(paperEntity.title || {})[0] || ''}
+          </span>
+          <span class="paper-backlink-arrow">→</span>
+        </a>
+      {/if}
+
       {#if translations.length > 0}
         <div class="lang-switcher">
           <span class="lang-current">{LANG_NAMES[article.lang] || article.lang}</span>
@@ -845,6 +863,23 @@ try {
     margin-bottom: 0.5rem;
     font-size: 13px;
   }
+  .paper-backlink {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 0.75rem;
+    background: var(--surface-2);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+  .paper-backlink:hover { background: var(--surface-3); }
+  .paper-backlink-label { color: var(--text-secondary); }
+  .paper-backlink-title { font-weight: 600; }
+  .paper-backlink-arrow { margin-left: auto; color: var(--accent); }
 
   /* Cover upload strip, visible only to the author. */
   .cover-strip {

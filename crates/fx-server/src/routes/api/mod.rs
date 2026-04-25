@@ -545,6 +545,7 @@ fn book_routes() -> Router<AppState> {
 fn paper_routes() -> Router<AppState> {
     Router::new()
         .route("/papers", get(papers::list_papers).post(papers::create_paper))
+        .route("/papers/import", post(papers::import_paper))
         .route("/papers/{id}", get(papers::get_paper).delete(papers::delete_paper))
         .route("/papers/{id}/versions", post(papers::add_version).delete(papers::delete_version))
         .route("/papers/{id}/authors", post(papers::add_author))
