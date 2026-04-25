@@ -937,6 +937,8 @@ export default {
   'course.skillTrees': '技能树',
   'course.materials': '材料',
   'course.supplementary': '补充阅读',
+  'course.misc': '杂项',
+
   'course.resources': '补充资源',
   'course.source': '来源',
   'course.addTagPlaceholder': '给课程加标签（名字或 tag-id）',

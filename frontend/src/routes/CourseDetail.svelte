@@ -152,16 +152,42 @@
   let totalSessions = $derived(detail?.sessions?.length ?? 0);
   let doneSessions = $derived(Array.from(sessionDone.values()).filter(v => v).length);
 
-  // Single attachments column — render as chips. Required first, then
-  // supplementary in a dimmed sub-row.
-  let hasAttachments = $derived(
-    detail?.sessions.some(s => (s.attachments ?? []).length > 0) ?? false,
+  // Auto-group attachment kinds into columns. Each column appears only
+  // when at least one session has an entry of that group. Inside a
+  // column, required chips come first, then optional in a dimmer style.
+  // The grouping is fixed (not per-course config) — we found the cost
+  // of customizable columns isn't worth the saved space, and a stable
+  // layout makes courses easier to scan side-by-side.
+  type AttachGroup = 'video' | 'materials' | 'hw' | 'discussion' | 'misc';
+  function attachGroup(kind: string): AttachGroup {
+    switch (kind) {
+      case 'video': return 'video';
+      case 'homework': return 'hw';
+      case 'discussion': return 'discussion';
+      case 'notes':
+      case 'slides':
+      case 'handout':
+      case 'reading':
+      case 'summary':
+      case 'outline':
+        return 'materials';
+      default:
+        return 'misc';
+    }
+  }
+  function groupAttachments(s: import('../lib/types').CourseSession, group: AttachGroup) {
+    return (s.attachments ?? []).filter(a => attachGroup(a.kind) === group);
+  }
+  let hasVideo = $derived(detail?.sessions.some(s => groupAttachments(s, 'video').length > 0) ?? false);
+  let hasMaterials = $derived(detail?.sessions.some(s => groupAttachments(s, 'materials').length > 0) ?? false);
+  let hasHw = $derived(detail?.sessions.some(s => groupAttachments(s, 'hw').length > 0) ?? false);
+  let hasDiscussion = $derived(detail?.sessions.some(s => groupAttachments(s, 'discussion').length > 0) ?? false);
+  let hasMisc = $derived(detail?.sessions.some(s => groupAttachments(s, 'misc').length > 0) ?? false);
+  let colCount = $derived(
+    2 + (hasVideo ? 1 : 0) + (hasMaterials ? 1 : 0) + (hasHw ? 1 : 0)
+      + (hasDiscussion ? 1 : 0) + (hasMisc ? 1 : 0) + (isOwner ? 1 : 0),
   );
-  let colCount = $derived(2 + (hasAttachments ? 1 : 0) + (isOwner ? 1 : 0));
 
-  // Icon per attachment kind. Empty string → caller can fall back to the
-  // label without prefix; we only return real icons for kinds where one
-  // adds information beyond the label text.
   function attachIcon(kind: string): string {
     switch (kind) {
       case 'video': return '▶';
@@ -414,7 +440,11 @@
                 <tr>
                   <th>#</th>
                   <th>{t('course.topic')}</th>
-                  {#if hasAttachments}<th>{t('course.materials')}</th>{/if}
+                  {#if hasVideo}<th>{t('course.video')}</th>{/if}
+                  {#if hasMaterials}<th>{t('course.materials')}</th>{/if}
+                  {#if hasHw}<th>{t('course.hw')}</th>{/if}
+                  {#if hasDiscussion}<th>{t('course.discussion')}</th>{/if}
+                  {#if hasMisc}<th>{t('course.misc')}</th>{/if}
                   {#if isOwner}<th class="session-actions-col"></th>{/if}
                 </tr>
               </thead>
@@ -449,23 +479,27 @@
                           </div>
                         {/if}
                       </td>
-                      {#if hasAttachments}
-                        <td class="session-materials">
-                          {#each atts.filter(a => a.required) as a}
+                      {#snippet chipCell(group: 'video' | 'materials' | 'hw' | 'discussion' | 'misc')}
+                        <td class="session-cell-{group}">
+                          {#each groupAttachments(s, group).filter(a => a.required) as a}
                             <a href={a.url} target="_blank" rel="noopener"
                                class="res-chip res-chip-{a.kind}" title={a.label}>
                               <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
                             </a>
                           {/each}
-                          {#each atts.filter(a => !a.required) as a}
+                          {#each groupAttachments(s, group).filter(a => !a.required) as a}
                             <a href={a.url} target="_blank" rel="noopener"
-                               class="res-chip res-chip-{a.kind} res-chip-optional"
-                               title={a.label}>
+                               class="res-chip res-chip-{a.kind} res-chip-optional" title={a.label}>
                               <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
                             </a>
                           {/each}
                         </td>
-                      {/if}
+                      {/snippet}
+                      {#if hasVideo}{@render chipCell('video')}{/if}
+                      {#if hasMaterials}{@render chipCell('materials')}{/if}
+                      {#if hasHw}{@render chipCell('hw')}{/if}
+                      {#if hasDiscussion}{@render chipCell('discussion')}{/if}
+                      {#if hasMisc}{@render chipCell('misc')}{/if}
                     {/if}
                     {#if isOwner}
                       <td class="session-actions">
@@ -737,7 +771,14 @@
   .session-num { font-weight: 600; color: var(--text-hint); width: 40px; }
   .session-topic { color: var(--text-primary); width: 40%; }
   .session-video { white-space: nowrap; }
-  .session-materials { max-width: 360px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .session-cell-video,
+  .session-cell-materials,
+  .session-cell-hw,
+  .session-cell-discussion,
+  .session-cell-misc {
+    max-width: 280px; display: flex; flex-wrap: wrap; gap: 4px;
+    vertical-align: top;
+  }
   .res-chip {
     display: inline-flex; align-items: center; gap: 4px;
     font-size: 11px; padding: 2px 8px; border-radius: 3px;

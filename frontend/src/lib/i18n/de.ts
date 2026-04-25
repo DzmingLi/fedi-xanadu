@@ -937,6 +937,8 @@ export default {
   'course.skillTrees': 'Fähigkeitsbäume',
   'course.materials': 'Kursmaterialien',
   'course.supplementary': 'Ergänzende Lektüre',
+  'course.misc': 'Sonstiges',
+
   'course.resources': 'Ressourcen',
   'course.source': 'Quelle',
   'course.addTagPlaceholder': 'Tag hinzufügen (Name oder tag-id)',

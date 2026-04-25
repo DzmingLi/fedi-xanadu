@@ -937,6 +937,8 @@ export default {
   'course.skillTrees': 'Arbres de compétences',
   'course.materials': 'Supports',
   'course.supplementary': 'Lectures complémentaires',
+  'course.misc': 'Divers',
+
   'course.resources': 'Ressources',
   'course.source': 'Source',
   'course.addTagPlaceholder': 'Ajouter un tag (nom ou tag-id)',
