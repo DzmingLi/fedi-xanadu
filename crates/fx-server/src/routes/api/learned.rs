@@ -26,7 +26,7 @@ pub async fn mark_learned(
     // rkey = article's TID so unmark can target it directly without an index lookup.
     let rkey = input.article_uri.rsplit('/').next().map(str::to_string);
     let (subject, section_ref) =
-        fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.article_uri, fx_atproto::lexicon::SERIES).await;
+        fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.article_uri, fx_atproto::lexicon::WORK).await;
     let mut record = serde_json::json!({
         "$type": fx_atproto::lexicon::LEARNED,
         "subject": subject,

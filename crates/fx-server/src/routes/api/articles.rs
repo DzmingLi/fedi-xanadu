@@ -65,6 +65,121 @@ pub async fn get_article(
     Ok(Json(article))
 }
 
+/// Resolve an article by `handle`/`slug[.lang]`.
+///
+/// - `:slug_maybe_lang` is either `{rkey}` (bare) or `{rkey}.{lang}`
+///   (language-specific).
+/// - Bare form: picks a localization by `Accept-Language`, then 302-redirects
+///   to the explicit `.{lang}` URL (so the lang is always reflected in the
+///   URL — shareable + cacheable). Per the no-fallback rule, if no available
+///   localization matches the user's preferences we still pick the source
+///   language explicitly rather than silently falling back.
+/// - Explicit form: returns the JSON of that specific localization or 404.
+pub async fn get_article_by_slug(
+    State(state): State<AppState>,
+    axum::extract::Path((handle, slug_maybe_lang)): axum::extract::Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
+
+    let did = fx_core::services::platform_user_service::local_did(&handle);
+    let (slug, requested_lang) = split_slug_lang(&slug_maybe_lang);
+    let repo_uri = format!("at://{did}/{lex}/{slug}", lex = fx_atproto::lexicon::WORK);
+
+    if let Some(lang) = requested_lang {
+        // Explicit lang: direct lookup by (repo_uri, source_path, lang).
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT at_uri FROM article_localizations \
+             WHERE repo_uri = $1 AND lang = $2 \
+             LIMIT 1",
+        )
+        .bind(&repo_uri)
+        .bind(lang)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| AppError(e.into()))?;
+        let Some((at_uri,)) = row else {
+            return Err(AppError(fx_core::Error::NotFound {
+                entity: "article",
+                id: format!("{handle}/{slug_maybe_lang}"),
+            }));
+        };
+        // Use the any-lang view so translations (file_path ≠ source_path)
+        // resolve correctly; `get_article` pins to the source-lang row.
+        let article = article_service::get_article_any_lang(&state.pool, &at_uri).await?;
+        return Ok(Json(article).into_response());
+    }
+
+    // Bare slug: pick a lang via Accept-Language negotiation.
+    let available: Vec<(String,)> = sqlx::query_as(
+        "SELECT lang FROM article_localizations WHERE repo_uri = $1 ORDER BY lang",
+    )
+    .bind(&repo_uri)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| AppError(e.into()))?;
+    if available.is_empty() {
+        return Err(AppError(fx_core::Error::NotFound {
+            entity: "article",
+            id: format!("{handle}/{slug}"),
+        }));
+    }
+    let available: Vec<String> = available.into_iter().map(|(l,)| l).collect();
+    let chosen = pick_lang(&headers, &available);
+
+    let location = format!("/@{handle}/{slug}.{chosen}");
+    Ok(axum::response::Redirect::to(&location).into_response())
+}
+
+fn split_slug_lang(s: &str) -> (&str, Option<&str>) {
+    match s.rsplit_once('.') {
+        Some((stem, lang)) if !lang.is_empty() && looks_like_lang_tag(lang) => (stem, Some(lang)),
+        _ => (s, None),
+    }
+}
+
+/// Heuristic: BCP 47 lang tags are letters + hyphens (e.g. "en", "zh-CN").
+/// Rejecting "md"/"typ" etc. so `foo.md`-like slugs don't trigger the
+/// lang-split path by accident.
+fn looks_like_lang_tag(s: &str) -> bool {
+    s.len() >= 2
+        && s.contains('-')
+            .then_some(true)
+            .unwrap_or_else(|| s.len() == 2 || s.len() == 3)
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// Pick the best-matching language from `available` given the request's
+/// `Accept-Language` header. Falls back to the alphabetically first
+/// available (typically the source lang) when nothing matches — explicit,
+/// not silent: the caller still ends up on a URL that names the chosen lang.
+fn pick_lang<'a>(headers: &axum::http::HeaderMap, available: &'a [String]) -> &'a str {
+    let accept = headers
+        .get(axum::http::header::ACCEPT_LANGUAGE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    for entry in accept.split(',') {
+        let tag = entry.split(';').next().unwrap_or("").trim();
+        if tag.is_empty() {
+            continue;
+        }
+        // Exact match
+        if let Some(hit) = available.iter().find(|l| l.eq_ignore_ascii_case(tag)) {
+            return hit;
+        }
+        // Primary-tag match (accept "zh" → "zh-CN")
+        let primary = tag.split('-').next().unwrap_or(tag);
+        if let Some(hit) = available
+            .iter()
+            .find(|l| l.split('-').next().map(|p| p.eq_ignore_ascii_case(primary)).unwrap_or(false))
+        {
+            return hit;
+        }
+    }
+    available.first().map(String::as_str).unwrap_or("")
+}
+
 pub async fn get_article_content(
     State(state): State<AppState>,
     crate::auth::MaybeAuth(user): crate::auth::MaybeAuth,
@@ -102,28 +217,15 @@ async fn resolve_article_content(
     resolve_standard_content(state, uri, format).await
 }
 
-/// Compile-generated chapter whose HTML was written to the series' compile
-/// cache at publish time. Returns None when this URI isn't a heading slice.
+/// Compile-generated chapter whose HTML was written to a series' compile
+/// cache. The pijul-backed series compile path has been removed; heading
+/// slicing is pending re-implementation on top of per-chapter blob articles,
+/// so this returns None for now.
 async fn resolve_heading_slice(
-    state: &AppState,
-    uri: &str,
+    _state: &AppState,
+    _uri: &str,
 ) -> Result<Option<ArticleContent>, AppError> {
-    let heading_info: Option<(String, String)> = sqlx::query_as(
-        "SELECT s.pijul_node_id, sa.heading_anchor \
-         FROM series_articles sa JOIN series s ON s.id = sa.series_id \
-         WHERE sa.article_uri = $1 AND sa.heading_anchor IS NOT NULL AND s.pijul_node_id IS NOT NULL",
-    )
-    .bind(uri)
-    .fetch_optional(&state.pool)
-    .await?;
-
-    let Some((node_id, anchor)) = heading_info else { return Ok(None); };
-    let cache_path = state.pijul.series_repo_path(&node_id)
-        .join("cache")
-        .join(format!("{anchor}.html"));
-    let html = tokio::fs::read_to_string(&cache_path).await
-        .map_err(|_| AppError(fx_core::Error::NotFound { entity: "content", id: uri.to_string() }))?;
-    Ok(Some(ArticleContent { source: String::new(), html }))
+    Ok(None)
 }
 
 /// Thought: source + optional cached HTML live in the latest `article_versions`
@@ -133,7 +235,12 @@ async fn resolve_thought(
     uri: &str,
     format: &str,
 ) -> Result<Option<ArticleContent>, AppError> {
-    let kind: Option<String> = sqlx::query_scalar("SELECT kind::TEXT FROM articles WHERE at_uri = $1")
+    let kind: Option<String> = sqlx::query_scalar(
+        "SELECT a.kind::TEXT FROM articles a \
+         JOIN article_localizations l \
+           ON a.repo_uri = l.repo_uri AND a.source_path = l.source_path \
+         WHERE l.at_uri = $1",
+    )
         .bind(uri).fetch_optional(&state.pool).await?;
     if kind.as_deref() != Some("thought") { return Ok(None); }
 
@@ -345,7 +452,7 @@ pub(super) async fn load_blob_manifest(
     article_uri: &str,
 ) -> Option<BlobManifest> {
     let row: Option<(String, Option<serde_json::Value>)> = sqlx::query_as(
-        "SELECT content_storage, content_manifest FROM articles WHERE at_uri = $1",
+        "SELECT content_storage, content_manifest FROM article_localizations WHERE at_uri = $1",
     )
     .bind(article_uri)
     .fetch_optional(pool)
@@ -362,304 +469,117 @@ fn uri_did(article_uri: &str) -> Option<&str> {
     article_uri.strip_prefix("at://")?.split('/').next()
 }
 
-/// Resolve the pijul location for an article (series chapter or standalone).
-/// This is the single decision point that replaces all `get_series_pijul_info` + branching.
+/// Synthetic URI used to address series chapters without minting a PDS
+/// record: `nightboat-chapter://{series_id}/{source_path_urlencoded}`. The
+/// source_path is URL-encoded so nested paths (e.g. `chapters/01.typ`) round
+/// trip cleanly through code that splits on `/`.
+pub(super) const CHAPTER_URI_SCHEME: &str = "nightboat-chapter://";
+
+pub(super) fn build_chapter_uri(series_id: &str, source_path: &str) -> String {
+    format!("{CHAPTER_URI_SCHEME}{series_id}/{}", urlencoding::encode(source_path))
+}
+
+/// Parse a `nightboat-chapter://{series_id}/{source_path}` URI. Returns
+/// `None` when the URI is not a chapter URI.
+pub(super) fn parse_chapter_uri(uri: &str) -> Option<(String, String)> {
+    let rest = uri.strip_prefix(CHAPTER_URI_SCHEME)?;
+    let (series_id, encoded_path) = rest.split_once('/')?;
+    let source_path = urlencoding::decode(encoded_path).ok()?.into_owned();
+    Some((series_id.to_string(), source_path))
+}
+
+/// Resolve a chapter's on-disk location — source file under the SERIES's
+/// shared blob_cache dir, not a per-chapter dir. Separate path from the
+/// standalone blob resolver because chapters don't have a per-chapter
+/// manifest/at_uri to look up.
+async fn resolve_chapter_location(
+    state: &AppState,
+    series_id: &str,
+    source_path: &str,
+) -> Option<ArticleLocation> {
+    // Look up the chapter row; also gives us the series repo_uri.
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT sa.repo_uri, sa.heading_anchor FROM series_articles sa \
+         WHERE sa.series_id = $1 AND sa.source_path = $2",
+    )
+    .bind(series_id)
+    .bind(source_path)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
+    let (series_repo_uri, anchor) = row?;
+
+    let node_id = uri_to_node_id(&series_repo_uri);
+    let repo_path = state.blob_cache_path.join(&node_id);
+    let content_path = repo_path.join(source_path);
+    let anchor_stem = anchor
+        .clone()
+        .or_else(|| std::path::Path::new(source_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(String::from))
+        .unwrap_or_else(|| "chapter".to_string());
+    let cache_path = repo_path.join("cache").join(format!("{anchor_stem}.html"));
+    Some(ArticleLocation {
+        node_id,
+        repo_path,
+        content_path,
+        cache_path,
+        series_id: Some(series_id.to_string()),
+        chapter_id: anchor,
+    })
+}
+
+/// Resolve the on-disk location of an article's source tree. Dispatches:
+///   - `nightboat-chapter://{series_id}/{source_path}` → series's shared
+///     blob_cache; chapter source lives at its `source_path` within that
+///     dir; rendered HTML cache lives under `cache/{anchor}.html`.
+///   - `at://...` → standalone article; source + cache under
+///     `blob_cache_path/{uri_to_node_id(at_uri)}/`.
 pub(super) async fn resolve_location(
     state: &AppState,
     article_uri: &str,
     format: &str,
 ) -> Option<ArticleLocation> {
+    if let Some((series_id, source_path)) = parse_chapter_uri(article_uri) {
+        return resolve_chapter_location(state, &series_id, &source_path).await;
+    }
+
     let src_ext = fx_renderer::format_extension(format);
-    let chapter_id = article_uri.rsplit('/').next()?;
-
-    // Blob-backed standalone article: materialize source files into scratch
-    // dir and treat layout as identical to a pijul repo. ARR articles take
-    // this path; they are never series chapters by construction.
-    if let Some(manifest) = load_blob_manifest(&state.pool, article_uri).await {
-        let did = uri_did(article_uri)?;
-        let node_id = uri_to_node_id(article_uri);
-        let repo_path = state.blob_cache_path.join(&node_id);
-        if let Err(e) = ensure_blob_materialized(state, did, &manifest, &repo_path).await {
-            tracing::warn!("blob materialize failed for {article_uri}: {e:?}");
-            return None;
-        }
-        let content_path = repo_path.join(format!("content.{src_ext}"));
-        let cache_path = repo_path.join("content.html");
-        return Some(ArticleLocation {
-            node_id,
-            repo_path,
-            content_path,
-            cache_path,
-            series_id: None,
-            chapter_id: None,
-        });
+    let manifest = load_blob_manifest(&state.pool, article_uri).await?;
+    let did = uri_did(article_uri)?;
+    let node_id = uri_to_node_id(article_uri);
+    let repo_path = state.blob_cache_path.join(&node_id);
+    if let Err(e) = ensure_blob_materialized(state, did, &manifest, &repo_path).await {
+        tracing::warn!("blob materialize failed for {article_uri}: {e:?}");
+        return None;
     }
-
-    // Check if article belongs to a series with a pijul repo
-    let series_row: Option<(String, String, Option<String>)> = sqlx::query_as(
-        "SELECT s.pijul_node_id, s.id, sa.repo_path FROM series s \
-         JOIN series_articles sa ON s.id = sa.series_id \
-         WHERE sa.article_uri = $1 AND s.pijul_node_id IS NOT NULL \
-         LIMIT 1",
-    )
-    .bind(article_uri)
-    .fetch_optional(&state.pool)
-    .await
-    .ok()?;
-
-    // A series row with a non-empty repo_path → file lives in the series
-    // repo at that path. A row with NULL/empty path → article is linked to
-    // the series but its content is in its own per-article repo (standalone
-    // article added to a series after the fact).
-    if let Some((pijul_node_id, series_id, rel)) = series_row
-        .and_then(|(node, sid, path)| path.filter(|p| !p.is_empty()).map(|p| (node, sid, p)))
-    {
-        let repo_path = state.pijul.repo_path(&pijul_node_id);
-        let content_path = repo_path.join(&rel);
-        if !content_path.exists() { return None; }
-        let cache_path = repo_path.join("cache").join(format!("{chapter_id}.html"));
-        Some(ArticleLocation {
-            node_id: pijul_node_id,
-            repo_path,
-            content_path,
-            cache_path,
-            series_id: Some(series_id),
-            chapter_id: Some(chapter_id.to_string()),
-        })
-    } else {
-        // Standalone article (either not in a series, or linked to a series
-        // without an in-series source file).
-        let node_id = uri_to_node_id(article_uri);
-        let repo_path = state.pijul.repo_path(&node_id);
-        let content_path = repo_path.join(format!("content.{src_ext}"));
-        let cache_path = repo_path.join("content.html");
-        Some(ArticleLocation {
-            node_id,
-            repo_path,
-            content_path,
-            cache_path,
-            series_id: None,
-            chapter_id: None,
-        })
-    }
+    let content_path = repo_path.join(format!("content.{src_ext}"));
+    let cache_path = repo_path.join("content.html");
+    Some(ArticleLocation {
+        node_id,
+        repo_path,
+        content_path,
+        cache_path,
+        series_id: None,
+        chapter_id: None,
+    })
 }
 
 
-/// Try rendering this article with series-aware cross-chapter references.
-///
-/// For typst series: concatenate all chapters, compile as one document, split back.
-/// For any format: rewrite intra-document anchor links to cross-article links.
-///
-/// Returns Some(html) on success, None to fall back to individual rendering.
+/// Series-aware rendering (typst whole-document compile, anchor rewriting) is
+/// pending re-implementation on top of per-chapter blob articles: every
+/// chapter now owns its own at.nightbo.work record + file-tree, so
+/// cross-chapter compilation has to re-assemble the virtual document from
+/// multiple blob bundles. Until that's designed, every chapter renders
+/// individually through the standard content path.
 async fn try_series_render(
-    state: &crate::state::AppState,
-    article_uri: &str,
+    _state: &crate::state::AppState,
+    _article_uri: &str,
     _format: &str,
 ) -> Option<String> {
-    let result = series_service::get_series_chapters_for_render(
-        &state.pool, article_uri,
-    ).await;
-
-    let (series_id, chapters) = match result {
-        Ok(Some(v)) => v,
-        Ok(None) => {
-            tracing::debug!("article {article_uri} not in any series");
-            return None;
-        }
-        Err(e) => {
-            tracing::warn!("get_series_chapters_for_render failed: {e}");
-            return None;
-        }
-    };
-
-    if chapters.is_empty() {
-        tracing::debug!("series {series_id} has no chapters");
-        return None;
-    }
-
-    tracing::info!("series render: {series_id} with {} chapters", chapters.len());
-
-    // Get series pijul repo for cache paths
-    let series_pijul = series_service::get_pijul_node_id(&state.pool, &series_id).await.ok().flatten();
-
-    let Some(ref pijul_node_id) = series_pijul else {
-        tracing::warn!("series {series_id} has no pijul repo");
-        return None;
-    };
-
-    tracing::info!("series pijul repo: {pijul_node_id}");
-
-    let series_repo = state.pijul.series_repo_path(pijul_node_id);
-    let cache_dir = series_repo.join("cache");
-    let _ = tokio::fs::create_dir_all(&cache_dir).await;
-    let series_cache = cache_dir.join("series.cache");
-
-    // Check cache freshness against chapter sources in series repo
-    let cache_fresh = is_series_cache_fresh(&series_cache, &chapters, &series_repo).await;
-
-    if cache_fresh {
-        let chapter_id = article_uri.rsplit('/').next().unwrap_or("");
-        let ch_cache = cache_dir.join(format!("{chapter_id}.html"));
-        return tokio::fs::read_to_string(&ch_cache).await.ok();
-    }
-
-    let all_typst = chapters.iter().all(|c| c.content_format == "typst");
-
-    if all_typst {
-        // Typst: virtual document compilation
-        typst_series_render(state, article_uri, &series_id, &chapters, &series_cache, pijul_node_id).await
-    } else {
-        // Any format: render individually, then rewrite cross-chapter anchor links
-        anchor_rewrite_series_render(state, article_uri, &series_id, &chapters, &series_cache).await
-    }
-}
-
-async fn is_series_cache_fresh(
-    series_cache: &std::path::Path,
-    chapters: &[series_service::SeriesChapterInfo],
-    series_repo: &std::path::Path,
-) -> bool {
-    let Ok(cache_meta) = tokio::fs::metadata(series_cache).await else { return false };
-    let Ok(cache_time) = cache_meta.modified() else { return false };
-    for ch in chapters {
-        let Some(rel) = ch.repo_path.as_deref().filter(|p| !p.is_empty()) else {
-            continue;
-        };
-        let src = series_repo.join(rel);
-        if let Ok(src_meta) = tokio::fs::metadata(&src).await {
-            if let Ok(st) = src_meta.modified() {
-                if st > cache_time { return false; }
-            }
-        }
-    }
-    true
-}
-
-/// Typst series: compile the repo's main.typ which #includes all chapters.
-async fn typst_series_render(
-    state: &crate::state::AppState,
-    article_uri: &str,
-    _series_id: &str,
-    chapters: &[series_service::SeriesChapterInfo],
-    series_cache: &std::path::Path,
-    pijul_node_id: &str,
-) -> Option<String> {
-    let series_repo = state.pijul.series_repo_path(pijul_node_id);
-
-    // Build chapter_ids: (article_uri, chapter_index)
-    let chapter_ids: Vec<(String, usize)> = chapters.iter().enumerate()
-        .map(|(i, ch)| (ch.article_uri.clone(), i))
-        .collect();
-
-    let repo = series_repo.clone();
-    let rendered = tokio::task::spawn_blocking(move || {
-        let config = fx_renderer::fx_render_config();
-        fx_renderer::typst_render::render_series_to_html_with_config(&chapter_ids, &repo, &config)
-    }).await.ok()?;
-
-    match rendered {
-        Ok(map) => {
-            write_series_cache(state, _series_id, &map, series_cache).await;
-            map.get(article_uri).cloned()
-        }
-        Err(e) => {
-            tracing::warn!("series render failed: {e}");
-            None
-        }
-    }
-}
-
-/// Any format: render each chapter individually, then rewrite cross-chapter anchor links.
-///
-/// Collects all anchor IDs from all chapters, then for each chapter rewrites
-/// `href="#anchor"` links to `#/article?uri=TARGET_URI` when the anchor
-/// exists in a different chapter.
-async fn anchor_rewrite_series_render(
-    state: &crate::state::AppState,
-    article_uri: &str,
-    series_id: &str,
-    chapters: &[series_service::SeriesChapterInfo],
-    series_cache: &std::path::Path,
-) -> Option<String> {
-    use std::collections::HashMap;
-
-    // Render each chapter individually
-    let mut chapter_htmls: Vec<(String, String)> = Vec::new();
-    for ch in chapters {
-        let node = uri_to_node_id(&ch.article_uri);
-        let repo = state.pijul.repo_path(&node);
-        let ext = fx_renderer::format_extension(&ch.content_format);
-        let src_path = repo.join(format!("content.{ext}"));
-        let html_path = repo.join("content.html");
-
-        let source = tokio::fs::read_to_string(&src_path).await.ok()?;
-        let html = if ch.content_format == "html" {
-            source
-        } else if is_cached_fresh(&html_path, &src_path).await {
-            tokio::fs::read_to_string(&html_path).await.ok()?
-        } else {
-            let fmt = ch.content_format.clone();
-            let src = source.clone();
-            let rp = repo.clone();
-            let rendered = tokio::task::spawn_blocking(move || {
-                let config = fx_renderer::fx_render_config();
-                fx_renderer::render_to_html_with_config(&fmt, &src, &rp, &config)
-            }).await.ok()?.ok()?;
-            let _ = tokio::fs::write(&html_path, &rendered).await;
-            rendered
-        };
-        chapter_htmls.push((ch.article_uri.clone(), html));
-    }
-
-    // Collect all anchor IDs from all chapters: id -> article_uri
-    let mut anchor_map: HashMap<String, String> = HashMap::new();
-    for (uri, html) in &chapter_htmls {
-        for cap in ANCHOR_ID_RE.captures_iter(html) {
-            let anchor = cap.get(1)?.as_str().to_string();
-            anchor_map.entry(anchor).or_insert_with(|| uri.clone());
-        }
-    }
-
-    // Rewrite cross-chapter links in each chapter
-    let mut rendered: HashMap<String, String> = HashMap::new();
-    for (uri, html) in &chapter_htmls {
-        let rewritten = LINK_HREF_RE.replace_all(html, |caps: &regex_lite::Captures| {
-            let anchor = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            if let Some(target_uri) = anchor_map.get(anchor) {
-                if target_uri != uri {
-                    // Cross-chapter link: rewrite to article URL
-                    return format!(
-                        r##"href="#/article?uri={}#{}""##,
-                        urlencoding::encode(target_uri),
-                        anchor,
-                    );
-                }
-            }
-            // Same-chapter link or unknown anchor: keep as-is
-            caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string()
-        });
-        rendered.insert(uri.clone(), rewritten.into_owned());
-    }
-
-    write_series_cache(state, series_id, &rendered, series_cache).await;
-    rendered.get(article_uri).cloned()
-}
-
-async fn write_series_cache(
-    _state: &crate::state::AppState,
-    _series_id: &str,
-    rendered: &std::collections::HashMap<String, String>,
-    series_cache: &std::path::Path,
-) {
-    // Write per-chapter HTML caches to the same directory as series_cache
-    let cache_dir = series_cache.parent().unwrap_or(std::path::Path::new("."));
-    for (ch_uri, ch_html) in rendered {
-        let chapter_id = ch_uri.rsplit('/').next().unwrap_or("");
-        let ch_cache = cache_dir.join(format!("{chapter_id}.html"));
-        let _ = tokio::fs::write(&ch_cache, ch_html).await;
-    }
-    // Touch the series cache marker
-    let _ = tokio::fs::write(series_cache, "").await;
+    None
 }
 
 async fn is_cached_fresh(cache: &std::path::Path, source: &std::path::Path) -> bool {
@@ -702,26 +622,6 @@ pub async fn get_article_forks(
     Ok(Json(forks))
 }
 
-/// Get changes in a fork that the original article doesn't have.
-pub async fn get_fork_ahead(
-    State(state): State<AppState>,
-    Query(q): Query<ForkAheadQuery>,
-) -> ApiResult<Json<Vec<String>>> {
-    let fork_node = uri_to_node_id(&q.fork_uri);
-    let original_node = uri_to_node_id(&q.original_uri);
-
-    let ahead = state.pijul.diff_repos(&fork_node, &original_node)
-        .unwrap_or_default();
-
-    Ok(Json(ahead))
-}
-
-#[derive(serde::Deserialize)]
-pub struct ForkAheadQuery {
-    pub fork_uri: String,
-    pub original_uri: String,
-}
-
 /// Result of publishing article content: repo path + resolved summary.
 pub(super) struct PublishResult {
     /// Repo root where this article was written. Currently only read by
@@ -734,6 +634,12 @@ pub(super) struct PublishResult {
     /// Summary rendered to inline-only HTML, cached in DB for list views and
     /// the lead block at the top of the article body.
     pub summary_html: String,
+    /// Blob manifest when content was published via PDS blobs (the default
+    /// `use_pijul=false` path). `None` for pijul-backed publishes. Callers
+    /// thread this into `article_service::create_article` so the
+    /// localization row is created with `content_storage='blob'` and the
+    /// JSONB manifest is persisted.
+    pub blob_manifest: Option<serde_json::Value>,
 }
 
 /// Author-supplied summary source (markdown/typst, same format as content).
@@ -743,156 +649,199 @@ pub(super) struct SummaryInput<'a> {
     pub user_source: Option<&'a str>,
 }
 
-/// Shared: write source file, render, record pijul, track version.
-/// Callers must ensure the pijul repo is initialized before calling this.
-/// Supports both local PijulStore and remote KnotClient based on user's knot_url setting.
-pub(super) async fn publish_article_content(
+/// Where a publish should materialize its source files.
+///
+/// - `Standalone { at_uri }` is the default: writes to
+///   `{blob_cache}/{uri_to_node_id(at_uri)}/` with content/summary filenames
+///   derived from the content format (`content.{ext}`, `summary.{ext}`).
+/// - `SeriesChapter { series_repo_uri, chapter_path }` writes into the
+///   series's shared blob_cache dir using the chapter's path as the entry
+///   filename (e.g. `chapters/01-intro.typ`). Summary is suppressed — series
+///   chapters don't have per-chapter summaries in the bundle; chapter summary
+///   text still lives on `article_localizations.summary` for DB queries.
+pub(super) enum PublishTarget<'a> {
+    Standalone { at_uri: &'a str },
+    SeriesChapter { series_repo_uri: &'a str, chapter_path: &'a str },
+}
+
+/// PDS-blob publish path — the one canonical publish path. Uploads
+/// `content.{ext}` and `summary.{ext}` as PDS blobs under the author's DID,
+/// materializes them into the blob cache for rendering, and returns a
+/// `BlobManifest` the caller stores on the `article_localizations` row
+/// and mirrors into the `at.nightbo.work` record's `content` union.
+///
+/// No pijul, no knot, no scratch. Updates are new blobs replacing the old
+/// manifest — no change history. Fork (future) will promote a blob article
+/// to pijul by initializing a repo with the current manifest files as the
+/// initial change.
+pub(super) async fn publish_article_blob(
     state: &AppState,
     at_uri: &str,
     did: &str,
     token: &str,
     content: &str,
     format: ContentFormat,
-    series_id: Option<&str>,
-    message: &str,
     description: SummaryInput<'_>,
 ) -> Result<PublishResult, AppError> {
+    publish_article_blob_to(
+        state, did, token, content, format, description,
+        PublishTarget::Standalone { at_uri },
+    ).await
+}
+
+/// Generalized publish: same as [`publish_article_blob`] but caller picks the
+/// destination. Series chapters use `PublishTarget::SeriesChapter` so their
+/// source file lands inside the series's shared blob_cache dir under the
+/// chapter's path (e.g. `chapters/01-intro.typ`), which is what the typst
+/// whole-document compile needs to resolve cross-chapter `@refs`.
+pub(super) async fn publish_article_blob_to(
+    state: &AppState,
+    did: &str,
+    token: &str,
+    content: &str,
+    format: ContentFormat,
+    description: SummaryInput<'_>,
+    target: PublishTarget<'_>,
+) -> Result<PublishResult, AppError> {
     let fmt = format.as_str();
-    let loc = if let Some(sid) = series_id {
-        // Series: resolve location from DB
-        let pijul_node_id = series_service::require_pijul_node_id(&state.pool, sid).await?;
+    let src_ext = fx_renderer::format_extension(fmt);
 
-        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
-        let repo_path = state.pijul.repo_path(&pijul_node_id);
-        let src_ext = fx_renderer::format_extension(fmt);
-
-        // Look up the stored chapter path on series_articles. If this is a
-        // brand-new article we fall back to chapters/<tid>.<ext>; the caller
-        // will persist that same path via add_series_article shortly after.
-        let stored: Option<String> = sqlx::query_scalar(
-            "SELECT repo_path FROM series_articles WHERE series_id = $1 AND article_uri = $2",
-        )
-        .bind(sid).bind(at_uri)
-        .fetch_optional(&state.pool).await?.flatten();
-        let rel = stored
-            .filter(|p| !p.is_empty())
-            .unwrap_or_else(|| fx_core::meta::default_chapter_path(chapter_id, src_ext));
-        let content_path = repo_path.join(&rel);
-        let cache_path = repo_path.join("cache").join(format!("{chapter_id}.html"));
-        ArticleLocation {
-            node_id: pijul_node_id,
-            repo_path, content_path, cache_path,
-            series_id: Some(sid.to_string()),
-            chapter_id: Some(chapter_id.to_string()),
+    // Resolve cache dir + the entry filename we write the source to.
+    let (cache_path, content_filename, is_series_chapter, stable_uri) = match target {
+        PublishTarget::Standalone { at_uri } => {
+            let node_id = uri_to_node_id(at_uri);
+            (state.blob_cache_path.join(&node_id),
+             format!("content.{src_ext}"),
+             false,
+             at_uri.to_string())
         }
-    } else {
-        // Standalone: derive from URI
-        let node_id = uri_to_node_id(at_uri);
-        let repo_path = state.pijul.repo_path(&node_id);
-        let src_ext = fx_renderer::format_extension(fmt);
-        ArticleLocation {
-            content_path: repo_path.join(format!("content.{src_ext}")),
-            cache_path: repo_path.join("content.html"),
-            node_id, repo_path,
-            series_id: None, chapter_id: None,
+        PublishTarget::SeriesChapter { series_repo_uri, chapter_path } => {
+            let node_id = uri_to_node_id(series_repo_uri);
+            (state.blob_cache_path.join(&node_id),
+             chapter_path.to_string(),
+             true,
+             series_repo_uri.to_string())
         }
     };
+    let summary_filename = format!("summary.{src_ext}");
 
-    let knot_url = article_service::get_user_knot_url(&state.pool, did).await;
-
-    // Write content to knot (remote) if configured
-    if let Some(ref knot) = knot_url {
-        let client = pijul_knot::KnotClient::new(knot);
-        let rel_path = loc.content_path.strip_prefix(&loc.repo_path)
-            .unwrap_or(&loc.content_path).to_string_lossy().to_string();
-        if let Err(e) = client.write_file(&loc.node_id, &rel_path, content.as_bytes()).await {
-            tracing::warn!("knot write_file failed: {e}");
-        }
-    }
-
-    // Always write locally (for rendering/caching)
-    if let Some(parent) = loc.content_path.parent() {
-        let _ = tokio::fs::create_dir_all(parent).await;
-    }
-    tokio::fs::write(&loc.content_path, content).await?;
-
-    // Render content (best-effort — may fail if resources not yet uploaded).
-    if format != ContentFormat::Html {
-        match render_content(fmt, content, &loc.repo_path) {
-            Ok(rendered) => {
-                if let Some(parent) = loc.cache_path.parent() {
-                    let _ = tokio::fs::create_dir_all(parent).await;
-                }
-                let _ = tokio::fs::write(&loc.cache_path, &rendered).await;
-            }
-            Err(e) => tracing::warn!("initial render skipped (resources may be pending): {e:?}"),
-        }
-    }
+    // Upload content blob (or synthesize locally for did:local:* users).
+    let content_mime = mime_for_source_ext(src_ext);
+    let content_blob = crate::auth::upload_or_local_blob(
+        state,
+        token,
+        did,
+        content.as_bytes().to_vec(),
+        content_mime,
+    ).await;
 
     let summary_source = description.user_source.unwrap_or("").to_string();
-
-    // Render description to inline-only HTML (cached in DB for list views).
-    let summary_html = crate::summary::render_summary_inline(
-        fmt, &summary_source, &loc.repo_path,
-    ).unwrap_or_else(|e| {
-        tracing::warn!("description render failed: {e}");
-        String::new()
-    });
-
-    // Write description source file alongside content — same pijul patch as content.
-    let src_ext = fx_renderer::format_extension(fmt);
-    let description_path = loc.repo_path.join(format!("summary.{src_ext}"));
-    if let Some(parent) = description_path.parent() {
-        let _ = tokio::fs::create_dir_all(parent).await;
-    }
-    if let Err(e) = tokio::fs::write(&description_path, &summary_source).await {
-        tracing::warn!("failed to write description file: {e}");
-    }
-    if let Some(ref knot) = knot_url {
-        let client = pijul_knot::KnotClient::new(knot);
-        let rel_path = description_path.strip_prefix(&loc.repo_path)
-            .unwrap_or(&description_path).to_string_lossy().to_string();
-        if let Err(e) = client.write_file(&loc.node_id, &rel_path, summary_source.as_bytes()).await {
-            tracing::warn!("knot write description failed: {e}");
-        }
-    }
-
-    // Record pijul change
-    let record_result = if let Some(ref knot) = knot_url {
-        let client = pijul_knot::KnotClient::new(knot);
-        client.record(&loc.node_id, message, Some(did)).await.ok()
-            .flatten().map(|r| Ok(Some(r)))
-            .unwrap_or(Ok(None))
+    // Series chapters don't carry a separate summary file in the bundle —
+    // chapter summary text still lives on article_localizations.summary for
+    // DB queries, and lead-block rendering uses the text verbatim.
+    let upload_summary_blob = !summary_source.is_empty() && !is_series_chapter;
+    let summary_blob = if upload_summary_blob {
+        Some(crate::auth::upload_or_local_blob(
+            state,
+            token,
+            did,
+            summary_source.clone().into_bytes(),
+            content_mime,
+        ).await)
     } else {
-        state.pijul_record(loc.node_id.clone(), message.into(), Some(did.to_string())).await
+        None
     };
 
-    match record_result {
-        Ok(Some((hash, new_state))) => {
-            let _ = version_service::record_version(
-                &state.pool, at_uri, &hash, did, message, content,
-            ).await;
-            publish_pijul_ref_update(state, token, at_uri, did, &hash, &new_state).await;
-        }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {}: {e}", loc.node_id),
+    // Materialize into blob_cache so the renderer can find source files
+    // under the same layout as a pijul working tree (expected by
+    // `resolve_location`'s blob branch). For series chapters the entry file
+    // may live under a subdir (chapters/01-intro.typ), so create the parent.
+    tokio::fs::create_dir_all(&cache_path).await?;
+    let entry_abspath = cache_path.join(&content_filename);
+    if let Some(parent) = entry_abspath.parent() {
+        tokio::fs::create_dir_all(parent).await?;
     }
+    tokio::fs::write(&entry_abspath, content).await?;
+    if upload_summary_blob {
+        tokio::fs::write(cache_path.join(&summary_filename), &summary_source).await?;
+    }
+
+    // Initial HTML render for list views + reading page. For standalone
+    // articles the cached HTML lives next to the source at
+    // `content.html`. For series chapters each chapter gets its own cache
+    // file under `cache/{chapter_stem}.html` so cached renders don't collide
+    // with each other.
+    if format != ContentFormat::Html {
+        // Render relative to the entry file's directory so typst/markdown
+        // resolve sibling assets. For series chapters the series root is
+        // what we want so cross-chapter @refs resolve — pass `cache_path`.
+        let render_root = if is_series_chapter {
+            cache_path.clone()
+        } else {
+            cache_path.clone()
+        };
+        match render_content(fmt, content, &render_root) {
+            Ok(rendered) => {
+                let cached_html_path = if is_series_chapter {
+                    let anchor_stem = std::path::Path::new(&content_filename)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| "chapter".to_string());
+                    cache_path.join("cache").join(format!("{anchor_stem}.html"))
+                } else {
+                    cache_path.join("content.html")
+                };
+                if let Some(parent) = cached_html_path.parent() {
+                    let _ = tokio::fs::create_dir_all(parent).await;
+                }
+                let _ = tokio::fs::write(&cached_html_path, &rendered).await;
+            }
+            Err(e) => tracing::warn!("initial render (blob path) skipped: {e:?}"),
+        }
+    }
+
+    let summary_html = crate::summary::render_summary_inline(fmt, &summary_source, &cache_path)
+        .unwrap_or_else(|e| {
+            tracing::warn!("description render failed: {e}");
+            String::new()
+        });
+
+    // Assemble manifest: entry + files[].
+    let mut manifest_files = serde_json::json!([
+        {
+            "path": content_filename,
+            "cid": blob_cid(&content_blob),
+            "size": content.len() as u64,
+            "mime": content_mime,
+        }
+    ]).as_array().cloned().unwrap_or_default();
+    if let Some(ref sb) = summary_blob {
+        manifest_files.push(serde_json::json!({
+            "path": summary_filename,
+            "cid": blob_cid(sb),
+            "size": summary_source.len() as u64,
+            "mime": content_mime,
+        }));
+    }
+    let manifest = serde_json::json!({
+        "entry": content_filename,
+        "files": manifest_files,
+        "pds_url": state.pds_url,
+    });
 
     // Sync cover from the source's native metadata to the DB cache. Markdown
     // reads frontmatter, HTML parses <meta>, typst compiles + introspects.
-    // Only for standalone articles — series chapters don't own their cover.
-    if series_id.is_none() {
+    // Only for standalone articles — series chapters inherit the series
+    // cover (set on the series record, not per-chapter).
+    if !is_series_chapter {
+        let at_uri_for_cover = stable_uri.clone();
+        let node_id_for_cover = uri_to_node_id(&at_uri_for_cover);
         let cover_from_source: Option<String> = match fmt {
-            "markdown" => {
-                tokio::fs::read_to_string(&loc.content_path).await.ok()
-                    .and_then(|s| fx_core::meta::split_frontmatter(&s).0.cover)
-            }
-            "html" => {
-                tokio::fs::read_to_string(&loc.content_path).await.ok()
-                    .and_then(|s| super::covers::html_cover_from_meta(&s))
-            }
-            "typst" => {
-                let repo = loc.repo_path.clone();
+            "markdown" => fx_core::meta::split_frontmatter(content).0.cover,
+            "html"     => super::covers::html_cover_from_meta(content),
+            "typst"    => {
+                let repo = cache_path.clone();
                 tokio::task::spawn_blocking(move || {
                     let config = fx_renderer::fx_render_config();
                     fx_renderer::extract_typst_article_cover(&repo, &config)
@@ -901,20 +850,43 @@ pub(super) async fn publish_article_content(
             _ => None,
         };
         if let Some(rel) = cover_from_source {
-            let cover_url = format!("/api/covers/a-{}", loc.node_id);
+            let cover_url = format!("/api/covers/a-{}", node_id_for_cover);
             let _ = sqlx::query(
-                "UPDATE articles SET cover_url = $1, cover_file = $2 WHERE at_uri = $3",
+                "UPDATE articles a SET cover_url = $1, cover_file = $2 \
+                 FROM article_localizations l \
+                 WHERE l.at_uri = $3 AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
             )
-            .bind(&cover_url).bind(&rel).bind(at_uri)
+            .bind(&cover_url).bind(&rel).bind(&at_uri_for_cover)
             .execute(&state.pool).await;
         }
     }
 
+    let _ = stable_uri;
     Ok(PublishResult {
-        repo_path: loc.repo_path,
+        repo_path: cache_path,
         summary_source,
         summary_html,
+        blob_manifest: Some(manifest),
     })
+}
+
+fn mime_for_source_ext(ext: &str) -> &'static str {
+    match ext {
+        "md"   => "text/markdown",
+        "typ"  => "text/x-typst",
+        "html" => "text/html",
+        _      => "text/plain",
+    }
+}
+
+/// Extract the CID string from a PDS `$type: blob` ref JSON value — the
+/// shape returned by `com.atproto.repo.uploadBlob`.
+fn blob_cid(blob: &serde_json::Value) -> String {
+    blob.get("ref")
+        .and_then(|r| r.get("$link"))
+        .and_then(|c| c.as_str())
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Save category-specific metadata for an article.
@@ -935,115 +907,238 @@ async fn save_category_metadata(state: &AppState, at_uri: &str, input: &CreateAr
     }
 }
 
-/// Publish a sh.tangled.pijul.refUpdate record to the user's PDS.
-/// Best-effort: failures are logged but do not block the request.
-pub(super) async fn publish_pijul_ref_update(
+/// Build the PDS-side `at.nightbo.work` record body. `content` is the
+/// `#content` sub-object (`{entry, contentFormat, files}`), rebuilt from a
+/// blob manifest so each file is a proper `$type: blob` ref that external
+/// AppViews can fetch via `com.atproto.sync.getBlob`.
+pub(super) fn build_article_record(
+    input: &CreateArticle,
+    manifest: &serde_json::Value,
+) -> serde_json::Value {
+    let files: Vec<serde_json::Value> = manifest
+        .get("files")
+        .and_then(|f| f.as_array())
+        .map(|arr| arr.iter().map(|f| {
+            let cid = f.get("cid").and_then(|c| c.as_str()).unwrap_or_default();
+            let mime = f.get("mime").and_then(|m| m.as_str()).unwrap_or("text/plain");
+            let size = f.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
+            serde_json::json!({
+                "path": f.get("path").cloned().unwrap_or(serde_json::Value::Null),
+                "blob": {
+                    "$type": "blob",
+                    "ref": { "$link": cid },
+                    "mimeType": mime,
+                    "size": size,
+                },
+                "mime": mime,
+            })
+        }).collect())
+        .unwrap_or_default();
+    serde_json::json!({
+        "$type": fx_atproto::lexicon::WORK,
+        "title": input.title,
+        "description": input.summary.as_deref().unwrap_or(""),
+        "tags": input.tags,
+        "license": input.license.as_deref().unwrap_or(""),
+        "content": {
+            "entry": manifest.get("entry").cloned().unwrap_or(serde_json::Value::Null),
+            "contentFormat": input.content_format.as_str(),
+            "files": files,
+        },
+        "createdAt": now_rfc3339(),
+    })
+}
+
+/// Set the `cover` blob on a series's PDS record. Fetches the current
+/// record, replaces `cover` with the provided blob ref, and writes it back
+/// via `putRecord`. Best-effort: failures are logged but do not block.
+pub(super) async fn set_cover_on_series_record(
     state: &AppState,
     token: &str,
-    article_at_uri: &str,
-    did: &str,
-    change_hash: &str,
-    new_state: &str,
+    owner_did: &str,
+    series_id: &str,
+    cover_blob: &serde_json::Value,
 ) {
-    use crate::auth::pds_create_record;
-    let record = serde_json::json!({
-        "$type": fx_atproto::lexicon::PIJUL_REF_UPDATE,
-        "repo": article_at_uri,
-        "channel": "main",
-        "newState": new_state,
-        "changes": [change_hash],
-        "committerDid": did,
-    });
-    pds_create_record(state, token, fx_atproto::lexicon::PIJUL_REF_UPDATE, record, None, "pijul refUpdate").await;
-}
-
-/// Shared: write article content to the correct repo (series or independent),
-/// render HTML, and optionally record a pijul change.
-/// When `record` is false, only the working copy and DB are updated (no pijul change).
-pub(super) async fn update_article_content(
-    state: &AppState,
-    uri: &str,
-    did: &str,
-    token: Option<&str>,
-    content: &str,
-    format: &str,
-    message: &str,
-) -> Result<(), AppError> {
-    save_article_content(state, uri, content, format).await?;
-    record_pijul_change(state, uri, did, token, content, message).await?;
-    Ok(())
-}
-
-/// Write article content to working copy and render HTML, without recording a pijul change.
-pub(super) async fn save_article_content(
-    state: &AppState,
-    uri: &str,
-    content: &str,
-    format: &str,
-) -> Result<(), AppError> {
-    let loc = resolve_location(state, uri, format).await
-        .ok_or(AppError(fx_core::Error::NotFound { entity: "article", id: uri.to_string() }))?;
-
-    if let Some(parent) = loc.content_path.parent() {
-        let _ = tokio::fs::create_dir_all(parent).await;
-    }
-    tokio::fs::write(&loc.content_path, content).await?;
-
-    if format != "html" {
-        match render_content(format, content, &loc.repo_path) {
-            Ok(rendered) => {
-                if let Some(parent) = loc.cache_path.parent() {
-                    let _ = tokio::fs::create_dir_all(parent).await;
-                }
-                let _ = tokio::fs::write(&loc.cache_path, &rendered).await;
-            }
-            Err(e) => tracing::warn!("render failed: {e:?}"),
+    let Some(pds) = crate::auth::pds_session(&state.pool, token).await else {
+        tracing::warn!("no PDS session; skipping series cover record write for {series_id}");
+        return;
+    };
+    let mut record = match state.at_client.get_record(
+        &pds.pds_url, &pds.access_jwt, owner_did,
+        fx_atproto::lexicon::WORK, series_id,
+    ).await {
+        Ok(r) => r.get("value").cloned().unwrap_or_else(|| serde_json::json!({
+            "$type": fx_atproto::lexicon::WORK,
+            "seriesId": series_id,
+            "title": "",
+            "chapters": [],
+            "createdAt": now_rfc3339(),
+        })),
+        Err(e) => {
+            tracing::warn!("series record {series_id} fetch failed (will create fresh): {e}");
+            serde_json::json!({
+                "$type": fx_atproto::lexicon::WORK,
+                "seriesId": series_id,
+                "title": "",
+                "chapters": [],
+                "createdAt": now_rfc3339(),
+            })
         }
-        if loc.is_series() {
-            let _ = tokio::fs::remove_file(loc.repo_path.join("cache").join("series.cache")).await;
-        }
+    };
+    record["cover"] = cover_blob.clone();
+    if let Err(e) = state.at_client.put_record(
+        &pds.pds_url, &pds.access_jwt,
+        &fx_atproto::client::PutRecordInput {
+            repo: pds.did.clone(),
+            collection: fx_atproto::lexicon::WORK.to_string(),
+            rkey: series_id.to_string(),
+            record,
+        },
+    ).await {
+        crate::auth::log_pds_error("set cover on series record", e);
     }
-
-    let hash = content_hash(content);
-    article_service::update_article_content_hash(&state.pool, uri, &hash).await?;
-    Ok(())
 }
 
-/// Record the current working copy state as a pijul change and store version metadata.
-pub(super) async fn record_pijul_change(
+/// Merge a chapter into a series's PDS record.
+///
+/// Under the unified-series lexicon, a series is ONE big record that carries
+/// every chapter's metadata (`chapters[]`) and every source/asset file
+/// (`files[]`). There is no per-chapter PDS record. On publish we:
+///   1. Fetch the current series record (or seed a skeleton if absent).
+///   2. Upsert the chapter entry (`{title, entry, anchor, orderIndex}`) into
+///      `chapters[]` — replacing any existing item whose `entry` matches so
+///      re-publish is idempotent.
+///   3. Merge `chapter_files` into `files[]`, deduped by `path`. Replaces
+///      existing entries when paths collide (blob CIDs change on re-publish).
+///   4. putRecord the updated value back to the user's PDS.
+///
+/// Best-effort: without a PDS session we log + skip. DB side-effects happen
+/// regardless; the PDS lags until the author re-publishes under a real
+/// session.
+pub(super) async fn merge_chapter_into_series_record(
     state: &AppState,
-    uri: &str,
-    did: &str,
-    token: Option<&str>,
-    content: &str,
-    message: &str,
-) -> Result<(), AppError> {
-    let loc = resolve_location(state, uri, "typst").await
-        .ok_or(AppError(fx_core::Error::NotFound { entity: "article", id: uri.to_string() }))?;
-    let knot_url = article_service::get_user_knot_url(&state.pool, did).await;
-
-    let record_result = if let Some(ref knot) = knot_url {
-        let client = pijul_knot::KnotClient::new(knot);
-        client.record(&loc.node_id, message, Some(did)).await.ok()
-            .flatten().map(|r| Ok(Some(r)))
-            .unwrap_or(Ok(None))
-    } else {
-        state.pijul_record(loc.node_id.clone(), message.into(), Some(did.to_string())).await
+    token: &str,
+    owner_did: &str,
+    series_id: &str,
+    title: &str,
+    entry: &str,
+    anchor: &str,
+    order_index: i64,
+    chapter_files: &[serde_json::Value],
+) {
+    let Some(pds) = crate::auth::pds_session(&state.pool, token).await else {
+        tracing::debug!("no PDS session; skipping series merge for {series_id}");
+        return;
     };
 
-    match record_result {
-        Ok(Some((hash, new_state))) => {
-            let _ = version_service::record_version(
-                &state.pool, uri, &hash, did, message, content,
-            ).await;
-            if let Some(tok) = token {
-                publish_pijul_ref_update(state, tok, uri, did, &hash, &new_state).await;
+    // Load existing record (series records are keyed by series id).
+    let mut record = match state.at_client.get_record(
+        &pds.pds_url, &pds.access_jwt, owner_did,
+        fx_atproto::lexicon::WORK, series_id,
+    ).await {
+        Ok(r) => r.get("value").cloned().unwrap_or_else(|| seed_series_record(series_id)),
+        Err(e) => {
+            tracing::warn!("series record {series_id} fetch failed (will create fresh): {e}");
+            seed_series_record(series_id)
+        }
+    };
+
+    // 1. Upsert chapter entry by `entry` path — stable identity across
+    //    re-publishes.
+    let new_chapter = serde_json::json!({
+        "title":      title,
+        "entry":      entry,
+        "anchor":     anchor,
+        "orderIndex": order_index,
+    });
+    let chapters = record
+        .get_mut("chapters")
+        .and_then(|c| c.as_array_mut());
+    match chapters {
+        Some(arr) => {
+            if let Some(pos) = arr.iter().position(|c| {
+                c.get("entry").and_then(|e| e.as_str()) == Some(entry)
+            }) {
+                arr[pos] = new_chapter;
+            } else {
+                arr.push(new_chapter);
             }
         }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {}: {e}", loc.node_id),
+        None => {
+            record["chapters"] = serde_json::json!([new_chapter]);
+        }
     }
-    Ok(())
+
+    // 2. Merge chapter files into `files[]`, deduped by path.
+    let files = record
+        .get_mut("files")
+        .and_then(|c| c.as_array_mut());
+    match files {
+        Some(arr) => {
+            for f in chapter_files {
+                let Some(p) = f.get("path").and_then(|p| p.as_str()) else { continue };
+                if let Some(pos) = arr.iter().position(|ex| {
+                    ex.get("path").and_then(|x| x.as_str()) == Some(p)
+                }) {
+                    arr[pos] = f.clone();
+                } else {
+                    arr.push(f.clone());
+                }
+            }
+        }
+        None => {
+            record["files"] = serde_json::Value::Array(chapter_files.to_vec());
+        }
+    }
+
+    if let Err(e) = state.at_client.put_record(
+        &pds.pds_url, &pds.access_jwt,
+        &fx_atproto::client::PutRecordInput {
+            repo: pds.did.clone(),
+            collection: fx_atproto::lexicon::WORK.to_string(),
+            rkey: series_id.to_string(),
+            record,
+        },
+    ).await {
+        crate::auth::log_pds_error("merge chapter into series record", e);
+    }
+}
+
+fn seed_series_record(series_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "$type":       fx_atproto::lexicon::WORK,
+        "seriesId":    series_id,
+        "title":       "",
+        "contentFormat": "typst",
+        "chapters":    [],
+        "files":       [],
+        "createdAt":   now_rfc3339(),
+    })
+}
+
+/// Build the per-chapter `files[]` entries (shape expected by the series
+/// record lexicon: `{path, blob, mime}`) from a chapter's blob manifest.
+/// Used by `merge_chapter_into_series_record` callers.
+pub(super) fn chapter_file_refs_from_manifest(manifest: &serde_json::Value) -> Vec<serde_json::Value> {
+    manifest
+        .get("files")
+        .and_then(|f| f.as_array())
+        .map(|arr| arr.iter().map(|f| {
+            let cid = f.get("cid").and_then(|c| c.as_str()).unwrap_or_default();
+            let mime = f.get("mime").and_then(|m| m.as_str()).unwrap_or("text/plain");
+            let size = f.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
+            serde_json::json!({
+                "path": f.get("path").cloned().unwrap_or(serde_json::Value::Null),
+                "blob": {
+                    "$type": "blob",
+                    "ref": { "$link": cid },
+                    "mimeType": mime,
+                    "size": size,
+                },
+                "mime": mime,
+            })
+        }).collect())
+        .unwrap_or_default()
 }
 
 pub async fn create_article(
@@ -1053,110 +1148,74 @@ pub async fn create_article(
 ) -> ApiResult<(StatusCode, Json<Article>)> {
     validate_create_article(&input)?;
 
-    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
-
-    // Verify series ownership if series_id is specified
+    // Verify series ownership if series_id is specified.
     if let Some(ref sid) = input.series_id {
         let owner = series_service::get_series_owner(&state.pool, sid).await?;
         require_owner(Some(&owner), &user.did)?;
     }
 
-    // Init pijul repo for standalone articles (series repos are already initialized)
-    if input.series_id.is_none() {
-        let node_id = uri_to_node_id(&at_uri);
-        let knot_url = article_service::get_user_knot_url(&state.pool, &user.did).await;
-        if let Some(ref knot) = knot_url {
-            let client = pijul_knot::KnotClient::new(knot);
-            if let Err(e) = client.init_repo(&node_id).await {
-                tracing::warn!("knot init_repo failed: {e}");
-            }
-        }
-        state.pijul.init_repo(&node_id)
-            .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+    if input.series_id.is_some() {
+        create_series_chapter_handler(&state, &user, &input).await
+    } else {
+        create_standalone_article_handler(&state, &user, &input).await
     }
+}
 
-    let publish = publish_article_content(
-        &state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
-        input.series_id.as_deref(), "Initial publish",
-        SummaryInput {
-            user_source: input.summary.as_deref(),
-        },
+/// Standalone-article publish: mints its own at_uri, writes its own PDS
+/// record, and returns the Article view.
+async fn create_standalone_article_handler(
+    state: &AppState,
+    user: &crate::auth::AuthUser,
+    input: &CreateArticle,
+) -> ApiResult<(StatusCode, Json<Article>)> {
+    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::WORK, tid());
+
+    let publish = publish_article_blob(
+        state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
+        SummaryInput { user_source: input.summary.as_deref() },
     ).await?;
 
     let hash = content_hash(&input.content);
 
     let translation_group = if let Some(ref source_uri) = input.translation_of {
+        #[allow(deprecated)]
         Some(article_service::resolve_translation_group(&state.pool, source_uri).await?)
     } else {
         None
     };
 
     let article = article_service::create_article(
-        &state.pool, &user.did, &at_uri, &input, &hash, translation_group,
+        &state.pool, &user.did, &at_uri, input, &hash, translation_group,
         default_visibility(user.phone_verified), ContentKind::Article, None,
         &publish.summary_source, &publish.summary_html,
+        publish.blob_manifest.clone(),
     ).await?;
 
-    // Add to series if specified. For content authored through this route
-    // the source lives in the series repo at the default `chapters/<tid>.<ext>`
-    // path (matching what publish_article_content wrote).
-    if let Some(ref sid) = input.series_id {
-        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
-        let src_ext = fx_renderer::format_extension(input.content_format.as_str());
-        let default_path = fx_core::meta::default_chapter_path(chapter_id, src_ext);
-        series_service::add_series_article(&state.pool, sid, &at_uri, Some(&default_path)).await?;
-    }
-
-    // Skip PDS sync for restricted articles or series chapters. Series chapters
-    // are addressed via the series record + sectionRef, not per-chapter records.
-    if !input.restricted.unwrap_or(false) && input.series_id.is_none() {
-        let node_id = uri_to_node_id(&at_uri);
-        if let Some(repo_url) = article_service::pijul_repo_url(&state.pool, &user.did, &node_id, &state.default_knot_url).await {
-            let record = serde_json::json!({
-                "$type": fx_atproto::lexicon::ARTICLE,
-                "title": input.title,
-                "description": input.summary.as_deref().unwrap_or(""),
-                "contentFormat": input.content_format,
-                "tags": input.tags,
-                "pijulRepoUrl": repo_url,
-                "createdAt": now_rfc3339(),
-            });
+    if !input.restricted.unwrap_or(false) {
+        if let Some(ref manifest) = publish.blob_manifest {
+            let record = build_article_record(input, manifest);
             let rkey = at_uri.rsplit('/').next().map(str::to_string);
-            pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, rkey, "create article").await;
-        } else {
-            tracing::warn!("no knot configured; skipping PDS article record for {at_uri}");
+            pds_create_record(state, &user.token, fx_atproto::lexicon::WORK, record, rkey, "create article").await;
         }
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
-
-    // Register creator as owner collaborator
     let _ = collaboration_service::register_article_owner(&state.pool, &at_uri, &user.did).await;
+    save_category_metadata(state, &at_uri, input).await;
 
-    // Save category-specific metadata
-    save_category_metadata(&state, &at_uri, &input).await;
-
-    // Add creator as verified author (position 0). PDS authorship record is
-    // only meaningful for standalone articles — series chapters live under
-    // the series record, so there's no per-chapter record to authorize.
-    let authorship_uri = if input.series_id.is_none() {
-        let authorship_record = serde_json::json!({
-            "$type": fx_atproto::lexicon::AUTHORSHIP,
-            "article": at_uri,
-            "createdAt": now_rfc3339(),
-        });
-        pds_create_record(
-            &state, &user.token, fx_atproto::lexicon::AUTHORSHIP, authorship_record, None, "creator authorship",
-        ).await
-    } else {
-        None
-    };
+    let authorship_record = serde_json::json!({
+        "$type": fx_atproto::lexicon::AUTHORSHIP,
+        "article": at_uri,
+        "createdAt": now_rfc3339(),
+    });
+    let authorship_uri = pds_create_record(
+        state, &user.token, fx_atproto::lexicon::AUTHORSHIP, authorship_record, None, "creator authorship",
+    ).await;
     let _ = authorship_service::add_author(&state.pool, &at_uri, &user.did, &user.did, Some(0)).await;
     if let Some(ref uri) = authorship_uri {
         let _ = authorship_service::verify_authorship(&state.pool, &at_uri, &user.did, Some(uri)).await;
     }
 
-    // Add co-authors as pending (they must verify)
     for (i, author_did) in input.authors.iter().enumerate() {
         if author_did != &user.did {
             let _ = authorship_service::add_author(
@@ -1164,6 +1223,80 @@ pub async fn create_article(
             ).await;
         }
     }
+
+    Ok((StatusCode::CREATED, Json(article)))
+}
+
+/// Series-chapter publish: no per-chapter at_uri and no per-chapter PDS
+/// record. Source file + manifest are written into the SERIES's shared
+/// blob_cache dir, a chapter row with `at_uri = NULL` is inserted, and the
+/// series's `at.nightbo.work` record is merged in-place with the new
+/// chapter entry + file refs.
+async fn create_series_chapter_handler(
+    state: &AppState,
+    user: &crate::auth::AuthUser,
+    input: &CreateArticle,
+) -> ApiResult<(StatusCode, Json<Article>)> {
+    let series_id = input.series_id.clone()
+        .ok_or_else(|| AppError(fx_core::Error::BadRequest("series_id required".into())))?;
+    let series_repo_uri = series_service::series_repo_uri(&state.pool, &series_id).await?;
+
+    // Derive a stable chapter path (source_path within the series bundle).
+    // Using a fresh tid keeps default paths unique even when multiple
+    // chapters are created in the same second. Authors can override the
+    // path via the CLI/batch-publish path (future).
+    let chapter_tid = tid();
+    let src_ext = fx_renderer::format_extension(input.content_format.as_str());
+    let source_path = fx_core::meta::default_chapter_path(&chapter_tid, src_ext);
+
+    let publish = publish_article_blob_to(
+        state, &user.did, &user.token, &input.content, input.content_format,
+        SummaryInput { user_source: input.summary.as_deref() },
+        PublishTarget::SeriesChapter {
+            series_repo_uri: &series_repo_uri,
+            chapter_path: &source_path,
+        },
+    ).await?;
+
+    let hash = content_hash(&input.content);
+    let anchor = chapter_tid.clone();
+
+    let article = article_service::create_series_chapter(
+        &state.pool, &user.did, &series_repo_uri, &source_path,
+        input, &hash,
+        default_visibility(user.phone_verified),
+        &publish.summary_source, &publish.summary_html,
+        publish.blob_manifest.clone(),
+    ).await?;
+
+    // Order-index is assigned by add_series_chapter and returned so we emit
+    // the same value into the series record's `chapters[]`.
+    let order_index = series_service::add_series_chapter(
+        &state.pool, &series_id, &series_repo_uri, &source_path, Some(&anchor),
+    ).await?;
+
+    // Merge this chapter into the series's PDS record (chapters[] + files[]).
+    if !input.restricted.unwrap_or(false) {
+        if let Some(ref manifest) = publish.blob_manifest {
+            let file_refs = chapter_file_refs_from_manifest(manifest);
+            merge_chapter_into_series_record(
+                state, &user.token, &user.did, &series_id,
+                &input.title, &source_path, &anchor,
+                order_index as i64, &file_refs,
+            ).await;
+        }
+    }
+
+    // Chapter-specific metadata (book_id / course_id / note fields) is
+    // already persisted on the `articles` row by create_series_chapter via
+    // CreateArticle's target_* accessors. Paper/Experience metadata do not
+    // apply to series chapters (they describe whole publications/events, not
+    // parts of a larger series work), so we skip save_category_metadata
+    // entirely here.
+    //
+    // No per-chapter authorship record either — series-level authorship
+    // attributes the whole work. No auto_bookmark because chapters aren't
+    // individually bookmarkable in the new model (you bookmark the series).
 
     Ok((StatusCode::CREATED, Json(article)))
 }
@@ -1206,100 +1339,103 @@ pub async fn create_article_multipart(
 
     validate_create_article(&input)?;
 
-    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
-
     if let Some(ref sid) = input.series_id {
         let owner = series_service::get_series_owner(&state.pool, sid).await?;
         require_owner(Some(&owner), &user.did)?;
     }
 
-    // Init repo for standalone articles (series repos already exist)
-    if input.series_id.is_none() {
-        let node_id = uri_to_node_id(&at_uri);
-        let knot_url = article_service::get_user_knot_url(&state.pool, &user.did).await;
-        if let Some(ref knot) = knot_url {
-            let client = pijul_knot::KnotClient::new(knot);
-            if let Err(e) = client.init_repo(&node_id).await {
-                tracing::warn!("knot init_repo failed: {e}");
-            }
-        }
-        state.pijul.init_repo(&node_id)
-            .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
+    if input.series_id.is_some() {
+        create_series_chapter_multipart(&state, &user, &input, &resources).await
+    } else {
+        create_standalone_multipart(&state, &user, &input, &resources).await
+    }
+}
 
-        // Write resources BEFORE publishing content (so rendering can find them)
-        if !resources.is_empty() {
-            let repo_path = state.pijul.repo_path(&node_id);
-            for (rel_path, data) in &resources {
-                let safe_path: String = rel_path.chars()
-                    .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' { c } else { '_' })
-                    .collect();
-                let safe_path = safe_path.trim_start_matches('.').trim_start_matches('/');
-                if safe_path.is_empty() || safe_path.contains("..") {
-                    continue;
-                }
-                let dest = repo_path.join(safe_path);
-                if let Some(parent) = dest.parent() {
-                    tokio::fs::create_dir_all(parent).await?;
-                }
-                tokio::fs::write(&dest, data).await?;
-            }
-            let _ = state.pijul_record(node_id, format!("Upload {} resources", resources.len()), Some(user.did.clone())).await;
+async fn create_standalone_multipart(
+    state: &AppState,
+    user: &crate::auth::AuthUser,
+    input: &CreateArticle,
+    resources: &[(String, Vec<u8>)],
+) -> ApiResult<(StatusCode, Json<Article>)> {
+    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::WORK, tid());
+
+    // Upload extra resources as PDS blobs and stage them alongside the entry
+    // file.
+    let mut extra_blobs: Vec<(String, serde_json::Value, usize, &'static str)> = Vec::new();
+    let node_id = uri_to_node_id(&at_uri);
+    let stage_path = state.blob_cache_path.join(&node_id);
+    tokio::fs::create_dir_all(&stage_path).await?;
+    for (rel_path, data) in resources {
+        let safe_path: String = rel_path.chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' { c } else { '_' })
+            .collect();
+        let safe_path = safe_path.trim_start_matches('.').trim_start_matches('/').to_string();
+        if safe_path.is_empty() || safe_path.contains("..") {
+            continue;
+        }
+        let dest = stage_path.join(&safe_path);
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(&dest, data).await?;
+
+        let mime = mime_for_source_ext(
+            std::path::Path::new(&safe_path).extension().and_then(|e| e.to_str()).unwrap_or(""),
+        );
+        if let Some(blob) = crate::auth::pds_upload_blob(state, &user.token, data.clone(), mime).await {
+            extra_blobs.push((safe_path, blob, data.len(), mime));
         }
     }
 
-    // Now publish content — resources are already in the repo, so rendering will work
-    let publish = publish_article_content(
-        &state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
-        input.series_id.as_deref(), "Initial publish",
-        SummaryInput {
-            user_source: input.summary.as_deref(),
-        },
+    let mut publish = publish_article_blob(
+        state, &at_uri, &user.did, &user.token, &input.content, input.content_format,
+        SummaryInput { user_source: input.summary.as_deref() },
     ).await?;
+
+    if !extra_blobs.is_empty() {
+        if let Some(ref mut manifest) = publish.blob_manifest {
+            let files = manifest.get_mut("files")
+                .and_then(|f| f.as_array_mut())
+                .expect("blob manifest files[]");
+            for (path, blob, size, mime) in &extra_blobs {
+                files.push(serde_json::json!({
+                    "path": path,
+                    "cid": blob_cid(blob),
+                    "size": *size as u64,
+                    "mime": *mime,
+                }));
+            }
+        }
+    }
 
     let hash = content_hash(&input.content);
 
     let translation_group = if let Some(ref source_uri) = input.translation_of {
+        #[allow(deprecated)]
         Some(article_service::resolve_translation_group(&state.pool, source_uri).await?)
     } else {
         None
     };
 
     let article = article_service::create_article(
-        &state.pool, &user.did, &at_uri, &input, &hash, translation_group,
+        &state.pool, &user.did, &at_uri, input, &hash, translation_group,
         default_visibility(user.phone_verified), ContentKind::Article, None,
         &publish.summary_source, &publish.summary_html,
+        publish.blob_manifest.clone(),
     ).await?;
 
-    if let Some(ref sid) = input.series_id {
-        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
-        let src_ext = fx_renderer::format_extension(input.content_format.as_str());
-        let default_path = fx_core::meta::default_chapter_path(chapter_id, src_ext);
-        series_service::add_series_article(&state.pool, sid, &at_uri, Some(&default_path)).await?;
-    }
-
-    if !input.restricted.unwrap_or(false) && input.series_id.is_none() {
-        let node_id = uri_to_node_id(&at_uri);
-        if let Some(repo_url) = article_service::pijul_repo_url(&state.pool, &user.did, &node_id, &state.default_knot_url).await {
-            let record = serde_json::json!({
-                "$type": fx_atproto::lexicon::ARTICLE,
-                "title": input.title,
-                "description": input.summary.as_deref().unwrap_or(""),
-                "contentFormat": input.content_format,
-                "tags": input.tags,
-                "pijulRepoUrl": repo_url,
-                "createdAt": now_rfc3339(),
-            });
+    if !input.restricted.unwrap_or(false) {
+        if let Some(ref manifest) = publish.blob_manifest {
+            let record = build_article_record(input, manifest);
             let rkey = at_uri.rsplit('/').next().map(str::to_string);
-            pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, rkey, "create article").await;
-        } else {
-            tracing::warn!("no knot configured; skipping PDS article record for {at_uri}");
+            pds_create_record(state, &user.token, fx_atproto::lexicon::WORK, record, rkey, "create article").await;
         }
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
     let _ = collaboration_service::register_article_owner(&state.pool, &at_uri, &user.did).await;
 
-    save_category_metadata(&state, &at_uri, &input).await;
+    save_category_metadata(state, &at_uri, input).await;
 
     let authorship_record = serde_json::json!({
         "$type": fx_atproto::lexicon::AUTHORSHIP,
@@ -1307,7 +1443,7 @@ pub async fn create_article_multipart(
         "createdAt": now_rfc3339(),
     });
     let authorship_uri = pds_create_record(
-        &state, &user.token, fx_atproto::lexicon::AUTHORSHIP, authorship_record, None, "creator authorship",
+        state, &user.token, fx_atproto::lexicon::AUTHORSHIP, authorship_record, None, "creator authorship",
     ).await;
     let _ = authorship_service::add_author(&state.pool, &at_uri, &user.did, &user.did, Some(0)).await;
     if let Some(ref uri) = authorship_uri {
@@ -1318,6 +1454,105 @@ pub async fn create_article_multipart(
         if author_did != &user.did {
             let _ = authorship_service::add_author(
                 &state.pool, &at_uri, author_did, &user.did, Some((i + 1) as i16),
+            ).await;
+        }
+    }
+
+    Ok((StatusCode::CREATED, Json(article)))
+}
+
+async fn create_series_chapter_multipart(
+    state: &AppState,
+    user: &crate::auth::AuthUser,
+    input: &CreateArticle,
+    resources: &[(String, Vec<u8>)],
+) -> ApiResult<(StatusCode, Json<Article>)> {
+    let series_id = input.series_id.clone()
+        .ok_or_else(|| AppError(fx_core::Error::BadRequest("series_id required".into())))?;
+    let series_repo_uri = series_service::series_repo_uri(&state.pool, &series_id).await?;
+
+    // Stage extra resources into the SERIES blob cache (shared across chapters).
+    let mut extra_blobs: Vec<(String, serde_json::Value, usize, &'static str)> = Vec::new();
+    let series_node_id = uri_to_node_id(&series_repo_uri);
+    let stage_path = state.blob_cache_path.join(&series_node_id);
+    tokio::fs::create_dir_all(&stage_path).await?;
+    for (rel_path, data) in resources {
+        let safe_path: String = rel_path.chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' { c } else { '_' })
+            .collect();
+        let safe_path = safe_path.trim_start_matches('.').trim_start_matches('/').to_string();
+        if safe_path.is_empty() || safe_path.contains("..") {
+            continue;
+        }
+        let dest = stage_path.join(&safe_path);
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(&dest, data).await?;
+
+        let mime = mime_for_source_ext(
+            std::path::Path::new(&safe_path).extension().and_then(|e| e.to_str()).unwrap_or(""),
+        );
+        if let Some(blob) = crate::auth::pds_upload_blob(state, &user.token, data.clone(), mime).await {
+            extra_blobs.push((safe_path, blob, data.len(), mime));
+        }
+    }
+
+    let chapter_tid = tid();
+    let src_ext = fx_renderer::format_extension(input.content_format.as_str());
+    let source_path = fx_core::meta::default_chapter_path(&chapter_tid, src_ext);
+    let anchor = chapter_tid.clone();
+
+    let mut publish = publish_article_blob_to(
+        state, &user.did, &user.token, &input.content, input.content_format,
+        SummaryInput { user_source: input.summary.as_deref() },
+        PublishTarget::SeriesChapter {
+            series_repo_uri: &series_repo_uri,
+            chapter_path: &source_path,
+        },
+    ).await?;
+
+    // Fold extra resources into the chapter's manifest — but tag them with
+    // paths relative to the series root (that's how the series bundle sees
+    // them). `extra_blobs` was keyed by user-supplied paths already relative
+    // to the series root, so no rewrite needed.
+    if !extra_blobs.is_empty() {
+        if let Some(ref mut manifest) = publish.blob_manifest {
+            let files = manifest.get_mut("files")
+                .and_then(|f| f.as_array_mut())
+                .expect("blob manifest files[]");
+            for (path, blob, size, mime) in &extra_blobs {
+                files.push(serde_json::json!({
+                    "path": path,
+                    "cid": blob_cid(blob),
+                    "size": *size as u64,
+                    "mime": *mime,
+                }));
+            }
+        }
+    }
+
+    let hash = content_hash(&input.content);
+
+    let article = article_service::create_series_chapter(
+        &state.pool, &user.did, &series_repo_uri, &source_path,
+        input, &hash,
+        default_visibility(user.phone_verified),
+        &publish.summary_source, &publish.summary_html,
+        publish.blob_manifest.clone(),
+    ).await?;
+
+    let order_index = series_service::add_series_chapter(
+        &state.pool, &series_id, &series_repo_uri, &source_path, Some(&anchor),
+    ).await?;
+
+    if !input.restricted.unwrap_or(false) {
+        if let Some(ref manifest) = publish.blob_manifest {
+            let file_refs = chapter_file_refs_from_manifest(manifest);
+            merge_chapter_into_series_record(
+                state, &user.token, &user.did, &series_id,
+                &input.title, &source_path, &anchor,
+                order_index as i64, &file_refs,
             ).await;
         }
     }
@@ -1516,111 +1751,6 @@ pub async fn get_translations(
     Ok(Json(articles))
 }
 
-// --- Fork ---
-
-pub async fn fork_article(
-    State(state): State<AppState>,
-    WriteAuth(user): WriteAuth,
-    Json(input): Json<ForkArticleInput>,
-) -> ApiResult<(StatusCode, Json<Article>)> {
-    if let Err(e) = fx_core::validation::validate_at_uri(&input.uri) {
-        return Err(AppError(fx_core::Error::Validation(vec![e])));
-    }
-
-    let source = article_service::get_article(&state.pool, state.instance_mode, &input.uri).await?;
-
-    if source.license == "All-Rights-Reserved" {
-        return Err(AppError(fx_core::Error::Forbidden { action: "fork proprietary article" }));
-    }
-    if source.license.contains("ND") {
-        return Err(AppError(fx_core::Error::Forbidden { action: "fork NoDerivatives-licensed article" }));
-    }
-    if source.restricted {
-        return Err(AppError(fx_core::Error::Forbidden { action: "fork restricted article" }));
-    }
-
-    let fork_at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
-    let fork_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::FORK, tid());
-
-    let source_node_id = uri_to_node_id(&input.uri);
-    let fork_node_id = uri_to_node_id(&fork_at_uri);
-    state.pijul.fork(&source_node_id, &fork_node_id)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-
-    // Format conversion on fork
-    let target_format = input.target_format.as_deref().unwrap_or(source.content_format.as_str());
-    if target_format != source.content_format.as_str() {
-        if let Err(e) = fx_core::validation::validate_content_format(target_format) {
-            return Err(AppError(fx_core::Error::Validation(vec![e])));
-        }
-        let fork_repo = state.pijul.repo_path(&fork_node_id);
-        let old_ext = fx_renderer::format_extension(source.content_format.as_str());
-        let new_ext = fx_renderer::format_extension(target_format);
-        let old_path = fork_repo.join(format!("content.{old_ext}"));
-        let src_content = tokio::fs::read_to_string(&old_path).await?;
-        let converted = fx_renderer::convert_format(&src_content, source.content_format.as_str(), target_format)
-            .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?;
-        // Write new format file and remove old one
-        let new_path = fork_repo.join(format!("content.{new_ext}"));
-        tokio::fs::write(&new_path, &converted).await?;
-        if old_ext != new_ext {
-            let _ = tokio::fs::remove_file(&old_path).await;
-        }
-        // Re-render HTML cache
-        if target_format != "html" {
-            let rendered = render_content(target_format, &converted, &fork_repo)?;
-            let _ = tokio::fs::write(fork_repo.join("content.html"), &rendered).await;
-        }
-    }
-
-    // Record initial version for the fork
-    let fork_repo = state.pijul.repo_path(&fork_node_id);
-    let fork_src_ext = fx_renderer::format_extension(target_format);
-    let fork_src_file = format!("content.{fork_src_ext}");
-    if let Ok(source_text) = tokio::fs::read_to_string(&fork_repo.join(&fork_src_file)).await {
-        let _ = version_service::record_version(
-            &state.pool, &fork_at_uri, "fork-initial", &user.did,
-            &format!("Forked from {}", input.uri), &source_text,
-        ).await;
-    }
-
-    let mut source_for_fork = source.clone();
-    if target_format != source_for_fork.content_format.as_str() {
-        source_for_fork.content_format = target_format.parse::<ContentFormat>()
-            .map_err(|e| AppError(fx_core::Error::BadRequest(e)))?;
-    }
-
-    let article = article_service::create_fork_record(
-        &state.pool, &fork_uri, &input.uri, &fork_at_uri, &user.did, &source_for_fork,
-        default_visibility(user.phone_verified),
-    ).await?;
-
-    let record = serde_json::json!({
-        "$type": fx_atproto::lexicon::FORK,
-        "source": input.uri,
-        "fork": fork_at_uri,
-        "createdAt": now_rfc3339(),
-    });
-    let fork_rkey = fork_uri.rsplit('/').next().map(str::to_string);
-    pds_create_record(&state, &user.token, fx_atproto::lexicon::FORK, record, fork_rkey, "create fork").await;
-
-    if let Err(e) = notification_service::create_notification(
-        &state.pool, &tid(), &source.did, &user.did,
-        "article_fork", Some(&input.uri), Some(&fork_at_uri),
-    ).await {
-        tracing::warn!("notification failed: {e}");
-    }
-
-    Ok((StatusCode::CREATED, Json(article)))
-}
-
-#[derive(serde::Deserialize)]
-pub struct ForkArticleInput {
-    uri: String,
-    /// Target format for format conversion on fork. If omitted, keeps original format.
-    target_format: Option<String>,
-}
-
 // --- Format conversion ---
 
 #[derive(serde::Deserialize)]
@@ -1710,43 +1840,158 @@ pub async fn upload_image(
         return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
     }
 
-    // Resolve article location (unified for series and standalone)
-    let loc = resolve_location(&state, &uri, "typst").await
-        .unwrap_or_else(|| {
-            // Fallback for standalone articles without existing repo
-            let node_id = uri_to_node_id(&uri);
-            let repo_path = state.pijul.repo_path(&node_id);
-            ArticleLocation {
-                node_id, repo_path: repo_path.clone(),
-                content_path: repo_path.join("content.typ"),
-                cache_path: repo_path.join("content.html"),
-                series_id: None, chapter_id: None,
-            }
-        });
-
-    // Write resource to repo
-    let dest = loc.repo_path.join(&safe_name);
+    // Upload the resource as a PDS blob and stage it into the article's
+    // blob_cache dir so the renderer sees it alongside the entry file.
+    let node_id = uri_to_node_id(&uri);
+    let stage_path = state.blob_cache_path.join(&node_id);
+    let dest = stage_path.join(&safe_name);
     if let Some(parent) = dest.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
     tokio::fs::write(&dest, &data).await?;
 
-    // Invalidate cache
-    loc.invalidate_cache().await;
+    // Invalidate any cached HTML so the next read triggers a fresh render
+    // that picks up the new resource.
+    let _ = tokio::fs::remove_file(stage_path.join("content.html")).await;
 
-    // Record pijul change
-    match state.pijul_record(loc.node_id.clone(), format!("Add resource: {safe_name}"), Some(user.did.clone())).await {
-        Ok(Some((hash, new_state))) => {
-            let _ = version_service::record_version(
-                &state.pool, &uri, &hash, &user.did, &format!("Add resource: {safe_name}"), "",
-            ).await;
-            publish_pijul_ref_update(&state, &user.token, &uri, &user.did, &hash, &new_state).await;
+    let mime = mime_for_source_ext(
+        std::path::Path::new(&safe_name).extension().and_then(|e| e.to_str()).unwrap_or(""),
+    );
+    let size = data.len();
+    let blob = crate::auth::pds_upload_blob(&state, &user.token, data.clone(), mime).await;
+
+    // Patch the article's manifest + PDS record so the resource shows up in
+    // `content.files[]`. Failures are non-fatal — the local filesystem copy
+    // still renders correctly; the record just falls out of sync until the
+    // next full publish.
+    if let Some(blob_ref) = blob {
+        if let Err(e) = append_file_to_article_manifest(
+            &state, &uri, &safe_name, &blob_ref, size, mime,
+        ).await {
+            tracing::warn!("append file to manifest failed: {e:?}");
         }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {}: {e}", loc.node_id),
+        if let Err(e) = append_file_to_article_record(
+            &state, &user.token, &user.did, &uri, &safe_name, &blob_ref, size, mime,
+        ).await {
+            tracing::warn!("patch article record failed: {e:?}");
+        }
     }
 
     Ok(Json(ImageUploadResponse { filename: safe_name }))
+}
+
+/// Patch the article's `content_manifest` JSONB (used by `ensure_blob_materialized`
+/// on read paths) to include the newly uploaded resource.
+pub(super) async fn append_file_to_article_manifest(
+    state: &AppState,
+    uri: &str,
+    path: &str,
+    blob: &serde_json::Value,
+    size: usize,
+    mime: &str,
+) -> Result<(), AppError> {
+    let existing: Option<serde_json::Value> = sqlx::query_scalar(
+        "SELECT content_manifest FROM article_localizations WHERE at_uri = $1",
+    )
+    .bind(uri)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+    let mut manifest = existing.unwrap_or_else(|| serde_json::json!({
+        "entry": "",
+        "files": [],
+        "pds_url": state.pds_url,
+    }));
+    let files = manifest.get_mut("files").and_then(|f| f.as_array_mut());
+    let entry = serde_json::json!({
+        "path": path,
+        "cid": blob_cid(blob),
+        "size": size as u64,
+        "mime": mime,
+    });
+    match files {
+        Some(arr) => {
+            // Replace if this path already has an entry; otherwise append.
+            if let Some(pos) = arr.iter().position(|f| f.get("path").and_then(|p| p.as_str()) == Some(path)) {
+                arr[pos] = entry;
+            } else {
+                arr.push(entry);
+            }
+        }
+        None => {
+            manifest["files"] = serde_json::json!([entry]);
+        }
+    }
+    sqlx::query("UPDATE article_localizations SET content_manifest = $1 WHERE at_uri = $2")
+        .bind(&manifest)
+        .bind(uri)
+        .execute(&state.pool)
+        .await?;
+    Ok(())
+}
+
+/// Re-fetch the article record on the user's PDS, append the new file entry
+/// to `content.files[]`, and putRecord it back. Doesn't touch content.entry
+/// or any other field.
+pub(super) async fn append_file_to_article_record(
+    state: &AppState,
+    token: &str,
+    did: &str,
+    article_uri: &str,
+    path: &str,
+    blob: &serde_json::Value,
+    size: usize,
+    mime: &str,
+) -> Result<(), AppError> {
+    let Some(rkey) = article_uri.rsplit('/').next() else {
+        return Ok(());
+    };
+    let Some(pds) = crate::auth::pds_session(&state.pool, token).await else {
+        return Ok(());
+    };
+    let existing = match state.at_client.get_record(
+        &pds.pds_url, &pds.access_jwt, did,
+        fx_atproto::lexicon::WORK, rkey,
+    ).await {
+        Ok(r) => r,
+        Err(e) => {
+            crate::auth::log_pds_error("get article record", e);
+            return Ok(());
+        }
+    };
+    let mut record = existing.get("value").cloned().unwrap_or_else(|| serde_json::json!({}));
+    let files = record.pointer_mut("/content/files").and_then(|f| f.as_array_mut());
+    let entry = serde_json::json!({
+        "path": path,
+        "blob": blob,
+        "mime": mime,
+    });
+    match files {
+        Some(arr) => {
+            if let Some(pos) = arr.iter().position(|f| f.get("path").and_then(|p| p.as_str()) == Some(path)) {
+                arr[pos] = entry;
+            } else {
+                arr.push(entry);
+            }
+        }
+        None => {
+            // No content at all yet — nothing sensible to patch; skip.
+            let _ = size; // silence unused warning in this branch
+            return Ok(());
+        }
+    }
+    if let Err(e) = state.at_client.put_record(
+        &pds.pds_url, &pds.access_jwt,
+        &fx_atproto::client::PutRecordInput {
+            repo: pds.did.clone(),
+            collection: fx_atproto::lexicon::WORK.to_string(),
+            rkey: rkey.to_string(),
+            record,
+        },
+    ).await {
+        crate::auth::log_pds_error("put article record", e);
+    }
+    Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -1774,17 +2019,14 @@ pub async fn get_image(
         return Err(AppError(fx_core::Error::BadRequest("invalid file name".into())));
     }
 
-    // Storage-aware root: blob-backed articles serve from the materialized
-    // scratch dir (same layout as the pijul working dir would have had), so
-    // `_rendered/*.svg` and `Figure/*.pdf` resolve via the same relative path.
-    let repo_path = if let Some(manifest) = load_blob_manifest(&state.pool, &q.uri).await {
+    // Serve resources from the article's materialized blob cache. Files the
+    // renderer emitted into `_rendered/*.svg` etc. sit next to the entry.
+    let path = state.blob_cache_path.join(&node_id);
+    if let Some(manifest) = load_blob_manifest(&state.pool, &q.uri).await {
         let did = uri_did(&q.uri).ok_or_else(|| AppError(fx_core::Error::BadRequest("bad uri".into())))?;
-        let path = state.blob_cache_path.join(&node_id);
         ensure_blob_materialized(&state, did, &manifest, &path).await?;
-        path
-    } else {
-        state.pijul.repo_path(&node_id)
-    };
+    }
+    let repo_path = path;
 
     let path = repo_path.join(name);
     let data = tokio::fs::read(&path).await.map_err(|_| {
@@ -1852,32 +2094,73 @@ pub async fn update_article(
         article_service::update_article_title(&state.pool, &input.uri, title).await?;
     }
 
-    // If the author supplied a new description, render + write description.{ext}
-    // to the repo so it lands in the same pijul patch as the content update.
     let format = article_service::get_content_format(&state.pool, &input.uri).await?;
     let node_id = uri_to_node_id(&input.uri);
-    let repo_path = state.pijul.repo_path(&node_id);
+    let repo_path = state.blob_cache_path.join(&node_id);
 
     let summary_html = if let Some(ref summary) = input.summary {
         let html = crate::summary::render_summary_inline(format.as_str(), summary, &repo_path)
             .unwrap_or_default();
-        let src_ext = fx_renderer::format_extension(format.as_str());
-        let summary_path = repo_path.join(format!("summary.{src_ext}"));
-        if let Some(parent) = summary_path.parent() {
-            let _ = tokio::fs::create_dir_all(parent).await;
-        }
-        if let Err(e) = tokio::fs::write(&summary_path, summary).await {
-            tracing::warn!("write summary file failed: {e}");
-        }
         Some(html)
     } else { None };
 
+    // Content updates re-publish the entry blob. We rebuild the manifest so
+    // the blob-cache copy matches the PDS record. Non-entry resources stay
+    // untouched — they carry over via the existing manifest plus any new
+    // uploads from `upload_image`.
     if let Some(ref content) = input.content {
-        if input.record {
-            let msg = input.commit_message.as_deref().unwrap_or("Update article");
-            update_article_content(&state, &input.uri, &user.did, Some(&user.token), content, &format, msg).await?;
-        } else {
-            save_article_content(&state, &input.uri, content, &format).await?;
+        let _ = input.commit_message;
+        let _ = input.record;
+        let content_format: ContentFormat = format.parse().unwrap_or(ContentFormat::Markdown);
+        let republish = publish_article_blob(
+            &state, &input.uri, &user.did, &user.token, content, content_format,
+            SummaryInput { user_source: input.summary.as_deref() },
+        ).await?;
+
+        let hash = content_hash(content);
+        article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;
+
+        if let Some(manifest) = republish.blob_manifest.clone() {
+            sqlx::query("UPDATE article_localizations SET content_manifest = $1 WHERE at_uri = $2")
+                .bind(&manifest)
+                .bind(&input.uri)
+                .execute(&state.pool)
+                .await?;
+
+            // Also putRecord the updated article shape.
+            if let Some(rkey) = input.uri.rsplit('/').next() {
+                // Reconstruct a CreateArticle shape from existing DB row + the new content.
+                let title = input.title.clone().unwrap_or_else(|| String::new());
+                let summary = input.summary.clone();
+                // Build a minimal CreateArticle for record-building (only the
+                // fields build_article_record actually reads).
+                let create = CreateArticle {
+                    title,
+                    summary,
+                    content: content.clone(),
+                    content_format,
+                    lang: None,
+                    license: None,
+                    translation_of: None,
+                    restricted: None,
+                    category: None,
+                    tags: vec![],
+                    prereqs: vec![],
+                    related: vec![],
+                    topics: vec![],
+                    series_id: None,
+                    metadata: None,
+                    authors: vec![],
+                    invites: vec![],
+                    book_chapter_id: None,
+                    course_session_id: None,
+                };
+                let record = build_article_record(&create, &manifest);
+                crate::auth::pds_put_record(
+                    &state, &user.token, fx_atproto::lexicon::WORK,
+                    rkey.to_string(), record, "update article",
+                ).await;
+            }
         }
     }
 
@@ -1898,20 +2181,24 @@ pub async fn update_article(
                 // Reviews: chapter/session always NULL (review is about the
                 // whole book/course).
                 sqlx::query(
-                    "UPDATE articles \
+                    "UPDATE articles a \
                         SET book_id = $1, edition_id = $2, \
                             book_chapter_id = NULL, course_session_id = NULL \
-                      WHERE at_uri = $3",
+                        FROM article_localizations l \
+                      WHERE l.at_uri = $3 \
+                        AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
                 )
                 .bind(book_id.as_deref()).bind(edition_id.as_deref()).bind(&input.uri)
                 .execute(&state.pool).await?;
             }
             CategoryMetadata::Note { book_id, edition_id, book_chapter_id, course_session_id, .. } => {
                 sqlx::query(
-                    "UPDATE articles \
+                    "UPDATE articles a \
                         SET book_id = $1, edition_id = $2, \
                             book_chapter_id = $3, course_session_id = $4 \
-                      WHERE at_uri = $5",
+                        FROM article_localizations l \
+                      WHERE l.at_uri = $5 \
+                        AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
                 )
                 .bind(book_id.as_deref()).bind(edition_id.as_deref())
                 .bind(book_chapter_id.as_deref()).bind(course_session_id.as_deref())
@@ -1941,32 +2228,17 @@ pub async fn record_article(
     State(state): State<AppState>,
     WriteAuth(user): WriteAuth,
     Json(input): Json<RecordArticleInput>,
-) -> ApiResult<Json<Vec<ArticleVersionInfo>>> {
+) -> ApiResult<Json<Vec<version_service::ArticleVersion>>> {
     let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
     require_owner(Some(&owner), &user.did)?;
 
-    // Read current content from working copy
-    let format = article_service::get_content_format(&state.pool, &input.uri).await?;
-    let loc = resolve_location(&state, &input.uri, &format).await
-        .ok_or(AppError(fx_core::Error::NotFound { entity: "article", id: input.uri.clone() }))?;
-
-    let content = tokio::fs::read_to_string(&loc.content_path).await
-        .map_err(|e| AppError(fx_core::Error::Internal(format!("read working copy: {e}"))))?;
-
-    let msg = if input.message.trim().is_empty() { "Update" } else { input.message.trim() };
-    record_pijul_change(&state, &input.uri, &user.did, Some(&user.token), &content, msg).await?;
-
-    // Return updated history
+    // Version history is now an opaque byproduct of blob re-publishes: every
+    // `update_article` with a new content body writes a new manifest, and
+    // that IS the new version. There's no explicit "record" step any more,
+    // so this endpoint degenerates to a list-versions convenience call.
+    let _ = input.message;
     let versions = version_service::list_versions(&state.pool, &input.uri).await?;
-    let node_id = uri_to_node_id(&input.uri);
-    let result = versions
-        .into_iter()
-        .map(|v| {
-            let unrecordable = state.pijul.is_unrecordable(&node_id, &v.change_hash);
-            ArticleVersionInfo { version: v, unrecordable }
-        })
-        .collect();
-    Ok(Json(result))
+    Ok(Json(versions))
 }
 
 // --- Delete article ---
@@ -1986,7 +2258,7 @@ pub async fn delete_article(
 
     // Delete PDS records before DB delete so we can still read authorship_uri.
     let article_rkey = input.uri.rsplit('/').next().unwrap_or("").to_string();
-    pds_delete_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, article_rkey, "delete article").await;
+    pds_delete_record(&state, &user.token, fx_atproto::lexicon::WORK, article_rkey, "delete article").await;
 
     let authorship_uri: Option<String> = sqlx::query_scalar(
         "SELECT authorship_uri FROM article_authors \
@@ -2002,17 +2274,9 @@ pub async fn delete_article(
         }
     }
 
-    // Clean up source files before deleting DB record
-    if let Some(loc) = resolve_location(&state, &input.uri, "typst").await {
-        if loc.is_series() {
-            // Remove chapter files and cache from series repo (don't delete the whole repo)
-            let _ = tokio::fs::remove_file(&loc.content_path).await;
-            loc.invalidate_cache().await;
-        } else {
-            // Remove entire standalone repo
-            let _ = tokio::fs::remove_dir_all(&loc.repo_path).await;
-        }
-    }
+    // Clean up the article's materialized blob cache dir.
+    let node_id = uri_to_node_id(&input.uri);
+    let _ = tokio::fs::remove_dir_all(state.blob_cache_path.join(&node_id)).await;
 
     article_service::delete_article(&state.pool, &input.uri).await?;
 
@@ -2099,27 +2363,12 @@ pub async fn search_articles(
 
 // --- Version history ---
 
-#[derive(serde::Serialize)]
-pub struct ArticleVersionInfo {
-    #[serde(flatten)]
-    pub version: version_service::ArticleVersion,
-    pub unrecordable: bool,
-}
-
 pub async fn get_article_history(
     State(state): State<AppState>,
     Query(q): Query<UriQuery>,
-) -> ApiResult<Json<Vec<ArticleVersionInfo>>> {
+) -> ApiResult<Json<Vec<version_service::ArticleVersion>>> {
     let versions = version_service::list_versions(&state.pool, &q.uri).await?;
-    let node_id = uri_to_node_id(&q.uri);
-    let result = versions
-        .into_iter()
-        .map(|v| {
-            let unrecordable = state.pijul.is_unrecordable(&node_id, &v.change_hash);
-            ArticleVersionInfo { version: v, unrecordable }
-        })
-        .collect();
-    Ok(Json(result))
+    Ok(Json(versions))
 }
 
 #[derive(serde::Deserialize)]
@@ -2149,133 +2398,6 @@ pub async fn get_article_diff(
 ) -> ApiResult<Json<version_service::VersionDiff>> {
     let diff = version_service::diff_versions(&state.pool, &q.uri, q.from, q.to).await?;
     Ok(Json(diff))
-}
-
-// --- Unrecord the latest change for an article ---
-
-#[derive(serde::Deserialize)]
-pub struct UnrecordInput {
-    pub uri: String,
-    pub version_id: i32,
-}
-
-pub async fn unrecord_article_change(
-    State(state): State<AppState>,
-    WriteAuth(user): WriteAuth,
-    Json(input): Json<UnrecordInput>,
-) -> ApiResult<StatusCode> {
-    let owner = article_service::get_article_owner(&state.pool, &input.uri).await?;
-    require_owner(Some(&owner), &user.did)?;
-
-    let version = version_service::get_version(&state.pool, &input.uri, input.version_id).await?;
-
-    // Perform pijul unrecord — fails with BadRequest if other changes depend on this one
-    let node_id = uri_to_node_id(&input.uri);
-    state.pijul.unrecord_change(&node_id, &version.change_hash)
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("depended upon") {
-                AppError(fx_core::Error::BadRequest(
-                    "该修改有后继依赖，无法撤销".into(),
-                ))
-            } else {
-                AppError(fx_core::Error::Internal(msg))
-            }
-        })?;
-
-    // Read the restored content from the working copy
-    let src_ext = article_service::get_content_format(&state.pool, &input.uri).await?;
-    let ext = fx_renderer::format_extension(&src_ext);
-    let content = state.pijul.get_file_content(&node_id, &format!("content.{ext}"))
-        .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
-    let content_str = String::from_utf8_lossy(&content).to_string();
-
-    // Re-render and update DB content hash
-    let repo_path = state.pijul.repo_path(&node_id);
-    if src_ext != "html" {
-        if let Ok(rendered) = render_content(&src_ext, &content_str, &repo_path) {
-            let _ = tokio::fs::write(repo_path.join("content.html"), rendered).await;
-        }
-    }
-    let hash = content_hash(&content_str);
-    article_service::update_article_content_hash(&state.pool, &input.uri, &hash).await?;
-
-    // Remove the version row
-    version_service::delete_version(&state.pool, input.version_id).await?;
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
-// --- Cross-fork apply ---
-
-#[derive(serde::Deserialize)]
-pub struct ApplyChangeInput {
-    pub source_uri: String,
-    pub target_uri: String,
-    pub change_hash: String,
-}
-
-#[derive(serde::Serialize)]
-pub struct ApplyChangeOutput {
-    pub has_conflicts: bool,
-    pub content: String,
-}
-
-/// Apply a pijul change from one article repo (typically a fork) to another
-/// (typically the original). The target article owner must be the caller.
-pub async fn apply_change(
-    State(state): State<AppState>,
-    WriteAuth(user): WriteAuth,
-    Json(input): Json<ApplyChangeInput>,
-) -> ApiResult<Json<ApplyChangeOutput>> {
-    // Only the target article owner can apply changes to it.
-    let owner = article_service::get_article_owner(&state.pool, &input.target_uri).await?;
-    require_owner(Some(&owner), &user.did)?;
-
-    let source_node_id = uri_to_node_id(&input.source_uri);
-    let target_node_id = uri_to_node_id(&input.target_uri);
-
-    // Apply the change (copies change file + dependencies, then applies).
-    state.pijul.apply(&source_node_id, &target_node_id, &input.change_hash)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-
-    // Read the updated working copy.
-    let src_ext = article_service::get_content_format(&state.pool, &input.target_uri).await?;
-    let ext = fx_renderer::format_extension(&src_ext);
-    let content_bytes = state.pijul.get_file_content(&target_node_id, &format!("content.{ext}"))
-        .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
-    let content = String::from_utf8_lossy(&content_bytes).to_string();
-
-    // Check for pijul conflict markers.
-    let has_conflicts = content.contains(">>>>>>>") || content.contains("<<<<<<<");
-
-    // Re-render HTML cache.
-    let repo_path = state.pijul.repo_path(&target_node_id);
-    if src_ext != "html" {
-        if let Ok(rendered) = render_content(&src_ext, &content, &repo_path) {
-            let _ = tokio::fs::write(repo_path.join("content.html"), rendered).await;
-        }
-    }
-
-    // Record a new version if no conflicts (conflicts need manual resolution first).
-    if !has_conflicts {
-        let message = format!("Applied change {} from {}", &input.change_hash[..12.min(input.change_hash.len())], &input.source_uri);
-        // Record the apply as a pijul change.
-        if let Some((hash, _merkle)) = state.pijul_record(target_node_id.clone(), message.clone(), Some(user.did.clone())).await
-            .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))? {
-            version_service::record_version(
-                &state.pool, &input.target_uri, &hash, &user.did, &message, &content,
-            ).await?;
-        }
-
-        let hash = content_hash(&content);
-        article_service::update_article_content_hash(&state.pool, &input.target_uri, &hash).await?;
-
-        // Sync meta.json → DB if it exists
-        sync_meta_to_db(&state, &input.target_uri, &repo_path).await;
-    }
-
-    Ok(Json(ApplyChangeOutput { has_conflicts, content }))
 }
 
 /// Sync a standalone markdown article's YAML frontmatter to DB after a
@@ -2372,19 +2494,13 @@ pub async fn invite_article_collaborator(
 ) -> ApiResult<(StatusCode, Json<collaboration_service::ArticleCollaborator>)> {
     // Verify ownership
     let article = article_service::get_article(&state.pool, state.instance_mode, &input.uri).await?;
-    require_owner(Some(&article.did), &user.did)?;
+    require_owner(Some(&article.author_did), &user.did)?;
 
     let user_did = resolve_identifier(&state, &input.identifier).await?;
 
     let role = input.role.as_deref().unwrap_or("editor");
     let short_did = user_did.chars().rev().take(8).collect::<String>().chars().rev().collect::<String>();
     let channel_name = format!("collab_{short_did}");
-
-    // Create pijul channel
-    let node_id = uri_to_node_id(&input.uri);
-    if let Err(e) = state.pijul.create_channel(&node_id, &channel_name, None) {
-        tracing::warn!("create channel for article: {e}");
-    }
 
     let collab = collaboration_service::add_article_collaborator(
         &state.pool, &input.uri, &user_did, role, &channel_name, &user.did,
@@ -2405,146 +2521,12 @@ pub async fn remove_article_collaborator_endpoint(
     Json(input): Json<RemoveArticleCollabInput>,
 ) -> ApiResult<StatusCode> {
     let article = article_service::get_article(&state.pool, state.instance_mode, &input.uri).await?;
-    require_owner(Some(&article.did), &user.did)?;
+    require_owner(Some(&article.author_did), &user.did)?;
 
-    let collab = collaboration_service::get_article_collaborator(&state.pool, &input.uri, &input.user_did).await?;
     let removed = collaboration_service::remove_article_collaborator(&state.pool, &input.uri, &input.user_did).await?;
     if !removed {
         return Err(AppError(fx_core::Error::NotFound { entity: "collaborator", id: input.user_did }));
     }
 
-    if let Some(c) = collab {
-        let node_id = uri_to_node_id(&input.uri);
-        let _ = state.pijul.delete_channel(&node_id, &c.channel_name);
-    }
-
     Ok(StatusCode::NO_CONTENT)
-}
-
-pub async fn list_article_channels(
-    State(state): State<AppState>,
-    Query(q): Query<UriQuery>,
-) -> ApiResult<Json<Vec<String>>> {
-    let node_id = uri_to_node_id(&q.uri);
-    let channels = state.pijul.list_channels(&node_id)
-        .unwrap_or_else(|_| vec!["main".to_string()]);
-    Ok(Json(channels))
-}
-
-#[derive(serde::Deserialize)]
-pub struct ArticleChannelFileQuery {
-    pub uri: String,
-    pub channel: String,
-    pub path: Option<String>,
-}
-
-pub async fn read_article_channel_file(
-    State(state): State<AppState>,
-    Query(q): Query<ArticleChannelFileQuery>,
-) -> ApiResult<Json<serde_json::Value>> {
-    let node_id = uri_to_node_id(&q.uri);
-    let file_path = q.path.as_deref().unwrap_or("content.typ");
-
-    let content = state.pijul.read_file_from_channel(&node_id, &q.channel, file_path)
-        .map_err(|e| AppError(fx_core::Error::Internal(format!("read channel file: {e}"))))?;
-
-    let text = String::from_utf8_lossy(&content).into_owned();
-    Ok(Json(serde_json::json!({ "content": text })))
-}
-
-#[derive(serde::Deserialize)]
-pub struct WriteArticleChannelFileInput {
-    pub uri: String,
-    pub channel: String,
-    pub content: String,
-    pub message: Option<String>,
-    pub path: Option<String>,
-}
-
-pub async fn write_article_channel_file(
-    State(state): State<AppState>,
-    WriteAuth(user): WriteAuth,
-    Json(input): Json<WriteArticleChannelFileInput>,
-) -> ApiResult<Json<serde_json::Value>> {
-    // Verify user has access to this channel
-    let collab = collaboration_service::get_article_collaborator(&state.pool, &input.uri, &user.did).await?;
-    let allowed = match &collab {
-        Some(c) => c.channel_name == input.channel || c.role == "owner",
-        None => false,
-    };
-    if !allowed {
-        return Err(AppError(fx_core::Error::Forbidden { action: "write to this channel" }));
-    }
-
-    let node_id = uri_to_node_id(&input.uri);
-    let file_path = input.path.as_deref().unwrap_or("content.typ");
-    let msg = input.message.as_deref().unwrap_or("update");
-
-    let result = state.pijul.write_and_record_on_channel(
-        &node_id, &input.channel, file_path, input.content.as_bytes(), msg, Some(&user.did),
-    ).map_err(|e| AppError(fx_core::Error::Internal(format!("write channel file: {e}"))))?;
-
-    let (hash, merkle) = result.unwrap_or_default();
-    Ok(Json(serde_json::json!({ "change_hash": hash, "merkle": merkle })))
-}
-
-#[derive(serde::Deserialize)]
-pub struct ArticleChannelQuery {
-    pub uri: String,
-    pub channel: String,
-}
-
-pub async fn article_channel_log(
-    State(state): State<AppState>,
-    Query(q): Query<ArticleChannelQuery>,
-) -> ApiResult<Json<Vec<String>>> {
-    let node_id = uri_to_node_id(&q.uri);
-    let log = state.pijul.log_channel(&node_id, &q.channel)
-        .map_err(|e| AppError(fx_core::Error::Internal(format!("channel log: {e}"))))?;
-    Ok(Json(log))
-}
-
-#[derive(serde::Deserialize)]
-pub struct ApplyArticleChannelInput {
-    pub uri: String,
-    pub target_channel: String,
-    pub change_hash: String,
-}
-
-pub async fn apply_article_channel_change(
-    State(state): State<AppState>,
-    WriteAuth(user): WriteAuth,
-    Json(input): Json<ApplyArticleChannelInput>,
-) -> ApiResult<StatusCode> {
-    let collab = collaboration_service::get_article_collaborator(&state.pool, &input.uri, &user.did).await?;
-    let allowed = match &collab {
-        Some(c) => c.channel_name == input.target_channel || c.role == "owner",
-        None => false,
-    };
-    if !allowed {
-        return Err(AppError(fx_core::Error::Forbidden { action: "write to this channel" }));
-    }
-
-    let node_id = uri_to_node_id(&input.uri);
-    state.pijul.apply_change_to_channel(&node_id, &input.change_hash, &input.target_channel)
-        .map_err(|e| AppError(fx_core::Error::Internal(format!("apply change: {e}"))))?;
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
-#[derive(serde::Deserialize)]
-pub struct ArticleChannelDiffQuery {
-    pub uri: String,
-    pub a: String,
-    pub b: String,
-}
-
-pub async fn article_channel_diff(
-    State(state): State<AppState>,
-    Query(q): Query<ArticleChannelDiffQuery>,
-) -> ApiResult<Json<pijul_knot::ChannelDiffResult>> {
-    let node_id = uri_to_node_id(&q.uri);
-    let diff = state.pijul.diff_channels(&node_id, &q.a, &q.b)
-        .map_err(|e| AppError(fx_core::Error::Internal(format!("channel diff: {e}"))))?;
-    Ok(Json(diff))
 }

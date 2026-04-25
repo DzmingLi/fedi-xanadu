@@ -3,17 +3,15 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use fx_core::content::ContentFormat;
 use fx_core::models::*;
 use fx_core::region::default_visibility;
-use fx_core::services::{article_service, draft_service, version_service};
+use fx_core::services::{article_service, draft_service};
 use fx_core::validation;
 
 use crate::error::{AppError, ApiResult, require_owner};
 use crate::state::AppState;
 use crate::auth::{Auth, WriteAuth, pds_create_record, pds_delete_record};
-use fx_core::util::{tid, content_hash, uri_to_node_id, now_rfc3339};
-use fx_core::services::article_service::get_user_knot_url;
+use fx_core::util::{tid, content_hash, now_rfc3339};
 
 pub async fn list_drafts(
     State(state): State<AppState>,
@@ -90,67 +88,13 @@ pub async fn publish_draft(
     let draft = draft_service::get_draft(&state.pool, &id).await?;
     require_owner(Some(draft.did.as_str()), &user.did)?;
 
-    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
+    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::WORK, tid());
 
-    // Set up pijul repo and write content
-    let node_id = uri_to_node_id(&at_uri);
-    let knot_url = get_user_knot_url(&state.pool, &user.did).await;
-
-    if let Some(ref knot) = knot_url {
-        let client = pijul_knot::KnotClient::new(knot);
-        if let Err(e) = client.init_repo(&node_id).await {
-            tracing::warn!("knot init_repo failed: {e}");
-        }
-        let src_ext = if draft.content_format == ContentFormat::Markdown { "md" } else { "typ" };
-        if let Err(e) = client.write_file(&node_id, &format!("content.{src_ext}"), draft.content.as_bytes()).await {
-            tracing::warn!("knot write_file failed: {e}");
-        }
-    } else {
-        state.pijul.init_repo(&node_id)
-            .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-    }
-
-    // Always maintain local repo for rendering
-    let _ = state.pijul.init_repo(&node_id);
-    let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = if draft.content_format == ContentFormat::Markdown { "md" } else { "typ" };
-    if knot_url.is_some() {
-        let _ = tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &draft.content).await;
-    } else {
-        tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &draft.content).await?;
-    }
-
-    let rendered_html = match draft.content_format.as_str() {
-        "markdown" => fx_renderer::render_markdown_to_html(&draft.content)
-            .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?,
-        _ => {
-            let config = fx_renderer::fx_render_config();
-            let world = fx_renderer::typst_render::RenderWorld::with_config(&draft.content, Some(&repo_path), &config);
-            fx_renderer::typst_render::render_world(&world)
-                .map_err(|e| AppError(fx_core::Error::Render(e.to_string())))?
-        }
-    };
-    let _ = tokio::fs::write(repo_path.join("content.html"), &rendered_html).await;
-
-    let record_result = if let Some(ref knot) = knot_url {
-        let client = pijul_knot::KnotClient::new(knot);
-        client.record(&node_id, "Initial publish", Some(&user.did)).await.ok()
-            .flatten().map(|r| Ok(Some(r)))
-            .unwrap_or(Ok(None))
-    } else {
-        state.pijul_record(node_id.clone(), "Initial publish".into(), Some(user.did.clone())).await
-    };
-
-    match record_result {
-        Ok(Some((hash, new_state))) => {
-            let _ = version_service::record_version(
-                &state.pool, &at_uri, &hash, &user.did, "Initial publish", &draft.content,
-            ).await;
-            super::articles::publish_pijul_ref_update(&state, &user.token, &at_uri, &user.did, &hash, &new_state).await;
-        }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
-    }
+    // Publish the draft content as a PDS-blob-backed article.
+    let publish = super::articles::publish_article_blob(
+        &state, &at_uri, &user.did, &user.token, &draft.content, draft.content_format,
+        super::articles::SummaryInput { user_source: Some(draft.summary.as_str()) },
+    ).await?;
 
     let hash = content_hash(&draft.content);
 
@@ -159,16 +103,49 @@ pub async fn publish_draft(
         &state.pool, &draft, &at_uri, &hash, default_visibility(user.phone_verified),
     ).await?;
 
-    // PDS: create article metadata record, delete draft record
-    let record = serde_json::json!({
-        "$type": fx_atproto::lexicon::ARTICLE,
-        "title": draft.title,
-        "description": draft.summary,
-        "contentFormat": draft.content_format,
-        "tags": tags,
-        "createdAt": now_rfc3339(),
-    });
-    pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, None, "publish article").await;
+    // Persist the blob manifest on the localization row.
+    if let Some(ref manifest) = publish.blob_manifest {
+        let _ = sqlx::query("UPDATE article_localizations SET content_manifest = $1 WHERE at_uri = $2")
+            .bind(manifest).bind(&at_uri).execute(&state.pool).await;
+    }
+
+    // PDS: create article record (new lexicon shape) and delete the
+    // draft record it replaces.
+    if let Some(ref manifest) = publish.blob_manifest {
+        let files: Vec<serde_json::Value> = manifest
+            .get("files")
+            .and_then(|f| f.as_array())
+            .map(|arr| arr.iter().map(|f| {
+                let cid = f.get("cid").and_then(|c| c.as_str()).unwrap_or_default();
+                let mime = f.get("mime").and_then(|m| m.as_str()).unwrap_or("text/plain");
+                let size = f.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
+                serde_json::json!({
+                    "path": f.get("path").cloned().unwrap_or(serde_json::Value::Null),
+                    "blob": {
+                        "$type": "blob",
+                        "ref": { "$link": cid },
+                        "mimeType": mime,
+                        "size": size,
+                    },
+                    "mime": mime,
+                })
+            }).collect())
+            .unwrap_or_default();
+        let record = serde_json::json!({
+            "$type": fx_atproto::lexicon::WORK,
+            "title": draft.title,
+            "description": draft.summary,
+            "tags": tags,
+            "content": {
+                "entry": manifest.get("entry").cloned().unwrap_or(serde_json::Value::Null),
+                "contentFormat": draft.content_format.as_str(),
+                "files": files,
+            },
+            "createdAt": now_rfc3339(),
+        });
+        let rkey = at_uri.rsplit('/').next().map(str::to_string);
+        pds_create_record(&state, &user.token, fx_atproto::lexicon::WORK, record, rkey, "publish article").await;
+    }
     if draft.at_uri.is_some() {
         pds_delete_record(&state, &user.token, fx_atproto::lexicon::DRAFT, id.clone(), "delete published draft").await;
     }

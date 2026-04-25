@@ -197,10 +197,12 @@ async fn resolve_meta(pool: &PgPool, path: &str, query: &str) -> PageMeta {
 
 async fn resolve_article(pool: &PgPool, uri: &str, path: &str, raw_query: &str) -> Option<PageMeta> {
     let row: (String, String, String, chrono::DateTime<chrono::Utc>) = sqlx::query_as(
-        "SELECT a.title, a.summary, \
-         COALESCE(p.display_name, p.handle, a.did), a.created_at \
-         FROM articles a LEFT JOIN profiles p ON a.did = p.did \
-         WHERE a.at_uri = $1 AND a.removed_at IS NULL",
+        "SELECT l.title, l.summary, \
+         COALESCE(p.display_name, p.handle, a.author_did), a.created_at \
+         FROM article_localizations l \
+         JOIN articles a ON a.repo_uri = l.repo_uri AND a.source_path = l.source_path \
+         LEFT JOIN profiles p ON a.author_did = p.did \
+         WHERE l.at_uri = $1 AND a.removed_at IS NULL",
     )
     .bind(uri)
     .fetch_optional(pool)
@@ -345,10 +347,12 @@ async fn render_bot_body(pool: &PgPool, path: &str, query: &str) -> Option<Strin
 
 async fn render_bot_article(pool: &PgPool, uri: &str) -> Option<String> {
     let row: (String, String, String) = sqlx::query_as(
-        "SELECT a.title, a.summary, \
-         COALESCE(p.display_name, p.handle, a.did) \
-         FROM articles a LEFT JOIN profiles p ON a.did = p.did \
-         WHERE a.at_uri = $1 AND a.removed_at IS NULL",
+        "SELECT l.title, l.summary, \
+         COALESCE(p.display_name, p.handle, a.author_did) \
+         FROM article_localizations l \
+         JOIN articles a ON a.repo_uri = l.repo_uri AND a.source_path = l.source_path \
+         LEFT JOIN profiles p ON a.author_did = p.did \
+         WHERE l.at_uri = $1 AND a.removed_at IS NULL",
     )
     .bind(uri)
     .fetch_optional(pool)
@@ -400,9 +404,11 @@ async fn render_bot_series(pool: &PgPool, id: &str) -> Option<String> {
 
     let (title, description, author) = row;
 
-    let chapters: Vec<(String, String)> = sqlx::query_as(
-        "SELECT sa.article_uri, a.title FROM series_articles sa \
-         JOIN articles a ON a.at_uri = sa.article_uri \
+    let chapters: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT a.repo_uri, a.source_path, l.title FROM series_articles sa \
+         JOIN articles a ON a.repo_uri = sa.repo_uri AND a.source_path = sa.source_path \
+         JOIN article_localizations l ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+           AND l.file_path = a.source_path \
          WHERE sa.series_id = $1 ORDER BY sa.order_index",
     )
     .bind(id)
@@ -412,7 +418,7 @@ async fn render_bot_series(pool: &PgPool, id: &str) -> Option<String> {
 
     let toc: String = chapters
         .iter()
-        .map(|(_, t)| format!("<li>{}</li>", esc(t)))
+        .map(|(_, _, t)| format!("<li>{}</li>", esc(t)))
         .collect::<Vec<_>>()
         .join("\n    ");
 

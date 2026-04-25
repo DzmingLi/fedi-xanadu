@@ -214,7 +214,7 @@ pub async fn list_follows(pool: &PgPool, did: &str) -> crate::Result<Vec<Followe
     let rows = sqlx::query_as::<_, FollowedUser>(
         "SELECT f.follows_did, p.handle, p.display_name, p.avatar_url, \
          EXISTS ( \
-           SELECT 1 FROM articles a WHERE a.did = f.follows_did \
+           SELECT 1 FROM articles a WHERE a.author_did = f.follows_did \
            AND a.created_at > COALESCE( \
              (SELECT last_seen_at FROM follow_seen WHERE did = f.did AND follows_did = f.follows_did), \
              f.created_at \
@@ -323,7 +323,7 @@ pub async fn get_profile(pool: &PgPool, did: &str) -> crate::Result<ProfileRespo
             p.education, p.experience, p.publications, p.projects, p.teaching, \
             p.affiliation, \
             p.credentials_verified, \
-            (SELECT COUNT(*) FROM articles WHERE did = $1) AS article_count, \
+            (SELECT COUNT(*) FROM articles WHERE author_did = $1) AS article_count, \
             (SELECT COUNT(*) FROM series WHERE created_by = $1) AS series_count \
          FROM profiles p \
          LEFT JOIN user_settings us ON us.did = p.did \

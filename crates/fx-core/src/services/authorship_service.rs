@@ -3,6 +3,7 @@ use sqlx::PgPool;
 use crate::models::ArticleAuthor;
 
 /// Add an author to an article (status = 'pending' unless self-adding).
+/// `article_uri` is any localization's at_uri; resolved to composite key.
 pub async fn add_author(
     pool: &PgPool,
     article_uri: &str,
@@ -18,9 +19,10 @@ pub async fn add_author(
     };
 
     sqlx::query(
-        "INSERT INTO article_authors (article_uri, author_did, position, status, added_by, verified_at) \
-         VALUES ($1, $2, $3, $4, $5, $6) \
-         ON CONFLICT (article_uri, author_did) WHERE author_did IS NOT NULL DO NOTHING",
+        "INSERT INTO article_authors (repo_uri, source_path, author_did, position, status, added_by, verified_at) \
+         SELECT repo_uri, source_path, $2, $3, $4, $5, $6 \
+         FROM article_localizations WHERE at_uri = $1 \
+         ON CONFLICT (repo_uri, source_path, author_did) WHERE author_did IS NOT NULL DO NOTHING",
     )
     .bind(article_uri)
     .bind(author_did)
@@ -33,7 +35,6 @@ pub async fn add_author(
     Ok(())
 }
 
-/// Add a non-user author by name only (no DID).
 pub async fn add_author_by_name(
     pool: &PgPool,
     article_uri: &str,
@@ -42,8 +43,9 @@ pub async fn add_author_by_name(
     position: Option<i16>,
 ) -> crate::Result<()> {
     sqlx::query(
-        "INSERT INTO article_authors (article_uri, author_name, position, status, added_by) \
-         VALUES ($1, $2, $3, 'verified', $4)",
+        "INSERT INTO article_authors (repo_uri, source_path, author_name, position, status, added_by) \
+         SELECT repo_uri, source_path, $2, $3, 'verified', $4 \
+         FROM article_localizations WHERE at_uri = $1",
     )
     .bind(article_uri)
     .bind(author_name)
@@ -54,7 +56,6 @@ pub async fn add_author_by_name(
     Ok(())
 }
 
-/// Verify authorship (set status to 'verified' and record the PDS authorship URI).
 pub async fn verify_authorship(
     pool: &PgPool,
     article_uri: &str,
@@ -63,7 +64,9 @@ pub async fn verify_authorship(
 ) -> crate::Result<bool> {
     let result = sqlx::query(
         "UPDATE article_authors SET status = 'verified', authorship_uri = $3, verified_at = NOW() \
-         WHERE article_uri = $1 AND author_did = $2 AND status = 'pending'",
+         WHERE (repo_uri, source_path) IN \
+             (SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $1) \
+         AND author_did = $2 AND status = 'pending'",
     )
     .bind(article_uri)
     .bind(author_did)
@@ -73,7 +76,6 @@ pub async fn verify_authorship(
     Ok(result.rows_affected() > 0)
 }
 
-/// Reject authorship (author declares "this is not me").
 pub async fn reject_authorship(
     pool: &PgPool,
     article_uri: &str,
@@ -81,7 +83,9 @@ pub async fn reject_authorship(
 ) -> crate::Result<bool> {
     let result = sqlx::query(
         "UPDATE article_authors SET status = 'rejected', verified_at = NOW() \
-         WHERE article_uri = $1 AND author_did = $2 AND status != 'rejected'",
+         WHERE (repo_uri, source_path) IN \
+             (SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $1) \
+         AND author_did = $2 AND status != 'rejected'",
     )
     .bind(article_uri)
     .bind(author_did)
@@ -90,7 +94,6 @@ pub async fn reject_authorship(
     Ok(result.rows_affected() > 0)
 }
 
-/// List non-rejected authors for an article, ordered by position (nulls last).
 pub async fn list_authors(
     pool: &PgPool,
     article_uri: &str,
@@ -102,7 +105,9 @@ pub async fn list_authors(
                 aa.position, aa.role, aa.is_corresponding, aa.status, aa.authorship_uri \
          FROM article_authors aa \
          LEFT JOIN profiles p ON aa.author_did = p.did \
-         WHERE aa.article_uri = $1 AND aa.status != 'rejected' \
+         WHERE (aa.repo_uri, aa.source_path) IN \
+             (SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $1) \
+         AND aa.status != 'rejected' \
          ORDER BY aa.position NULLS LAST, aa.created_at",
     )
     .bind(article_uri)
@@ -111,7 +116,7 @@ pub async fn list_authors(
     Ok(rows)
 }
 
-/// List authors for multiple articles in a single query (for list endpoints).
+/// Batch variant. Output keyed by synthetic article URI.
 pub async fn list_authors_batch(
     pool: &PgPool,
     article_uris: &[String],
@@ -122,13 +127,17 @@ pub async fn list_authors_batch(
 
     let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, i32, Option<i16>, String, bool, String, Option<String>)> =
         sqlx::query_as(
-            "SELECT aa.article_uri, aa.author_did, aa.author_name, p.handle, \
+            "SELECT article_uri(aa.repo_uri, aa.source_path) AS article_uri, \
+                    aa.author_did, aa.author_name, p.handle, \
                     p.display_name, p.avatar_url, \
                     COALESCE(p.reputation, 0), \
                     aa.position, aa.role, aa.is_corresponding, aa.status, aa.authorship_uri \
              FROM article_authors aa \
              LEFT JOIN profiles p ON aa.author_did = p.did \
-             WHERE aa.article_uri = ANY($1) AND aa.status != 'rejected' \
+             WHERE (aa.repo_uri, aa.source_path) IN ( \
+                 SELECT repo_uri, source_path FROM article_localizations \
+                 WHERE at_uri = ANY($1) \
+             ) AND aa.status != 'rejected' \
              ORDER BY aa.position NULLS LAST, aa.created_at",
         )
         .bind(article_uris)
@@ -158,15 +167,18 @@ pub async fn list_authors_batch(
         .collect())
 }
 
-/// List pending authorships for a user (for notifications / dashboard).
 pub async fn list_pending_for_user(
     pool: &PgPool,
     author_did: &str,
 ) -> crate::Result<Vec<(String, String)>> {
     let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT aa.article_uri, a.title \
+        "SELECT article_uri(aa.repo_uri, aa.source_path) AS article_uri, l.title \
          FROM article_authors aa \
-         JOIN articles a ON aa.article_uri = a.at_uri \
+         JOIN articles a \
+             ON a.repo_uri = aa.repo_uri AND a.source_path = aa.source_path \
+         JOIN article_localizations l \
+             ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+            AND l.file_path = a.source_path \
          WHERE aa.author_did = $1 AND aa.status = 'pending' \
          ORDER BY aa.created_at DESC",
     )
@@ -176,14 +188,16 @@ pub async fn list_pending_for_user(
     Ok(rows)
 }
 
-/// Remove an author entry (only the article publisher or the author themselves can do this).
 pub async fn remove_author(
     pool: &PgPool,
     article_uri: &str,
     author_did: &str,
 ) -> crate::Result<bool> {
     let result = sqlx::query(
-        "DELETE FROM article_authors WHERE article_uri = $1 AND author_did = $2",
+        "DELETE FROM article_authors \
+         WHERE (repo_uri, source_path) IN \
+             (SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $1) \
+         AND author_did = $2",
     )
     .bind(article_uri)
     .bind(author_did)

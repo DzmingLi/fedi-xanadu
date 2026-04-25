@@ -1,0 +1,1 @@
+import{dt as n,dz as c,dA as o,dB as i,dC as m}from"./index-D2PulmlC.js";function k(d,e,f){n(()=>{var r=c(()=>e(d,f==null?void 0:f())||{});if(f&&(r!=null&&r.update)){var t=!1,a={};o(()=>{var s=f();i(s),t&&m(a,s)&&(a=s,r.update(s))}),t=!0}if(r!=null&&r.destroy)return()=>r.destroy()})}export{k as a};

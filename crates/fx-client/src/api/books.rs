@@ -84,11 +84,17 @@ pub struct BookEditLog {
     pub book_id: String,
     pub editor_did: String,
     pub editor_handle: Option<String>,
+    #[serde(default = "default_action")]
+    pub action: String,
+    #[serde(default)]
+    pub target_id: Option<String>,
     pub old_data: serde_json::Value,
     pub new_data: serde_json::Value,
     pub summary: String,
     pub created_at: DateTime<Utc>,
 }
+
+fn default_action() -> String { "book_update".to_string() }
 
 // ---- Request types ----
 

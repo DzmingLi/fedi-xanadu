@@ -37,7 +37,7 @@ pub async fn create_thought(
 ) -> ApiResult<(StatusCode, Json<Article>)> {
     validate_create_thought(&input)?;
 
-    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
+    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::WORK, tid());
     let hash = content_hash(&input.content);
 
     let resolved_desc = input.summary.as_deref().unwrap_or("").to_string();
@@ -50,6 +50,7 @@ pub async fn create_thought(
         &state.pool, &user.did, &at_uri, &input, &hash, None,
         default_visibility(user.phone_verified), ContentKind::Thought, None,
         &resolved_desc, &desc_html,
+        None,
     ).await?;
 
     // Render and store source + HTML in article_versions (no pijul)
@@ -71,7 +72,7 @@ pub async fn create_thought(
     // Sync to PDS — thoughts are lightweight, content fits in the record
     if !input.restricted.unwrap_or(false) {
         let record = serde_json::json!({
-            "$type": fx_atproto::lexicon::ARTICLE,
+            "$type": fx_atproto::lexicon::WORK,
             "title": input.title,
             "description": input.summary.as_deref().unwrap_or(""),
             "contentFormat": input.content_format,
@@ -80,7 +81,7 @@ pub async fn create_thought(
             "kind": "thought",
             "createdAt": now_rfc3339(),
         });
-        pds_create_record(&state, &user.token, fx_atproto::lexicon::ARTICLE, record, None, "create thought").await;
+        pds_create_record(&state, &user.token, fx_atproto::lexicon::WORK, record, None, "create thought").await;
     }
 
     let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;

@@ -349,7 +349,10 @@ pub async fn list_content(
         .await?
     };
     let article_map: std::collections::HashMap<String, fx_core::models::Article> =
-        articles.into_iter().map(|a| (a.at_uri.clone(), a)).collect();
+        articles
+            .into_iter()
+            .filter_map(|a| a.at_uri.clone().map(|u| (u, a)))
+            .collect();
 
     let series_rows = if series_ids.is_empty() {
         Vec::new()

@@ -53,7 +53,12 @@ pub fn router(state: AppState, config: &Config) -> Router {
 
 async fn sitemap_handler(State(state): State<AppState>) -> impl IntoResponse {
     let articles: Vec<(String,)> = sqlx::query_as(
-        "SELECT at_uri FROM articles WHERE removed_at IS NULL AND visibility = 'public' ORDER BY created_at DESC"
+        "SELECT l.at_uri FROM articles a \
+         JOIN article_localizations l \
+           ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+         WHERE a.removed_at IS NULL AND a.visibility = 'public' \
+           AND l.at_uri IS NOT NULL AND l.file_path = a.source_path \
+         ORDER BY a.created_at DESC"
     ).fetch_all(&state.pool).await.unwrap_or_default();
 
     let series: Vec<(String,)> = sqlx::query_as(
@@ -87,9 +92,12 @@ async fn rss_feed_handler(
     let author = handle.as_deref().unwrap_or(&did);
 
     let articles: Vec<(String, String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
-        "SELECT at_uri, title, summary, created_at FROM articles \
-         WHERE did = $1 AND removed_at IS NULL AND visibility = 'public' \
-         ORDER BY created_at DESC LIMIT 50"
+        "SELECT l.at_uri, l.title, l.summary, a.created_at FROM articles a \
+         JOIN article_localizations l \
+           ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+         WHERE a.author_did = $1 AND a.removed_at IS NULL AND a.visibility = 'public' \
+           AND l.at_uri IS NOT NULL AND l.file_path = a.source_path \
+         ORDER BY a.created_at DESC LIMIT 50"
     ).bind(&did).fetch_all(&state.pool).await.unwrap_or_default();
 
     let mut xml = format!(

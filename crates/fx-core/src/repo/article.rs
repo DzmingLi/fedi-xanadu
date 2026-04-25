@@ -15,10 +15,6 @@ pub trait ArticleRepo: Send + Sync {
     /// Content format (`"markdown" | "typst" | "html"`). Same `NotFound`
     /// semantics as `owner`.
     async fn content_format(&self, uri: &str) -> crate::Result<String>;
-
-    /// User's configured knot URL, or None (no override, fall back to the
-    /// server-level default — handled one layer up in the service).
-    async fn user_knot_url(&self, did: &str) -> Option<String>;
 }
 
 /// PostgreSQL-backed default. Delegates to the service functions so there's
@@ -42,9 +38,5 @@ impl ArticleRepo for PgArticleRepo {
 
     async fn content_format(&self, uri: &str) -> crate::Result<String> {
         article_service::get_content_format(&self.pool, uri).await
-    }
-
-    async fn user_knot_url(&self, did: &str) -> Option<String> {
-        article_service::get_user_knot_url(&self.pool, did).await
     }
 }

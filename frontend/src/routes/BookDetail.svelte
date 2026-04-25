@@ -8,6 +8,7 @@
   import ShortReviewComposer from '../lib/components/ShortReviewComposer.svelte';
   import ShortReviewCard from '../lib/components/ShortReviewCard.svelte';
   import type { BookDetail, BookEdition, BookChapter, ChapterPrereqEntry, BookShortReview, Tag } from '../lib/types';
+  import { EXAM_TAGS } from '../lib/examTaxonomy';
 
   let { id } = $props<{ id: string }>();
 
@@ -147,9 +148,29 @@
   }
 
   // Edit history
-  interface EditLog { id: string; editor_did: string; editor_handle: string | null; old_data: Record<string, any>; new_data: Record<string, any>; summary: string; created_at: string; }
+  type EditAction = 'book_update' | 'chapter_create' | 'chapter_update' | 'chapter_delete';
+  interface EditLog {
+    id: string;
+    editor_did: string;
+    editor_handle: string | null;
+    action: EditAction;
+    target_id: string | null;
+    old_data: Record<string, any>;
+    new_data: Record<string, any>;
+    summary: string;
+    created_at: string;
+  }
   let editHistory = $state<EditLog[]>([]);
   let selectedLog = $state<EditLog | null>(null);
+
+  function editActionLabel(action: EditAction): string {
+    switch (action) {
+      case 'chapter_create': return t('books.editAction.chapterCreate');
+      case 'chapter_update': return t('books.editAction.chapterUpdate');
+      case 'chapter_delete': return t('books.editAction.chapterDelete');
+      default: return t('books.editAction.bookUpdate');
+    }
+  }
 
   $effect(() => {
     load();
@@ -259,6 +280,8 @@
   let editBookRelated = $state<string[]>([]);
   let editBookRelatedInput = $state('');
   let editBookRelatedSuggestions = $state<Tag[]>([]);
+  // Selected exam-prep tags. Empty = non-exam book.
+  let editExamTags = $state<string[]>([]);
 
   let editBookTagTimeout: ReturnType<typeof setTimeout>;
   $effect(() => {
@@ -482,6 +505,7 @@
     editBookPrereqInput = '';
     editBookTopicInput = '';
     editBookRelatedInput = '';
+    editExamTags = [...(detail.book.exam_tags ?? [])];
     showEdit = true;
   }
 
@@ -497,6 +521,10 @@
       const subtitle = Object.fromEntries(Object.entries(editSubtitles).filter(([_, v]) => v.trim()));
       const description = Object.fromEntries(Object.entries(editDescs).filter(([_, v]) => v.trim()));
       const authors = editAuthorsInput.split(',').map(s => s.trim()).filter(Boolean);
+      // `null` clears the field; a non-empty array replaces it. Sending
+      // both cases is intentional so the server treats exam_tags as
+      // explicitly touched.
+      const exam_tags = editExamTags.length > 0 ? editExamTags : null;
       await updateBook(id, {
         title,
         subtitle,
@@ -507,6 +535,7 @@
         prereqs: editBookPrereqs,
         topics: editBookTopics,
         related: editBookRelated,
+        exam_tags,
         edit_summary: editSummary.trim() || undefined,
       });
       showEdit = false;
@@ -699,6 +728,13 @@
           </h1>
           {#if loc(detail.book.subtitle)}
             <p class="book-subtitle">{loc(detail.book.subtitle)}</p>
+          {/if}
+          {#if detail.book.exam_tags && detail.book.exam_tags.length > 0}
+            <div class="exam-meta">
+              {#each detail.book.exam_tags as tag}
+                <span class="exam-badge">{t(`books.examTag.${tag}`)}</span>
+              {/each}
+            </div>
           {/if}
           <p class="authors">
             {#if detail.linked_authors.length > 0}
@@ -1446,6 +1482,7 @@
           {#each editHistory.slice(0, 10) as log}
             <button class="edit-log" onclick={() => selectedLog = log}>
               <span class="edit-log-who">{log.editor_handle ? `@${log.editor_handle}` : log.editor_did.slice(0, 20)}</span>
+              <span class="edit-log-action edit-log-action-{log.action}">{editActionLabel(log.action)}</span>
               <span class="edit-log-summary">{log.summary || '—'}</span>
               <span class="edit-log-time">{new Date(log.created_at).toLocaleDateString()}</span>
             </button>
@@ -1499,6 +1536,28 @@
         <div class="form-group">
           <label>{t('books.abbreviationLabel')}</label>
           <input bind:value={editAbbreviation} placeholder="e.g. CLRS, SICP, LADR" maxlength="50" />
+        </div>
+
+        <div class="form-group">
+          <label>{t('books.examTagsLabel')}</label>
+          <div class="exam-subjects-grid">
+            {#each EXAM_TAGS as tag}
+              <label class="exam-subject-check">
+                <input
+                  type="checkbox"
+                  checked={editExamTags.includes(tag)}
+                  onchange={(e) => {
+                    if ((e.currentTarget as HTMLInputElement).checked) {
+                      if (!editExamTags.includes(tag)) editExamTags = [...editExamTags, tag];
+                    } else {
+                      editExamTags = editExamTags.filter(s => s !== tag);
+                    }
+                  }}
+                />
+                <span>{t(`books.examTag.${tag}`)}</span>
+              </label>
+            {/each}
+          </div>
         </div>
 
         <div class="form-group">
@@ -1674,6 +1733,7 @@
         <h3>{t('books.editHistory')}</h3>
         <div class="diff-meta">
           <span class="edit-log-who">{selectedLog.editor_handle ? `@${selectedLog.editor_handle}` : selectedLog.editor_did.slice(0, 20)}</span>
+          <span class="edit-log-action edit-log-action-{selectedLog.action}">{editActionLabel(selectedLog.action)}</span>
           <span class="edit-log-time">{new Date(selectedLog.created_at).toLocaleDateString()}</span>
           {#if selectedLog.summary}<p class="edit-log-summary">{selectedLog.summary}</p>{/if}
         </div>
@@ -1800,6 +1860,11 @@
     vertical-align: middle;
     letter-spacing: 0.03em;
   }
+  .exam-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .exam-badge { font-size: 11px; padding: 2px 8px; border-radius: 3px; background: #fff3cd; color: #856404; font-weight: 500; }
+  .exam-subjects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; }
+  .exam-subject-check { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: normal; cursor: pointer; }
+  .exam-subject-check input { margin: 0; }
   .authors {
     margin: 4px 0 0;
     font-size: 15px;
@@ -2063,6 +2128,14 @@
   .edit-log-who { color: var(--accent); font-weight: 500; }
   .edit-log-summary { color: var(--text-secondary); }
   .edit-log-time { color: var(--text-hint); font-size: 11px; }
+  .edit-log-action {
+    display: inline-block; font-size: 10px; padding: 1px 6px;
+    border-radius: 3px; margin-right: 4px; font-weight: 500;
+    background: var(--bg-secondary); color: var(--text-secondary);
+  }
+  .edit-log-action-chapter_create { background: #d4edda; color: #155724; }
+  .edit-log-action-chapter_update { background: #fff3cd; color: #856404; }
+  .edit-log-action-chapter_delete { background: #f8d7da; color: #721c24; }
   .edit-diff {
     padding: 6px 8px; margin-bottom: 6px; background: var(--bg-secondary);
     border-radius: 4px; font-size: 12px; font-family: monospace;

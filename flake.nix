@@ -28,7 +28,7 @@
             dataDir = lib.mkOption {
               type = lib.types.str;
               default = "/var/lib/nightboat";
-              description = "State directory for Pijul store and other data";
+              description = "State directory for the PDS blob cache and other data";
             };
             instanceName = lib.mkOption {
               type = lib.types.str;
@@ -44,11 +44,6 @@
               type = lib.types.str;
               default = "";
               description = "Public URL of this instance (for OAuth client_id and callback). e.g. https://nightboat.dzming.li";
-            };
-            defaultKnotUrl = lib.mkOption {
-              type = lib.types.str;
-              default = "";
-              description = "Default knot (pijul hosting) URL embedded in at.nightbo.article / at.nightbo.series records for users who have not configured their own. e.g. https://knot.dzming.li";
             };
             pdsUrl = lib.mkOption {
               type = lib.types.str;
@@ -112,15 +107,12 @@
                 FX_HOST = "127.0.0.1";
                 FX_PORT = toString cfg.port;
                 FX_DATABASE_URL = "postgres:///${cfg.database.name}?host=/run/postgresql";
-                FX_PIJUL_STORE_PATH = "${cfg.dataDir}/pijul-store";
                 FX_BLOB_CACHE_PATH = "${cfg.dataDir}/blob-cache";
                 FX_INSTANCE_NAME = cfg.instanceName;
                 FX_ENV = "production";
                 RUST_LOG = "info";
               } // lib.optionalAttrs (cfg.publicUrl != "") {
                 FX_PUBLIC_URL = cfg.publicUrl;
-              } // lib.optionalAttrs (cfg.defaultKnotUrl != "") {
-                FX_DEFAULT_KNOT_URL = cfg.defaultKnotUrl;
               } // lib.optionalAttrs (cfg.pdsUrl != "") {
                 FX_PDS_URL = cfg.pdsUrl;
               } // lib.optionalAttrs (cfg.corsOrigins != []) {
@@ -162,14 +154,14 @@
             # Ensure data directory
             systemd.tmpfiles.rules = [
               "d ${cfg.dataDir} 0750 ${cfg.database.user} ${cfg.database.user} -"
-              "d ${cfg.dataDir}/pijul-store 0750 ${cfg.database.user} ${cfg.database.user} -"
+              "d ${cfg.dataDir}/blob-cache 0750 ${cfg.database.user} ${cfg.database.user} -"
             ] ++ lib.optionals cfg.backup.enable [
               "d ${cfg.backup.dir} 0750 ${cfg.database.user} ${cfg.database.user} -"
             ];
 
             # Daily backup timer
             systemd.services.nightboat-backup = lib.mkIf cfg.backup.enable {
-              description = "NightBoat database and Pijul store backup";
+              description = "NightBoat database backup";
               serviceConfig = {
                 Type = "oneshot";
                 User = cfg.database.user;
@@ -185,11 +177,6 @@
                   ${cfg.database.name} \
                   | ${pkgs.zstd}/bin/zstd -9 \
                   > "$BACKUP_DIR/db-$TIMESTAMP.sql.zst"
-
-                # Pijul store snapshot (rsync incremental)
-                ${pkgs.rsync}/bin/rsync -a --delete \
-                  "${cfg.dataDir}/pijul-store/" \
-                  "$BACKUP_DIR/pijul-store/"
 
                 # Prune old DB dumps, keep last N
                 ls -1t "$BACKUP_DIR"/db-*.sql.zst 2>/dev/null \
@@ -298,7 +285,6 @@
           outputHashes = {
             "git+https://github.com/DzmingLi/atproto-auth.git#8f8f91da26671c35a11d42205f78f7037d0e27ba" = "sha256-W4QrqQ3uBf3xNdp8dTupFep+DS7XULGm/oMwe2cdHLc=";
             "git+https://github.com/DzmingLi/typst-render.git#606ea3b5d0433e29e910c14ce5d124bb5b80b2fc" = "sha256-IIic9W3GIydp6j5btmldvhyv9Dd1rnLxKSU0oedxD/0=";
-            "git+https://github.com/DzmingLi/pijul-knot.git#d86a9504b001b09f38db2063bc64cc1764f79baf" = "sha256-kV301kyoDvBZmlmRFFSNZZolNHOy6VX+ypbbXXv5YsM=";
           };
         };
 

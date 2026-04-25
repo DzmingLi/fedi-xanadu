@@ -6,7 +6,7 @@ use axum::{
 use fx_core::content::ContentKind;
 use fx_core::models::{Article, CreateArticle};
 use fx_core::region::default_visibility;
-use fx_core::services::{appeal_service, article_service, consistency_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service};
+use fx_core::services::{appeal_service, article_service, moderation_service, notification_service, platform_user_service, report_service, series_service, tag_service};
 use fx_core::validation::validate_create_article;
 
 use crate::error::{AppError, ApiResult};
@@ -65,22 +65,59 @@ pub async fn admin_create_article(
     _admin: AdminAuth,
     Json(input): Json<AdminCreateArticleInput>,
 ) -> ApiResult<(StatusCode, Json<Article>)> {
-
     validate_create_article(&input.article)?;
 
     let did = platform_user_service::local_did(&input.as_handle);
-    let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
+    let token = ""; // No PDS session for admin; blob upload synthesizes locally for did:local:*.
 
-    let publish = super::articles::publish_article_content(
-        &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
-        input.article.series_id.as_deref(), "Initial publish",
-        super::articles::SummaryInput {
-            user_source: input.article.summary.as_deref(),
-        },
+    if let Some(ref sid) = input.article.series_id {
+        // Admin publish into a series: same unified-series shape as the
+        // user-auth path. Series chapters don't get their own at_uri; the
+        // source lives under the series's shared blob_cache dir.
+        let series_repo_uri = series_service::series_repo_uri(&state.pool, sid).await?;
+        let chapter_tid = fx_core::util::tid();
+        let src_ext = fx_renderer::format_extension(input.article.content_format.as_str());
+        let source_path = fx_core::meta::default_chapter_path(&chapter_tid, src_ext);
+
+        let publish = super::articles::publish_article_blob_to(
+            &state, &did, token, &input.article.content, input.article.content_format,
+            super::articles::SummaryInput { user_source: input.article.summary.as_deref() },
+            super::articles::PublishTarget::SeriesChapter {
+                series_repo_uri: &series_repo_uri,
+                chapter_path: &source_path,
+            },
+        ).await?;
+
+        let hash = content_hash(&input.article.content);
+        let article = article_service::create_series_chapter(
+            &state.pool, &did, &series_repo_uri, &source_path,
+            &input.article, &hash,
+            default_visibility(true),
+            &publish.summary_source, &publish.summary_html,
+            publish.blob_manifest.clone(),
+        ).await?;
+
+        let _ = series_service::add_series_chapter(
+            &state.pool, sid, &series_repo_uri, &source_path, Some(&chapter_tid),
+        ).await?;
+
+        // Admin has no user PDS session, so we skip the series-record merge.
+        // Federation catches up when the author re-publishes through their
+        // own session.
+        return Ok((StatusCode::CREATED, Json(article)));
+    }
+
+    // Standalone article.
+    let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::WORK, fx_core::util::tid());
+
+    let publish = super::articles::publish_article_blob(
+        &state, &at_uri, &did, token, &input.article.content, input.article.content_format,
+        super::articles::SummaryInput { user_source: input.article.summary.as_deref() },
     ).await?;
 
     let hash = content_hash(&input.article.content);
     let translation_group = if let Some(ref source_uri) = input.article.translation_of {
+        #[allow(deprecated)]
         Some(article_service::resolve_translation_group(&state.pool, source_uri).await?)
     } else {
         None
@@ -90,14 +127,8 @@ pub async fn admin_create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, translation_group,
         default_visibility(true), ContentKind::Article, None,
         &publish.summary_source, &publish.summary_html,
+        publish.blob_manifest.clone(),
     ).await?;
-
-    if let Some(ref sid) = input.article.series_id {
-        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
-        let src_ext = fx_renderer::format_extension(input.article.content_format.as_str());
-        let default_path = fx_core::meta::default_chapter_path(chapter_id, src_ext);
-        series_service::add_series_article(&state.pool, sid, &at_uri, Some(&default_path)).await?;
-    }
 
     let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
 
@@ -131,6 +162,7 @@ pub async fn admin_create_series(
     let topics = input.topics.unwrap_or_default();
     let lang = input.lang.as_deref().unwrap_or("zh");
     let translation_group = if let Some(ref source_id) = input.translation_of {
+        #[allow(deprecated)]
         Some(series_service::resolve_series_translation_group(&state.pool, source_id).await?)
     } else {
         None
@@ -138,15 +170,9 @@ pub async fn admin_create_series(
 
     let category = input.category.as_deref().unwrap_or("general");
 
-    // Init pijul repo for all series
-    let node_id = format!("series_{id}");
-    if let Err(e) = state.pijul.init_series_repo(&node_id) {
-        tracing::warn!("failed to init series pijul repo: {e}");
-    }
-
     let desc_html = match input.summary.as_deref() {
         Some(d) if !d.is_empty() => crate::summary::render_summary_inline(
-            "markdown", d, &state.pijul.series_repo_path(&node_id),
+            "markdown", d, &state.blob_cache_path,
         ).unwrap_or_default(),
         _ => String::new(),
     };
@@ -163,7 +189,6 @@ pub async fn admin_create_series(
         lang,
         translation_group,
         category,
-        Some(&node_id),
     )
     .await?;
 
@@ -215,15 +240,42 @@ pub async fn admin_update_article(
     if let Some(ref summary) = input.summary {
         let format = article_service::get_content_format(&state.pool, &input.uri).await?;
         let node_id = fx_core::util::uri_to_node_id(&input.uri);
-        let repo_path = state.pijul.repo_path(&node_id);
+        let repo_path = state.blob_cache_path.join(&node_id);
         let summary_html = crate::summary::render_summary_inline(format.as_str(), summary, &repo_path)
             .unwrap_or_default();
         article_service::update_article_summary(&state.pool, &input.uri, summary, &summary_html).await?;
     }
 
-    if let Some(ref content) = input.content {
-        let format = article_service::get_content_format(&state.pool, &input.uri).await?;
-        super::articles::update_article_content(&state, &input.uri, "admin", None, content, &format, "Admin update").await?;
+    if let Some(content) = input.content.as_ref() {
+        // Resolve current storage + author from DB, then re-publish through
+        // the blob path. For did:local:* authors the blob is synthesized
+        // locally (no PDS upload). For real-PDS authors, admin has no user
+        // token so the PDS blob upload silently no-ops — local blob_cache + DB
+        // are updated but the PDS record stays stale until the author
+        // re-publishes via their own session.
+        let (author_did, fmt_str): (String, String) = sqlx::query_as(
+            "SELECT a.author_did, l.content_format::text \
+             FROM articles a JOIN article_localizations l \
+               ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+             WHERE l.at_uri = $1 LIMIT 1",
+        )
+        .bind(&input.uri)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|_| AppError(fx_core::Error::NotFound { entity: "article", id: input.uri.clone() }))?;
+        let format = fmt_str.parse::<fx_core::content::ContentFormat>()
+            .unwrap_or(fx_core::content::ContentFormat::Markdown);
+        let _publish = super::articles::publish_article_blob(
+            &state, &input.uri, &author_did, "", content, format,
+            super::articles::SummaryInput { user_source: input.summary.as_deref() },
+        ).await?;
+        let hash = content_hash(content);
+        // Update content_hash on the localization row directly.
+        sqlx::query(
+            "UPDATE article_localizations SET content_hash = $1, updated_at = NOW() WHERE at_uri = $2",
+        )
+        .bind(&hash).bind(&input.uri)
+        .execute(&state.pool).await?;
     }
 
     let article = article_service::get_article_any_visibility(&state.pool, &input.uri).await?;
@@ -334,7 +386,7 @@ pub async fn admin_delete_article(
     if let Err(e) = notification_service::create_notification(
         &state.pool,
         &notif_id,
-        &article.did,
+        &article.author_did,
         "system",
         "article_deleted",
         Some(&input.uri),
@@ -389,7 +441,7 @@ pub async fn admin_set_visibility(
         };
         let notif_id = tid();
         let _ = notification_service::create_notification(
-            &state.pool, &notif_id, &article.did, "system",
+            &state.pool, &notif_id, &article.author_did, "system",
             "visibility_changed", Some(&input.uri), Some(&msg),
         ).await;
     }
@@ -623,22 +675,17 @@ pub async fn admin_create_question(
     validate_create_article(&input.article)?;
 
     let did = platform_user_service::local_did(&input.as_handle);
-    let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
+    let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::WORK, tid());
 
-    let publish = super::articles::publish_article_content(
-        &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
-        None, "Initial publish",
-        super::articles::SummaryInput {
-            user_source: input.article.summary.as_deref(),
-        },
-    ).await?;
-
+    // Questions are server-only — no PDS record, no blob bundle — so no
+    // token issue here. We just skip the blob publish and record the DB row.
     let hash = content_hash(&input.article.content);
 
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, None,
         default_visibility(true), ContentKind::Question, None,
-        &publish.summary_source, &publish.summary_html,
+        "", "",
+        None,
     ).await?;
 
     let _ = article_service::auto_bookmark(&state.pool, &did, &at_uri).await;
@@ -669,29 +716,24 @@ pub async fn admin_post_answer(
     }
 
     let did = platform_user_service::local_did(&input.as_handle);
-    let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid());
+    let at_uri = format!("at://{}/{}/{}", did, fx_atproto::lexicon::WORK, tid());
 
-    let publish = super::articles::publish_article_content(
-        &state, &at_uri, &did, "", &input.article.content, input.article.content_format,
-        None, "Initial publish",
-        super::articles::SummaryInput {
-            user_source: input.article.summary.as_deref(),
-        },
-    ).await?;
-
+    // Q&A is server-only (no PDS record, no blob bundle), so the admin path
+    // is safe to keep.
     let hash = content_hash(&input.article.content);
 
     let article = article_service::create_article(
         &state.pool, &did, &at_uri, &input.article, &hash, None,
         default_visibility(true), ContentKind::Answer, Some(&input.question_uri),
-        &publish.summary_source, &publish.summary_html,
+        "", "",
+        None,
     ).await?;
 
     // Notify question author
-    if question.did != did {
+    if question.author_did != did {
         let notif_id = tid();
         let _ = notification_service::create_notification(
-            &state.pool, &notif_id, &question.did, &did,
+            &state.pool, &notif_id, &question.author_did, &did,
             "new_answer", Some(&input.question_uri), Some(&at_uri),
         ).await;
     }
@@ -751,7 +793,7 @@ pub async fn admin_revert_book_edit(
 
     let log: super::books::BookEditLog = sqlx::query_as(
         "SELECT l.id, l.book_id, l.editor_did, p.handle AS editor_handle, \
-                l.old_data, l.new_data, l.summary, l.created_at \
+                l.action, l.target_id, l.old_data, l.new_data, l.summary, l.created_at \
          FROM book_edit_log l \
          LEFT JOIN profiles p ON l.editor_did = p.did \
          WHERE l.id = $1",
@@ -862,79 +904,43 @@ pub async fn admin_batch_publish(
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     use fx_core::content::ContentFormat;
 
-    let did = platform_user_service::local_did(&input.as_handle);
+    let author_did = platform_user_service::local_did(&input.as_handle);
     let lang = input.lang.as_deref().unwrap_or("en");
+    let series_repo_uri = series_service::series_repo_uri(&state.pool, &input.series_id).await?;
+    let series_node_id = fx_core::util::uri_to_node_id(&series_repo_uri);
+    let series_root = state.blob_cache_path.join(&series_node_id);
+    tokio::fs::create_dir_all(&series_root).await?;
 
-    // Get series pijul node
-    let node_id = series_service::require_pijul_node_id(&state.pool, &input.series_id).await?;
-
-    // Ensure pijul repo exists (may have been deleted)
-    if let Err(e) = state.pijul.init_series_repo(&node_id) {
-        tracing::warn!("failed to init series pijul repo: {e}");
+    // Stage extra binary files (images etc.) directly into the series's
+    // shared blob_cache dir. They become part of the series `files[]` on
+    // next publish.
+    for file in &input.files {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        let Ok(bytes) = STANDARD.decode(&file.data) else {
+            tracing::warn!("batch-publish: invalid base64 for {}", file.path);
+            continue;
+        };
+        let safe_path: String = file.path.chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' { c } else { '_' })
+            .collect();
+        let safe_path = safe_path.trim_start_matches('.').trim_start_matches('/').to_string();
+        if safe_path.is_empty() || safe_path.contains("..") { continue; }
+        let dest = series_root.join(&safe_path);
+        if let Some(parent) = dest.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        let _ = tokio::fs::write(&dest, &bytes).await;
     }
-
-    let series_repo = state.pijul.series_repo_path(&node_id);
 
     let mut results = Vec::new();
 
-    // Phase 0: Write extra binary files (images etc) into the repo
-    for file in &input.files {
-        let file_path = series_repo.join(&file.path);
-        if let Some(parent) = file_path.parent() {
-            let _ = tokio::fs::create_dir_all(parent).await;
-        }
-        use base64::Engine;
-        let data = base64::engine::general_purpose::STANDARD.decode(&file.data)
-            .map_err(|e| AppError(fx_core::Error::BadRequest(format!("invalid base64 for {}: {e}", file.path))))?;
-        tokio::fs::write(&file_path, &data).await?;
-    }
-    if !input.files.is_empty() {
-        tracing::info!("wrote {} extra files to series repo", input.files.len());
-    }
-
-    // Phase 1: Write all article files and create/update DB records (no pijul record yet)
     for item in &input.articles {
         let format = item.content_format.as_deref().unwrap_or("markdown");
         let content_format: ContentFormat = format.parse().unwrap_or(ContentFormat::Markdown);
-        let _ = fx_renderer::format_extension(format);
         let hash = content_hash(&item.content);
         let license = item.license.as_deref().unwrap_or("CC-BY-SA-4.0");
+        let source_path = item.path.as_str();
 
-        // repo_path is the authoritative identifier for a chapter in a series.
-        let repo_path = item.path.as_str();
-
-        // Check if an article with this path already exists in the series
-        let existing_uri = series_service::find_article_by_repo_path(
-            &state.pool, &input.series_id, repo_path,
-        ).await?;
-
-        let (at_uri, is_update) = if let Some(uri) = existing_uri {
-            (uri, true)
-        } else {
-            (format!("at://{}/{}/{}", did, fx_atproto::lexicon::ARTICLE, tid()), false)
-        };
-
-        let chapter_id = at_uri.rsplit('/').next().unwrap_or("unknown");
-
-        let chapter_path = series_repo.join(repo_path);
-        if let Some(parent) = chapter_path.parent() {
-            let _ = tokio::fs::create_dir_all(parent).await;
-        }
-        tokio::fs::write(&chapter_path, &item.content).await?;
-
-        // Render cache
-        if content_format != ContentFormat::Html {
-            if let Ok(rendered) = super::articles::render_content(format, &item.content, &series_repo) {
-                let cache_dir = series_repo.join("cache");
-                let _ = tokio::fs::create_dir_all(&cache_dir).await;
-                let _ = tokio::fs::write(cache_dir.join(format!("{chapter_id}.html")), &rendered).await;
-            }
-        }
-
-        // Markdown frontmatter is authoritative for per-chapter metadata
-        // when the manifest doesn't override it. Non-markdown formats fall
-        // back to the author-supplied manifest fields plus first-heading
-        // extraction for title.
         let (fm, body_for_heading) = if format == "markdown" {
             let (fm, body) = fx_core::meta::split_frontmatter(&item.content);
             (fm, body)
@@ -946,7 +952,7 @@ pub async fn admin_batch_publish(
             .or_else(|| fm.title.clone())
             .or_else(|| fx_core::meta::extract_first_heading(body_for_heading, format))
             .unwrap_or_else(|| {
-                std::path::Path::new(repo_path)
+                std::path::Path::new(source_path)
                     .file_stem()
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "Untitled".to_string())
@@ -985,305 +991,471 @@ pub async fn admin_batch_publish(
             course_session_id: None,
         };
 
-        let resolved_desc = create.summary.as_deref().unwrap_or("").to_string();
-        let desc_html = crate::summary::render_summary_inline(
-            create.content_format.as_str(), &resolved_desc,
-            &state.pijul.repo_path(&node_id),
-        ).unwrap_or_default();
+        // Publish chapter source into the series blob_cache under its path.
+        let publish = super::articles::publish_article_blob_to(
+            &state, &author_did, "", &item.content, content_format,
+            super::articles::SummaryInput { user_source: create.summary.as_deref() },
+            super::articles::PublishTarget::SeriesChapter {
+                series_repo_uri: &series_repo_uri,
+                chapter_path: source_path,
+            },
+        ).await?;
 
-        let article = if is_update {
-            tracing::info!("updating existing article {at_uri}");
-            article_service::update_article_batch(&state.pool, &at_uri, &create, &hash, &resolved_desc, &desc_html).await?
-        } else {
-            let article = article_service::create_article(
-                &state.pool, &did, &at_uri, &create, &hash, None,
-                default_visibility(true), ContentKind::Article, None,
-                &resolved_desc, &desc_html,
-            ).await?;
-            series_service::add_series_article(
-                &state.pool, &input.series_id, &at_uri, Some(repo_path),
-            ).await?;
-            article
-        };
+        // Idempotent: create_series_chapter UPSERTs by (repo_uri, source_path),
+        // so re-running a batch with the same paths updates in place.
+        let existing = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT heading_anchor FROM series_articles \
+             WHERE series_id = $1 AND repo_uri = $2 AND source_path = $3",
+        )
+        .bind(&input.series_id).bind(&series_repo_uri).bind(source_path)
+        .fetch_optional(&state.pool).await?.flatten();
+        let is_update = existing.is_some();
+        let anchor = existing.unwrap_or_else(|| {
+            // Derive a stable anchor from the source path's file stem.
+            std::path::Path::new(source_path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("chapter")
+                .to_string()
+        });
+
+        let article = article_service::create_series_chapter(
+            &state.pool, &author_did, &series_repo_uri, source_path,
+            &create, &hash,
+            default_visibility(true),
+            &publish.summary_source, &publish.summary_html,
+            publish.blob_manifest.clone(),
+        ).await?;
+
+        let _ = series_service::add_series_chapter(
+            &state.pool, &input.series_id, &series_repo_uri, source_path, Some(&anchor),
+        ).await?;
 
         results.push(serde_json::json!({
-            "at_uri": at_uri,
+            "source_path": source_path,
             "title": article.title,
             "updated": is_update,
         }));
     }
 
-    // Phase 2a: Sync meta.yaml to reflect the current chapter list (in DB
-    // order, which mirrors how files were just written). Pijul is the source
-    // of truth for series structure; DB is the indexed cache.
-    write_series_meta_from_db(&state, &input.series_id, &series_repo).await;
-
-    // Phase 2b: Single pijul record for all files
-    match state.pijul_record_series(node_id.clone(), "Batch publish".into(), Some(did.clone())).await {
-        Ok(Some((hash, _new_state))) => {
-            tracing::info!("batch recorded change {hash} for series {}", input.series_id);
-        }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul batch record failed: {e}"),
-    }
-
     Ok(Json(results))
 }
 
-/// Rebuild a series' DB index from its pijul repo. Walks the `chapters:`
-/// list in meta.yaml, reads each file's YAML frontmatter (markdown) or first
-/// heading (typst/html), and reconciles `series_articles` + `articles.title`
-/// + `content_teaches` + `content_prereqs`.
-///
-/// This is the inverse of `write_series_meta_from_db`: on-disk pijul content
-/// becomes the authority, DB is rewritten to match.
+/// Rebuild a series' DB index from its pijul repo. Previously walked the
+/// `chapters:` list in meta.yaml. With pijul gone there's no on-disk series
+/// repo to rebuild from — per-chapter manifests on the DB ARE the source of
+/// truth. Returns BadRequest until a new rebuild-from-PDS path is designed.
 pub async fn admin_rebuild_series_index(
-    State(state): State<AppState>,
-    Path(series_id): Path<String>,
+    State(_state): State<AppState>,
+    Path(_series_id): Path<String>,
     _admin: AdminAuth,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let pijul_node_id = series_service::require_pijul_node_id(&state.pool, &series_id).await?;
+    Err(AppError(fx_core::Error::BadRequest(
+        "admin_rebuild_series_index is disabled in the blob storage model: \
+         series meta.yaml no longer exists, and chapters are addressed by \
+         per-article blob manifest. Rebuild-from-PDS path pending design.".into(),
+    )))
+}
 
-    let series_repo = state.pijul.series_repo_path(&pijul_node_id);
-    let meta = fx_core::meta::read_series_meta(&series_repo)
-        .ok_or_else(|| AppError(fx_core::Error::BadRequest(
-            "series has no meta.yaml".into(),
-        )))?;
+/// GET /api/admin/consistency/pijul — previously reported mismatches
+/// between the `articles`/`series` tables and the on-disk pijul repo store.
+/// Pijul storage is gone, so this endpoint is a no-op. Kept for wire-format
+/// stability (CLI may still call it); returns an empty report shape.
+pub async fn check_pijul_consistency(
+    State(_state): State<AppState>,
+    _admin: AdminAuth,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(serde_json::json!({
+        "article_missing_repo": [],
+        "series_missing_repo": [],
+        "orphan_dirs": [],
+        "total_dirs_scanned": 0,
+    })))
+}
 
-    // Existing repo_path → article_uri map.
-    let existing: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
-        "SELECT repo_path, article_uri FROM series_articles \
-         WHERE series_id = $1 AND repo_path IS NOT NULL AND repo_path <> ''",
+#[derive(serde::Deserialize)]
+pub struct MigratePijulInput {
+    /// Filesystem path of the legacy pijul scratch tree
+    /// (e.g. /var/lib/nightboat/pijul-store). Each article/series had its files
+    /// under {pijul_scratch_path}/{uri_to_node_id(repo_uri)}/.
+    pub pijul_scratch_path: String,
+    /// Dry-run: compute what would change, don't write anything.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+/// One-shot migration: walk every `article_localizations` row with
+/// `content_storage = 'pijul'`, read its source files from the legacy pijul
+/// scratch tree, synthesize a blob manifest (local CIDs via blake3), populate
+/// `blob_cache_path/{node_id}/`, and flip the row to `content_storage='blob'`.
+/// Migrates a legacy pijul scratch tree into the blob model.
+///
+/// Two shapes of `repo_uri` are present in the DB after the earlier schema
+/// rewrite:
+///   1. Standalone article: exactly one `article_localizations` row per
+///      repo_uri. The whole scratch dir belongs to this one article.
+///   2. Series: many `article_localizations` rows share the same repo_uri
+///      (which IS the series's `at.nightbo.work` at-uri). The scratch dir
+///      holds the entire series bundle — chapter sources, shared bibliography,
+///      figures, etc.
+///
+/// For standalone articles we preserve the existing behavior: each source
+/// file's subtree under scratch_dir becomes the article's blob manifest.
+///
+/// For series: we copy every file under `{pijul_scratch}/{series_node_id}/`
+/// (minus derived dirs: .pijul, cache, _rendered) into
+/// `{blob_cache}/{series_node_id}/` and synthesize the series's
+/// `chapters[]` + `files[]` shape directly on each chapter's DB row. No
+/// at_uri is minted — chapters stay at_uri=NULL by design. No PDS write
+/// (admin has no user session; federation happens when the author
+/// re-publishes).
+///
+/// Idempotent: rows already at `content_storage='blob'` are skipped.
+pub async fn admin_migrate_pijul_to_blob(
+    State(state): State<AppState>,
+    _admin: AdminAuth,
+    Json(input): Json<MigratePijulInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    use std::path::{Path, PathBuf};
+
+    fn is_derived(path: &Path) -> bool {
+        let s = path.to_string_lossy();
+        s.starts_with(".pijul/")
+            || s.starts_with("cache/")
+            || s.starts_with("_rendered/")
+            || s == ".pijul.toml"
+            || s == "content.html"
+            || s == "summary.html"
+            || s.ends_with(".swp")
+    }
+
+    fn walk_files(root: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&d) else { continue };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if matches!(name, ".pijul" | "cache" | "_rendered") { continue; }
+                    stack.push(p);
+                } else {
+                    out.push(p);
+                }
+            }
+        }
+        out
+    }
+
+    fn mime_for(rel: &Path) -> String {
+        let ext = rel.extension().and_then(|e| e.to_str()).unwrap_or("");
+        match ext {
+            "md"   => "text/markdown",
+            "typ"  => "text/x-typst",
+            "html" => "text/html",
+            "bib"  => "application/x-bibtex",
+            "png"  => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "gif"  => "image/gif",
+            "svg"  => "image/svg+xml",
+            "pdf"  => "application/pdf",
+            "txt"  => "text/plain",
+            "yaml" | "yml" => "application/yaml",
+            "json" => "application/json",
+            _      => "application/octet-stream",
+        }.to_string()
+    }
+
+    let base = std::path::PathBuf::from(&input.pijul_scratch_path);
+    if !base.is_dir() {
+        return Err(AppError(fx_core::Error::BadRequest(
+            format!("pijul_scratch_path {:?} is not a directory", base),
+        )));
+    }
+
+    // Group pijul-backed rows by repo_uri: standalone → exactly one, series → many.
+    #[derive(Debug)]
+    struct RowInfo {
+        source_path: String,
+        lang: String,
+        at_uri: Option<String>,
+        content_format: String,
+    }
+    let rows: Vec<(String, String, String, Option<String>, String)> = sqlx::query_as(
+        "SELECT l.repo_uri, l.source_path, l.lang, l.at_uri, l.content_format::text \
+         FROM article_localizations l \
+         WHERE l.content_storage = 'pijul'",
     )
-    .bind(&series_id)
     .fetch_all(&state.pool)
     .await?;
-    let mut by_path: std::collections::HashMap<String, String> =
-        existing.into_iter().collect();
 
-    let did: String = sqlx::query_scalar("SELECT created_by FROM series WHERE id = $1")
-        .bind(&series_id)
-        .fetch_one(&state.pool)
-        .await?;
+    let mut groups: std::collections::BTreeMap<String, Vec<RowInfo>> =
+        std::collections::BTreeMap::new();
+    for (repo_uri, source_path, lang, at_uri, content_format) in rows {
+        groups.entry(repo_uri).or_default().push(RowInfo {
+            source_path, lang, at_uri, content_format,
+        });
+    }
 
-    let mut added = 0u64;
-    let mut updated = 0u64;
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut migrated_articles = 0usize;
+    let mut migrated_chapters = 0usize;
+    let mut series_migrated = 0usize;
+    let mut skipped_missing = Vec::<serde_json::Value>::new();
+    let mut errors = Vec::<serde_json::Value>::new();
 
-    for (order_index, rel_path) in meta.chapters.iter().enumerate() {
-        let full = series_repo.join(rel_path);
-        let Ok(content) = tokio::fs::read_to_string(&full).await else {
-            tracing::warn!("rebuild: missing chapter file {rel_path}");
-            continue;
-        };
-        seen.insert(rel_path.clone());
+    for (repo_uri, rows) in groups {
+        let repo_node_id = fx_core::util::uri_to_node_id(&repo_uri);
+        let scratch_dir = base.join(&repo_node_id);
 
-        let ext = std::path::Path::new(rel_path)
-            .extension().and_then(|e| e.to_str()).unwrap_or("md");
-        let format = match ext {
-            "typ" | "typst" => "typst",
-            "html" | "htm" => "html",
-            _ => "markdown",
-        };
+        // The "is this a series?" heuristic: repo_uri is under the series
+        // NSID (via its migration: repo_uri = at://did/at.nightbo.work/id
+        // for chapters, or the article's own at_uri for standalones). Fall
+        // back to "multiple rows share repo_uri" for safety.
+        let is_series = repo_uri.contains(&format!("/{}/", fx_atproto::lexicon::WORK))
+            || rows.len() > 1;
 
-        let (fm, body) = if format == "markdown" {
-            fx_core::meta::split_frontmatter(&content)
-        } else {
-            (fx_core::meta::Frontmatter::default(), content.as_str())
-        };
-        let title = fm.title.clone()
-            .or_else(|| fx_core::meta::extract_first_heading(body, format))
-            .unwrap_or_else(|| rel_path.clone());
-
-        let at_uri = match by_path.remove(rel_path) {
-            Some(uri) => {
-                sqlx::query(
-                    "UPDATE series_articles SET order_index = $1 \
-                     WHERE series_id = $2 AND article_uri = $3",
-                )
-                .bind(order_index as i32).bind(&series_id).bind(&uri)
-                .execute(&state.pool).await?;
-                sqlx::query("UPDATE articles SET title = $1 WHERE at_uri = $2")
-                    .bind(&title).bind(&uri).execute(&state.pool).await?;
-                updated += 1;
-                uri
+        if is_series {
+            // Copy the entire scratch tree into {blob_cache}/{series_node_id}/.
+            if !scratch_dir.is_dir() {
+                skipped_missing.push(serde_json::json!({
+                    "repo_uri": repo_uri,
+                    "reason": format!("series scratch dir not found at {:?}", scratch_dir),
+                }));
+                continue;
             }
-            None => {
-                let new_uri = format!("at://{did}/{}/{}", fx_atproto::lexicon::ARTICLE, tid());
-                let content_format: fx_core::content::ContentFormat =
-                    format.parse().unwrap_or(fx_core::content::ContentFormat::Markdown);
-                let hash = content_hash(&content);
-                let license = fm.license.as_deref().unwrap_or("CC-BY-SA-4.0");
-                let create = CreateArticle {
-                    title: title.clone(),
-                    summary: fm.description.clone(),
-                    content: content.clone(),
-                    content_format,
-                    lang: fm.lang.clone(),
-                    license: Some(license.to_string()),
-                    tags: fm.teaches.clone(),
-                    prereqs: vec![],
-                    related: fm.related.clone(),
-                    topics: vec![],
-                    series_id: Some(series_id.clone()),
-                    translation_of: None,
-                    category: fm.category.clone().or(Some("lecture".into())),
-                    restricted: None,
-                    metadata: None,
-                    authors: vec![],
-                    invites: vec![],
-                    book_chapter_id: None,
-                    course_session_id: None,
+            let target_dir = state.blob_cache_path.join(&repo_node_id);
+            if !input.dry_run {
+                if let Err(e) = tokio::fs::create_dir_all(&target_dir).await {
+                    errors.push(serde_json::json!({
+                        "repo_uri": repo_uri,
+                        "stage": "mkdir-series", "error": e.to_string(),
+                    }));
+                    continue;
+                }
+            }
+
+            // Build the canonical `files[]` (union of every source file in
+            // the bundle). Each chapter's manifest points at this same set.
+            let mut series_files = Vec::<serde_json::Value>::new();
+            for abs in walk_files(&scratch_dir) {
+                let rel = match abs.strip_prefix(&scratch_dir) {
+                    Ok(r) => r.to_path_buf(),
+                    Err(_) => continue,
                 };
-                let resolved_desc = create.summary.as_deref().unwrap_or("").to_string();
-                let desc_html = crate::summary::render_summary_inline(
-                    create.content_format.as_str(), &resolved_desc, &series_repo,
-                ).unwrap_or_default();
-                article_service::create_article(
-                    &state.pool, &did, &new_uri, &create, &hash, None,
-                    default_visibility(true), ContentKind::Article, None,
-                    &resolved_desc, &desc_html,
-                ).await?;
-                series_service::add_series_article(
-                    &state.pool, &series_id, &new_uri, Some(rel_path),
-                ).await?;
-                added += 1;
-                new_uri
-            }
-        };
+                if is_derived(&rel) { continue; }
 
-        // Rewrite teaches/prereqs to match frontmatter. Frontmatter may
-        // carry tag_ids, label ids, or brand-new names — resolve_tag_id
-        // normalizes all three to the canonical tag_id before linking.
-        let _ = sqlx::query("DELETE FROM content_teaches WHERE content_uri = $1")
-            .bind(&at_uri).execute(&state.pool).await;
-        for input_ref in &fm.teaches {
-            let mut conn = state.pool.acquire().await.expect("db conn");
-            if let Ok(tag_id) = fx_core::services::tag_service::resolve_tag_id(&mut conn, input_ref, &did).await {
-                let _ = sqlx::query(
-                    "INSERT INTO content_teaches (content_uri, tag_id) \
-                     VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                ).bind(&at_uri).bind(&tag_id).execute(&mut *conn).await;
+                let bytes = match std::fs::read(&abs) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        errors.push(serde_json::json!({
+                            "repo_uri": repo_uri,
+                            "stage": "read", "file": rel.to_string_lossy(),
+                            "error": e.to_string(),
+                        }));
+                        continue;
+                    }
+                };
+                let cid = format!("local:{}", blake3::hash(&bytes).to_hex());
+                let mime = mime_for(&rel);
+                let size = bytes.len() as u64;
+
+                if !input.dry_run {
+                    let dest = target_dir.join(&rel);
+                    if let Some(parent) = dest.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if let Err(e) = std::fs::write(&dest, &bytes) {
+                        errors.push(serde_json::json!({
+                            "repo_uri": repo_uri,
+                            "stage": "write", "file": rel.to_string_lossy(),
+                            "error": e.to_string(),
+                        }));
+                        continue;
+                    }
+                }
+
+                series_files.push(serde_json::json!({
+                    "path": rel.to_string_lossy(),
+                    "cid": cid,
+                    "size": size,
+                    "mime": mime,
+                }));
             }
-        }
-        let _ = sqlx::query("DELETE FROM content_prereqs WHERE content_uri = $1")
-            .bind(&at_uri).execute(&state.pool).await;
-        for p in &fm.prereqs {
-            let mut conn = state.pool.acquire().await.expect("db conn");
-            if let Ok(tag_id) = fx_core::services::tag_service::resolve_tag_id(&mut conn, &p.tag, &did).await {
-                let _ = sqlx::query(
-                    "INSERT INTO content_prereqs (content_uri, tag_id, prereq_type) \
-                     VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+
+            // Flip each chapter row to blob storage with the shared manifest
+            // pointing at its own entry. at_uri stays NULL.
+            for r in &rows {
+                let manifest = serde_json::json!({
+                    "entry": r.source_path,
+                    "files": series_files,
+                    "pds_url": state.pds_url,
+                });
+                if !input.dry_run {
+                    if let Err(e) = sqlx::query(
+                        "UPDATE article_localizations \
+                         SET content_storage = 'blob', content_manifest = $1, updated_at = NOW() \
+                         WHERE repo_uri = $2 AND source_path = $3 AND lang = $4",
+                    )
+                    .bind(&manifest)
+                    .bind(&repo_uri)
+                    .bind(&r.source_path)
+                    .bind(&r.lang)
+                    .execute(&state.pool).await
+                    {
+                        errors.push(serde_json::json!({
+                            "repo_uri": repo_uri, "source_path": r.source_path,
+                            "stage": "db-update-chapter", "error": e.to_string(),
+                        }));
+                        continue;
+                    }
+                }
+                migrated_chapters += 1;
+                let _ = r.at_uri; // chapters never had one; nothing to mint.
+            }
+
+            // Also stamp heading_anchor on series_articles rows that don't
+            // have one — the anchor is the chapter's source_path file stem
+            // for stability across re-publishes.
+            if !input.dry_run {
+                for r in &rows {
+                    let anchor_stem = std::path::Path::new(&r.source_path)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("chapter")
+                        .to_string();
+                    let _ = sqlx::query(
+                        "UPDATE series_articles SET heading_anchor = COALESCE(heading_anchor, $1) \
+                         WHERE repo_uri = $2 AND source_path = $3",
+                    )
+                    .bind(&anchor_stem).bind(&repo_uri).bind(&r.source_path)
+                    .execute(&state.pool).await;
+                }
+            }
+
+            series_migrated += 1;
+        } else {
+            // Standalone article: one row, per-article scratch dir with its
+            // own files tree.
+            let r = &rows[0];
+            let at_uri = match r.at_uri.clone() {
+                Some(u) => u,
+                None => {
+                    errors.push(serde_json::json!({
+                        "repo_uri": repo_uri,
+                        "source_path": r.source_path,
+                        "stage": "no-at-uri", "error":
+                            "standalone article has no at_uri; cannot migrate without one",
+                    }));
+                    continue;
+                }
+            };
+
+            let source_file = scratch_dir.join(&r.source_path);
+            if !source_file.is_file() {
+                skipped_missing.push(serde_json::json!({
+                    "repo_uri": repo_uri,
+                    "source_path": r.source_path,
+                    "reason": format!("source not found at {:?}", source_file),
+                }));
+                continue;
+            }
+
+            let target_node_id = fx_core::util::uri_to_node_id(&at_uri);
+            let target_dir = state.blob_cache_path.join(&target_node_id);
+            if !input.dry_run {
+                if let Err(e) = tokio::fs::create_dir_all(&target_dir).await {
+                    errors.push(serde_json::json!({
+                        "repo_uri": repo_uri, "source_path": r.source_path,
+                        "stage": "mkdir", "error": e.to_string(),
+                    }));
+                    continue;
+                }
+            }
+
+            let src_ext = fx_renderer::format_extension(&r.content_format);
+            let entry_rel = source_file.strip_prefix(&scratch_dir)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| format!("content.{src_ext}"));
+
+            let mut manifest_files = Vec::<serde_json::Value>::new();
+            for abs in walk_files(&scratch_dir) {
+                let rel = match abs.strip_prefix(&scratch_dir) {
+                    Ok(r) => r.to_path_buf(),
+                    Err(_) => continue,
+                };
+                if is_derived(&rel) { continue; }
+
+                let bytes = match std::fs::read(&abs) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        errors.push(serde_json::json!({
+                            "repo_uri": repo_uri, "source_path": r.source_path,
+                            "stage": "read", "file": rel.to_string_lossy(),
+                            "error": e.to_string(),
+                        }));
+                        continue;
+                    }
+                };
+                let cid = format!("local:{}", blake3::hash(&bytes).to_hex());
+                let mime = mime_for(&rel);
+                let size = bytes.len() as u64;
+
+                if !input.dry_run {
+                    let dest = target_dir.join(&rel);
+                    if let Some(parent) = dest.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if let Err(e) = std::fs::write(&dest, &bytes) {
+                        errors.push(serde_json::json!({
+                            "repo_uri": repo_uri, "source_path": r.source_path,
+                            "stage": "write", "file": rel.to_string_lossy(),
+                            "error": e.to_string(),
+                        }));
+                        continue;
+                    }
+                }
+
+                manifest_files.push(serde_json::json!({
+                    "path": rel.to_string_lossy(),
+                    "cid": cid,
+                    "size": size,
+                    "mime": mime,
+                }));
+            }
+
+            let manifest = serde_json::json!({
+                "entry": entry_rel,
+                "files": manifest_files,
+                "pds_url": state.pds_url,
+            });
+            if !input.dry_run {
+                if let Err(e) = sqlx::query(
+                    "UPDATE article_localizations \
+                     SET content_storage = 'blob', content_manifest = $1, updated_at = NOW() \
+                     WHERE at_uri = $2",
                 )
-                .bind(&at_uri).bind(&tag_id).bind(p.kind())
-                .execute(&mut *conn).await;
+                .bind(&manifest).bind(&at_uri)
+                .execute(&state.pool).await
+                {
+                    errors.push(serde_json::json!({
+                        "repo_uri": repo_uri, "source_path": r.source_path,
+                        "stage": "db-update", "error": e.to_string(),
+                    }));
+                    continue;
+                }
             }
-        }
-    }
-
-    // Anything left in `by_path` was in DB but is no longer listed in meta.yaml.
-    let mut removed = 0u64;
-    for (_rel, stale_uri) in by_path {
-        sqlx::query(
-            "DELETE FROM series_articles WHERE series_id = $1 AND article_uri = $2",
-        )
-        .bind(&series_id).bind(&stale_uri)
-        .execute(&state.pool).await?;
-        removed += 1;
-    }
-
-    // Also sync the series-level fields (title, etc.) from meta.yaml.
-    sqlx::query("UPDATE series SET title = $1 WHERE id = $2 AND title <> $1")
-        .bind(&meta.title).bind(&series_id).execute(&state.pool).await?;
-    if let Some(desc) = &meta.description {
-        sqlx::query("UPDATE series SET summary = $1 WHERE id = $2")
-            .bind(desc).bind(&series_id).execute(&state.pool).await?;
-    }
-    if let Some(level) = meta.split_level {
-        if (1..=6).contains(&level) {
-            sqlx::query("UPDATE series SET split_level = $1 WHERE id = $2")
-                .bind(level as i32).bind(&series_id).execute(&state.pool).await?;
+            migrated_articles += 1;
         }
     }
 
     Ok(Json(serde_json::json!({
-        "chapters_added":   added,
-        "chapters_updated": updated,
-        "chapters_removed": removed,
-        "chapters_seen":    seen.len(),
+        "dry_run": input.dry_run,
+        "migrated_articles": migrated_articles,
+        "migrated_chapters": migrated_chapters,
+        "series_migrated": series_migrated,
+        "skipped_missing": skipped_missing,
+        "errors": errors,
     })))
-}
-
-/// Rebuild meta.yaml from the authoritative DB state of a series. Called
-/// after any write operation that touches chapters (batch-publish, compile,
-/// reorder…) so the repo-side metadata stays in sync.
-async fn write_series_meta_from_db(
-    state: &AppState,
-    series_id: &str,
-    series_repo: &std::path::Path,
-) {
-    // Series-level fields
-    let row: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>, i32)> =
-        sqlx::query_as(
-            "SELECT title, summary, long_description, lang, category, split_level \
-             FROM series WHERE id = $1",
-        )
-        .bind(series_id)
-        .fetch_optional(&state.pool)
-        .await
-        .ok()
-        .flatten();
-    let Some((title, summary, long_description, lang, category, split_level)) = row else {
-        return;
-    };
-
-    // Topics (content_topics join)
-    let topics: Vec<String> = sqlx::query_scalar(
-        "SELECT tag_id FROM content_topics WHERE content_uri = $1 ORDER BY tag_id",
-    )
-    .bind(format!("series:{series_id}"))
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
-
-    // Chapter paths in order — only for file-based chapters (markdown etc.),
-    // typst series derive chapters from main.typ so leave the list empty.
-    let chapters: Vec<String> = sqlx::query_scalar(
-        "SELECT repo_path FROM series_articles \
-         WHERE series_id = $1 AND repo_path IS NOT NULL AND repo_path <> '' \
-         ORDER BY order_index",
-    )
-    .bind(series_id)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
-
-    let meta = fx_core::meta::SeriesMeta {
-        title,
-        description: summary,
-        long_description,
-        lang,
-        category,
-        topics,
-        split_level: Some(split_level as u32),
-        chapters,
-        cover: None,
-    };
-
-    if let Err(e) = fx_core::meta::write_series_meta(series_repo, &meta) {
-        tracing::warn!("failed to write meta.yaml for {series_id}: {e}");
-    }
-}
-
-/// GET /api/admin/consistency/pijul — report mismatches between the
-/// `articles` / `series` tables and the on-disk pijul repo store. Read-only;
-/// call this before any cleanup script, and inspect the orphan list by hand
-/// before deleting anything.
-pub async fn check_pijul_consistency(
-    State(state): State<AppState>,
-    _admin: AdminAuth,
-) -> ApiResult<Json<consistency_service::ConsistencyReport>> {
-    let report = consistency_service::check_pijul(&state.pool, &state.pijul_store_path).await?;
-    Ok(Json(report))
 }
 

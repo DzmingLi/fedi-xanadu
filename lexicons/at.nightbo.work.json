@@ -1,0 +1,28 @@
+{
+  "lexicon": 1,
+  "id": "at.nightbo.work",
+  "description": "A NightBoat knowledge work — article, book, lecture notes, tutorial — as a blob bundle. This record carries ONLY the bundle (every source file + asset as a blob on the author's PDS) and `createdAt`. All other metadata (title, description, tags, license, content format, entry file, whether it's a multi-chapter series, chapter ordering and anchors) lives inside the bundle in format-native slots: typst `#metadata(...) <nbt-article>` / `<nbt-series>` directives, markdown YAML frontmatter, HTML `<meta>` tags, or a `meta.yml` at bundle root. The server extracts these on ingestion.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["files", "createdAt"],
+        "properties": {
+          "files":     { "type": "array", "items": { "ref": "#file" }, "description": "Every source and asset file the work contains. For single-article works this is typically one entry file plus figures/bib. For series works, all chapter sources + shared files. The server identifies the entry, format, and structure from metadata inside the files." },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "required": ["path", "blob"],
+      "properties": {
+        "path": { "type": "string", "description": "Relative path from the bundle root, e.g. 'content.md', 'main.typ', 'chapters/01-intro.typ', 'common/main.bib', 'Figure/cover.pdf'." },
+        "blob": { "type": "blob" },
+        "mime": { "type": "string", "description": "Content type hint; authoritative copy is in the blob itself." }
+      }
+    }
+  }
+}

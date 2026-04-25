@@ -55,6 +55,23 @@ pub fn uri_to_node_id(uri: &str) -> String {
     uri.replace('/', "_").replace(':', "_")
 }
 
+/// Parse `repo_uri = at://{did}/{lex}/{rkey}` into `(did, rkey)` for use as
+/// the `(owner, name)` segment pair in a pijangle-knot URL
+/// (`<knot>/{did}/{rkey}/`). Returns `None` for non-`at://` URIs — notably
+/// `server://qa/...` (server-only Q&A, no knot repo) and the synthetic
+/// `nightboat://article/...` form.
+pub fn parse_repo_uri(repo_uri: &str) -> Option<(String, String)> {
+    let rest = repo_uri.strip_prefix("at://")?;
+    let mut parts = rest.splitn(3, '/');
+    let did = parts.next()?;
+    let _collection = parts.next()?;
+    let rkey = parts.next()?;
+    if did.is_empty() || rkey.is_empty() {
+        return None;
+    }
+    Some((did.to_string(), rkey.to_string()))
+}
+
 /// Current UTC time as RFC 3339 string.
 pub fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
@@ -144,6 +161,26 @@ mod tests {
         let node_id = uri_to_node_id("at://did:plc:abc/app.bsky.feed.post/123");
         assert!(!node_id.contains('/'));
         assert!(!node_id.contains(':'));
+    }
+
+    #[test]
+    fn parse_repo_uri_extracts_did_and_rkey() {
+        let (did, rkey) = parse_repo_uri("at://did:plc:abc/at.nightbo.work/quantum-intro").unwrap();
+        assert_eq!(did, "did:plc:abc");
+        assert_eq!(rkey, "quantum-intro");
+    }
+
+    #[test]
+    fn parse_repo_uri_rejects_non_at_scheme() {
+        assert!(parse_repo_uri("server://qa/abc").is_none());
+        assert!(parse_repo_uri("nightboat://article/at://foo/lex/bar/sub.md").is_none());
+    }
+
+    #[test]
+    fn parse_repo_uri_rejects_truncated_paths() {
+        assert!(parse_repo_uri("at://did:plc:abc").is_none());
+        assert!(parse_repo_uri("at://did:plc:abc/at.nightbo.work").is_none());
+        assert!(parse_repo_uri("at://did:plc:abc/at.nightbo.work/").is_none());
     }
 
     #[test]

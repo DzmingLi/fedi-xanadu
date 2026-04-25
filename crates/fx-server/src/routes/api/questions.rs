@@ -56,55 +56,37 @@ pub async fn create_question(
 ) -> ApiResult<(StatusCode, Json<Article>)> {
     validate_create_article(&input)?;
 
-    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
-
-    let node_id = uri_to_node_id(&at_uri);
-    state.pijul.init_repo(&node_id)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-
-    let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_renderer::format_extension(input.content_format.as_str());
-    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
-
-    if input.content_format != ContentFormat::Html {
-        let rendered = super::articles::render_content(input.content_format.as_str(), &input.content, &repo_path)?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
-    }
-
-    match state.pijul_record(node_id.clone(), "Initial publish".into(), Some(user.did.clone())).await {
-        Ok(Some((hash, new_state))) => {
-            let _ = version_service::record_version(
-                &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
-            ).await;
-            super::articles::publish_pijul_ref_update(&state, &user.token, &at_uri, &user.did, &hash, &new_state).await;
-        }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
-    }
-
+    // Q&A is server-only: no pijul repo, no PDS record. We still mint an
+    // at_uri-shaped identifier because legacy callers (CLI, admin flows,
+    // notifications.target_uri) expect one — `create_article` extracts the
+    // rkey to form the server-local `repo_uri` (`server://qa/{rkey}`).
+    let local_id = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::WORK, tid());
     let hash = content_hash(&input.content);
-
     let resolved_desc = input.summary.as_deref().unwrap_or("").to_string();
     let desc_html = crate::summary::render_summary_inline(
-        input.content_format.as_str(), &resolved_desc, &repo_path,
+        input.content_format.as_str(), &resolved_desc, std::path::Path::new("."),
     ).unwrap_or_default();
 
     let article = article_service::create_article(
-        &state.pool, &user.did, &at_uri, &input, &hash, None,
+        &state.pool, &user.did, &local_id, &input, &hash, None,
         default_visibility(user.phone_verified), ContentKind::Question, None,
         &resolved_desc, &desc_html,
+        None,
     ).await?;
 
-    let _ = article_service::auto_bookmark(&state.pool, &user.did, &at_uri).await;
+    let _ = article_service::auto_bookmark(&state.pool, &user.did, &local_id).await;
 
-    // Send invite_answer notifications to requested handles
+    // Send invite_answer notifications to requested handles. `target_uri`
+    // here is the question's synthetic article URI; notification JOIN will
+    // resolve the title via articles, not article_localizations.at_uri.
+    let target = article.synthetic_uri();
     if !input.invites.is_empty() {
         if let Ok(invited_dids) = notification_service::dids_for_handles(&state.pool, &input.invites).await {
             for did in invited_dids {
                 let notif_id = tid();
                 let _ = notification_service::create_notification(
                     &state.pool, &notif_id, &did, &user.did,
-                    "invite_answer", Some(&at_uri), None,
+                    "invite_answer", Some(&target), None,
                 ).await;
             }
         }
@@ -120,63 +102,50 @@ pub async fn post_answer(
     WriteAuth(user): WriteAuth,
     Json(input): Json<CreateArticle>,
 ) -> ApiResult<(StatusCode, Json<Article>)> {
-    // translation_of is repurposed: must contain the question_uri
+    // translation_of is repurposed as the question_uri. The caller may pass
+    // either the question's synthetic URI (`nightboat://article/...`) or a
+    // legacy at_uri; create_article's Q&A branch accepts both.
     let question_uri = input.translation_of.as_deref()
         .ok_or_else(|| AppError(fx_core::Error::BadRequest("question_uri is required (pass as translation_of)".into())))?;
 
-    // Verify question exists and is actually a question
-    let question = article_service::get_article(&state.pool, state.instance_mode, question_uri).await?;
+    // Accept either the question's at_uri (legacy/federated) or its synthetic
+    // `nightboat://article/...` URI (the only usable handle for server-only
+    // Q&A whose localization has at_uri = NULL).
+    let question = article_service::resolve_article(&state.pool, question_uri).await?;
     if question.kind != ContentKind::Question {
         return Err(AppError(fx_core::Error::BadRequest("target is not a question".into())));
     }
 
     validate_create_article(&input)?;
 
-    let at_uri = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::ARTICLE, tid());
-
-    let node_id = uri_to_node_id(&at_uri);
-    state.pijul.init_repo(&node_id)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-
-    let repo_path = state.pijul.repo_path(&node_id);
-    let src_ext = fx_renderer::format_extension(input.content_format.as_str());
-    tokio::fs::write(repo_path.join(format!("content.{src_ext}")), &input.content).await?;
-
-    if input.content_format != ContentFormat::Html {
-        let rendered = super::articles::render_content(input.content_format.as_str(), &input.content, &repo_path)?;
-        let _ = tokio::fs::write(repo_path.join("content.html"), &rendered).await;
-    }
-
-    match state.pijul_record(node_id.clone(), "Initial publish".into(), Some(user.did.clone())).await {
-        Ok(Some((hash, new_state))) => {
-            let _ = version_service::record_version(
-                &state.pool, &at_uri, &hash, &user.did, "Initial publish", &input.content,
-            ).await;
-            super::articles::publish_pijul_ref_update(&state, &user.token, &at_uri, &user.did, &hash, &new_state).await;
-        }
-        Ok(None) => {}
-        Err(e) => tracing::warn!("pijul record failed for {node_id}: {e}"),
-    }
-
+    let local_id = format!("at://{}/{}/{}", user.did, fx_atproto::lexicon::WORK, tid());
     let hash = content_hash(&input.content);
-
     let resolved_desc = input.summary.as_deref().unwrap_or("").to_string();
     let desc_html = crate::summary::render_summary_inline(
-        input.content_format.as_str(), &resolved_desc, &repo_path,
+        input.content_format.as_str(), &resolved_desc, std::path::Path::new("."),
     ).unwrap_or_default();
 
+    // NOTE: the `input.translation_of` will reach create_article and, for
+    // Q&A (kind=Answer), is routed to the Q&A branch — NOT to the translation
+    // branch — because Q&A takes precedence on `matches!(kind, ...)`. The
+    // Q&A branch uses `question_uri` (the last positional arg here) to set
+    // question_repo_uri / question_source_path correctly.
+    let mut input_for_qa = input.clone();
+    input_for_qa.translation_of = None; // don't confuse the add_translation_localization branch
+
     let article = article_service::create_article(
-        &state.pool, &user.did, &at_uri, &input, &hash, None,
+        &state.pool, &user.did, &local_id, &input_for_qa, &hash, None,
         default_visibility(user.phone_verified), ContentKind::Answer, Some(question_uri),
         &resolved_desc, &desc_html,
+        None,
     ).await?;
 
-    // Notify question author
-    if question.did != user.did {
+    // Notify question author (skip self-answer).
+    if question.author_did != user.did {
         let notif_id = tid();
         let _ = notification_service::create_notification(
-            &state.pool, &notif_id, &question.did, &user.did,
-            "new_answer", Some(question_uri), Some(&at_uri),
+            &state.pool, &notif_id, &question.author_did, &user.did,
+            "new_answer", Some(question_uri), Some(&article.synthetic_uri()),
         ).await;
     }
 
@@ -250,4 +219,34 @@ pub async fn get_related_questions(
 ) -> ApiResult<Json<Vec<Article>>> {
     let related = article_service::get_related_questions(&state.pool, state.instance_mode, &uri, 10).await?;
     Ok(Json(related))
+}
+
+#[derive(serde::Deserialize)]
+pub struct SessionLimitQuery {
+    pub session_id: String,
+    pub limit: Option<i64>,
+}
+
+pub async fn get_questions_by_session(
+    State(state): State<AppState>,
+    Query(q): Query<SessionLimitQuery>,
+) -> ApiResult<Json<Vec<Article>>> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let rows = article_service::get_questions_by_session(&state.pool, state.instance_mode, &q.session_id, limit).await?;
+    Ok(Json(rows))
+}
+
+#[derive(serde::Deserialize)]
+pub struct HomeworkLimitQuery {
+    pub homework_id: String,
+    pub limit: Option<i64>,
+}
+
+pub async fn get_questions_by_homework(
+    State(state): State<AppState>,
+    Query(q): Query<HomeworkLimitQuery>,
+) -> ApiResult<Json<Vec<Article>>> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let rows = article_service::get_questions_by_homework(&state.pool, state.instance_mode, &q.homework_id, limit).await?;
+    Ok(Json(rows))
 }

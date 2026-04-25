@@ -45,8 +45,9 @@ async fn compute_reputation(pool: &PgPool, did: &str) -> Result<i64> {
             END\
          ), 0) \
          FROM votes v \
-         JOIN articles a ON a.at_uri = v.target_uri \
-         WHERE a.did = $1",
+         JOIN articles a \
+             ON article_uri(a.repo_uri, a.source_path) = v.target_uri \
+         WHERE a.author_did = $1",
     )
     .bind(did)
     .bind(CONTENT_UPVOTE)
@@ -68,9 +69,15 @@ async fn compute_reputation(pool: &PgPool, did: &str) -> Result<i64> {
             CASE WHEN v.value > 0 THEN $2 ELSE 0 END\
          ), 0) \
          FROM votes v \
-         JOIN forks f ON f.forked_uri = v.target_uri \
-         JOIN articles a ON a.at_uri = f.forked_uri \
-         WHERE a.did = $1",
+         JOIN articles forked_a \
+             ON article_uri(forked_a.repo_uri, forked_a.source_path) = v.target_uri \
+         JOIN forks f \
+             ON f.forked_repo_uri = forked_a.repo_uri \
+            AND f.forked_source_path = forked_a.source_path \
+         JOIN articles source_a \
+             ON source_a.repo_uri = f.source_repo_uri \
+            AND source_a.source_path = f.source_source_path \
+         WHERE source_a.author_did = $1",
     )
     .bind(did)
     .bind(FORK_UPVOTE)
@@ -100,11 +107,14 @@ pub async fn recalc_all(pool: &PgPool) -> Result<u64> {
 /// Also recalculates the voter's reputation (downvote cost).
 pub async fn update_for_content_vote(pool: &PgPool, target_uri: &str, voter_did: &str) -> Result<()> {
     // Update content author's reputation
-    let author: Option<String> =
-        sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
-            .bind(target_uri)
-            .fetch_optional(pool)
-            .await?;
+    // target_uri is the synthetic article URI (nightboat://article/...).
+    let author: Option<String> = sqlx::query_scalar(
+        "SELECT author_did FROM articles \
+         WHERE article_uri(repo_uri, source_path) = $1",
+    )
+        .bind(target_uri)
+        .fetch_optional(pool)
+        .await?;
     if let Some(did) = author {
         recalc_reputation(pool, &did).await?;
     }

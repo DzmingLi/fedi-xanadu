@@ -386,7 +386,12 @@ pub async fn add_content(
     // `content_uri` holds different identifiers per kind: articles have a
     // proper at_uri, series are identified by their short `id`.
     let author: Option<String> = match content_kind {
-        "article" => sqlx::query_scalar("SELECT did FROM articles WHERE at_uri = $1")
+        "article" => sqlx::query_scalar(
+            "SELECT a.author_did FROM articles a \
+             JOIN article_localizations l \
+                 ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+             WHERE l.at_uri = $1",
+        )
             .bind(content_uri)
             .fetch_optional(pool)
             .await?,

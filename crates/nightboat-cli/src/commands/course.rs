@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Subcommand;
 
 use crate::{Config, client};
@@ -172,6 +172,49 @@ pub enum CourseCommand {
     UnsetGroup {
         /// Course ID
         course_id: String,
+    },
+    /// Add a homework / assignment entry to a course (optionally anchored
+    /// to a specific session). First-class entity so questions can be
+    /// filed against it.
+    #[command(name = "add-homework")]
+    AddHomework {
+        /// Course ID
+        #[arg(long)]
+        course_id: String,
+        /// Session ID (omit for course-wide homeworks)
+        #[arg(long)]
+        session_id: Option<String>,
+        /// Display label (e.g. "Homework 3 — GP Classification")
+        #[arg(short, long)]
+        label: String,
+        /// URL to assignment PDF / github folder
+        #[arg(short, long)]
+        url: Option<String>,
+        /// Description
+        #[arg(short, long)]
+        desc: Option<String>,
+        /// Sort position
+        #[arg(long, default_value = "0")]
+        position: i32,
+        /// Due date (YYYY-MM-DD)
+        #[arg(long)]
+        due_date: Option<String>,
+    },
+    /// List homeworks for a course (or just those anchored to one session)
+    #[command(name = "list-homeworks")]
+    ListHomeworks {
+        /// Course ID (mutually exclusive with --session-id)
+        #[arg(long)]
+        course_id: Option<String>,
+        /// Session ID
+        #[arg(long)]
+        session_id: Option<String>,
+    },
+    /// Delete a homework
+    #[command(name = "rm-homework")]
+    RmHomework {
+        /// Homework ID (chw-xxx)
+        id: String,
     },
 }
 
@@ -601,6 +644,63 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
                 .send().await?
                 .error_for_status().context("Unset group failed")?;
             println!("Unlinked course {course_id} from its group.");
+        }
+
+        CourseCommand::AddHomework { course_id, session_id, label, url, desc, position, due_date } => {
+            let body = serde_json::json!({
+                "course_id": course_id,
+                "session_id": session_id,
+                "label": label,
+                "url": url,
+                "description": desc,
+                "position": position,
+                "due_date": due_date,
+            });
+            let resp: serde_json::Value = client()
+                .post(format!("{base}/homeworks"))
+                .bearer_auth(token)
+                .json(&body)
+                .send().await?
+                .error_for_status().context("Add homework failed")?
+                .json().await?;
+            let id = resp["id"].as_str().unwrap_or("?");
+            println!("Added homework: {label} ({id})");
+        }
+
+        CourseCommand::ListHomeworks { course_id, session_id } => {
+            let mut url = format!("{base}/homeworks?");
+            match (course_id.as_deref(), session_id.as_deref()) {
+                (Some(c), None) => url.push_str(&format!("course_id={c}")),
+                (None, Some(s)) => url.push_str(&format!("session_id={s}")),
+                _ => bail!("pass exactly one of --course-id / --session-id"),
+            }
+            let rows: Vec<serde_json::Value> = client()
+                .get(url)
+                .send().await?
+                .error_for_status().context("List homeworks failed")?
+                .json().await?;
+            if rows.is_empty() {
+                println!("No homeworks yet.");
+            } else {
+                for h in &rows {
+                    let hid = h["id"].as_str().unwrap_or("?");
+                    let label = h["label"].as_str().unwrap_or("?");
+                    let sid = h["session_id"].as_str().unwrap_or("-");
+                    let due = h["due_date"].as_str().unwrap_or("-");
+                    let u = h["url"].as_str().unwrap_or("-");
+                    println!("  {hid}  [session: {sid}]  due {due}\n    {label}\n    {u}");
+                }
+                println!("{} homework(s)", rows.len());
+            }
+        }
+
+        CourseCommand::RmHomework { id } => {
+            client()
+                .delete(format!("{base}/homeworks/{id}"))
+                .bearer_auth(token)
+                .send().await?
+                .error_for_status().context("Delete homework failed")?;
+            println!("Deleted homework {id}.");
         }
     }
 

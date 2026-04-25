@@ -6,54 +6,102 @@ use serde::{Deserialize, Serialize};
 use super::tag::ArticlePrereq;
 use crate::content::{ContentFormat, ContentKind};
 
-// ---- DB row ----
+// ---- Identity ----
+//
+// After the translation rewrite, every article is keyed by
+// `(repo_uri, source_path)`. The old `at_uri` single-column identity is now
+// per-language (one `at_uri` per `article_localizations` row) and may be
+// NULL (series chapters publish no per-chapter record; Q&A is server-only).
+// Services use `ArticleKey` as the stable, language-independent handle.
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/generated/")]
+pub struct ArticleKey {
+    pub repo_uri: String,
+    pub source_path: String,
+}
+
+impl ArticleKey {
+    pub fn new(repo_uri: impl Into<String>, source_path: impl Into<String>) -> Self {
+        Self {
+            repo_uri: repo_uri.into(),
+            source_path: source_path.into(),
+        }
+    }
+
+    /// Matches the `article_uri(p_repo_uri, p_source_path)` SQL function:
+    /// used as a single-string key in generic URI-keyed tables (comments,
+    /// votes, bookmarks, content registry).
+    pub fn synthetic_uri(&self) -> String {
+        format!("nightboat://article/{}/{}", self.repo_uri, self.source_path)
+    }
+}
+
+// ---- Display struct: article + currently-selected localization + joins ----
+
+/// Aggregated view used by most API responses: language-independent article
+/// fields merged with one specific localization (source-language by default)
+/// plus joined author info and aggregate counts.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct Article {
-    pub at_uri: String,
-    pub did: String,
+    // Identity
+    pub repo_uri: String,
+    pub source_path: String,
+
+    // Author (joined)
+    pub author_did: String,
     pub author_handle: Option<String>,
     pub author_display_name: Option<String>,
     pub author_avatar: Option<String>,
     pub author_reputation: i32,
+
+    // Per-article (stable across languages)
     pub kind: ContentKind,
+    pub category: String,
+    pub license: String,
+    pub prereq_threshold: f64,
+    pub restricted: bool,
+    pub answer_count: i32,
+    #[sqlx(default)]
+    pub cover_url: Option<String>,
+    #[sqlx(default)]
+    pub cover_file: Option<String>,
+    pub question_repo_uri: Option<String>,
+    pub question_source_path: Option<String>,
+    pub book_id: Option<String>,
+    pub edition_id: Option<String>,
+    #[sqlx(default)]
+    pub course_id: Option<String>,
+    #[sqlx(default)]
+    pub book_chapter_id: Option<String>,
+    #[sqlx(default)]
+    pub course_session_id: Option<String>,
+
+    // Selected localization (source-language by default in the base query)
+    pub lang: String,
+    /// ATProto record URI for this specific localization. NULL for series
+    /// chapters and for server-only Q&A.
+    pub at_uri: Option<String>,
+    pub file_path: String,
     pub title: String,
     pub summary: String,
     #[sqlx(default)]
     pub summary_html: String,
+    pub content_hash: Option<String>,
+    pub content_format: ContentFormat,
     #[sqlx(default)]
-    pub cover_url: Option<String>,
-    /// Paper metadata (joined). `paper_accepted` drives the "accepted venue"
-    /// badge next to the title on cards. None for non-papers.
+    pub translator_did: Option<String>,
+
+    // Paper metadata (joined; None for non-papers)
     #[sqlx(default)]
     pub paper_venue: Option<String>,
     #[sqlx(default)]
     pub paper_year: Option<i16>,
     #[sqlx(default)]
     pub paper_accepted: Option<bool>,
-    pub content_hash: Option<String>,
-    pub content_format: ContentFormat,
-    pub lang: String,
-    pub translation_group: Option<String>,
-    pub license: String,
-    pub prereq_threshold: f64,
-    pub category: String,
-    pub question_uri: Option<String>,
-    pub book_id: Option<String>,
-    pub edition_id: Option<String>,
-    /// Chapter/lecture scope. Used by notes (category='note') and questions
-    /// (kind='question'). Reviews are always about the whole book/course and
-    /// leave these NULL.
-    #[sqlx(default)]
-    pub book_chapter_id: Option<String>,
-    #[sqlx(default)]
-    pub course_session_id: Option<String>,
-    pub answer_count: i32,
-    pub restricted: bool,
-    // SQL aggregates are i64 on the Rust side but fit in JS `number` — pin
-    // them so ts-rs doesn't emit `bigint` (which breaks every consumer that
-    // does arithmetic on these counts).
+
+    // Aggregates
     #[ts(type = "number")]
     pub vote_score: i64,
     #[ts(type = "number")]
@@ -62,8 +110,20 @@ pub struct Article {
     pub comment_count: i64,
     #[ts(type = "number")]
     pub fork_count: i64,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl Article {
+    pub fn key(&self) -> ArticleKey {
+        ArticleKey::new(&self.repo_uri, &self.source_path)
+    }
+
+    /// Synthetic URI for generic URI-keyed lookups.
+    pub fn synthetic_uri(&self) -> String {
+        self.key().synthetic_uri()
+    }
 }
 
 /// An author entry for an article, with verification status.
@@ -83,11 +143,12 @@ pub struct ArticleAuthor {
     pub authorship_uri: Option<String>,
 }
 
-/// Paper-specific metadata (venue, DOI, arXiv, etc.)
+/// Paper-specific metadata. Keyed by composite article key now.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct PaperMetadata {
-    pub article_uri: String,
+    pub repo_uri: String,
+    pub source_path: String,
     pub venue: Option<String>,
     pub venue_type: Option<String>,
     pub year: Option<i16>,
@@ -107,47 +168,30 @@ pub struct CreateArticle {
     pub content_format: ContentFormat,
     pub lang: Option<String>,
     pub license: Option<String>,
+    /// Repo-relative path of the source article this content translates.
     pub translation_of: Option<String>,
     pub restricted: Option<bool>,
     pub category: Option<String>,
     pub tags: Vec<String>,
     pub prereqs: Vec<ArticlePrereq>,
-    /// Tag ids for concepts the article touches but does not teach.
-    /// Mirrors `teaches` but carries no skill-mastery weight.
     #[serde(default)]
     pub related: Vec<String>,
-    /// Explicit field/domain tags ("topics") — distinct from the
-    /// auto-derived ancestors of `teaches`. Questions especially need
-    /// this: a question that doesn't teach anything still belongs in a
-    /// field and should surface in that field's feed.
     #[serde(default)]
     pub topics: Vec<String>,
-    /// If set, the article belongs to this series and its source is stored in the series repo.
     pub series_id: Option<String>,
-    /// Co-author DIDs (the creator is always included automatically).
     #[serde(default)]
     pub authors: Vec<String>,
-    /// Handles to invite to answer this question (only used when kind=Question).
     #[serde(default)]
     pub invites: Vec<String>,
-    /// Category-specific metadata.
     #[serde(default)]
     pub metadata: Option<CategoryMetadata>,
-    /// Chapter scope for questions or general articles that reference a book
-    /// chapter. Notes carry this inside `CategoryMetadata::Note`; reviews
-    /// leave it NULL (reviews are always whole-book).
     #[serde(default)]
     pub book_chapter_id: Option<String>,
-    /// Lecture scope for questions or general articles that reference a
-    /// course session. See `book_chapter_id` for the analogous note/review
-    /// policy.
     #[serde(default)]
     pub course_session_id: Option<String>,
 }
 
 impl CreateArticle {
-    /// `book_id` covers both Review (whole-book review) and Note (a note
-    /// about that book). Either metadata variant carries it.
     pub fn target_book_id(&self) -> Option<&str> {
         match &self.metadata {
             Some(CategoryMetadata::Review { book_id, .. }) => book_id.as_deref(),
@@ -169,8 +213,6 @@ impl CreateArticle {
             _ => None,
         }
     }
-    /// Chapter scope. Only notes or top-level (questions/general articles)
-    /// may set this — reviews are forced to None here, regardless of input.
     pub fn target_book_chapter_id(&self) -> Option<&str> {
         if self.category.as_deref() == Some("review") {
             return None;
@@ -182,7 +224,6 @@ impl CreateArticle {
         }
         self.book_chapter_id.as_deref()
     }
-    /// Lecture scope. Same review-forced-None policy as chapter scope.
     pub fn target_course_session_id(&self) -> Option<&str> {
         if self.category.as_deref() == Some("review") {
             return None;
@@ -196,7 +237,6 @@ impl CreateArticle {
     }
 }
 
-/// Category-specific metadata — tagged union, only one variant per article.
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 #[serde(tag = "type")]
@@ -214,9 +254,7 @@ pub enum CategoryMetadata {
         book_id: Option<String>,
         edition_id: Option<String>,
         course_id: Option<String>,
-        /// Chapter-specific note. Only meaningful with `book_id` set.
         book_chapter_id: Option<String>,
-        /// Lecture-specific note. Only meaningful with `course_id` set.
         course_session_id: Option<String>,
     },
     #[serde(rename = "experience")]
@@ -244,11 +282,12 @@ pub struct CreateExperienceMetadata {
     pub result: Option<String>,
 }
 
-/// Experience post metadata (DB row).
+/// Experience post metadata. Composite key.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct ExperienceMetadata {
-    pub article_uri: String,
+    pub repo_uri: String,
+    pub source_path: String,
     pub kind: Option<String>,
     pub target: Option<String>,
     pub year: Option<i16>,
@@ -271,17 +310,18 @@ pub struct ArticlePrereqRow {
     pub prereq_type: String,
     pub tag_name: String,
     #[ts(type = "Record<string, string>")]
-
     pub tag_names: sqlx::types::Json<HashMap<String, String>>,
 }
 
+/// Summary of one fork's target, used in fork-list responses.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct ForkWithTitle {
     pub fork_uri: String,
-    pub forked_uri: String,
+    pub forked_repo_uri: String,
+    pub forked_source_path: String,
     pub vote_score: i32,
     pub title: String,
-    pub did: String,
+    pub author_did: String,
     pub author_handle: Option<String>,
 }

@@ -48,7 +48,7 @@ pub async fn add_bookmark(
 
     if let Some(rkey) = article_rkey(&input.article_uri) {
         let (subject, section_ref) =
-            fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.article_uri, fx_atproto::lexicon::SERIES).await;
+            fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.article_uri, fx_atproto::lexicon::WORK).await;
         let mut record = serde_json::json!({
             "$type": fx_atproto::lexicon::BOOKMARK,
             "subject": subject,
@@ -101,7 +101,7 @@ pub async fn move_bookmark(
 
     if let Some(rkey) = article_rkey(&input.article_uri) {
         let (subject, section_ref) =
-            fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.article_uri, fx_atproto::lexicon::SERIES).await;
+            fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.article_uri, fx_atproto::lexicon::WORK).await;
         let mut record = serde_json::json!({
             "$type": fx_atproto::lexicon::BOOKMARK,
             "subject": subject,

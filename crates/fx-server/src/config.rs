@@ -9,10 +9,9 @@ pub struct Config {
     pub host: String,
     pub port: u16,
     pub database_url: String,
-    pub pijul_store_path: String,
-    /// Scratch directory for PDS-blob-backed article working trees. Source files
-    /// are materialized here on demand (mirrors pijul_store_path layout so the
-    /// renderer treats them identically). Set via FX_BLOB_CACHE_PATH.
+    /// Scratch directory for PDS-blob-backed article working trees. Source
+    /// files are materialized here on demand so the renderer sees a normal
+    /// directory layout. Set via FX_BLOB_CACHE_PATH.
     #[serde(default = "default_blob_cache_path")]
     pub blob_cache_path: String,
     pub instance_name: String,
@@ -30,12 +29,6 @@ pub struct Config {
     /// e.g. "https://xanadu.example.com". Set via FX_PUBLIC_URL env var.
     #[serde(default)]
     pub public_url: String,
-    /// Default knot (pijul hosting) URL used when a user has not configured
-    /// their own `user_settings.knot_url`. Embedded into at.nightbo.article
-    /// and at.nightbo.series records so external AppViews can clone the source.
-    /// Set via FX_DEFAULT_KNOT_URL. e.g. "https://knot.dzming.li".
-    #[serde(default)]
-    pub default_knot_url: String,
     /// URL of the ATProto PDS this instance treats as its home PDS — new
     /// signups are created there and password logins proxy to its
     /// `com.atproto.server.createSession`. Empty means register / local
@@ -60,14 +53,12 @@ impl Default for Config {
             host: "127.0.0.1".into(),
             port: 3000,
             database_url: "postgres://localhost/nightboat".into(),
-            pijul_store_path: "data/pijul-store".into(),
             blob_cache_path: default_blob_cache_path(),
             instance_name: "NightBoat".into(),
             cors_origins: String::new(),
             admin_secret: None,
             instance_mode: String::new(),
             public_url: String::new(),
-            default_knot_url: String::new(),
             pds_url: String::new(),
             orcid_client_id: None,
             orcid_client_secret: None,

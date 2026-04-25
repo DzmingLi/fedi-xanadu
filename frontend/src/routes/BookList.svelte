@@ -5,6 +5,7 @@
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import type { Book } from '../lib/types';
+  import { EXAM_TAGS } from '../lib/examTaxonomy';
 
   /** Resolve a localized field (Record<string, string>) to the current locale with fallback. */
   function loc(field: Record<string, string> | null | undefined): string {
@@ -18,6 +19,9 @@
   let loading = $state(true);
   let activeField = $state('');
   let search = $state('');
+  // Exam-prep filter: '' = all; 'any' = books with any exam tag;
+  // 'none' = non-exam books; otherwise require that exact tag.
+  let examFilter = $state<'' | 'any' | 'none' | string>('');
 
   // Same `fx_interests` store the Home feed uses — so the books page
   // mirrors the home page's field selection without a separate picker.
@@ -81,6 +85,14 @@
     if (activeField) {
       list = list.filter(b => bookInField(b, activeField));
     }
+    if (examFilter) {
+      list = list.filter(b => {
+        const has = (b.exam_tags?.length ?? 0) > 0;
+        if (examFilter === 'any') return has;
+        if (examFilter === 'none') return !has;
+        return b.exam_tags?.includes(examFilter) ?? false;
+      });
+    }
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter(b => {
@@ -93,6 +105,16 @@
       ];
       return haystacks.some(s => s && s.toLowerCase().includes(q));
     });
+  });
+
+  let examTagCounts = $derived.by(() => {
+    const counts = new Map<string, number>();
+    for (const b of books) {
+      for (const tag of b.exam_tags ?? []) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return counts;
   });
 
   $effect(() => {
@@ -155,6 +177,24 @@
     {/each}
   </div>
 
+  <div class="exam-filter">
+    <span class="exam-filter-label">{t('books.examFilterLabel')}</span>
+    <button class="exam-chip" class:active={examFilter === ''} onclick={() => examFilter = ''}>
+      {t('books.examFilter.all')}
+    </button>
+    <button class="exam-chip" class:active={examFilter === 'any'} onclick={() => examFilter = 'any'}>
+      {t('books.examFilter.anyExam')}
+    </button>
+    {#each EXAM_TAGS as tag}
+      {#if (examTagCounts.get(tag) ?? 0) > 0}
+        <button class="exam-chip" class:active={examFilter === tag} onclick={() => examFilter = tag}>
+          {t(`books.examTag.${tag}`)}
+          <span class="tab-count">{examTagCounts.get(tag)}</span>
+        </button>
+      {/if}
+    {/each}
+  </div>
+
   {#if loading}
     <p class="meta">Loading...</p>
   {:else if filteredBooks.length === 0}
@@ -176,6 +216,13 @@
               <p class="book-subtitle">{loc(book.subtitle)}</p>
             {/if}
             <p class="book-authors">{book.authors.join(', ')}</p>
+            {#if book.exam_tags && book.exam_tags.length > 0}
+              <div class="exam-badges">
+                {#each book.exam_tags as tag}
+                  <span class="exam-badge">{t(`books.examTag.${tag}`)}</span>
+                {/each}
+              </div>
+            {/if}
 
             <div class="book-stats">
               <span class="rating" class:has-rating={book.avg_rating && book.avg_rating > 0}>
@@ -220,10 +267,19 @@
   }
   .add-book-btn:hover { background: var(--accent); color: white; text-decoration: none; }
 
-  .field-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .field-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1rem; flex-wrap: wrap; }
   .field-tab { padding: 8px 14px; font-size: 13px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 6px; }
   .field-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab-count { font-size: 11px; background: var(--border); color: var(--text-hint); padding: 1px 5px; border-radius: 8px; }
+
+  .exam-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 1.25rem; font-size: 12px; }
+  .exam-filter-label { color: var(--text-hint); margin-right: 4px; }
+  .exam-chip { padding: 3px 10px; font-size: 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; color: var(--text-secondary); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+  .exam-chip.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .exam-chip.active .tab-count { background: rgba(255,255,255,0.25); color: white; }
+
+  .exam-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .exam-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #fff3cd; color: #856404; font-weight: 500; }
 
   .empty { color: var(--text-hint); font-size: 14px; }
 

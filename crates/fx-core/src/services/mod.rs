@@ -1,4 +1,5 @@
 pub mod article_service;
+pub mod indexer_service;
 pub mod learned_service;
 pub mod auth_service;
 pub mod platform_user_service;
@@ -29,11 +30,11 @@ pub mod reputation_service;
 pub mod listing_service;
 pub mod course_service;
 pub mod course_group_service;
+pub mod course_homework_service;
 pub mod patch_service;
 pub mod ad_service;
 pub mod author_service;
 pub mod tag_hierarchy_service;
 pub mod authorship_service;
-pub mod consistency_service;
 pub mod publication_service;
 pub mod search_service;

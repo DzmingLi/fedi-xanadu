@@ -11,7 +11,13 @@ use super::util;
 pub enum BookCommand {
     /// List all books
     #[command(alias = "ls")]
-    List,
+    List {
+        /// Filter by exam-prep tags. Pass "any" / "none" to filter on
+        /// any/no tag, or a specific tag (e.g. "kaoyan-408") to require
+        /// that tag.
+        #[arg(long)]
+        exam: Option<String>,
+    },
     /// Create a new book (with its first edition)
     Create {
         /// Book title
@@ -35,6 +41,9 @@ pub enum BookCommand {
         /// Prereq tags (comma-separated tag IDs)
         #[arg(long, value_delimiter = ',')]
         prereqs: Vec<String>,
+        /// Exam-prep tags (comma-separated, e.g. "kaoyan-math-1,kaoyan-408")
+        #[arg(long, value_delimiter = ',')]
+        exam_tags: Vec<String>,
         // -- First edition fields --
         /// Edition title (e.g. "Fourth Edition")
         #[arg(long, default_value = "First Edition")]
@@ -84,6 +93,13 @@ pub enum BookCommand {
         /// Edit summary
         #[arg(long)]
         summary: Option<String>,
+        /// Replace exam-prep tags (comma-separated, e.g. "kaoyan-math-1,kaoyan-408").
+        /// Pass `--clear-exam` to mark the book as non-exam.
+        #[arg(long, value_delimiter = ',')]
+        exam_tags: Option<Vec<String>>,
+        /// Clear exam-prep tags (mark non-exam).
+        #[arg(long)]
+        clear_exam: bool,
     },
     /// Add an edition to a book
     #[command(name = "add-edition")]
@@ -391,9 +407,12 @@ fn default_prereq_type() -> String { "required".to_string() }
 pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Result<()> {
     let token = config.token()?;
     match action {
-        BookCommand::List => {
-            let resp: Vec<serde_json::Value> = client()
-                .get(format!("{base}/books"))
+        BookCommand::List { exam } => {
+            let mut req = client().get(format!("{base}/books"));
+            if let Some(ref e) = exam {
+                req = req.query(&[("exam", e.as_str())]);
+            }
+            let resp: Vec<serde_json::Value> = req
                 .send().await?
                 .error_for_status().context("List books failed")?
                 .json().await?;
@@ -414,10 +433,12 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
         }
 
         BookCommand::Create { title, subtitle, authors, desc, cover_url, tags, prereqs,
+                             exam_tags,
                              edition, lang, isbn, publisher, year, translators, purchase_links, edition_cover_url, edition_subtitle, no_edition } => {
             let title_val = util::parse_i18n(&title);
             let subtitle_val = subtitle.as_deref().map(util::parse_i18n).unwrap_or(serde_json::json!({}));
             let desc_val = desc.as_deref().map(util::parse_i18n).unwrap_or(serde_json::json!({}));
+            let exam_tags_val: Option<&Vec<String>> = if exam_tags.is_empty() { None } else { Some(&exam_tags) };
             let body = serde_json::json!({
                 "title": title_val,
                 "subtitle": subtitle_val,
@@ -426,6 +447,7 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
                 "cover_url": cover_url,
                 "tags": tags,
                 "prereqs": prereqs,
+                "exam_tags": exam_tags_val,
             });
 
             let resp: serde_json::Value = client()
@@ -487,14 +509,21 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
             println!("Edition ID: {eid}");
         }
 
-        BookCommand::Update { id, title, desc, cover_url, summary } => {
-            let body = serde_json::json!({
+        BookCommand::Update { id, title, desc, cover_url, summary, exam_tags, clear_exam } => {
+            let mut body = serde_json::json!({
                 "id": id,
                 "title": title,
                 "description": desc,
                 "cover_url": cover_url,
                 "edit_summary": summary,
             });
+            // JSON null deserializes as `Some(None)` via deserialize_double_option,
+            // which the server treats as "clear the field".
+            if clear_exam {
+                body["exam_tags"] = serde_json::Value::Null;
+            } else if let Some(tags) = exam_tags {
+                body["exam_tags"] = serde_json::to_value(&tags)?;
+            }
 
             client()
                 .post(format!("{base}/books/update"))

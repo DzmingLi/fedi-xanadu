@@ -193,6 +193,9 @@ export interface Book {
   /** Full topic closure: direct teach tags + their ancestors + explicit
    * content_topics entries, group-expanded. Used by the field tabs. */
   topics?: string[];
+  /** Self-describing exam-prep tags ('kaoyan-math-1', 'kaoyan-408', ...).
+   *  null/empty = non-exam book. */
+  exam_tags?: string[] | null;
 }
 
 export interface PurchaseLink {

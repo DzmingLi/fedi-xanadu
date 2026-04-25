@@ -302,6 +302,32 @@ pub async fn pds_upload_blob(
     }
 }
 
+/// Upload to the author's PDS if they have a real session; otherwise
+/// synthesize a blob ref with a local-only CID (`local:<blake3>`). Local users
+/// (`did:local:*`) always take the synthesize path — their content lives in
+/// `blob_cache` and does not federate until they eventually attach a real PDS.
+/// Never returns None: publish paths rely on always getting a manifest entry.
+pub async fn upload_or_local_blob(
+    state: &crate::state::AppState,
+    token: &str,
+    did: &str,
+    data: Vec<u8>,
+    content_type: &str,
+) -> serde_json::Value {
+    if !did.starts_with("did:local:") {
+        if let Some(blob) = pds_upload_blob(state, token, data.clone(), content_type).await {
+            return blob;
+        }
+    }
+    let cid = format!("local:{}", blake3::hash(&data).to_hex());
+    serde_json::json!({
+        "$type": "blob",
+        "ref": { "$link": cid },
+        "mimeType": content_type,
+        "size": data.len() as u64,
+    })
+}
+
 /// Requires admin secret header. Returns 401/403 if invalid.
 pub struct AdminAuth;
 
@@ -320,9 +346,6 @@ impl FromRequestParts<AppState> for AdminAuth {
         Ok(AdminAuth)
     }
 }
-
-// `pijul_knot::PadUser` is implemented directly for `atproto_auth::AuthUser`
-// inside pijul-knot (blanket impl), so no newtype wrapper is needed here.
 
 #[cfg(test)]
 mod tests {

@@ -2,6 +2,11 @@
 
 export type Book = { id: string, title: Record<string, string>, subtitle: Record<string, string>, authors: Array<string>, description: Record<string, string>, abbreviation: string | null, default_edition_id: string | null, created_by: string, created_at: string, 
 /**
+ * Self-describing exam-prep tags ('kaoyan-math-1', 'kaoyan-408', ...).
+ * NULL/empty = non-exam book. Vocabulary lives in the frontend.
+ */
+exam_tags: Array<string> | null, 
+/**
  * Derived from editions at query time, not stored on the books table.
  */
 cover_url: string | null, };

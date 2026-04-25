@@ -1,0 +1,23 @@
+[package]
+name = "fx-validator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "fx_validator"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fx-validator-knot-hook"
+path = "src/bin/knot_hook.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+serde_yml = "0.0.12"
+typst-syntax = "0.14"
+
+[dev-dependencies]
+tempfile = "3"

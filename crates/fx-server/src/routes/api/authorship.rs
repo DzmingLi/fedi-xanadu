@@ -29,7 +29,7 @@ pub async fn add_author(
     // Verify caller is the article publisher or a verified co-author
     let article = article_service::get_article(&state.pool, state.instance_mode, &input.article_uri).await
         .map_err(|_| AppError(fx_core::Error::NotFound { entity: "article", id: input.article_uri.clone() }))?;
-    let is_publisher = article.did == user.did;
+    let is_publisher = article.author_did == user.did;
     let is_verified_author = if !is_publisher {
         let authors = authorship_service::list_authors(&state.pool, &input.article_uri).await?;
         authors.iter().any(|a| a.author_did.as_deref() == Some(&user.did) && a.status == "verified")

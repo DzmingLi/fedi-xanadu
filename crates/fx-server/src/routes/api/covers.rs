@@ -97,57 +97,44 @@ fn validate_reference_path(file: &str) -> Result<String, AppError> {
     Ok(ext)
 }
 
-/// Resolve the key prefix + node_id to the working directory that holds the
-/// cover file. For blob-backed articles the source + rendered artifacts live
-/// in `blob_cache_path`; for everything else it's the pijul working dir.
+/// Resolve the key prefix + node_id to the blob-cache directory that holds
+/// the cover file. With the move to PDS-blob storage, every article cover
+/// lives in `blob_cache_path/{node_id}/`. Series still use the node_id
+/// scheme but now have no on-disk content — covers must be published as
+/// part of a chapter's blob bundle to be servable; for the moment series
+/// covers simply use the same convention (cover file copied into a blob
+/// cache dir keyed by the series' repo_uri node_id).
 async fn repo_for(state: &AppState, kind: &str, node_id: &str) -> Option<std::path::PathBuf> {
     match kind {
-        "a" => {
-            let storage: Option<String> = sqlx::query_scalar(
-                "SELECT content_storage FROM articles \
-                 WHERE translate(at_uri, '/:', '__') = $1",
-            )
-            .bind(node_id)
-            .fetch_optional(&state.pool)
-            .await
-            .ok()
-            .flatten();
-            if storage.as_deref() == Some("blob") {
-                Some(state.blob_cache_path.join(node_id))
-            } else {
-                Some(state.pijul.repo_path(node_id))
-            }
-        }
-        "s" => Some(state.pijul.series_repo_path(node_id)),
+        "a" | "s" => Some(state.blob_cache_path.join(node_id)),
         _ => None,
     }
 }
 
-/// Look up `cover_file` in the DB for a given kind + node_id.
-///
-/// Series: `node_id` is `series_{id}`, strip the prefix and `WHERE id = $1`.
-/// Articles: `node_id` is `translate(at_uri, '/:', '__')`, recover by matching.
+/// Look up `cover_file` in the DB for a given kind + node_id. Both kinds use
+/// the same translate-by-URI pattern since series node_ids are now
+/// `uri_to_node_id(series_repo_uri)` — uniform with articles.
 async fn lookup_cover_file(
     pool: &sqlx::PgPool,
     kind: &str,
     node_id: &str,
 ) -> Option<String> {
     match kind {
-        "s" => {
-            let series_id = node_id.strip_prefix("series_")?;
-            sqlx::query_scalar::<_, Option<String>>(
-                "SELECT cover_file FROM series WHERE id = $1",
-            )
-            .bind(series_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .flatten()
-        }
+        "s" => sqlx::query_scalar::<_, Option<String>>(
+            "SELECT cover_file FROM series \
+             WHERE translate('at://' || created_by || '/at.nightbo.work/' || id, '/:', '__') = $1",
+        )
+        .bind(node_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten(),
         "a" => sqlx::query_scalar::<_, Option<String>>(
-            "SELECT cover_file FROM articles \
-             WHERE translate(at_uri, '/:', '__') = $1",
+            "SELECT a.cover_file FROM articles a \
+             JOIN article_localizations l \
+               ON a.repo_uri = l.repo_uri AND a.source_path = l.source_path \
+             WHERE translate(l.at_uri, '/:', '__') = $1 LIMIT 1",
         )
         .bind(node_id)
         .fetch_optional(pool)
@@ -302,49 +289,29 @@ async fn persist_series_cover(repo_path: &std::path::Path, cover: Option<String>
     }
 }
 
-/// Write the cover to the pijul repo, mirror to knot (if configured), and
-/// record a patch so the change is versioned.
+/// Write the cover file into the article/series blob cache. The blob cache
+/// is the single filesystem source of truth for locally-authored content in
+/// the blob storage model. Covers are not currently uploaded as PDS blobs
+/// of their own — TODO(cover-as-blob) is to include covers in the article's
+/// `content.files[]` so fork/clone carries them, but that's a separate pass.
 async fn write_cover_to_repo(
     state: &AppState,
-    repo_path: &std::path::Path,
-    node_id: &str,
-    did: &str,
+    repo_uri: &str,
+    _did: &str,
     data: &[u8],
     ext: &str,
     is_series: bool,
 ) -> Result<(), AppError> {
-    tokio::fs::create_dir_all(repo_path).await.ok();
-    purge_other_exts(repo_path, ext).await;
+    let node_id = fx_core::util::uri_to_node_id(repo_uri);
+    let repo_path = state.blob_cache_path.join(&node_id);
+    tokio::fs::create_dir_all(&repo_path).await?;
+
+    purge_other_exts(&repo_path, ext).await;
     let cover_path = repo_path.join(format!("{COVER_STEM}.{ext}"));
     tokio::fs::write(&cover_path, data).await?;
 
-    // Persist the cover selection into the series' metadata slot so fork/clone
-    // preserves it without the database.
     if is_series {
-        persist_series_cover(repo_path, Some(format!("{COVER_STEM}.{ext}"))).await;
-    }
-
-    // Mirror to knot if the user has one configured (articles only — series
-    // knot flow isn't currently wired up for writes).
-    if !is_series {
-        let knot_url = fx_core::services::article_service::get_user_knot_url(&state.pool, did).await;
-        if let Some(ref knot) = knot_url {
-            let client = pijul_knot::KnotClient::new(knot);
-            let rel = format!("{COVER_STEM}.{ext}");
-            if let Err(e) = client.write_file(node_id, &rel, data).await {
-                tracing::warn!("knot write cover failed: {e}");
-            }
-        }
-    }
-
-    // Record patch (non-fatal if it fails — the file is still on disk).
-    let record = if is_series {
-        state.pijul_record_series(node_id.to_string(), "Update cover".into(), Some(did.to_string())).await
-    } else {
-        state.pijul_record(node_id.to_string(), "Update cover".into(), Some(did.to_string())).await
-    };
-    if let Err(e) = record {
-        tracing::warn!("pijul record cover failed for {node_id}: {e}");
+        persist_series_cover(&repo_path, Some(format!("{COVER_STEM}.{ext}"))).await;
     }
     Ok(())
 }
@@ -363,7 +330,7 @@ async fn update_article_cover_meta(
     cover: Option<String>,
 ) -> Result<bool, AppError> {
     let format: Option<String> = sqlx::query_scalar(
-        "SELECT content_format::text FROM articles WHERE at_uri = $1",
+        "SELECT content_format::text FROM article_localizations WHERE at_uri = $1",
     )
     .bind(article_uri)
     .fetch_optional(pool)
@@ -438,40 +405,27 @@ fn rewrite_html_article_cover(source: &str, cover: Option<String>) -> String {
     }
 }
 
-/// After updating the article's markdown frontmatter cover, commit the change
-/// to the repo so fork/clone carries it. Best-effort; errors are logged.
-async fn record_article_cover_meta(state: &AppState, node_id: &str, did: &str) {
-    if let Err(e) = state.pijul_record(node_id.to_string(), "Update cover metadata".into(), Some(did.to_string())).await {
-        tracing::warn!("pijul record cover meta failed for {node_id}: {e}");
-    }
-}
+/// After updating the article's markdown frontmatter cover, the source
+/// file lives under blob_cache and is already written to disk. The matching
+/// PDS record update (embedding the new cover in the `content.files[]`
+/// entry) is TODO(cover-as-blob); for now the DB row is the authoritative
+/// cover pointer and this is a no-op.
+async fn record_article_cover_meta(_state: &AppState, _repo_uri: &str, _did: &str) {}
 
-/// Delete every cover.{ext} in the repo and record the deletion.
+/// Delete every cover.{ext} in the blob cache dir.
 async fn remove_cover_from_repo(
     state: &AppState,
-    repo_path: &std::path::Path,
-    node_id: &str,
-    did: &str,
+    repo_uri: &str,
+    _did: &str,
     is_series: bool,
 ) {
-    let mut removed_any = false;
+    let node_id = fx_core::util::uri_to_node_id(repo_uri);
+    let repo_path = state.blob_cache_path.join(&node_id);
     if is_series {
-        persist_series_cover(repo_path, None).await;
-        removed_any = true;
+        persist_series_cover(&repo_path, None).await;
     }
     for ext in UPLOAD_EXTENSIONS {
-        if tokio::fs::remove_file(repo_path.join(format!("{COVER_STEM}.{ext}"))).await.is_ok() {
-            removed_any = true;
-        }
-    }
-    if !removed_any { return; }
-    let record = if is_series {
-        state.pijul_record_series(node_id.to_string(), "Remove cover".into(), Some(did.to_string())).await
-    } else {
-        state.pijul_record(node_id.to_string(), "Remove cover".into(), Some(did.to_string())).await
-    };
-    if let Err(e) = record {
-        tracing::warn!("pijul record cover removal failed for {node_id}: {e}");
+        let _ = tokio::fs::remove_file(repo_path.join(format!("{COVER_STEM}.{ext}"))).await;
     }
 }
 
@@ -483,6 +437,18 @@ pub struct IdQuery { pub id: String }
 
 #[derive(serde::Deserialize)]
 pub struct CoverReference { pub file: String }
+
+fn mime_for_image_ext(ext: &str) -> &'static str {
+    match ext {
+        "png"          => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif"          => "image/gif",
+        "webp"         => "image/webp",
+        "svg"          => "image/svg+xml",
+        "avif"         => "image/avif",
+        _              => "application/octet-stream",
+    }
+}
 
 pub async fn upload_article_cover(
     State(state): State<AppState>,
@@ -496,17 +462,39 @@ pub async fn upload_article_cover(
     }
 
     let node_id = uri_to_node_id(&q.uri);
-    let repo_path = state.pijul.repo_path(&node_id);
     let (data, ext) = read_multipart(multipart).await?;
-
-    write_cover_to_repo(&state, &repo_path, &node_id, &user.did, &data, &ext, false).await?;
-
-    let cover_url = format!("/api/covers/a-{node_id}");
     let cover_file = format!("{COVER_STEM}.{ext}");
-    if update_article_cover_meta(&state.pool, &repo_path, &q.uri, Some(cover_file.clone())).await.unwrap_or(false) {
-        record_article_cover_meta(&state, &node_id, &user.did).await;
-    }
-    sqlx::query("UPDATE articles SET cover_url = $1, cover_file = $2 WHERE at_uri = $3")
+    let mime = mime_for_image_ext(&ext);
+
+    // 1. Upload/synthesize as a PDS blob under this article's author.
+    let blob = crate::auth::upload_or_local_blob(
+        &state, &user.token, &user.did, data.clone(), mime,
+    ).await;
+
+    // 2. Materialize the cover byte-for-byte into blob_cache so the
+    //    `/api/covers/a-{node_id}` image endpoint can serve it directly.
+    //    This also handles purging stale covers under a different extension.
+    let repo_path = state.blob_cache_path.join(&node_id);
+    tokio::fs::create_dir_all(&repo_path).await?;
+    purge_other_exts(&repo_path, &ext).await;
+    tokio::fs::write(repo_path.join(&cover_file), &data).await?;
+
+    // 3. Append the cover to the article's blob bundle (content_manifest
+    //    + PDS at.nightbo.work record) so fork/clone carries it.
+    super::articles::append_file_to_article_manifest(
+        &state, &q.uri, &cover_file, &blob, data.len(), mime,
+    ).await?;
+    super::articles::append_file_to_article_record(
+        &state, &user.token, &user.did, &q.uri, &cover_file, &blob, data.len(), mime,
+    ).await?;
+
+    // 4. Update the DB cover pointer.
+    let cover_url = format!("/api/covers/a-{node_id}");
+    sqlx::query(
+        "UPDATE articles a SET cover_url = $1, cover_file = $2 \
+         FROM article_localizations l \
+         WHERE l.at_uri = $3 AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
+    )
         .bind(&cover_url).bind(&cover_file).bind(&q.uri).execute(&state.pool).await?;
     Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": cover_file })))
 }
@@ -520,13 +508,16 @@ pub async fn remove_article_cover(
     if owner_did != user.did {
         return Err(AppError(fx_core::Error::BadRequest("only the author can remove the cover".into())));
     }
-    let node_id = uri_to_node_id(&q.uri);
-    let repo_path = state.pijul.repo_path(&node_id);
-    remove_cover_from_repo(&state, &repo_path, &node_id, &user.did, false).await;
+    remove_cover_from_repo(&state, &q.uri, &user.did, false).await;
+    let repo_path = state.blob_cache_path.join(fx_core::util::uri_to_node_id(&q.uri));
     if update_article_cover_meta(&state.pool, &repo_path, &q.uri, None).await.unwrap_or(false) {
-        record_article_cover_meta(&state, &node_id, &user.did).await;
+        record_article_cover_meta(&state, &q.uri, &user.did).await;
     }
-    sqlx::query("UPDATE articles SET cover_url = NULL, cover_file = NULL WHERE at_uri = $1")
+    sqlx::query(
+        "UPDATE articles a SET cover_url = NULL, cover_file = NULL \
+         FROM article_localizations l \
+         WHERE l.at_uri = $1 AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
+    )
         .bind(&q.uri).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -553,7 +544,7 @@ async fn set_article_cover_reference_inner(
 ) -> ApiResult<Json<serde_json::Value>> {
     let _ = validate_reference_path(file)?;
     let node_id = uri_to_node_id(uri);
-    let repo_path = state.pijul.repo_path(&node_id);
+    let repo_path = state.blob_cache_path.join(&node_id);
     if !tokio::fs::try_exists(repo_path.join(file)).await.unwrap_or(false) {
         return Err(AppError(fx_core::Error::BadRequest(
             format!("cover file not found in repo: {file}"),
@@ -562,10 +553,14 @@ async fn set_article_cover_reference_inner(
     let cover_url = format!("/api/covers/a-{node_id}");
     if update_article_cover_meta(&state.pool, &repo_path, uri, Some(file.to_string())).await.unwrap_or(false) {
         if let Ok(d) = article_service::get_article_owner(&state.pool, uri).await {
-            record_article_cover_meta(state, &node_id, &d).await;
+            record_article_cover_meta(state, uri, &d).await;
         }
     }
-    sqlx::query("UPDATE articles SET cover_url = $1, cover_file = $2 WHERE at_uri = $3")
+    sqlx::query(
+        "UPDATE articles a SET cover_url = $1, cover_file = $2 \
+         FROM article_localizations l \
+         WHERE l.at_uri = $3 AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
+    )
         .bind(&cover_url).bind(file).bind(uri).execute(&state.pool).await?;
     Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": file })))
 }
@@ -592,14 +587,24 @@ pub async fn upload_series_cover(
         return Err(AppError(fx_core::Error::BadRequest("only the creator can set a cover".into())));
     }
 
-    let node_id = format!("series_{}", q.id);
-    let repo_path = state.pijul.series_repo_path(&node_id);
+    let series_repo_uri = series_service::series_repo_uri(&state.pool, &q.id).await?;
+    let node_id = uri_to_node_id(&series_repo_uri);
     let (data, ext) = read_multipart(multipart).await?;
+    let cover_file = format!("{COVER_STEM}.{ext}");
+    let mime = mime_for_image_ext(&ext);
 
-    write_cover_to_repo(&state, &repo_path, &node_id, &user.did, &data, &ext, true).await?;
+    // Upload/synthesize as a blob, materialize to blob_cache for local
+    // serving, then set `cover` on the series PDS record.
+    let blob = crate::auth::upload_or_local_blob(
+        &state, &user.token, &user.did, data.clone(), mime,
+    ).await;
+    let repo_path = state.blob_cache_path.join(&node_id);
+    tokio::fs::create_dir_all(&repo_path).await?;
+    purge_other_exts(&repo_path, &ext).await;
+    tokio::fs::write(repo_path.join(&cover_file), &data).await?;
+    super::articles::set_cover_on_series_record(&state, &user.token, &user.did, &q.id, &blob).await;
 
     let cover_url = format!("/api/covers/s-{node_id}");
-    let cover_file = format!("{COVER_STEM}.{ext}");
     sqlx::query("UPDATE series SET cover_url = $1, cover_file = $2 WHERE id = $3")
         .bind(&cover_url).bind(&cover_file).bind(&q.id).execute(&state.pool).await?;
     Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": cover_file })))
@@ -614,9 +619,8 @@ pub async fn remove_series_cover(
     if owner_did != user.did {
         return Err(AppError(fx_core::Error::BadRequest("only the creator can remove the cover".into())));
     }
-    let node_id = format!("series_{}", q.id);
-    let repo_path = state.pijul.series_repo_path(&node_id);
-    remove_cover_from_repo(&state, &repo_path, &node_id, &user.did, true).await;
+    let series_repo_uri = series_service::series_repo_uri(&state.pool, &q.id).await?;
+    remove_cover_from_repo(&state, &series_repo_uri, &user.did, true).await;
     sqlx::query("UPDATE series SET cover_url = NULL, cover_file = NULL WHERE id = $1")
         .bind(&q.id).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -641,22 +645,22 @@ async fn set_series_cover_reference_inner(
     file: &str,
 ) -> ApiResult<Json<serde_json::Value>> {
     let _ = validate_reference_path(file)?;
-    let node_id = format!("series_{series_id}");
-    let repo_path = state.pijul.series_repo_path(&node_id);
+    let series_repo_uri = series_service::series_repo_uri(&state.pool, series_id).await?;
+    let node_id = uri_to_node_id(&series_repo_uri);
+
+    let repo_path = state.blob_cache_path.join(&node_id);
+    tokio::fs::create_dir_all(&repo_path).await
+        .map_err(|e| AppError(fx_core::Error::Internal(format!("create blob cache: {e}"))))?;
     if !tokio::fs::try_exists(repo_path.join(file)).await.unwrap_or(false) {
         return Err(AppError(fx_core::Error::BadRequest(
             format!("cover file not found in repo: {file}"),
         )));
     }
 
-    // The repo's native metadata slot (typst's <nbt-series> or meta.yaml)
-    // is the source of truth; write it before the DB update so fork/clone
-    // inherits the selection.
-    let owner_did = series_service::get_series_owner(&state.pool, series_id).await?;
+    // Persist the cover selection into the series' metadata slot so
+    // downstream fork/clone sees it when/if we reintroduce cross-chapter
+    // series metadata files.
     persist_series_cover(&repo_path, Some(file.to_string())).await;
-    if let Err(e) = state.pijul_record_series(node_id.clone(), "Set cover".into(), Some(owner_did)).await {
-        tracing::warn!("pijul record series cover ref failed: {e}");
-    }
 
     let cover_url = format!("/api/covers/s-{node_id}");
     sqlx::query("UPDATE series SET cover_url = $1, cover_file = $2 WHERE id = $3")
@@ -674,15 +678,25 @@ pub async fn admin_upload_series_cover(
     multipart: Multipart,
 ) -> ApiResult<Json<serde_json::Value>> {
     let owner_did = series_service::get_series_owner(&state.pool, &q.id).await?;
-
-    let node_id = format!("series_{}", q.id);
-    let repo_path = state.pijul.series_repo_path(&node_id);
+    let series_repo_uri = series_service::series_repo_uri(&state.pool, &q.id).await?;
+    let node_id = uri_to_node_id(&series_repo_uri);
     let (data, ext) = read_multipart(multipart).await?;
+    let cover_file = format!("{COVER_STEM}.{ext}");
+    let mime = mime_for_image_ext(&ext);
 
-    write_cover_to_repo(&state, &repo_path, &node_id, &owner_did, &data, &ext, true).await?;
+    // Blob upload: admin has no user PDS token, so for real-PDS users the
+    // upload silently no-ops and only the local blob_cache gets populated.
+    // For did:local:* users it synthesizes a local CID.
+    let blob = crate::auth::upload_or_local_blob(
+        &state, "", &owner_did, data.clone(), mime,
+    ).await;
+    let repo_path = state.blob_cache_path.join(&node_id);
+    tokio::fs::create_dir_all(&repo_path).await?;
+    purge_other_exts(&repo_path, &ext).await;
+    tokio::fs::write(repo_path.join(&cover_file), &data).await?;
+    super::articles::set_cover_on_series_record(&state, "", &owner_did, &q.id, &blob).await;
 
     let cover_url = format!("/api/covers/s-{node_id}");
-    let cover_file = format!("{COVER_STEM}.{ext}");
     sqlx::query("UPDATE series SET cover_url = $1, cover_file = $2 WHERE id = $3")
         .bind(&cover_url).bind(&cover_file).bind(&q.id).execute(&state.pool).await?;
     Ok(Json(serde_json::json!({ "cover_url": cover_url, "cover_file": cover_file })))
@@ -694,9 +708,8 @@ pub async fn admin_remove_series_cover(
     axum::extract::Query(q): axum::extract::Query<IdQuery>,
 ) -> ApiResult<StatusCode> {
     let owner_did = series_service::get_series_owner(&state.pool, &q.id).await?;
-    let node_id = format!("series_{}", q.id);
-    let repo_path = state.pijul.series_repo_path(&node_id);
-    remove_cover_from_repo(&state, &repo_path, &node_id, &owner_did, true).await;
+    let series_repo_uri = series_service::series_repo_uri(&state.pool, &q.id).await?;
+    remove_cover_from_repo(&state, &series_repo_uri, &owner_did, true).await;
     sqlx::query("UPDATE series SET cover_url = NULL, cover_file = NULL WHERE id = $1")
         .bind(&q.id).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)

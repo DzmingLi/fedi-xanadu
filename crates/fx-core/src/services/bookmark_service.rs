@@ -5,24 +5,30 @@ use sqlx::PgPool;
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ts_rs::TS)]
 #[ts(export, export_to = "../../frontend/src/lib/generated/")]
 pub struct BookmarkWithTitle {
+    /// Synthetic article URI (`nightboat://article/{repo_uri}/{source_path}`).
     pub article_uri: String,
     pub folder_path: String,
     pub created_at: DateTime<Utc>,
     pub title: String,
     pub summary: String,
-    /// Content kind of the bookmarked record (article / question / answer / thought).
-    /// Clients use this to route to the correct canonical page (e.g. `/question`
-    /// for aggregated answer threads).
     pub kind: String,
     pub question_uri: Option<String>,
 }
 
 pub async fn list_bookmarks(pool: &PgPool, did: &str) -> crate::Result<Vec<BookmarkWithTitle>> {
     let rows = sqlx::query_as::<_, BookmarkWithTitle>(
-        "SELECT b.article_uri, b.folder_path, b.created_at, a.title, a.summary, \
-                a.kind::TEXT AS kind, a.question_uri \
+        "SELECT article_uri(b.repo_uri, b.source_path) AS article_uri, \
+                b.folder_path, b.created_at, l.title, l.summary, \
+                a.kind::TEXT AS kind, \
+                CASE WHEN a.question_repo_uri IS NULL THEN NULL \
+                     ELSE article_uri(a.question_repo_uri, a.question_source_path) \
+                END AS question_uri \
          FROM user_bookmarks b \
-         JOIN articles a ON a.at_uri = b.article_uri \
+         JOIN articles a \
+             ON a.repo_uri = b.repo_uri AND a.source_path = b.source_path \
+         JOIN article_localizations l \
+             ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+            AND l.file_path = a.source_path \
          WHERE b.did = $1 \
          ORDER BY b.folder_path, b.created_at",
     )
@@ -32,6 +38,7 @@ pub async fn list_bookmarks(pool: &PgPool, did: &str) -> crate::Result<Vec<Bookm
     Ok(rows)
 }
 
+/// `article_uri` is a localization at_uri; resolved to composite key on insert.
 pub async fn add_bookmark(
     pool: &PgPool,
     did: &str,
@@ -39,8 +46,10 @@ pub async fn add_bookmark(
     folder_path: &str,
 ) -> crate::Result<()> {
     sqlx::query(
-        "INSERT INTO user_bookmarks (did, article_uri, folder_path) VALUES ($1, $2, $3) \
-         ON CONFLICT (did, article_uri) DO UPDATE SET folder_path = EXCLUDED.folder_path",
+        "INSERT INTO user_bookmarks (did, repo_uri, source_path, folder_path) \
+         SELECT $1, repo_uri, source_path, $3 \
+         FROM article_localizations WHERE at_uri = $2 \
+         ON CONFLICT (did, repo_uri, source_path) DO UPDATE SET folder_path = EXCLUDED.folder_path",
     )
     .bind(did)
     .bind(article_uri)
@@ -55,7 +64,12 @@ pub async fn remove_bookmark(
     did: &str,
     article_uri: &str,
 ) -> crate::Result<()> {
-    sqlx::query("DELETE FROM user_bookmarks WHERE did = $1 AND article_uri = $2")
+    sqlx::query(
+        "DELETE FROM user_bookmarks \
+         WHERE did = $1 \
+         AND (repo_uri, source_path) IN \
+             (SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $2)",
+    )
         .bind(did)
         .bind(article_uri)
         .execute(pool)
@@ -69,7 +83,12 @@ pub async fn move_bookmark(
     article_uri: &str,
     folder_path: &str,
 ) -> crate::Result<()> {
-    sqlx::query("UPDATE user_bookmarks SET folder_path = $1 WHERE did = $2 AND article_uri = $3")
+    sqlx::query(
+        "UPDATE user_bookmarks SET folder_path = $1 \
+         WHERE did = $2 \
+         AND (repo_uri, source_path) IN \
+             (SELECT repo_uri, source_path FROM article_localizations WHERE at_uri = $3)",
+    )
         .bind(folder_path)
         .bind(did)
         .bind(article_uri)

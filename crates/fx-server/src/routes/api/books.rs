@@ -17,6 +17,12 @@ use fx_core::util::{tid, now_rfc3339};
 pub struct ListBooksQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// Filter by exam-prep tags:
+    ///   - "none" → books without exam tags
+    ///   - "any" → any book with at least one exam tag
+    ///   - any other value (e.g. "kaoyan-408") → books whose `exam_tags` contains it
+    ///   - absent → no filter
+    pub exam: Option<String>,
 }
 
 pub async fn list_books(
@@ -27,7 +33,8 @@ pub async fn list_books(
     let limit = q.limit.unwrap_or(50).clamp(1, 200);
     let offset = q.offset.unwrap_or(0).max(0);
     let viewer = user.as_ref().map(|u| u.did.as_str());
-    let books = book_service::list_books_rich(&state.pool, viewer, limit, offset).await?;
+    let filter = book_service::BookListFilter { exam: q.exam.as_deref() };
+    let books = book_service::list_books_rich(&state.pool, viewer, &filter, limit, offset).await?;
     Ok(Json(books))
 }
 
@@ -229,7 +236,58 @@ pub struct UpdateBookInput {
     /// (e.g. a popular-science book about calculus without being a
     /// textbook). When present, replaces content_related.
     pub related: Option<Vec<String>>,
+    /// Exam-prep tags. Three cases:
+    ///   - absent (`None`): leave unchanged.
+    ///   - `Some(Some(tags))`: replace with the given list.
+    ///   - `Some(None)`: clear (mark as non-exam).
+    #[serde(default, deserialize_with = "deserialize_double_option")]
+    pub exam_tags: Option<Option<Vec<String>>>,
     pub edit_summary: Option<String>,
+}
+
+/// Deserialize `null` as `Some(None)` (clear) vs missing as `None` (leave
+/// unchanged), letting the edit form disambiguate "drop exam-prep" from
+/// "don't touch exam-prep".
+fn deserialize_double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: serde::Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    Ok(Some(Option::<T>::deserialize(de)?))
+}
+
+/// Append a row to `book_edit_log`. `action` discriminates the row
+/// (`book_update`, `chapter_create`, `chapter_update`, `chapter_delete`);
+/// `target_id` points at the affected sub-entity (chapter_id for
+/// chapter_* actions, None for book_update).
+async fn log_book_edit(
+    pool: &sqlx::PgPool,
+    action: &str,
+    book_id: &str,
+    target_id: Option<&str>,
+    editor_did: &str,
+    old_data: serde_json::Value,
+    new_data: serde_json::Value,
+    summary: &str,
+) -> ApiResult<()> {
+    let id = tid();
+    sqlx::query(
+        "INSERT INTO book_edit_log \
+         (id, book_id, original_book_id, editor_did, old_data, new_data, summary, action, target_id) \
+         VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8)",
+    )
+    .bind(&id)
+    .bind(book_id)
+    .bind(editor_did)
+    .bind(&old_data)
+    .bind(&new_data)
+    .bind(summary)
+    .bind(action)
+    .bind(target_id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 pub async fn update_book(
@@ -241,12 +299,58 @@ pub async fn update_book(
     input.id = id;
     // Record edit history before applying
     let old = book_service::get_book(&state.pool, &input.id).await?;
-    let old_snapshot = serde_json::json!({
+    let content_uri = format!("book:{}", input.id);
+    let mut old_snapshot = serde_json::json!({
         "title": old.title,
         "subtitle": old.subtitle,
         "description": old.description,
         "abbreviation": old.abbreviation,
     });
+    let mut new_data = serde_json::json!({
+        "title": input.title,
+        "subtitle": input.subtitle,
+        "description": input.description,
+        "abbreviation": input.abbreviation,
+    });
+    // Snapshot old tag edges (teaches/prereqs/topics/related) only for
+    // fields the user is actually touching, so the diff modal doesn't
+    // show spurious "tags: [...] → null" when they were left alone.
+    if input.tags.is_some() {
+        let old_tags: Vec<String> = sqlx::query_scalar(
+            "SELECT tag_id FROM content_teaches WHERE content_uri = $1 ORDER BY tag_id",
+        ).bind(&content_uri).fetch_all(&state.pool).await?;
+        old_snapshot["tags"] = serde_json::to_value(&old_tags)?;
+        new_data["tags"] = serde_json::to_value(&input.tags)?;
+    }
+    if input.prereqs.is_some() {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT tag_id, prereq_type FROM content_prereqs WHERE content_uri = $1 \
+             ORDER BY prereq_type, tag_id",
+        ).bind(&content_uri).fetch_all(&state.pool).await?;
+        let old_prereqs: Vec<serde_json::Value> = rows.into_iter()
+            .map(|(tag_id, prereq_type)| serde_json::json!({"tag_id": tag_id, "prereq_type": prereq_type}))
+            .collect();
+        old_snapshot["prereqs"] = serde_json::Value::Array(old_prereqs);
+        new_data["prereqs"] = serde_json::to_value(&input.prereqs)?;
+    }
+    if input.topics.is_some() {
+        let old_topics: Vec<String> = sqlx::query_scalar(
+            "SELECT tag_id FROM content_topics WHERE content_uri = $1 ORDER BY tag_id",
+        ).bind(&content_uri).fetch_all(&state.pool).await?;
+        old_snapshot["topics"] = serde_json::to_value(&old_topics)?;
+        new_data["topics"] = serde_json::to_value(&input.topics)?;
+    }
+    if input.related.is_some() {
+        let old_related: Vec<String> = sqlx::query_scalar(
+            "SELECT tag_id FROM content_related WHERE content_uri = $1 ORDER BY tag_id",
+        ).bind(&content_uri).fetch_all(&state.pool).await?;
+        old_snapshot["related"] = serde_json::to_value(&old_related)?;
+        new_data["related"] = serde_json::to_value(&input.related)?;
+    }
+    if input.exam_tags.is_some() {
+        old_snapshot["exam_tags"] = serde_json::to_value(&old.exam_tags)?;
+        new_data["exam_tags"] = serde_json::to_value(input.exam_tags.as_ref().unwrap())?;
+    }
 
     if let Some(ref title) = input.title {
         let json = serde_json::to_value(title)?;
@@ -267,6 +371,14 @@ pub async fn update_book(
         let trimmed = abbr.trim();
         let value: Option<&str> = if trimmed.is_empty() { None } else { Some(trimmed) };
         sqlx::query("UPDATE books SET abbreviation = $1 WHERE id = $2")
+            .bind(value).bind(&input.id).execute(&state.pool).await?;
+    }
+    if let Some(ref tags) = input.exam_tags {
+        // `Some(Some(vec))` → replace; `Some(None)` → clear (NULL).
+        // An empty Vec is also normalized to NULL so the partial index
+        // and `cardinality(...) > 0` filter behave consistently.
+        let value: Option<&[String]> = tags.as_deref().filter(|t| !t.is_empty());
+        sqlx::query("UPDATE books SET exam_tags = $1 WHERE id = $2")
             .bind(value).bind(&input.id).execute(&state.pool).await?;
     }
     if let Some(ref authors) = input.authors {
@@ -342,24 +454,16 @@ pub async fn update_book(
             ).bind(&content_uri).bind(t).execute(&state.pool).await?;
         }
     }
-    // Save edit log
-    let edit_id = tid();
-    sqlx::query(
-        "INSERT INTO book_edit_log (id, book_id, original_book_id, editor_did, old_data, new_data, summary) \
-         VALUES ($1, $2, $2, $3, $4, $5, $6)",
-    )
-    .bind(&edit_id)
-    .bind(&input.id)
-    .bind(&user.did)
-    .bind(&old_snapshot)
-    .bind(&serde_json::json!({
-        "title": input.title,
-        "description": input.description,
-        "abbreviation": input.abbreviation,
-    }))
-    .bind(input.edit_summary.as_deref().unwrap_or(""))
-    .execute(&state.pool)
-    .await?;
+    log_book_edit(
+        &state.pool,
+        "book_update",
+        &input.id,
+        None,
+        &user.did,
+        old_snapshot,
+        new_data,
+        input.edit_summary.as_deref().unwrap_or(""),
+    ).await?;
 
     let book = book_service::get_book(&state.pool, &input.id).await?;
     Ok(Json(book))
@@ -417,6 +521,8 @@ pub struct BookEditLog {
     pub book_id: String,
     pub editor_did: String,
     pub editor_handle: Option<String>,
+    pub action: String,
+    pub target_id: Option<String>,
     pub old_data: serde_json::Value,
     pub new_data: serde_json::Value,
     pub summary: String,
@@ -431,7 +537,7 @@ pub async fn get_edit_history(
     // book_id has been nulled by the FK SET NULL cascade) still surface.
     let rows = sqlx::query_as::<_, BookEditLog>(
         "SELECT l.id, l.original_book_id AS book_id, l.editor_did, p.handle AS editor_handle, \
-                l.old_data, l.new_data, l.summary, l.created_at \
+                l.action, l.target_id, l.old_data, l.new_data, l.summary, l.created_at \
          FROM book_edit_log l \
          LEFT JOIN profiles p ON l.editor_did = p.did \
          WHERE l.original_book_id = $1 \
@@ -607,6 +713,27 @@ pub async fn create_chapter(
 ) -> ApiResult<Json<book_service::BookChapter>> {
     let id = format!("ch-{}", tid());
     let ch = book_service::create_chapter(&state.pool, &id, &book_id, &user.did, &input).await?;
+
+    let title_i18n = input.title_i18n.clone().unwrap_or_default();
+    log_book_edit(
+        &state.pool,
+        "chapter_create",
+        &book_id,
+        Some(&id),
+        &user.did,
+        serde_json::json!({}),
+        serde_json::json!({
+            "chapter_title": input.title,
+            "chapter_title_i18n": title_i18n,
+            "parent_id": input.parent_id,
+            "order_index": input.order_index,
+            "article_uri": input.article_uri,
+            "teaches": input.teaches,
+            "prereqs": input.prereqs,
+        }),
+        &format!("+ {}", input.title),
+    ).await?;
+
     Ok(Json(ch))
 }
 
@@ -619,11 +746,59 @@ pub struct UpdateChapterTagsInput {
 
 pub async fn update_chapter_tags(
     State(state): State<AppState>,
-    Path(_book_id): Path<String>,
+    Path(book_id): Path<String>,
     Auth(user): Auth,
     Json(input): Json<UpdateChapterTagsInput>,
 ) -> ApiResult<StatusCode> {
+    // Capture old state (title + tag edges) before mutation so the log
+    // entry renders a meaningful diff.
+    let (old_title, old_title_i18n): (String, sqlx::types::Json<std::collections::HashMap<String, String>>) =
+        sqlx::query_as("SELECT title, title_i18n FROM book_chapters WHERE id = $1")
+            .bind(&input.chapter_id)
+            .fetch_one(&state.pool)
+            .await?;
+    let content_uri = format!("chapter:{}", input.chapter_id);
+    let old_teaches: Vec<String> = sqlx::query_scalar(
+        "SELECT tag_id FROM content_teaches WHERE content_uri = $1 ORDER BY tag_id",
+    )
+    .bind(&content_uri)
+    .fetch_all(&state.pool)
+    .await?;
+    let old_prereq_rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT tag_id, prereq_type FROM content_prereqs WHERE content_uri = $1 \
+         ORDER BY prereq_type, tag_id",
+    )
+    .bind(&content_uri)
+    .fetch_all(&state.pool)
+    .await?;
+    let old_prereqs: Vec<book_service::ChapterPrereq> = old_prereq_rows
+        .into_iter()
+        .map(|(tag_id, prereq_type)| book_service::ChapterPrereq { tag_id, prereq_type })
+        .collect();
+
     book_service::set_chapter_tags(&state.pool, &input.chapter_id, &user.did, &input.teaches, &input.prereqs).await?;
+
+    log_book_edit(
+        &state.pool,
+        "chapter_update",
+        &book_id,
+        Some(&input.chapter_id),
+        &user.did,
+        serde_json::json!({
+            "chapter_title": old_title,
+            "chapter_title_i18n": old_title_i18n.0,
+            "teaches": old_teaches,
+            "prereqs": old_prereqs,
+        }),
+        serde_json::json!({
+            "chapter_title": old_title,
+            "chapter_title_i18n": old_title_i18n.0,
+            "teaches": input.teaches,
+            "prereqs": input.prereqs,
+        }),
+        &format!("~ {}", old_title),
+    ).await?;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -634,11 +809,54 @@ pub struct DeleteChapterInput {
 
 pub async fn delete_chapter(
     State(state): State<AppState>,
-    Path(_book_id): Path<String>,
-    Auth(_user): Auth,
+    Path(book_id): Path<String>,
+    Auth(user): Auth,
     Json(input): Json<DeleteChapterInput>,
 ) -> ApiResult<StatusCode> {
+    // Snapshot the chapter before it vanishes so the log entry retains
+    // enough context (title, tag edges) to describe what was removed.
+    let (old_title, old_title_i18n): (String, sqlx::types::Json<std::collections::HashMap<String, String>>) =
+        sqlx::query_as("SELECT title, title_i18n FROM book_chapters WHERE id = $1")
+            .bind(&input.chapter_id)
+            .fetch_one(&state.pool)
+            .await?;
+    let content_uri = format!("chapter:{}", input.chapter_id);
+    let old_teaches: Vec<String> = sqlx::query_scalar(
+        "SELECT tag_id FROM content_teaches WHERE content_uri = $1 ORDER BY tag_id",
+    )
+    .bind(&content_uri)
+    .fetch_all(&state.pool)
+    .await?;
+    let old_prereq_rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT tag_id, prereq_type FROM content_prereqs WHERE content_uri = $1 \
+         ORDER BY prereq_type, tag_id",
+    )
+    .bind(&content_uri)
+    .fetch_all(&state.pool)
+    .await?;
+    let old_prereqs: Vec<book_service::ChapterPrereq> = old_prereq_rows
+        .into_iter()
+        .map(|(tag_id, prereq_type)| book_service::ChapterPrereq { tag_id, prereq_type })
+        .collect();
+
     book_service::delete_chapter(&state.pool, &input.chapter_id).await?;
+
+    log_book_edit(
+        &state.pool,
+        "chapter_delete",
+        &book_id,
+        Some(&input.chapter_id),
+        &user.did,
+        serde_json::json!({
+            "chapter_title": old_title,
+            "chapter_title_i18n": old_title_i18n.0,
+            "teaches": old_teaches,
+            "prereqs": old_prereqs,
+        }),
+        serde_json::json!({}),
+        &format!("- {}", old_title),
+    ).await?;
+
     Ok(StatusCode::NO_CONTENT)
 }
 

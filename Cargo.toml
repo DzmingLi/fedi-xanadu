@@ -3,6 +3,7 @@ members = [
     "crates/fx-server",
     "crates/fx-core",
     "crates/fx-atproto",
+    "crates/fx-validator",
     "crates/nightboat-cli",
     "crates/fx-client",
     "crates/xtask",
@@ -17,10 +18,10 @@ repository = "https://github.com/DzmingLi/nightboat"
 
 [workspace.dependencies]
 fx-core = { path = "crates/fx-core" }
-pijul-knot = { git = "https://github.com/DzmingLi/pijul-knot.git" }
 fx-atproto = { path = "crates/fx-atproto" }
 fx-renderer = { git = "https://github.com/DzmingLi/typst-render.git" }
 fx-client = { path = "crates/fx-client" }
+fx-validator = { path = "crates/fx-validator" }
 
 # Web
 axum = { version = "0.8", features = ["macros", "multipart"] }

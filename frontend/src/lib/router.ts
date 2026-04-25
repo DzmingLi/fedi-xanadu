@@ -80,6 +80,21 @@ export function matchRoute(url: string): MatchResult {
 
   const normalizedBase = base === '' ? '/' : base;
 
+  // /@handle/slug[.lang] — canonical article URL. The last segment may
+  // carry an explicit locale suffix (e.g. `quantum.zh-CN`); if absent the
+  // server redirects to the Accept-Language-negotiated variant before the
+  // SPA sees it, but we still accept bare slugs here to stay robust.
+  const atMatch = normalizedBase.match(/^\/@([^/]+)\/([^/]+)$/);
+  if (atMatch) {
+    const handle = decodeURIComponent(atMatch[1]);
+    const rest = decodeURIComponent(atMatch[2]);
+    const { slug, lang } = splitSlugLang(rest);
+    return {
+      page: 'article',
+      params: { ...params, handle, slug, lang: lang ?? '' },
+    };
+  }
+
   for (const route of routes) {
     if (route.pattern === normalizedBase) {
       return { page: route.page, params };
@@ -108,6 +123,30 @@ export function matchRoute(url: string): MatchResult {
   }
 
   return { page: 'home', params };
+}
+
+/**
+ * Split `rest` into `{slug, lang}`. Matches the server's `split_slug_lang`:
+ * only split on the last `.` if the trailing token looks like a BCP 47 tag
+ * (letters + optional hyphens, ≥ 2 chars). This keeps file-like slugs such
+ * as `foo.md` from being parsed as `slug=foo, lang=md`.
+ */
+function splitSlugLang(rest: string): { slug: string; lang: string | null } {
+  const idx = rest.lastIndexOf('.');
+  if (idx <= 0 || idx === rest.length - 1) return { slug: rest, lang: null };
+  const tail = rest.slice(idx + 1);
+  if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*$/.test(tail)) return { slug: rest, lang: null };
+  return { slug: rest.slice(0, idx), lang: tail };
+}
+
+/** Build the canonical article URL. Bare (no lang) triggers server-side
+ *  Accept-Language negotiation; explicit lang is shareable + cacheable. */
+export function articleUrl(handle: string, slug: string, lang?: string | null): string {
+  const safeHandle = encodeURIComponent(handle);
+  const safeSlug = encodeURIComponent(slug);
+  return lang
+    ? `/@${safeHandle}/${safeSlug}.${encodeURIComponent(lang)}`
+    : `/@${safeHandle}/${safeSlug}`;
 }
 
 /** Navigate programmatically using the history API. */

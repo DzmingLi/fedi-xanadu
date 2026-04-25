@@ -3,7 +3,11 @@
 /// NSIDs live under `at.nightbo.*` (reverse DNS of nightbo.at). This prefix is
 /// **permanent** — it is baked into every PDS record a user writes, so it must
 /// outlive any deploy-domain changes. Do not retie this to the current host.
-pub const ARTICLE: &str = "at.nightbo.article";
+pub const WORK: &str = "at.nightbo.work";
+/// Deprecated alias kept temporarily for code that hasn't migrated.
+/// New code should use `WORK`.
+#[deprecated(note = "use WORK")]
+pub const ARTICLE: &str = "at.nightbo.work";
 pub const FORK: &str = "at.nightbo.fork";
 pub const MERGE: &str = "at.nightbo.merge";
 pub const VOTE: &str = "at.nightbo.vote";
@@ -16,7 +20,11 @@ pub const BOOK_SHORT_REVIEW: &str = "at.nightbo.book.shortReview";
 pub const BOOK_SERIES_RATING: &str = "at.nightbo.bookseries.rating";
 pub const BOOK_SERIES_SHORT_REVIEW: &str = "at.nightbo.bookseries.shortReview";
 pub const COURSE_RATING: &str = "at.nightbo.course.rating";
-pub const SERIES: &str = "at.nightbo.series";
+/// Deprecated: series is no longer a separate NSID — at.nightbo.work covers
+/// both single-entry and multi-chapter works. Kept temporarily for migration
+/// code that needs to detect legacy series records.
+#[deprecated(note = "series and article unified under WORK")]
+pub const SERIES: &str = "at.nightbo.work";
 pub const SKILL: &str = "at.nightbo.skill";
 pub const WANT_LEARN: &str = "at.nightbo.wantlearn";
 pub const TAG: &str = "at.nightbo.tag";

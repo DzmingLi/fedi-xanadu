@@ -53,11 +53,11 @@ pub async fn list_notifications(
         "SELECT n.id, n.recipient_did, n.actor_did,
                 p.handle AS actor_handle,
                 n.kind, n.target_uri,
-                a.title AS target_title,
+                l.title AS target_title,
                 n.context_id, n.read, n.created_at
          FROM notifications n
          LEFT JOIN profiles p ON p.did = n.actor_did
-         LEFT JOIN articles a ON a.at_uri = n.target_uri
+         LEFT JOIN article_localizations l ON l.at_uri = n.target_uri
          WHERE n.recipient_did = $1
          ORDER BY n.created_at DESC
          LIMIT $2 OFFSET $3"

@@ -20,6 +20,7 @@ mod learned;
 mod listings;
 mod courses;
 mod course_groups;
+mod course_homeworks;
 mod members;
 mod notifications;
 mod profile;
@@ -188,15 +189,18 @@ fn article_routes() -> Router<AppState> {
         .route("/articles/upload", post(articles::create_article_multipart))
         // Single resource (AT URI via query param — URIs contain slashes)
         .route("/articles/by-uri", get(articles::get_article))
+        // Slug-based lookup: /@alice/abcd.zh-CN → explicit lang;
+        // /@alice/abcd → Accept-Language → 302 to .{lang} variant.
+        // Handlebar templates (Path extractor) can't parse the `@` in an
+        // axum route fragment, so the `@` is baked into the pattern literal.
+        .route("/articles/at/{handle}/{slug_maybe_lang}", get(articles::get_article_by_slug))
         .route("/articles/by-uri/content", get(articles::get_article_content))
         .route("/articles/by-uri/prereqs", get(articles::get_article_prereqs))
         .route("/articles/by-uri/forks", get(articles::get_article_forks))
-        .route("/articles/by-uri/fork-ahead", get(articles::get_fork_ahead))
         .route("/articles/full", get(articles::get_article_full))
         // Mutations (proper verbs)
         .route("/articles/update", put(articles::update_article))
         .route("/articles/delete", delete(articles::delete_article))
-        .route("/articles/fork", post(articles::fork_article))
         .route("/articles/convert", post(articles::convert_content))
         // Images
         .route("/articles/upload-image", post(articles::upload_image))
@@ -217,17 +221,10 @@ fn article_routes() -> Router<AppState> {
         .route("/articles/by-uri/history", get(articles::get_article_history))
         .route("/articles/by-uri/version", get(articles::get_article_version))
         .route("/articles/by-uri/diff", get(articles::get_article_diff))
-        .route("/articles/by-uri/unrecord", post(articles::unrecord_article_change))
         .route("/articles/by-uri/record", post(articles::record_article))
-        .route("/articles/apply-change", post(articles::apply_change))
         // Collaboration
         .route("/articles/collaborators", get(articles::list_article_collaborators).post(articles::invite_article_collaborator))
         .route("/articles/collaborators/remove", delete(articles::remove_article_collaborator_endpoint))
-        .route("/articles/channels", get(articles::list_article_channels))
-        .route("/articles/channel/file", get(articles::read_article_channel_file).put(articles::write_article_channel_file))
-        .route("/articles/channel/log", get(articles::article_channel_log))
-        .route("/articles/channel/apply", post(articles::apply_article_channel_change))
-        .route("/articles/channel-diff", get(articles::article_channel_diff))
 }
 
 fn vote_routes() -> Router<AppState> {
@@ -317,13 +314,10 @@ fn series_routes() -> Router<AppState> {
         .route("/series/{id}/prereqs/remove", delete(series::remove_series_prereq))
         .route("/series/context", get(series::get_series_context))
         .route("/series/all-articles", get(series::all_series_articles))
-        // Series pijul repo
+        // Series shared resources (now no-ops under the blob model)
         .route("/series/{id}/res/{*path}", get(series::serve_file))
         .route("/series/{id}/resource", post(series::upload_resource))
         .route("/series/{id}/resources", get(series::list_resources))
-        // Pijul file/channel/history routes from shared pad_router
-        .nest("/series/{id}", pijul_knot::pad_router::<AppState, atproto_auth::AuthUser>())
-        .route("/series/{id}/fork", post(series::fork_series))
         // Series compile + heading extraction
         .route("/series/{id}/compile", post(series::compile_series))
         .route("/series/{id}/headings", get(series::get_headings))
@@ -338,8 +332,6 @@ fn discussion_routes() -> Router<AppState> {
         .route("/discussions", get(discussions::list_discussions).post(discussions::create_discussion))
         .route("/discussions/{id}", get(discussions::get_discussion))
         .route("/discussions/{id}/status", put(discussions::update_status))
-        .route("/discussions/{id}/apply", post(discussions::apply_discussion_change))
-        .route("/discussions/{id}/apply-all", post(discussions::apply_all_discussion_changes))
 }
 
 fn notification_routes() -> Router<AppState> {
@@ -427,6 +419,12 @@ fn course_routes() -> Router<AppState> {
                get(course_groups::list_course_groups).post(course_groups::create_course_group))
         .route("/course-groups/{id}",
                get(course_groups::get_course_group).delete(course_groups::delete_course_group))
+        .route("/homeworks",
+               get(course_homeworks::list_homeworks).post(course_homeworks::create_homework))
+        .route("/homeworks/{id}",
+               get(course_homeworks::get_homework)
+               .put(course_homeworks::update_homework)
+               .delete(course_homeworks::delete_homework))
 }
 
 fn question_routes() -> Router<AppState> {
@@ -437,6 +435,8 @@ fn question_routes() -> Router<AppState> {
         .route("/questions/by-tag", get(questions::get_questions_by_tag))
         .route("/questions/related", get(questions::get_related_questions))
         .route("/questions/by-book", get(questions::get_questions_by_book))
+        .route("/questions/by-session", get(questions::get_questions_by_session))
+        .route("/questions/by-homework", get(questions::get_questions_by_homework))
         .route("/questions/answer", post(questions::post_answer))
         .route("/answers/by-did", get(questions::get_answers_by_did))
 }
@@ -449,6 +449,7 @@ fn admin_routes() -> Router<AppState> {
     Router::new()
         .route("/admin/platform-users", get(admin::list_platform_users).post(admin::create_platform_user))
         .route("/admin/consistency/pijul", get(admin::check_pijul_consistency))
+        .route("/admin/migrate-pijul-to-blob", post(admin::admin_migrate_pijul_to_blob))
         .route("/admin/articles", post(admin::admin_create_article))
         .route("/admin/articles/update", put(admin::admin_update_article))
         .route("/admin/articles/delete", delete(admin::admin_delete_article))

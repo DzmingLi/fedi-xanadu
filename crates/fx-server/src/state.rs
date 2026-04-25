@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use fx_atproto::client::AtClient;
 use fx_core::region::InstanceMode;
-use pijul_knot::{PadProjectResolver, PadError, PijulStore};
 use sqlx::PgPool;
 
 use crate::config::Config;
@@ -10,20 +9,17 @@ use crate::config::Config;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
-    pub pijul: Arc<PijulStore>,
-    /// Root of the pijul repo store. Duplicated from `pijul` because
-    /// `PijulStore::base_path` is private and the consistency checker needs
-    /// to enumerate the directory directly (pg rows ↔ on-disk dirs diff).
-    pub pijul_store_path: std::path::PathBuf,
+    /// Scratch directory for PDS-blob-backed article working trees. Source files
+    /// are materialized here on demand so the renderer sees a normal directory
+    /// layout. Also used as the on-disk location for locally-authored content
+    /// before it goes into a PDS blob. Set via FX_BLOB_CACHE_PATH.
     pub blob_cache_path: std::path::PathBuf,
     pub data_dir: std::path::PathBuf,
     pub at_client: AtClient,
     pub admin_secret: Option<String>,
     pub instance_mode: InstanceMode,
     pub session_store: Arc<dyn atproto_auth::SessionStore>,
-    pub series_resolver: Arc<dyn PadProjectResolver>,
     pub public_url: String,
-    pub default_knot_url: String,
     pub pds_url: String,
     pub orcid_client_id: Option<String>,
     pub orcid_client_secret: Option<String>,
@@ -36,46 +32,35 @@ impl axum::extract::FromRef<AppState> for Arc<dyn atproto_auth::SessionStore> {
     }
 }
 
-impl axum::extract::FromRef<AppState> for Arc<PijulStore> {
-    fn from_ref(state: &AppState) -> Self {
-        state.pijul.clone()
-    }
-}
-
-impl axum::extract::FromRef<AppState> for Arc<dyn PadProjectResolver> {
-    fn from_ref(state: &AppState) -> Self {
-        state.series_resolver.clone()
-    }
-}
-
 impl AppState {
     pub async fn new(config: &Config) -> anyhow::Result<Self> {
         let pool = fx_core::db::create_pool(&config.database_url).await?;
-        let pijul = Arc::new(PijulStore::new(&config.pijul_store_path));
         let at_client = AtClient::new();
         let instance_mode = InstanceMode::from_str(&config.instance_mode);
 
-        std::fs::create_dir_all(&config.pijul_store_path)?;
         std::fs::create_dir_all(&config.blob_cache_path)?;
         let blob_cache_path = std::path::PathBuf::from(&config.blob_cache_path);
 
-        let packages_dir = std::path::PathBuf::from(&config.pijul_store_path).join("typst-packages");
+        // typst packages are shared across all repos, rooted as a sibling of
+        // the blob cache so they don't get tangled with per-article state.
+        let packages_dir = blob_cache_path
+            .parent()
+            .unwrap_or(&blob_cache_path)
+            .join("typst-packages");
         std::fs::create_dir_all(&packages_dir)?;
         fx_renderer::set_packages_dir(packages_dir);
 
         let session_store: Arc<dyn atproto_auth::SessionStore> =
             Arc::new(atproto_auth::PgSessionStore::new(pool.clone()));
 
-        let series_resolver: Arc<dyn PadProjectResolver> =
-            Arc::new(PgSeriesResolver { pool: pool.clone() });
-
         tracing::info!("instance mode: {}", instance_mode.as_str());
 
-        // User data directory: sibling of pijul store, not inside it
-        let pijul_path = std::path::PathBuf::from(&config.pijul_store_path);
-        let data_dir = pijul_path.parent().unwrap_or(&pijul_path).join("uploads");
+        // User data directory: sibling of blob cache.
+        let data_dir = blob_cache_path
+            .parent()
+            .unwrap_or(&blob_cache_path)
+            .join("uploads");
 
-        // Ensure directories exist
         std::fs::create_dir_all(data_dir.join("book-covers"))?;
         std::fs::create_dir_all(data_dir.join("avatars"))?;
         std::fs::create_dir_all(data_dir.join("banners"))?;
@@ -83,76 +68,16 @@ impl AppState {
 
         Ok(Self {
             pool,
-            pijul,
-            pijul_store_path: pijul_path.clone(),
             blob_cache_path,
             data_dir,
             at_client,
             admin_secret: config.admin_secret.clone(),
             instance_mode,
             session_store,
-            series_resolver,
             public_url: config.public_url.clone(),
-            default_knot_url: config.default_knot_url.clone(),
             pds_url: config.pds_url.clone(),
             orcid_client_id: config.orcid_client_id.clone(),
             orcid_client_secret: config.orcid_client_secret.clone(),
         })
-    }
-}
-
-// ── Async wrappers for blocking pijul operations ───────────────────────
-
-impl AppState {
-    /// Record pijul changes on a blocking thread so we don't stall the async runtime.
-    pub async fn pijul_record(&self, node_id: String, message: String, author_did: Option<String>) -> anyhow::Result<Option<(String, String)>> {
-        let store = self.pijul.clone();
-        tokio::task::spawn_blocking(move || {
-            store.record(&node_id, &message, author_did.as_deref())
-        }).await?
-    }
-
-    pub async fn pijul_record_series(&self, node_id: String, message: String, author_did: Option<String>) -> anyhow::Result<Option<(String, String)>> {
-        let store = self.pijul.clone();
-        tokio::task::spawn_blocking(move || {
-            store.record_series(&node_id, &message, author_did.as_deref())
-        }).await?
-    }
-}
-
-/// PadProjectResolver for nightboat series — resolves series ID to pijul node_id.
-struct PgSeriesResolver {
-    pool: PgPool,
-}
-
-#[async_trait::async_trait]
-impl PadProjectResolver for PgSeriesResolver {
-    async fn resolve_node_id(&self, series_id: &str) -> Result<String, PadError> {
-        fx_core::services::series_service::get_pijul_node_id(&self.pool, series_id)
-            .await
-            .map_err(|e| PadError::Internal(e.to_string()))?
-            .ok_or(PadError::NotFound("series not found or no pijul repo".into()))
-    }
-
-    async fn get_knot_url(&self, series_id: &str) -> Option<String> {
-        // Look up the series author's knot_url from user_settings
-        let author_did = fx_core::services::series_service::get_series_owner(&self.pool, series_id).await.ok()?;
-        fx_core::services::article_service::get_user_knot_url(&self.pool, &author_did).await
-    }
-
-    async fn get_owner_did(&self, series_id: &str) -> Result<String, PadError> {
-        sqlx::query_scalar::<_, String>("SELECT author_did FROM series WHERE id = $1")
-            .bind(series_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| PadError::Internal(e.to_string()))?
-            .ok_or(PadError::NotFound("series not found".into()))
-    }
-
-    async fn on_record(&self, series_id: &str) {
-        let _ = sqlx::query("UPDATE series SET updated_at = NOW() WHERE id = $1")
-            .bind(series_id)
-            .execute(&self.pool)
-            .await;
     }
 }

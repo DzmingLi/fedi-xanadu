@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     let oauth_config = load_or_create_oauth_config(
         &public_url,
         &config.instance_name,
-        &std::path::PathBuf::from(&config.pijul_store_path)
+        &std::path::PathBuf::from(&config.blob_cache_path)
             .parent()
             .unwrap_or(std::path::Path::new("."))
             .join("oauth-signing-key"),
@@ -79,7 +79,6 @@ async fn main() -> Result<()> {
     let cleanup_pool = state.pool.clone();
     let sync_at_client = state.at_client.clone();
     let sync_data_dir = state.data_dir.clone();
-    let consistency_pijul_path = state.pijul_store_path.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
         let mut tick: u64 = 0;
@@ -111,23 +110,6 @@ async fn main() -> Result<()> {
                 if n > 0 {
                     tracing::info!("re-synced {n} Bluesky profiles");
                 }
-            }
-            // Hourly: scan pg/pijul drift so ops sees broken references
-            // before users do. Read-only; nothing is auto-repaired.
-            match fx_core::services::consistency_service::check_pijul(&cleanup_pool, &consistency_pijul_path).await {
-                Ok(r) => {
-                    let broken = r.article_missing_repo.len() + r.series_missing_repo.len();
-                    let orphans = r.orphan_dirs.len();
-                    if broken > 0 || orphans > 0 {
-                        tracing::warn!(
-                            broken_refs = broken,
-                            orphan_dirs = orphans,
-                            scanned = r.total_dirs_scanned,
-                            "pijul consistency drift detected — check /api/admin/consistency/pijul"
-                        );
-                    }
-                }
-                Err(e) => tracing::warn!("pijul consistency check failed: {e}"),
             }
             tick = tick.wrapping_add(1);
         }

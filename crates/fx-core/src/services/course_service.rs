@@ -745,10 +745,12 @@ pub async fn get_user_rating(pool: &PgPool, course_id: &str, user_did: &str) -> 
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct CourseReviewRow {
-    pub at_uri: String,
+    pub repo_uri: String,
+    pub source_path: String,
+    pub at_uri: Option<String>,
     pub title: String,
     pub summary: String,
-    pub did: String,
+    pub author_did: String,
     pub author_handle: Option<String>,
     pub author_display_name: Option<String>,
     #[sqlx(default)]
@@ -762,13 +764,18 @@ pub async fn list_course_articles_by_category(
     pool: &PgPool, course_id: &str, category: &str, limit: i64, offset: i64,
 ) -> crate::Result<Vec<CourseReviewRow>> {
     Ok(sqlx::query_as::<_, CourseReviewRow>(
-        "SELECT a.at_uri, a.title, a.summary, a.did, \
+        "SELECT a.repo_uri, a.source_path, l.at_uri, l.title, l.summary, a.author_did, \
          p.handle AS author_handle, p.display_name AS author_display_name, \
          a.course_session_id, a.created_at, \
-         COALESCE((SELECT SUM(value) FROM votes WHERE target_uri = a.at_uri), 0) AS vote_score, \
-         (SELECT COUNT(*) FROM comments WHERE content_uri = a.at_uri) AS comment_count \
+         COALESCE((SELECT SUM(value) FROM votes \
+                   WHERE target_uri = article_uri(a.repo_uri, a.source_path)), 0) AS vote_score, \
+         (SELECT COUNT(*) FROM comments \
+          WHERE content_uri = article_uri(a.repo_uri, a.source_path)) AS comment_count \
          FROM articles a \
-         LEFT JOIN profiles p ON p.did = a.did \
+         JOIN article_localizations l \
+             ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+            AND l.file_path = a.source_path \
+         LEFT JOIN profiles p ON p.did = a.author_did \
          WHERE a.course_id = $1 AND a.category = $2 \
          ORDER BY vote_score DESC, a.created_at DESC \
          LIMIT $3 OFFSET $4"

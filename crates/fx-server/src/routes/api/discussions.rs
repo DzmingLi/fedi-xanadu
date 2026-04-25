@@ -4,13 +4,11 @@ use axum::{
     http::StatusCode,
 };
 use fx_core::services::{article_service, discussion_service};
-use fx_core::util::{tid, uri_to_node_id, content_hash};
+use fx_core::util::tid;
 
-use crate::error::{AppError, ApiResult, require_owner};
+use crate::error::{AppError, ApiResult};
 use crate::state::AppState;
 use crate::auth::WriteAuth;
-
-use super::articles::sync_meta_to_db;
 
 // --- Create discussion ---
 
@@ -89,114 +87,6 @@ pub async fn update_status(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// --- Apply a single change from discussion ---
-
-#[derive(serde::Deserialize)]
-pub struct ApplyChangeInput {
-    pub change_hash: String,
-}
-
-pub async fn apply_discussion_change(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    WriteAuth(user): WriteAuth,
-    Json(input): Json<ApplyChangeInput>,
-) -> ApiResult<Json<serde_json::Value>> {
-    let disc = discussion_service::get_discussion(&state.pool, &id).await?;
-    let target_owner = article_service::get_article_owner(&state.pool, &disc.discussion.target_uri).await?;
-    require_owner(Some(&target_owner), &user.did)?;
-
-    let source_node = uri_to_node_id(&disc.discussion.source_uri);
-    let target_node = uri_to_node_id(&disc.discussion.target_uri);
-
-    // Apply the change
-    state.pijul.apply(&source_node, &target_node, &input.change_hash)
-        .map_err(|e| AppError(fx_core::Error::Pijul(e.to_string())))?;
-
-    // Read updated content and check conflicts
-    let src_ext = article_service::get_content_format(&state.pool, &disc.discussion.target_uri).await?;
-    let ext = fx_renderer::format_extension(&src_ext);
-    let content_bytes = state.pijul.get_file_content(&target_node, &format!("content.{ext}"))
-        .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
-    let content = String::from_utf8_lossy(&content_bytes).to_string();
-    let has_conflicts = content.contains(">>>>>>>") || content.contains("<<<<<<<");
-
-    // Re-render + record if no conflicts
-    let repo_path = state.pijul.repo_path(&target_node);
-    if !has_conflicts {
-        if src_ext != "html" {
-            if let Ok(rendered) = super::articles::render_content(&src_ext, &content, &repo_path) {
-                let _ = tokio::fs::write(repo_path.join("content.html"), rendered).await;
-            }
-        }
-        let message = format!("Applied change from discussion {id}");
-        let _ = state.pijul_record(target_node.clone(), message.clone(), Some(user.did.clone())).await;
-        let hash = content_hash(&content);
-        let _ = article_service::update_article_content_hash(&state.pool, &disc.discussion.target_uri, &hash).await;
-        sync_meta_to_db(&state, &disc.discussion.target_uri, &repo_path).await;
-    }
-
-    // Mark change as applied
-    discussion_service::mark_change_applied(&state.pool, &id, &input.change_hash).await?;
-
-    // Auto-merge if all changes applied
-    if discussion_service::all_changes_applied(&state.pool, &id).await? {
-        discussion_service::update_status(&state.pool, &id, "merged").await?;
-    }
-
-    Ok(Json(serde_json::json!({ "has_conflicts": has_conflicts })))
-}
-
-// --- Apply all pending changes ---
-
-pub async fn apply_all_discussion_changes(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    WriteAuth(user): WriteAuth,
-) -> ApiResult<Json<serde_json::Value>> {
-    let disc = discussion_service::get_discussion(&state.pool, &id).await?;
-    let target_owner = article_service::get_article_owner(&state.pool, &disc.discussion.target_uri).await?;
-    require_owner(Some(&target_owner), &user.did)?;
-
-    let source_node = uri_to_node_id(&disc.discussion.source_uri);
-    let target_node = uri_to_node_id(&disc.discussion.target_uri);
-
-    let pending: Vec<_> = disc.changes.iter().filter(|c| !c.applied).collect();
-
-    for change in &pending {
-        if let Err(e) = state.pijul.apply(&source_node, &target_node, &change.change_hash) {
-            tracing::warn!("failed to apply change {}: {e}", change.change_hash);
-            continue;
-        }
-        let _ = discussion_service::mark_change_applied(&state.pool, &id, &change.change_hash).await;
-    }
-
-    // Final state: read content, check conflicts, render, record
-    let src_ext = article_service::get_content_format(&state.pool, &disc.discussion.target_uri).await?;
-    let ext = fx_renderer::format_extension(&src_ext);
-    let content_bytes = state.pijul.get_file_content(&target_node, &format!("content.{ext}"))
-        .map_err(|e| AppError(fx_core::Error::Internal(e.to_string())))?;
-    let content = String::from_utf8_lossy(&content_bytes).to_string();
-    let any_conflicts = content.contains(">>>>>>>") || content.contains("<<<<<<<");
-
-    let repo_path = state.pijul.repo_path(&target_node);
-    if !any_conflicts {
-        if src_ext != "html" {
-            if let Ok(rendered) = super::articles::render_content(&src_ext, &content, &repo_path) {
-                let _ = tokio::fs::write(repo_path.join("content.html"), rendered).await;
-            }
-        }
-        let message = format!("Applied all changes from discussion {id}");
-        let _ = state.pijul_record(target_node.clone(), message.clone(), Some(user.did.clone())).await;
-        let hash = content_hash(&content);
-        let _ = article_service::update_article_content_hash(&state.pool, &disc.discussion.target_uri, &hash).await;
-        sync_meta_to_db(&state, &disc.discussion.target_uri, &repo_path).await;
-    }
-
-    // Auto-merge status
-    if discussion_service::all_changes_applied(&state.pool, &id).await? {
-        discussion_service::update_status(&state.pool, &id, "merged").await?;
-    }
-
-    Ok(Json(serde_json::json!({ "has_conflicts": any_conflicts, "applied": pending.len() })))
-}
+// NOTE: apply_discussion_change + apply_all_discussion_changes removed with
+// the pijul-knot deprecation. Re-introducing them requires fx-pijul to grow
+// cross-repo `apply` — tracked as follow-up work.

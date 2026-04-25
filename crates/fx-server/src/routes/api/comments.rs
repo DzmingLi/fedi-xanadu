@@ -81,7 +81,7 @@ pub async fn create_comment(
         None
     };
     let (subject, chapter_ref) =
-        fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.content_uri, fx_atproto::lexicon::SERIES).await;
+        fx_core::services::article_service::resolve_subject_ref(&state.pool, &input.content_uri, fx_atproto::lexicon::WORK).await;
     let mut record = serde_json::json!({
         "$type": fx_atproto::lexicon::COMMENT,
         "subject": subject,
@@ -149,7 +149,7 @@ pub async fn update_comment(
 
     // Overwrite the record on PDS with refreshed body + updatedAt.
     let (subject, chapter_ref) =
-        fx_core::services::article_service::resolve_subject_ref(&state.pool, &comment.content_uri, fx_atproto::lexicon::SERIES).await;
+        fx_core::services::article_service::resolve_subject_ref(&state.pool, &comment.content_uri, fx_atproto::lexicon::WORK).await;
     let mut record = serde_json::json!({
         "$type": fx_atproto::lexicon::COMMENT,
         "subject": subject,

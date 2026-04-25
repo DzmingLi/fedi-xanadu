@@ -145,7 +145,8 @@ pub async fn get_comment_owner(pool: &PgPool, id: &str) -> Result<(String, Strin
     let row: Option<(String, Option<String>)> = sqlx::query_as(
         "SELECT c.did, \
                 COALESCE( \
-                    (SELECT a.did FROM articles a WHERE a.at_uri = c.content_uri), \
+                    (SELECT a.author_did FROM articles a \
+                      WHERE article_uri(a.repo_uri, a.source_path) = c.content_uri), \
                     (SELECT b.created_by FROM books b WHERE 'book:' || b.id = c.content_uri), \
                     (SELECT bk.created_by FROM book_chapters bc \
                                           JOIN books bk ON bk.id = bc.book_id \

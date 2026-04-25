@@ -17,6 +17,9 @@ pub struct Book {
     pub default_edition_id: Option<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
+    /// Self-describing exam-prep tags ('kaoyan-math-1', 'kaoyan-408', ...).
+    /// NULL/empty = non-exam book. Vocabulary lives in the frontend.
+    pub exam_tags: Option<Vec<String>>,
     /// Derived from editions at query time, not stored on the books table.
     #[sqlx(default)]
     pub cover_url: Option<String>,
@@ -38,6 +41,8 @@ pub struct CreateBook {
     pub prereqs: Vec<crate::models::ArticlePrereq>,
     #[serde(default)]
     pub abbreviation: Option<String>,
+    #[serde(default)]
+    pub exam_tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
@@ -108,8 +113,8 @@ pub async fn create_book(
     .await?;
 
     sqlx::query(
-        "INSERT INTO books (id, title, subtitle, authors, description, created_by, abbreviation) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO books (id, title, subtitle, authors, description, created_by, abbreviation, exam_tags) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(id)
     .bind(sqlx::types::Json(&input.title))
@@ -118,6 +123,7 @@ pub async fn create_book(
     .bind(sqlx::types::Json(input.description.as_ref().unwrap_or(&std::collections::HashMap::new())))
     .bind(created_by)
     .bind(&input.abbreviation)
+    .bind(input.exam_tags.as_deref().filter(|t| !t.is_empty()))
     .execute(&mut *tx)
     .await?;
 
@@ -153,7 +159,7 @@ pub async fn create_book(
     }
 
     let book = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, b.exam_tags, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
     )
         .bind(id)
         .fetch_one(pool)
@@ -172,7 +178,7 @@ const BOOK_COVER_SQL: &str = "\
 
 pub async fn get_book(pool: &PgPool, id: &str) -> crate::Result<Book> {
     sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
+        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, b.exam_tags, {BOOK_COVER_SQL} AS cover_url FROM books b WHERE b.id = $1"),
     )
         .bind(id)
         .fetch_optional(pool)
@@ -204,7 +210,7 @@ pub async fn get_book_for_viewer(pool: &PgPool, id: &str, viewer_did: &str) -> c
 /// Find a book by ISBN (searches across all editions).
 pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Option<Book>> {
     let row = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
+        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, b.exam_tags, {BOOK_COVER_SQL} AS cover_url FROM books b \
                   JOIN book_editions be ON be.book_id = b.id WHERE be.isbn = $1 LIMIT 1"),
     )
     .bind(isbn)
@@ -215,7 +221,7 @@ pub async fn find_book_by_isbn(pool: &PgPool, isbn: &str) -> crate::Result<Optio
 
 pub async fn list_books(pool: &PgPool, limit: i64, offset: i64) -> crate::Result<Vec<Book>> {
     let rows = sqlx::query_as::<_, Book>(
-        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, {BOOK_COVER_SQL} AS cover_url FROM books b \
+        &format!("SELECT b.id, b.title, b.subtitle, b.authors, b.description, b.abbreviation, b.default_edition_id, b.created_by, b.created_at, b.exam_tags, {BOOK_COVER_SQL} AS cover_url FROM books b \
                   ORDER BY b.created_at DESC LIMIT $1 OFFSET $2"),
     )
     .bind(limit)
@@ -245,11 +251,36 @@ pub struct BookListItem {
     /// / Econ): a book lives under a field if its closure contains any
     /// member of that field's group.
     pub topics: sqlx::types::Json<Vec<String>>,
+    pub exam_tags: Option<Vec<String>>,
 }
 
-pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64, offset: i64) -> crate::Result<Vec<BookListItem>> {
+/// Filter options for the book list.
+#[derive(Debug, Default, Clone)]
+pub struct BookListFilter<'a> {
+    /// If set, restrict the result by exam-prep tags:
+    ///   - `"none"` → exam_tags IS NULL or empty (non-exam books)
+    ///   - `"any"` → exam_tags has at least one entry (any exam-prep book)
+    ///   - any other value → exam_tags contains that exact tag
+    pub exam: Option<&'a str>,
+}
+
+pub async fn list_books_rich(
+    pool: &PgPool,
+    viewer_did: Option<&str>,
+    filter: &BookListFilter<'_>,
+    limit: i64,
+    offset: i64,
+) -> crate::Result<Vec<BookListItem>> {
     let did = viewer_did.unwrap_or("");
-    let rows = sqlx::query_as::<_, BookListItem>(
+    // Dynamic WHERE clause for the exam filter. `$4` is bound only when
+    // the filter targets a specific tag; otherwise it's a static check.
+    let (exam_clause, exam_bind): (&str, &str) = match filter.exam {
+        None => ("TRUE", ""),
+        Some("none") => ("(b.exam_tags IS NULL OR cardinality(b.exam_tags) = 0)", ""),
+        Some("any") => ("(b.exam_tags IS NOT NULL AND cardinality(b.exam_tags) > 0)", ""),
+        Some(tag) => ("$4 = ANY(b.exam_tags)", tag),
+    };
+    let sql = format!(
         "SELECT b.id, b.title, b.subtitle, b.authors, b.description, \
          COALESCE(\
            (SELECT e.cover_url FROM book_editions e \
@@ -275,18 +306,23 @@ pub async fn list_books_rich(pool: &PgPool, viewer_did: Option<&str>, limit: i64
                  JOIN closure c ON tp.child_tag = c.tag \
              ) \
              SELECT jsonb_agg(DISTINCT tag) FROM closure \
-         ), '[]'::jsonb) AS topics \
+         ), '[]'::jsonb) AS topics, \
+         b.exam_tags \
          FROM books b \
          LEFT JOIN (SELECT book_id, AVG(rating)::float8 AS avg, COUNT(*) AS cnt FROM book_ratings GROUP BY book_id) r ON r.book_id = b.id \
          LEFT JOIN (SELECT book_id, COUNT(*) AS cnt FROM book_reading_status GROUP BY book_id) rd ON rd.book_id = b.id \
+         WHERE {exam_clause} \
          ORDER BY COALESCE(r.avg, 0) * LN(COALESCE(r.cnt, 0) + 1) + COALESCE(rd.cnt, 0) * 0.5 DESC, b.created_at DESC \
          LIMIT $1 OFFSET $2",
-    )
-    .bind(limit)
-    .bind(offset)
-    .bind(did)
-    .fetch_all(pool)
-    .await?;
+    );
+    let mut q = sqlx::query_as::<_, BookListItem>(&sql)
+        .bind(limit)
+        .bind(offset)
+        .bind(did);
+    if matches!(filter.exam, Some(tag) if tag != "none" && tag != "any") {
+        q = q.bind(exam_bind);
+    }
+    let rows = q.fetch_all(pool).await?;
     Ok(rows)
 }
 
@@ -418,27 +454,13 @@ async fn get_book_articles_by_category(
     limit: i64,
     offset: i64,
 ) -> crate::Result<Vec<crate::models::Article>> {
-    let rows = sqlx::query_as::<_, crate::models::Article>(
-        "SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS author_reputation, \
-         a.kind, a.title, a.summary, \
-         a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
-         a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
-         a.book_chapter_id, a.course_session_id, \
-         COALESCE(v.vote_score, 0) AS vote_score, \
-         COALESCE(b.bookmark_count, 0) AS bookmark_count, \
-         COALESCE(cm.comment_count, 0) AS comment_count, \
-         COALESCE(fk.fork_count, 0) AS fork_count, \
-         a.created_at, a.updated_at \
-         FROM articles a \
-         LEFT JOIN profiles p ON a.did = p.did \
-         LEFT JOIN (SELECT target_uri, SUM(value) AS vote_score FROM votes GROUP BY target_uri) v ON v.target_uri = a.at_uri \
-         LEFT JOIN (SELECT article_uri, COUNT(*) AS bookmark_count FROM user_bookmarks GROUP BY article_uri) b ON b.article_uri = a.at_uri \
-         LEFT JOIN (SELECT content_uri, COUNT(*) AS comment_count FROM comments GROUP BY content_uri) cm ON cm.content_uri = a.at_uri \
-         LEFT JOIN (SELECT source_uri, COUNT(*) AS fork_count FROM forks GROUP BY source_uri) fk ON fk.source_uri = a.at_uri \
+    let rows = sqlx::query_as::<_, crate::models::Article>(&format!(
+        "{ARTICLE_BASE} \
          WHERE a.book_id = $1 AND a.category = $2 AND a.visibility = 'public' \
          ORDER BY vote_score DESC, a.created_at DESC \
          LIMIT $3 OFFSET $4",
-    )
+        ARTICLE_BASE = crate::services::article_service::ARTICLE_BASE,
+    ))
     .bind(book_id)
     .bind(category)
     .bind(limit)
@@ -483,25 +505,11 @@ pub async fn get_chapter_articles(
         )),
     };
     let sql = format!(
-        "SELECT a.at_uri, a.did, p.handle AS author_handle, COALESCE(p.reputation, 0) AS author_reputation, \
-         a.kind, a.title, a.summary, \
-         a.content_hash, a.content_format, a.lang, a.translation_group, a.license, a.prereq_threshold, \
-         a.question_uri, a.answer_count, a.restricted, a.category, a.book_id, a.edition_id, \
-         a.book_chapter_id, a.course_session_id, \
-         COALESCE(v.vote_score, 0) AS vote_score, \
-         COALESCE(b.bookmark_count, 0) AS bookmark_count, \
-         COALESCE(cm.comment_count, 0) AS comment_count, \
-         COALESCE(fk.fork_count, 0) AS fork_count, \
-         a.created_at, a.updated_at \
-         FROM articles a \
-         LEFT JOIN profiles p ON a.did = p.did \
-         LEFT JOIN (SELECT target_uri, SUM(value) AS vote_score FROM votes GROUP BY target_uri) v ON v.target_uri = a.at_uri \
-         LEFT JOIN (SELECT article_uri, COUNT(*) AS bookmark_count FROM user_bookmarks GROUP BY article_uri) b ON b.article_uri = a.at_uri \
-         LEFT JOIN (SELECT content_uri, COUNT(*) AS comment_count FROM comments GROUP BY content_uri) cm ON cm.content_uri = a.at_uri \
-         LEFT JOIN (SELECT source_uri, COUNT(*) AS fork_count FROM forks GROUP BY source_uri) fk ON fk.source_uri = a.at_uri \
+        "{ARTICLE_BASE} \
          WHERE a.book_chapter_id = $1 AND {predicate} AND a.visibility = 'public' \
          ORDER BY vote_score DESC, a.created_at DESC \
-         LIMIT $3 OFFSET $4"
+         LIMIT $3 OFFSET $4",
+        ARTICLE_BASE = crate::services::article_service::ARTICLE_BASE,
     );
     let rows = sqlx::query_as::<_, crate::models::Article>(&sql)
         .bind(chapter_id)

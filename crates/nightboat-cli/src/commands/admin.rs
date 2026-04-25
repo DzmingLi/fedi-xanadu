@@ -64,7 +64,8 @@ pub enum AdminCommand {
         #[arg(long)]
         translation_of: Option<String>,
     },
-    /// Rebuild a series' DB index from its pijul repo.
+    /// Rebuild a series' DB index from its source files. (Disabled under
+    /// the blob storage model — pending redesign; see server-side stub.)
     #[command(name = "rebuild-series-index")]
     RebuildSeriesIndex {
         #[arg(long)]
@@ -78,7 +79,7 @@ pub enum AdminCommand {
         #[arg(short, long)]
         file: PathBuf,
     },
-    /// Reference an existing file in the series' pijul repo as its cover
+    /// Reference an existing file in the series' blob cache as its cover
     #[command(name = "set-series-cover-ref")]
     SetSeriesCoverRef {
         #[arg(long)]

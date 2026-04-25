@@ -42,7 +42,7 @@ pub async fn get_stats(
     Auth(user): Auth,
 ) -> ApiResult<Json<CreatorStats>> {
     let total_articles: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM articles WHERE did = $1 AND removed_at IS NULL AND visibility = 'public'"
+        "SELECT COUNT(*) FROM articles WHERE author_did = $1 AND removed_at IS NULL AND visibility = 'public'"
     ).bind(&user.did).fetch_one(&state.pool).await?;
 
     let total_series: (i64,) = sqlx::query_as(
@@ -56,20 +56,20 @@ pub async fn get_stats(
 
     let total_views: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM article_views av \
-         JOIN articles a ON a.at_uri = av.article_uri \
-         WHERE a.did = $1 AND a.removed_at IS NULL"
+         JOIN articles a ON a.repo_uri = av.repo_uri AND a.source_path = av.source_path \
+         WHERE a.author_did = $1 AND a.removed_at IS NULL"
     ).bind(&user.did).fetch_one(&state.pool).await?;
 
     let total_comments: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM comments c \
-         JOIN articles a ON a.at_uri = c.content_uri \
-         WHERE a.did = $1 AND a.removed_at IS NULL"
+         JOIN articles a ON c.content_uri = article_uri(a.repo_uri, a.source_path) \
+         WHERE a.author_did = $1 AND a.removed_at IS NULL"
     ).bind(&user.did).fetch_one(&state.pool).await?;
 
     let total_bookmarks: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM user_bookmarks b \
-         JOIN articles a ON a.at_uri = b.article_uri \
-         WHERE a.did = $1 AND a.removed_at IS NULL"
+         JOIN articles a ON a.repo_uri = b.repo_uri AND a.source_path = b.source_path \
+         WHERE a.author_did = $1 AND a.removed_at IS NULL"
     ).bind(&user.did).fetch_one(&state.pool).await?;
 
     Ok(Json(CreatorStats {
@@ -88,9 +88,12 @@ pub async fn list_articles(
     Auth(user): Auth,
 ) -> ApiResult<Json<Vec<ArticleStats>>> {
     let rows = sqlx::query_as::<_, (String, String, String, chrono::DateTime<chrono::Utc>)>(
-        "SELECT at_uri, title, content_format::TEXT, created_at FROM articles \
-         WHERE did = $1 AND removed_at IS NULL \
-         ORDER BY created_at DESC"
+        "SELECT l.at_uri, l.title, l.content_format::TEXT, a.created_at FROM articles a \
+         JOIN article_localizations l \
+           ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+         WHERE a.author_did = $1 AND a.removed_at IS NULL \
+           AND l.at_uri IS NOT NULL AND l.file_path = a.source_path \
+         ORDER BY a.created_at DESC"
     ).bind(&user.did).fetch_all(&state.pool).await?;
 
     let mut articles = Vec::new();
