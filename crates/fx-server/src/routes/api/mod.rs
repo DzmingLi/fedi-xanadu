@@ -577,7 +577,7 @@ fn book_series_routes() -> Router<AppState> {
 fn author_routes() -> Router<AppState> {
     Router::new()
         .route("/authors/search", get(authors::search_authors))
-        .route("/authors/{id}", get(authors::get_author))
+        .route("/authors/{id}", get(authors::get_author).put(authors::update_author))
         .route("/authors/{id}/names", put(authors::set_author_names))
 }
 

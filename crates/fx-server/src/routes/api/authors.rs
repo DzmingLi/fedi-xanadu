@@ -78,3 +78,33 @@ pub async fn set_author_names(
     ).await?;
     Ok(Json(author))
 }
+
+#[derive(serde::Deserialize, Default)]
+pub struct UpdateAuthorInput {
+    #[serde(default)]
+    pub did: Option<String>,
+    #[serde(default)]
+    pub orcid: Option<String>,
+    #[serde(default)]
+    pub affiliation: Option<String>,
+    #[serde(default)]
+    pub homepage: Option<String>,
+}
+
+pub async fn update_author(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WriteAuth(_user): WriteAuth,
+    Json(input): Json<UpdateAuthorInput>,
+) -> ApiResult<Json<author_service::Author>> {
+    author_service::update_author(
+        &state.pool,
+        &id,
+        input.did.as_deref(),
+        input.orcid.as_deref(),
+        input.affiliation.as_deref(),
+        input.homepage.as_deref(),
+    ).await?;
+    let author = author_service::get_author(&state.pool, &id).await?;
+    Ok(Json(author))
+}
