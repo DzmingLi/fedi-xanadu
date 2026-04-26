@@ -994,6 +994,16 @@ export default {
   'courses.discussion': '讨论',
   'courses.noTerms': '该课程暂未挂入任何学期。',
   'courses.deleteConfirm': '确认删除这门课程？关联的学期将变为未链接状态（不会被删除）。',
+  'course.calendar': '课表',
+  'course.discussion': '讨论',
+  'course.notes': '笔记',
+  'course.reviews': '评论',
+  'course.noDiscussions': '暂无课程层面的讨论。',
+  'course.noNotes': '所有学期均暂无笔记。',
+  'course.noReviews': '所有学期均暂无评论。',
+  'course.askQuestion': '向修读过该课程的同学提问',
+  'course.writeNote': '撰写笔记',
+  'course.writeReview': '撰写评论',
   'terms.sessions': '节课',
 
   // Roadmap

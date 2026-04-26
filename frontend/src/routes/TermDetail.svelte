@@ -2,6 +2,7 @@
   import { getTermDetail, rateTerm, unrateTerm, setTermLearningStatus, removeTermLearningStatus, setSessionProgress, createTermSession, updateTermSession, deleteTermSession, addTermTag, removeTermTag, lookupTag, searchTags } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t, getLocale } from '../lib/i18n/index.svelte';
+  import { navigate } from '../lib/router';
   import { tagStore } from '../lib/tagStore.svelte';
   $effect(() => { tagStore.ensure(); });
 
@@ -85,6 +86,15 @@
     error = '';
     getTermDetail(id)
       .then(d => {
+        // If this Term belongs to an umbrella Course, the canonical
+        // page is /course?id=…&term=…; redirect there so users land on
+        // the integrated view (calendar + term-switcher + course
+        // discussion). Standalone terms (no course_id) keep using
+        // this legacy layout as a fallback.
+        if (d.term.course_id) {
+          navigate(`/course?id=${encodeURIComponent(d.term.course_id)}&term=${encodeURIComponent(d.term.id)}`);
+          return;
+        }
         detail = d;
         avgRating = d.rating.avg_rating;
         ratingCount = d.rating.rating_count;

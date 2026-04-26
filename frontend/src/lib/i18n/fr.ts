@@ -994,6 +994,16 @@ export default {
   'courses.discussion': 'Discussion',
   'courses.noTerms': 'Aucune itération n\'est encore liée à ce cours.',
   'courses.deleteConfirm': 'Supprimer ce cours ? Les itérations liées seront détachées (mais pas supprimées).',
+  'course.calendar': 'Calendrier',
+  'course.discussion': 'Discussion',
+  'course.notes': 'Notes',
+  'course.reviews': 'Avis',
+  'course.noDiscussions': 'Aucune discussion à l\'échelle du cours pour l\'instant.',
+  'course.noNotes': 'Aucune note dans aucune itération pour l\'instant.',
+  'course.noReviews': 'Aucun avis dans aucune itération pour l\'instant.',
+  'course.askQuestion': 'Poser une question à la communauté du cours',
+  'course.writeNote': 'Rédiger une note',
+  'course.writeReview': 'Rédiger un avis',
   'terms.sessions': 'cours',
 
   // Roadmap

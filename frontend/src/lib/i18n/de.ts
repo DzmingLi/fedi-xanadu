@@ -994,6 +994,16 @@ export default {
   'courses.discussion': 'Diskussion',
   'courses.noTerms': 'Diesem Kurs ist noch keine Iteration zugeordnet.',
   'courses.deleteConfirm': 'Diesen Kurs löschen? Verknüpfte Iterationen werden entkoppelt (nicht gelöscht).',
+  'course.calendar': 'Kalender',
+  'course.discussion': 'Diskussion',
+  'course.notes': 'Notizen',
+  'course.reviews': 'Bewertungen',
+  'course.noDiscussions': 'Noch keine kursweiten Diskussionen.',
+  'course.noNotes': 'Noch keine Notizen aus irgendeiner Iteration.',
+  'course.noReviews': 'Noch keine Bewertungen aus irgendeiner Iteration.',
+  'course.askQuestion': 'Frage die Kurs-Community',
+  'course.writeNote': 'Notiz schreiben',
+  'course.writeReview': 'Bewertung schreiben',
   'terms.sessions': 'Vorlesungen',
 
   // Roadmap

@@ -805,6 +805,9 @@ export interface Term {
   source_attribution: string | null;
   created_at: string;
   updated_at: string;
+  /** When set, this Term is one iteration of an umbrella Course; the
+   * frontend uses this to redirect /term?id=… to /course?id=…&term=…. */
+  course_id?: string | null;
 }
 
 export interface TermListItem {

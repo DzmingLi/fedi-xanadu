@@ -996,6 +996,18 @@ export default {
   'courses.discussion': 'Discussion',
   'courses.noTerms': 'No iterations linked to this course yet.',
   'courses.deleteConfirm': 'Delete this course? Member iterations will become unlinked but not deleted.',
+  // Per-course tabs (discussion / notes / reviews scoped to the umbrella
+  // course rather than a specific iteration).
+  'course.calendar': 'Calendar',
+  'course.discussion': 'Discussion',
+  'course.notes': 'Notes',
+  'course.reviews': 'Reviews',
+  'course.noDiscussions': 'No course-wide discussions yet.',
+  'course.noNotes': 'No notes from any iteration yet.',
+  'course.noReviews': 'No reviews from any iteration yet.',
+  'course.askQuestion': 'Ask the course community',
+  'course.writeNote': 'Write a note',
+  'course.writeReview': 'Write a review',
 
   // Roadmap
   'roadmap.title': 'Roadmap',

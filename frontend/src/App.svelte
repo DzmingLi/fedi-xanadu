@@ -84,6 +84,9 @@
   const lazyNewTerm = () => import('./routes/NewTerm.svelte');
   const lazyCourses = () => import('./routes/Courses.svelte');
   const lazyCourseDetail = () => import('./routes/CourseDetail.svelte');
+  const lazyCourseDiscussions = () => import('./routes/CourseDiscussions.svelte');
+  const lazyCourseNotes = () => import('./routes/CourseNotes.svelte');
+  const lazyCourseReviews = () => import('./routes/CourseReviews.svelte');
   const lazyPublications = () => import('./routes/Publications.svelte');
   const lazyPublicationDetail = () => import('./routes/PublicationDetail.svelte');
   const lazySearch = () => import('./routes/Search.svelte');
@@ -215,7 +218,10 @@
        && route.page !== 'book-series-list'
        && route.page !== 'book-series-detail'
        && route.page !== 'courses'
-       && route.page !== 'course-detail'}
+       && route.page !== 'course-detail'
+       && route.page !== 'course-discussions'
+       && route.page !== 'course-notes'
+       && route.page !== 'course-reviews'}
   <div class="top-nav">
     <NavBar />
   </div>
@@ -432,6 +438,33 @@
   </div>
   <div class="profile-container">
     {#await lazyCourseDetail() then mod}
+      <mod.default id={route.params.id || ''} term={route.params.term || ''} />
+    {/await}
+  </div>
+{:else if route.page === 'course-discussions'}
+  <div class="profile-nav">
+    <NavBar />
+  </div>
+  <div class="profile-container">
+    {#await lazyCourseDiscussions() then mod}
+      <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{:else if route.page === 'course-notes'}
+  <div class="profile-nav">
+    <NavBar />
+  </div>
+  <div class="profile-container">
+    {#await lazyCourseNotes() then mod}
+      <mod.default id={route.params.id || ''} />
+    {/await}
+  </div>
+{:else if route.page === 'course-reviews'}
+  <div class="profile-nav">
+    <NavBar />
+  </div>
+  <div class="profile-container">
+    {#await lazyCourseReviews() then mod}
       <mod.default id={route.params.id || ''} />
     {/await}
   </div>

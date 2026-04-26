@@ -47,9 +47,14 @@ export const routes: Route[] = [
   { pattern: '/term-discussions', page: 'term-discussions' },
   { pattern: '/term', page: 'term-detail' },
   { pattern: '/new-term', page: 'new-term' },
-  // Umbrella (Course) routes — aggregate of all Terms for a course.
-  // TODO: Svelte components not yet implemented; routes 404 cleanly until built.
+  // Umbrella (Course) routes — the canonical entry point. /course is
+  // the unified iteration page (calendar + term-switcher + course
+  // discussion); the -discussions/-notes/-reviews variants are the
+  // dedicated tab pages linked from CourseDetail's tab bar.
   { pattern: '/courses', page: 'courses' },
+  { pattern: '/course-discussions', page: 'course-discussions' },
+  { pattern: '/course-notes', page: 'course-notes' },
+  { pattern: '/course-reviews', page: 'course-reviews' },
   { pattern: '/course', page: 'course-detail' },
   { pattern: '/new-course', page: 'new-course' },
   { pattern: '/author', page: 'author' },
