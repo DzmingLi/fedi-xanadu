@@ -77,17 +77,16 @@
     }
   }
 
-  // React to ?term= changes (back/forward / pill clicks). We can't pass
-  // the URL straight through because the parent App.svelte recomputes
-  // route.params on popstate but the prop reference stays stable, so we
-  // also watch termProp directly.
+  // React to ?term= changes (back/forward only — pill clicks update
+  // activeTermId directly via selectTerm). The fallback to terms[0] runs
+  // ONCE in loadCourse(); re-evaluating it here would snap activeTermId
+  // back to terms[0] every time the user clicked another pill, since
+  // termProp doesn't change synchronously with selectTerm.
   $effect(() => {
     if (!detail) return;
-    const wanted = termProp && detail.terms.some(t => t.id === termProp)
-      ? termProp
-      : (detail.terms[0]?.id ?? '');
-    if (wanted && wanted !== activeTermId) {
-      selectTerm(wanted, /*push*/ false);
+    if (termProp && termProp !== activeTermId
+        && detail.terms.some(t => t.id === termProp)) {
+      selectTerm(termProp, /*push*/ false);
     }
   });
 
@@ -96,6 +95,9 @@
     if (push) {
       const url = `/course?id=${encodeURIComponent(id)}&term=${encodeURIComponent(termId)}`;
       history.pushState(null, '', url);
+      // Notify App.svelte's router so currentPath updates and termProp
+      // reflects the new URL on the next render.
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
     if (termCache.has(termId)) {
       hydrateInteractive(termCache.get(termId)!);
