@@ -490,9 +490,7 @@
                                 <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
                               </a>
                             {:else}
-                              <span class="res-chip res-chip-{a.kind} res-chip-text" title={a.label}>
-                                <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
-                              </span>
+                              <span class="res-text" title={a.label}>{a.label}</span>
                             {/if}
                           {/each}
                           {#each groupAttachments(s, col.id).filter(a => !a.required) as a}
@@ -502,9 +500,7 @@
                                 <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
                               </a>
                             {:else}
-                              <span class="res-chip res-chip-{a.kind} res-chip-optional res-chip-text" title={a.label}>
-                                <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
-                              </span>
+                              <span class="res-text res-text-optional" title={a.label}>{a.label}</span>
                             {/if}
                           {/each}
                         </td>
@@ -809,6 +805,14 @@
   .res-chip-homework { background: rgba(16,185,129,0.10); color: #059669; }
   .res-chip-discussion { background: rgba(168,85,247,0.10); color: #7c3aed; }
   .res-chip-optional { opacity: 0.65; font-style: italic; }
+  /* URL-less attachments (e.g. textbook citations) — plain inline text. */
+  .res-text {
+    display: inline-block;
+    font-size: 11px; padding: 2px 0;
+    color: var(--text-secondary, #555);
+    white-space: nowrap;
+  }
+  .res-text-optional { opacity: 0.65; font-style: italic; }
   .session-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .session-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(95,155,101,0.08); color: var(--accent); text-decoration: none; }
   .session-tag:hover { background: rgba(95,155,101,0.18); text-decoration: none; }

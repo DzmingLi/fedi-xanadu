@@ -535,23 +535,29 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
             for (i, s) in sessions.iter().enumerate() {
                 let sort_order = s.get("order").and_then(|v| v.as_integer()).unwrap_or((i + 1) as i64);
 
-                // [[session.attachments]] entries: kind, label, url, required (default true)
+                // [[session.attachments]] entries: kind, label, optional url,
+                // required (default true). Label-only entries (textbook
+                // citations like "Pierce Ch 5.1-2") are accepted; the
+                // frontend renders them as plain-text chips.
                 let mut attachments = Vec::new();
                 if let Some(arr) = s.get("attachments").and_then(|v| v.as_array()) {
                     for a in arr {
                         let kind = a.get("kind").and_then(|v| v.as_str()).unwrap_or("other");
                         let label = a.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                        let url = a.get("url").and_then(|v| v.as_str()).unwrap_or("");
-                        if url.is_empty() {
+                        if label.is_empty() {
                             continue;
                         }
+                        let url = a.get("url").and_then(|v| v.as_str()).unwrap_or("");
                         let required = a.get("required").and_then(|v| v.as_bool()).unwrap_or(true);
-                        attachments.push(serde_json::json!({
+                        let mut entry = serde_json::json!({
                             "kind": kind,
                             "label": label,
-                            "url": url,
                             "required": required,
-                        }));
+                        });
+                        if !url.is_empty() {
+                            entry["url"] = serde_json::Value::String(url.to_string());
+                        }
+                        attachments.push(entry);
                     }
                 }
 
