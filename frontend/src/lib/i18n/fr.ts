@@ -939,7 +939,6 @@ export default {
   'course.supplementary': 'Lectures complémentaires',
   'course.notes': 'Notes',
   'course.slides': 'Diapos',
-  'course.handout': 'Polycopié',
   'course.reading': 'Lecture',
   'course.outline': 'Plan',
   'course.summary': 'Résumé',

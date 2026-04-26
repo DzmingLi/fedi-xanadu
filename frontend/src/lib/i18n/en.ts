@@ -939,7 +939,6 @@ export default {
   'course.supplementary': 'Supplementary',
   'course.notes': 'Notes',
   'course.slides': 'Slides',
-  'course.handout': 'Handout',
   'course.reading': 'Reading',
   'course.outline': 'Outline',
   'course.summary': 'Summary',

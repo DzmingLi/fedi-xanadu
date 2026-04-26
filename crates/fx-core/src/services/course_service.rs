@@ -139,7 +139,6 @@ pub enum AttachmentKind {
     Video,
     Slides,
     Notes,
-    Handout,
     Reading,
     Code,
     Homework,
@@ -153,7 +152,10 @@ pub enum AttachmentKind {
 pub struct Attachment {
     pub kind: AttachmentKind,
     pub label: String,
-    pub url: String,
+    /// URL is optional — a textbook citation like "Pierce Ch 5.1-2" is a
+    /// valid label-only attachment that renders as plain text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
     /// Required reading vs. supplementary / further-reading. The UI uses
     /// this to dim or section off optional entries. Defaults to `true`
     /// so callers that don't care get the sensible default.

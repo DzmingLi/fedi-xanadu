@@ -939,7 +939,6 @@ export default {
   'course.supplementary': 'Ergänzende Lektüre',
   'course.notes': 'Notizen',
   'course.slides': 'Folien',
-  'course.handout': 'Handout',
   'course.reading': 'Lektüre',
   'course.outline': 'Übersicht',
   'course.summary': 'Zusammenfassung',

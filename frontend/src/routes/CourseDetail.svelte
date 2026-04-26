@@ -162,7 +162,6 @@
     { id: 'video',      kinds: ['video'],      labelKey: 'course.video' },
     { id: 'notes',      kinds: ['notes'],      labelKey: 'course.notes' },
     { id: 'slides',     kinds: ['slides'],     labelKey: 'course.slides' },
-    { id: 'handout',    kinds: ['handout'],    labelKey: 'course.handout' },
     { id: 'reading',    kinds: ['reading'],    labelKey: 'course.reading' },
     { id: 'outline',    kinds: ['outline'],    labelKey: 'course.outline' },
     { id: 'summary',    kinds: ['summary'],    labelKey: 'course.summary' },
@@ -189,7 +188,6 @@
       case 'video': return '▶';
       case 'reading': return '📘';
       case 'slides': return '🖼️';
-      case 'handout': return '📄';
       case 'summary': return '📝';
       case 'notes': return '📓';
       case 'code': return '⚙';
@@ -486,16 +484,28 @@
                       {#each visibleColumns as col}
                         <td class="session-cell-{col.id}">
                           {#each groupAttachments(s, col.id).filter(a => a.required) as a}
-                            <a href={a.url} target="_blank" rel="noopener"
-                               class="res-chip res-chip-{a.kind}" title={a.label}>
-                              <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
-                            </a>
+                            {#if a.url}
+                              <a href={a.url} target="_blank" rel="noopener"
+                                 class="res-chip res-chip-{a.kind}" title={a.label}>
+                                <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
+                              </a>
+                            {:else}
+                              <span class="res-chip res-chip-{a.kind} res-chip-text" title={a.label}>
+                                <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
+                              </span>
+                            {/if}
                           {/each}
                           {#each groupAttachments(s, col.id).filter(a => !a.required) as a}
-                            <a href={a.url} target="_blank" rel="noopener"
-                               class="res-chip res-chip-{a.kind} res-chip-optional" title={a.label}>
-                              <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
-                            </a>
+                            {#if a.url}
+                              <a href={a.url} target="_blank" rel="noopener"
+                                 class="res-chip res-chip-{a.kind} res-chip-optional" title={a.label}>
+                                <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
+                              </a>
+                            {:else}
+                              <span class="res-chip res-chip-{a.kind} res-chip-optional res-chip-text" title={a.label}>
+                                <span class="chip-icon">{attachIcon(a.kind)}</span>{a.label}
+                              </span>
+                            {/if}
                           {/each}
                         </td>
                       {/each}

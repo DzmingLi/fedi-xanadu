@@ -5,26 +5,30 @@ use clap::Subcommand;
 
 use crate::{Config, client};
 
-/// Parse a list of "kind:label:url" strings into Attachment-shaped JSON
-/// values. `required` flags every entry the same way; AddSession/Update
-/// build their full list by chaining one call per requirement bucket.
-/// Entries with the wrong arity are skipped silently — clap rejects
-/// truly malformed input, and a stray ":" in a URL still works because
-/// we splitn(3).
+/// Parse a list of "kind:label[:url]" strings into Attachment-shaped JSON
+/// values. URL is optional — a textbook citation like
+/// "reading:Pierce Ch 5.1-2" produces a label-only attachment that the
+/// frontend renders as plain text. `required` flags every entry the same
+/// way; AddSession/Update build their full list by chaining one call per
+/// requirement bucket.
 fn parse_attachments(items: &[String], required: bool) -> Vec<serde_json::Value> {
     items
         .iter()
         .filter_map(|s| {
             let parts: Vec<&str> = s.splitn(3, ':').collect();
-            if parts.len() != 3 || parts[2].is_empty() {
+            if parts.len() < 2 || parts[0].is_empty() || parts[1].is_empty() {
                 return None;
             }
-            Some(serde_json::json!({
+            let url = parts.get(2).copied().unwrap_or("");
+            let mut entry = serde_json::json!({
                 "kind": parts[0],
                 "label": parts[1],
-                "url": parts[2],
                 "required": required,
-            }))
+            });
+            if !url.is_empty() {
+                entry["url"] = serde_json::Value::String(url.to_string());
+            }
+            Some(entry)
         })
         .collect()
 }
@@ -99,9 +103,10 @@ pub enum CourseCommand {
         /// Date
         #[arg(long)]
         date: Option<String>,
-        /// Attachment as "kind:label:url". kind ∈ {video, slides, notes,
-        /// handout, reading, code, homework, discussion, outline,
-        /// summary, other}. Repeatable; each one is a required item.
+        /// Attachment as "kind:label[:url]". URL optional (textbook
+        /// citations render as plain text). kind ∈ {video, slides, notes,
+        /// reading, code, homework, discussion, outline, summary, other}.
+        /// Repeatable; each one is a required item.
         #[arg(long)]
         attachment: Vec<String>,
         /// Same shape as --attachment but marks the entry as supplementary

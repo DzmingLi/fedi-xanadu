@@ -856,7 +856,6 @@ export type AttachmentKind =
   | 'video'
   | 'slides'
   | 'notes'
-  | 'handout'
   | 'reading'
   | 'code'
   | 'homework'
@@ -868,7 +867,8 @@ export type AttachmentKind =
 export interface Attachment {
   kind: AttachmentKind;
   label: string;
-  url: string;
+  /** Optional — label-only attachments (e.g. textbook citations) render as plain text. */
+  url?: string;
   /** Required reading vs. supplementary / further-reading. */
   required: boolean;
 }
