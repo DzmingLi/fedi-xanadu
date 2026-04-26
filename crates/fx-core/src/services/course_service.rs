@@ -112,16 +112,16 @@ pub struct CourseListItem {
 }
 
 pub async fn list_courses_with_meta(pool: &PgPool) -> crate::Result<Vec<CourseListItem>> {
+    // latest_semester comes from the most-recently-created term (not text-
+    // MAX of semester). Text-MAX picks "Spring 2015" over "Fall 2017"
+    // because 'S' > 'F' alphabetically; created_at gives the right answer
+    // since we always ingest a term right after its real-world semester.
     Ok(sqlx::query_as::<_, CourseListItem>(
         "SELECT c.id, c.title, c.code, c.institution, c.description, \
-                COALESCE(s.cnt, 0) AS iteration_count, \
-                s.latest_semester \
+                (SELECT COUNT(*) FROM terms WHERE course_id = c.id) AS iteration_count, \
+                (SELECT semester FROM terms WHERE course_id = c.id \
+                 ORDER BY created_at DESC LIMIT 1) AS latest_semester \
          FROM courses c \
-         LEFT JOIN ( \
-            SELECT course_id, COUNT(*) AS cnt, MAX(semester) AS latest_semester \
-            FROM terms WHERE course_id IS NOT NULL \
-            GROUP BY course_id \
-         ) s ON s.course_id = c.id \
          ORDER BY c.created_at DESC",
     )
     .fetch_all(pool)
