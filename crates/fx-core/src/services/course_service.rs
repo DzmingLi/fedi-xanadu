@@ -97,6 +97,37 @@ pub async fn list_courses(pool: &PgPool) -> crate::Result<Vec<Course>> {
     .await?)
 }
 
+/// Course list with iteration metadata for the browse page — count of
+/// terms in the course and the most-recent semester (text-sorted; close
+/// enough since years dominate).
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct CourseListItem {
+    pub id: String,
+    pub title: String,
+    pub code: Option<String>,
+    pub institution: Option<String>,
+    pub description: String,
+    pub iteration_count: i64,
+    pub latest_semester: Option<String>,
+}
+
+pub async fn list_courses_with_meta(pool: &PgPool) -> crate::Result<Vec<CourseListItem>> {
+    Ok(sqlx::query_as::<_, CourseListItem>(
+        "SELECT c.id, c.title, c.code, c.institution, c.description, \
+                COALESCE(s.cnt, 0) AS iteration_count, \
+                s.latest_semester \
+         FROM courses c \
+         LEFT JOIN ( \
+            SELECT course_id, COUNT(*) AS cnt, MAX(semester) AS latest_semester \
+            FROM terms WHERE course_id IS NOT NULL \
+            GROUP BY course_id \
+         ) s ON s.course_id = c.id \
+         ORDER BY c.created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?)
+}
+
 /// Terms in a course, newest semester first. Sort is text-based on the
 /// semester string ("Spring 2026" > "Autumn 2025" > "Spring 2025" works
 /// because years dominate and seasons sort reasonably within a year; if

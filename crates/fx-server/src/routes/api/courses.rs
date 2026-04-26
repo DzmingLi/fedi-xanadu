@@ -1,6 +1,6 @@
 use axum::{extract::{Path, State}, http::StatusCode, Json};
 use fx_core::services::course_service::{
-    self, Course, CourseDetail, CreateCourse,
+    self, Course, CourseDetail, CourseListItem, CreateCourse,
 };
 
 use crate::auth::WriteAuth;
@@ -9,8 +9,8 @@ use crate::error::ApiResult;
 
 pub async fn list_courses(
     State(state): State<AppState>,
-) -> ApiResult<Json<Vec<Course>>> {
-    Ok(Json(course_service::list_courses(&state.pool).await?))
+) -> ApiResult<Json<Vec<CourseListItem>>> {
+    Ok(Json(course_service::list_courses_with_meta(&state.pool).await?))
 }
 
 pub async fn get_course(

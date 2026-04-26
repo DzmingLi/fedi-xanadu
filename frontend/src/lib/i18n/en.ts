@@ -722,7 +722,7 @@ export default {
   // Books
   'nav.books': 'Books',
   'nav.papers': 'Papers',
-  'nav.terms': 'Courses',
+  'nav.courses': 'Courses',
   'books.title': 'Books',
   'books.subtitle': 'Browse and review books, add editions and purchase links',
   'books.addBook': 'Add Book',
@@ -982,10 +982,20 @@ export default {
   'term.noDiscussions': 'No discussions yet.',
   'term.allSessions': 'All',
   'term.viewAll': 'View all',
-  'terms.title': 'Courses',
-  'terms.create': 'New Course',
-  'terms.empty': 'No courses yet.',
+  'terms.title': 'Iterations',
+  'terms.create': 'New Iteration',
+  'terms.empty': 'No iterations yet.',
   'terms.sessions': 'lectures',
+  // Umbrella courses (the primary entry point).
+  'courses.title': 'Courses',
+  'courses.create': 'New Course',
+  'courses.empty': 'No courses yet.',
+  'courses.iteration': 'iteration',
+  'courses.iterations': 'iterations',
+  'courses.latest': 'Latest',
+  'courses.discussion': 'Discussion',
+  'courses.noTerms': 'No iterations linked to this course yet.',
+  'courses.deleteConfirm': 'Delete this course? Member iterations will become unlinked but not deleted.',
 
   // Roadmap
   'roadmap.title': 'Roadmap',

@@ -971,3 +971,15 @@ export const myWritablePublications = () =>
   get<import('./types').Publication[]>('/publications/mine');
 export const publicationsForContent = (uri: string) =>
   get<import('./types').Publication[]>(`/publications/for-content?uri=${encodeURIComponent(uri)}`);
+
+// ── Courses (umbrella over many iterations) ──
+export const listCourses = () =>
+  get<import('./types').CourseListItem[]>('/courses');
+export const getCourseDetail = (id: string) =>
+  get<import('./types').CourseDetail>(`/courses/${encodeURIComponent(id)}`);
+export const createCourse = (input: { title: string; code?: string; institution?: string; description?: string }) =>
+  post<import('./types').Course>('/courses', input);
+export const deleteCourse = (id: string) =>
+  del<void>(`/courses/${encodeURIComponent(id)}`);
+export const setTermCourse = (term_id: string, course_id: string | null) =>
+  put<void>(`/terms/${encodeURIComponent(term_id)}/course`, { course_id });

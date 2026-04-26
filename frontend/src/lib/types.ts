@@ -1058,3 +1058,37 @@ export interface PublicationViewerState {
   is_following: boolean;
   membership_confirmed: boolean;
 }
+
+// ── Umbrella courses (formerly course_groups) ──
+//
+// A Course is the canonical "thing" (e.g. "15-312: Foundations of
+// Programming Languages"); each iteration of it taught in a specific
+// semester is a Term. Course pages cross-link iterations and host the
+// shared discussion thread.
+
+export interface Course {
+  id: string;
+  title: string;
+  code: string | null;
+  institution: string | null;
+  description: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface CourseListItem {
+  id: string;
+  title: string;
+  code: string | null;
+  institution: string | null;
+  description: string;
+  iteration_count: number;
+  latest_semester: string | null;
+}
+
+export interface CourseDetail {
+  course: Course;
+  terms: Term[];
+  discussions: Comment[];
+  discussion_count: number;
+}
