@@ -561,11 +561,13 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
                     }
                 }
 
+                let kind = s.get("kind").and_then(|v| v.as_str()).unwrap_or("lecture");
                 let body = serde_json::json!({
                     "topic": s.get("topic").and_then(|v| v.as_str()),
                     "date": s.get("date").and_then(|v| v.as_str()),
                     "attachments": attachments,
                     "sort_order": sort_order,
+                    "kind": kind,
                 });
 
                 let topic = s.get("topic").and_then(|v| v.as_str()).unwrap_or("-");
@@ -574,7 +576,8 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
                     // Check if anything changed
                     let changed = body["topic"] != ex["topic"]
                         || body["date"] != ex["date"]
-                        || body["attachments"] != ex["attachments"];
+                        || body["attachments"] != ex["attachments"]
+                        || body["kind"] != ex.get("kind").cloned().unwrap_or(serde_json::json!("lecture"));
 
                     if !changed {
                         skipped += 1;

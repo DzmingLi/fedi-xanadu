@@ -881,6 +881,8 @@ export interface CourseSession {
   topic?: string | null;
   date?: string | null;
   attachments: Attachment[];
+  /** 'lecture' (default), 'section' (full-width thematic divider), or 'exam'. */
+  kind?: 'lecture' | 'section' | 'exam';
   tags: CourseTag[];
   prereqs: CourseTag[];
 }

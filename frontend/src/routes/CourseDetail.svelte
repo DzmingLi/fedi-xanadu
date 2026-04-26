@@ -453,12 +453,21 @@
                 </tr>
               </thead>
               <tbody>
-                {#each detail.sessions as s, i}
+                {#each detail.sessions as s}
                   {@const atts = s.attachments ?? []}
-                  {@const isExam = atts.length === 0}
+                  {@const isSection = s.kind === 'section'}
+                  {@const isExam = !isSection && atts.length === 0}
+                  {@const lectureIdx = detail.sessions
+                    .slice(0, detail.sessions.indexOf(s))
+                    .filter(p => p.kind !== 'section').length + 1}
+                  {#if isSection}
+                    <tr class="session-section">
+                      <td colspan={colCount}>{s.topic || ''}</td>
+                    </tr>
+                  {:else}
                   <tr class:session-exam={isExam}>
                     <td class="session-num">
-                      {i + 1}
+                      {lectureIdx}
                       {#if getAuth() && !isExam}
                         <button
                           class="session-check"
@@ -515,6 +524,7 @@
                       </td>
                     {/if}
                   </tr>
+                  {/if}
                 {/each}
                 {#if isOwner}
                   <tr class="session-add-row">
@@ -815,6 +825,18 @@
     white-space: nowrap;
   }
   .res-text-optional { opacity: 0.65; font-style: italic; }
+  /* Section dividers — thematic header rows that group adjacent lectures.
+     Mirror the source schedules (CMU/Cornell) which use a tinted band. */
+  .session-section td {
+    background: rgba(95,155,101,0.10);
+    color: var(--text-primary);
+    font-weight: 600;
+    font-family: var(--font-serif);
+    text-align: center;
+    padding: 6px 12px;
+    border-top: 1px solid rgba(95,155,101,0.35);
+    border-bottom: 1px solid rgba(95,155,101,0.35);
+  }
   .session-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .session-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(95,155,101,0.08); color: var(--accent); text-decoration: none; }
   .session-tag:hover { background: rgba(95,155,101,0.18); text-decoration: none; }

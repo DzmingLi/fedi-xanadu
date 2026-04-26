@@ -175,7 +175,16 @@ pub struct CourseSessionRow {
     pub date: Option<String>,
     #[sqlx(default)]
     pub attachments: sqlx::types::Json<Vec<Attachment>>,
+    /// Discriminator: `lecture` (default), `section` (thematic header
+    /// row spanning the whole calendar width — no attachments, not
+    /// counted in lecture numbering), or `exam`. Frontends decide how
+    /// to render based on this.
+    #[serde(default = "default_session_kind")]
+    #[sqlx(default)]
+    pub kind: String,
 }
+
+fn default_session_kind() -> String { "lecture".to_string() }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CourseSessionDetail {
@@ -302,7 +311,7 @@ pub async fn get_course_detail(pool: &PgPool, id: &str, viewer_did: Option<&str>
 
     // Fetch sessions with their tags and prereqs
     let session_rows = sqlx::query_as::<_, CourseSessionRow>(
-        "SELECT id, course_id, sort_order, topic, date, attachments \
+        "SELECT id, course_id, sort_order, topic, date, attachments, kind \
          FROM course_sessions WHERE course_id = $1 ORDER BY sort_order",
     ).bind(id).fetch_all(pool).await?;
 
@@ -545,6 +554,8 @@ pub struct CreateSession {
     #[serde(default)]
     pub attachments: Vec<Attachment>,
     pub sort_order: Option<i32>,
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -553,6 +564,8 @@ pub struct UpdateSession {
     pub date: Option<String>,
     pub attachments: Option<Vec<Attachment>>,
     pub sort_order: Option<i32>,
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, input: &CreateSession) -> crate::Result<CourseSessionRow> {
@@ -566,13 +579,15 @@ pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, in
         }
     };
 
+    let kind = input.kind.as_deref().unwrap_or("lecture");
     sqlx::query(
-        "INSERT INTO course_sessions (id, course_id, sort_order, topic, date, attachments) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO course_sessions (id, course_id, sort_order, topic, date, attachments, kind) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(session_id).bind(course_id).bind(sort_order)
     .bind(&input.topic).bind(&input.date)
     .bind(sqlx::types::Json(&input.attachments))
+    .bind(kind)
     .execute(pool).await?;
 
     get_session(pool, session_id).await
@@ -580,7 +595,7 @@ pub async fn create_session(pool: &PgPool, session_id: &str, course_id: &str, in
 
 pub async fn get_session(pool: &PgPool, session_id: &str) -> crate::Result<CourseSessionRow> {
     sqlx::query_as::<_, CourseSessionRow>(
-        "SELECT id, course_id, sort_order, topic, date, attachments \
+        "SELECT id, course_id, sort_order, topic, date, attachments, kind \
          FROM course_sessions WHERE id = $1",
     )
     .bind(session_id).fetch_one(pool).await
@@ -592,13 +607,14 @@ pub async fn update_session(pool: &PgPool, session_id: &str, input: &UpdateSessi
 
     sqlx::query(
         "UPDATE course_sessions SET \
-         topic = $1, date = $2, attachments = $3, sort_order = $4 \
-         WHERE id = $5",
+         topic = $1, date = $2, attachments = $3, sort_order = $4, kind = $5 \
+         WHERE id = $6",
     )
     .bind(input.topic.as_ref().or(cur.topic.as_ref()))
     .bind(input.date.as_ref().or(cur.date.as_ref()))
     .bind(sqlx::types::Json(input.attachments.as_ref().unwrap_or(&cur.attachments.0)))
     .bind(input.sort_order.unwrap_or(cur.sort_order))
+    .bind(input.kind.as_deref().unwrap_or(&cur.kind))
     .bind(session_id)
     .execute(pool).await?;
 
