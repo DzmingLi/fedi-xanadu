@@ -994,6 +994,7 @@ export default {
   'courses.iterations': 'iterations',
   'courses.latest': 'Latest',
   'courses.discussion': 'Discussion',
+  'courses.textbooks': 'Textbooks',
   'courses.noTerms': 'No iterations linked to this course yet.',
   'courses.deleteConfirm': 'Delete this course? Member iterations will become unlinked but not deleted.',
   // Per-course tabs (discussion / notes / reviews scoped to the umbrella

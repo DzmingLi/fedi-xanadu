@@ -351,6 +351,29 @@
       {/if}
     </header>
 
+    <!-- Course-level textbooks — apply across every iteration. -->
+    {#if detail.textbooks.length > 0}
+      <section class="course-textbooks">
+        <h3>{t('courses.textbooks')}</h3>
+        <div class="textbook-row">
+          {#each detail.textbooks as tb}
+            <a href="/book?id={encodeURIComponent(tb.book_id)}" class="textbook-card">
+              {#if tb.cover_url}
+                <img src={tb.cover_url} alt="" class="textbook-cover" />
+              {/if}
+              <div class="textbook-info">
+                <span class="textbook-title">{loc(tb.title)}</span>
+                <span class="textbook-authors">{tb.authors.join(', ')}</span>
+                {#if tb.role !== 'required'}
+                  <span class="textbook-role">{tb.role}</span>
+                {/if}
+              </div>
+            </a>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
     <!-- Per-term body (metadata + calendar) -->
     {#if detail.terms.length === 0}
       <p class="empty">{t('courses.noTerms')}</p>
@@ -449,7 +472,7 @@
         </div>
 
         <div class="term-body">
-          <div class="body-main">
+          <div class="body-full">
             {#if td.sessions.length > 0 || isTermOwner}
               <section class="schedule">
                 <h2>{t('term.calendar')}</h2>
@@ -552,33 +575,42 @@
             {/if}
           </div>
 
-          <aside class="body-side">
-            {#snippet bookCard(tb: NonNullable<typeof td>['textbooks'][number])}
-              <a href="/book?id={encodeURIComponent(tb.book_id)}" class="textbook-card">
-                {#if tb.cover_url}
-                  <img src={tb.cover_url} alt="" class="textbook-cover" />
-                {/if}
-                <div class="textbook-info">
-                  <span class="textbook-title">{loc(tb.title)}</span>
-                  <span class="textbook-authors">{tb.authors.join(', ')}</span>
-                </div>
-              </a>
-            {/snippet}
+        </div>
 
+        <!-- Term-level materials (textbooks, extra resources). Below the
+             calendar so the schedule gets full page width. -->
+        {#snippet bookCard(tb: NonNullable<typeof td>['textbooks'][number])}
+          <a href="/book?id={encodeURIComponent(tb.book_id)}" class="textbook-card">
+            {#if tb.cover_url}
+              <img src={tb.cover_url} alt="" class="textbook-cover" />
+            {/if}
+            <div class="textbook-info">
+              <span class="textbook-title">{loc(tb.title)}</span>
+              <span class="textbook-authors">{tb.authors.join(', ')}</span>
+            </div>
+          </a>
+        {/snippet}
+
+        {#if td.textbooks.length > 0 || td.resources.length > 0}
+          <div class="term-materials">
             {#if td.textbooks.some(t => t.role === 'required')}
               <section class="textbooks">
                 <h3>{t('term.textbooks')}</h3>
-                {#each td.textbooks.filter(t => t.role === 'required') as tb}
-                  {@render bookCard(tb)}
-                {/each}
+                <div class="textbook-row">
+                  {#each td.textbooks.filter(t => t.role === 'required') as tb}
+                    {@render bookCard(tb)}
+                  {/each}
+                </div>
               </section>
             {/if}
             {#if td.textbooks.some(t => t.role !== 'required')}
               <section class="textbooks">
                 <h3>{t('term.recommendedReading')}</h3>
-                {#each td.textbooks.filter(t => t.role !== 'required') as tb}
-                  {@render bookCard(tb)}
-                {/each}
+                <div class="textbook-row">
+                  {#each td.textbooks.filter(t => t.role !== 'required') as tb}
+                    {@render bookCard(tb)}
+                  {/each}
+                </div>
               </section>
             {/if}
             {#if td.resources.length > 0}
@@ -592,8 +624,8 @@
                 {/each}
               </section>
             {/if}
-          </aside>
-        </div>
+          </div>
+        {/if}
       </section>
     {/if}
 
@@ -718,9 +750,13 @@
   .status-btn:hover { border-color: var(--accent); color: var(--accent); }
   .status-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
 
-  .term-body { display: flex; gap: 32px; }
-  .body-main { flex: 1; min-width: 0; }
-  .body-side { width: 240px; flex-shrink: 0; }
+  .term-body { display: block; }
+  .body-full { width: 100%; }
+  .term-materials {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 24px; margin: 32px 0 0;
+  }
+  .textbook-row { display: flex; flex-wrap: wrap; gap: 12px; }
 
   .schedule h2 { font-family: var(--font-serif); font-weight: 400; font-size: 1.2rem; margin: 0 0 12px; }
   .schedule { margin-bottom: 24px; }
@@ -843,7 +879,5 @@
     .term-switcher { max-width: 100%; }
     .pill-row { justify-content: flex-start; }
     .switcher-label { text-align: left; }
-    .term-body { flex-direction: column; }
-    .body-side { width: 100%; }
   }
 </style>

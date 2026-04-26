@@ -33,6 +33,29 @@ pub enum CourseCommand {
         /// Course ID
         id: String,
     },
+    /// Attach a textbook at the course (umbrella) level — applies across
+    /// every iteration. For iteration-specific recommendations use
+    /// `nbt term add-textbook` instead.
+    #[command(name = "add-textbook")]
+    AddTextbook {
+        #[arg(long)]
+        course_id: String,
+        #[arg(long)]
+        book_id: String,
+        /// required | recommended | supplementary
+        #[arg(long, default_value = "required")]
+        role: String,
+        #[arg(long, default_value = "0")]
+        sort_order: i32,
+    },
+    /// Remove a course-level textbook link.
+    #[command(name = "remove-textbook")]
+    RemoveTextbook {
+        #[arg(long)]
+        course_id: String,
+        #[arg(long)]
+        book_id: String,
+    },
 }
 
 pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -> Result<()> {
@@ -114,6 +137,27 @@ pub async fn handle_course(base: &str, config: &Config, action: CourseCommand) -
                 .send().await?
                 .error_for_status().context("Delete course failed")?;
             println!("Deleted course {id} (member terms are now unlinked).");
+        }
+
+        CourseCommand::AddTextbook { course_id, book_id, role, sort_order } => {
+            let body = serde_json::json!({
+                "book_id": book_id, "role": role, "sort_order": sort_order,
+            });
+            client()
+                .post(format!("{base}/courses/{course_id}/textbooks"))
+                .bearer_auth(token).json(&body)
+                .send().await?
+                .error_for_status().context("Add course textbook failed")?;
+            println!("Added textbook {book_id} to course {course_id} ({role}).");
+        }
+
+        CourseCommand::RemoveTextbook { course_id, book_id } => {
+            client()
+                .delete(format!("{base}/courses/{course_id}/textbooks?book_id={book_id}"))
+                .bearer_auth(token)
+                .send().await?
+                .error_for_status().context("Remove course textbook failed")?;
+            println!("Removed textbook {book_id} from course {course_id}.");
         }
     }
     Ok(())

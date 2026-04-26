@@ -1089,9 +1089,19 @@ export interface CourseListItem {
   latest_semester: string | null;
 }
 
+export interface CourseTextbook {
+  book_id: string;
+  title: Record<string, string>;
+  authors: string[];
+  cover_url: string | null;
+  role: string;
+  sort_order: number;
+}
+
 export interface CourseDetail {
   course: Course;
   terms: Term[];
+  textbooks: CourseTextbook[];
   discussions: Comment[];
   discussion_count: number;
 }

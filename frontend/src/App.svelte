@@ -433,10 +433,10 @@
     {/await}
   </div>
 {:else if route.page === 'course-detail'}
-  <div class="profile-nav">
+  <div class="top-nav-wide">
     <NavBar />
   </div>
-  <div class="profile-container">
+  <div class="container-wide">
     {#await lazyCourseDetail() then mod}
       <mod.default id={route.params.id || ''} term={route.params.term || ''} />
     {/await}

@@ -992,6 +992,7 @@ export default {
   'courses.iterations': '次开设',
   'courses.latest': '最新',
   'courses.discussion': '讨论',
+  'courses.textbooks': '教材',
   'courses.noTerms': '该课程暂未挂入任何学期。',
   'courses.deleteConfirm': '确认删除这门课程？关联的学期将变为未链接状态（不会被删除）。',
   'course.calendar': '课表',

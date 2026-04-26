@@ -32,6 +32,19 @@ pub struct CreateCourse {
     pub description: Option<String>,
 }
 
+/// Course-level textbook — same shape as TermTextbookRow but anchored
+/// to the umbrella. Renders in the course header above the term picker
+/// since it stays constant across iterations.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct CourseTextbookRow {
+    pub book_id: String,
+    pub title: sqlx::types::Json<std::collections::HashMap<String, String>>,
+    pub authors: Vec<String>,
+    pub cover_url: Option<String>,
+    pub role: String,
+    pub sort_order: i32,
+}
+
 /// Response for the course detail page — the course row plus every term
 /// iteration in it, newest semester first. The discussion thread lives on
 /// content_uri = `course:<id>` and is fetched separately.
@@ -39,6 +52,7 @@ pub struct CreateCourse {
 pub struct CourseDetail {
     pub course: Course,
     pub terms: Vec<TermRow>,
+    pub textbooks: Vec<CourseTextbookRow>,
     pub discussions: Vec<crate::models::Comment>,
     pub discussion_count: i64,
 }
@@ -176,8 +190,51 @@ pub async fn delete_course(pool: &PgPool, id: &str) -> crate::Result<()> {
 pub async fn get_course_detail(pool: &PgPool, id: &str) -> crate::Result<CourseDetail> {
     let course = get_course(pool, id).await?;
     let terms = list_terms_in_course(pool, id).await?;
+    let textbooks = list_course_textbooks(pool, id).await?;
     let uri = format!("course:{id}");
     let discussions = crate::services::comment_service::list_top_comments(pool, &uri, 5, 0).await?;
     let discussion_count = crate::services::comment_service::count_top_comments(pool, &uri).await?;
-    Ok(CourseDetail { course, terms, discussions, discussion_count })
+    Ok(CourseDetail { course, terms, textbooks, discussions, discussion_count })
+}
+
+// ── Course-level textbooks ───────────────────────────────────────────
+
+pub async fn list_course_textbooks(pool: &PgPool, course_id: &str) -> crate::Result<Vec<CourseTextbookRow>> {
+    Ok(sqlx::query_as::<_, CourseTextbookRow>(
+        "SELECT ct.book_id, b.title, b.authors, \
+                (SELECT cover_url FROM book_editions e \
+                 WHERE e.book_id = b.id AND e.cover_url IS NOT NULL \
+                 ORDER BY e.created_at LIMIT 1) AS cover_url, \
+                ct.role, ct.sort_order \
+         FROM course_textbooks ct JOIN books b ON b.id = ct.book_id \
+         WHERE ct.course_id = $1 \
+         ORDER BY ct.sort_order, b.id",
+    )
+    .bind(course_id)
+    .fetch_all(pool)
+    .await?)
+}
+
+pub async fn add_course_textbook(
+    pool: &PgPool,
+    course_id: &str,
+    book_id: &str,
+    role: &str,
+    sort_order: i32,
+) -> crate::Result<()> {
+    sqlx::query(
+        "INSERT INTO course_textbooks (course_id, book_id, role, sort_order) \
+         VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (course_id, book_id) DO UPDATE \
+           SET role = EXCLUDED.role, sort_order = EXCLUDED.sort_order",
+    )
+    .bind(course_id).bind(book_id).bind(role).bind(sort_order)
+    .execute(pool).await?;
+    Ok(())
+}
+
+pub async fn remove_course_textbook(pool: &PgPool, course_id: &str, book_id: &str) -> crate::Result<()> {
+    sqlx::query("DELETE FROM course_textbooks WHERE course_id = $1 AND book_id = $2")
+        .bind(course_id).bind(book_id).execute(pool).await?;
+    Ok(())
 }

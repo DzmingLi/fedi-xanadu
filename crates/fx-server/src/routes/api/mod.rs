@@ -421,6 +421,8 @@ fn course_routes() -> Router<AppState> {
                get(courses::list_courses).post(courses::create_course))
         .route("/courses/{id}",
                get(courses::get_course).delete(courses::delete_course))
+        .route("/courses/{id}/textbooks",
+               post(courses::add_course_textbook).delete(courses::remove_course_textbook))
 }
 
 fn question_routes() -> Router<AppState> {

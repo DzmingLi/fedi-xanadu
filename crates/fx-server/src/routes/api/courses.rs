@@ -64,3 +64,38 @@ pub async fn unset_term_course(
     course_service::set_term_course(&state.pool, &term_id, None).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[derive(serde::Deserialize)]
+pub struct AddCourseTextbookInput {
+    pub book_id: String,
+    #[serde(default = "default_role")]
+    pub role: String,
+    #[serde(default)]
+    pub sort_order: i32,
+}
+fn default_role() -> String { "required".into() }
+
+pub async fn add_course_textbook(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path(course_id): Path<String>,
+    Json(input): Json<AddCourseTextbookInput>,
+) -> ApiResult<StatusCode> {
+    course_service::add_course_textbook(
+        &state.pool, &course_id, &input.book_id, &input.role, input.sort_order,
+    ).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(serde::Deserialize)]
+pub struct RemoveCourseTextbookInput { pub book_id: String }
+
+pub async fn remove_course_textbook(
+    State(state): State<AppState>,
+    WriteAuth(_user): WriteAuth,
+    Path(course_id): Path<String>,
+    axum::extract::Query(input): axum::extract::Query<RemoveCourseTextbookInput>,
+) -> ApiResult<StatusCode> {
+    course_service::remove_course_textbook(&state.pool, &course_id, &input.book_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}

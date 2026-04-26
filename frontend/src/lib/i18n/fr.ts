@@ -992,6 +992,7 @@ export default {
   'courses.iterations': 'itérations',
   'courses.latest': 'Plus récente',
   'courses.discussion': 'Discussion',
+  'courses.textbooks': 'Manuels',
   'courses.noTerms': 'Aucune itération n\'est encore liée à ce cours.',
   'courses.deleteConfirm': 'Supprimer ce cours ? Les itérations liées seront détachées (mais pas supprimées).',
   'course.calendar': 'Calendrier',
