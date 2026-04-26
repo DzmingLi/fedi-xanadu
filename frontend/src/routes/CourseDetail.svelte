@@ -334,31 +334,6 @@
       </div>
     </header>
 
-    <!-- Course-level textbooks — apply across every iteration. -->
-    {#if detail.textbooks.length > 0}
-      <section class="course-textbooks">
-        <h3 class="section-heading">{t('courses.textbooks')}</h3>
-        <div class="textbook-carousel">
-          {#each detail.textbooks as tb}
-            <a href="/book?id={encodeURIComponent(tb.book_id)}" class="book-card book-card-large">
-              {#if tb.cover_url}
-                <img src={tb.cover_url} alt="" class="book-card-cover" />
-              {:else}
-                <div class="book-card-cover book-card-cover-placeholder" aria-hidden="true"></div>
-              {/if}
-              <div class="book-card-info">
-                <span class="book-card-title">{loc(tb.title)}</span>
-                <span class="book-card-authors">{tb.authors.join(', ')}</span>
-                {#if tb.role !== 'required'}
-                  <span class="book-card-role">{tb.role}</span>
-                {/if}
-              </div>
-            </a>
-          {/each}
-        </div>
-      </section>
-    {/if}
-
     {#if detail.terms.length > 0}
       <div class="term-switcher-bar" aria-label={t('courses.iterations')}>
         <span class="switcher-label">{t('courses.iterations')}</span>
@@ -598,8 +573,12 @@
 
         <!-- Term-level materials (textbooks, extra resources). Below the
              calendar so the schedule gets full page width. -->
-        {#snippet bookCard(tb: NonNullable<typeof td>['textbooks'][number])}
-          <a href="/book?id={encodeURIComponent(tb.book_id)}" class="book-card book-card-compact">
+        <!-- Combined materials: course-level + term-level books and
+             resources, each badged with its scope (course-wide vs this
+             iteration only). Course books surface across every term;
+             term books only appear when this iteration is selected. -->
+        {#snippet bookCard(tb: { book_id: string; title: Record<string, string>; authors: string[]; cover_url: string | null; role: string }, scope: 'course' | 'term')}
+          <a href="/book?id={encodeURIComponent(tb.book_id)}" class="book-card book-card-compact" data-scope={scope}>
             {#if tb.cover_url}
               <img src={tb.cover_url} alt="" class="book-card-cover" />
             {:else}
@@ -608,29 +587,38 @@
             <div class="book-card-info">
               <span class="book-card-title">{loc(tb.title)}</span>
               <span class="book-card-authors">{tb.authors.join(', ')}</span>
+              <span class="book-card-scope" class:scope-course={scope === 'course'} class:scope-term={scope === 'term'}>
+                {scope === 'course' ? '🎓 ' + t('courses.scopeCourse') : '📅 ' + t('courses.scopeTerm')}
+              </span>
             </div>
           </a>
         {/snippet}
 
-        {#if td.textbooks.length > 0 || td.resources.length > 0}
+        {@const requiredCourseBooks = detail.textbooks.filter(b => b.role === 'required')}
+        {@const requiredTermBooks   = td.textbooks.filter(b => b.role === 'required')}
+        {@const recCourseBooks      = detail.textbooks.filter(b => b.role !== 'required')}
+        {@const recTermBooks        = td.textbooks.filter(b => b.role !== 'required')}
+        {@const hasMaterials = requiredCourseBooks.length + requiredTermBooks.length
+                             + recCourseBooks.length + recTermBooks.length
+                             + td.resources.length > 0}
+
+        {#if hasMaterials}
           <div class="term-materials">
-            {#if td.textbooks.some(t => t.role === 'required')}
+            {#if requiredCourseBooks.length + requiredTermBooks.length > 0}
               <section class="textbooks">
                 <h3 class="section-heading section-heading-sm">{t('term.textbooks')}</h3>
                 <div class="textbook-grid">
-                  {#each td.textbooks.filter(t => t.role === 'required') as tb}
-                    {@render bookCard(tb)}
-                  {/each}
+                  {#each requiredCourseBooks as tb}{@render bookCard(tb, 'course')}{/each}
+                  {#each requiredTermBooks as tb}{@render bookCard(tb, 'term')}{/each}
                 </div>
               </section>
             {/if}
-            {#if td.textbooks.some(t => t.role !== 'required')}
+            {#if recCourseBooks.length + recTermBooks.length > 0}
               <section class="textbooks">
                 <h3 class="section-heading section-heading-sm">{t('term.recommendedReading')}</h3>
                 <div class="textbook-grid">
-                  {#each td.textbooks.filter(t => t.role !== 'required') as tb}
-                    {@render bookCard(tb)}
-                  {/each}
+                  {#each recCourseBooks as tb}{@render bookCard(tb, 'course')}{/each}
+                  {#each recTermBooks as tb}{@render bookCard(tb, 'term')}{/each}
                 </div>
               </section>
             {/if}
@@ -870,7 +858,17 @@
   /* ─────────────────────────────────────────────────────────────
      Course-level textbooks — horizontal carousel of book cards
      ───────────────────────────────────────────────────────────── */
-  .course-textbooks { margin-bottom: 48px; }
+  .book-card-scope {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    line-height: 1.4;
+    align-self: flex-start;
+  }
+  .scope-course { background: rgba(95,155,101,0.12); color: var(--accent); }
+  .scope-term   { background: rgba(0,0,0,0.06);     color: var(--text-secondary); }
   .textbook-carousel {
     display: flex;
     gap: 14px;

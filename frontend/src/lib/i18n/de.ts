@@ -993,6 +993,8 @@ export default {
   'courses.latest': 'Neueste',
   'courses.discussion': 'Diskussion',
   'courses.textbooks': 'Lehrbücher',
+  'courses.scopeCourse': 'Kurs',
+  'courses.scopeTerm': 'Iteration',
   'courses.noTerms': 'Diesem Kurs ist noch keine Iteration zugeordnet.',
   'courses.deleteConfirm': 'Diesen Kurs löschen? Verknüpfte Iterationen werden entkoppelt (nicht gelöscht).',
   'course.calendar': 'Kalender',
