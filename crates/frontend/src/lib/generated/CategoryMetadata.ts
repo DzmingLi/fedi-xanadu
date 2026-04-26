@@ -2,4 +2,15 @@
 import type { CreateExperienceMetadata } from "./CreateExperienceMetadata";
 import type { CreatePaperMetadata } from "./CreatePaperMetadata";
 
-export type CategoryMetadata = { "type": "paper" } & CreatePaperMetadata | { "type": "review", book_id: string | null, edition_id: string | null, term_id: string | null, } | { "type": "note", book_id: string | null, edition_id: string | null, term_id: string | null, book_chapter_id: string | null, term_session_id: string | null, } | { "type": "experience" } & CreateExperienceMetadata;
+export type CategoryMetadata = { "type": "paper" } & CreatePaperMetadata | { "type": "review", book_id: string | null, edition_id: string | null, 
+/**
+ * Optional iteration the review pertains to. The primary anchor
+ * for course reviews is `course_id`; `term_id` here is just a
+ * soft "took it in {semester}" badge.
+ */
+term_id: string | null, 
+/**
+ * Umbrella course this review anchors to. Mandatory for course
+ * reviews; absent for book-only reviews.
+ */
+course_id: string | null, } | { "type": "note", book_id: string | null, edition_id: string | null, term_id: string | null, course_id: string | null, book_chapter_id: string | null, term_session_id: string | null, } | { "type": "experience" } & CreateExperienceMetadata;

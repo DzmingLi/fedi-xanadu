@@ -983,3 +983,11 @@ export const deleteCourse = (id: string) =>
   del<void>(`/courses/${encodeURIComponent(id)}`);
 export const setTermCourse = (term_id: string, course_id: string | null) =>
   put<void>(`/terms/${encodeURIComponent(term_id)}/course`, { course_id });
+
+// Course-level reviews / notes — anchored to the umbrella, with each
+// row carrying the optional iteration tag (`term_id` + `term_semester`)
+// for chip rendering.
+export const listCourseReviews = (id: string, limit = 50, offset = 0) =>
+  get<import('./types').PagedTermReviews>(`/courses/${encodeURIComponent(id)}/reviews?limit=${limit}&offset=${offset}`);
+export const listCourseNotes = (id: string, limit = 50, offset = 0) =>
+  get<import('./types').PagedTermReviews>(`/courses/${encodeURIComponent(id)}/notes?limit=${limit}&offset=${offset}`);

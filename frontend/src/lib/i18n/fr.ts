@@ -1005,6 +1005,7 @@ export default {
   'course.askQuestion': 'Poser une question à la communauté du cours',
   'course.writeNote': 'Rédiger une note',
   'course.writeReview': 'Rédiger un avis',
+  'course.tookIn': 'suivi en {semester}',
   'terms.sessions': 'cours',
 
   // Roadmap

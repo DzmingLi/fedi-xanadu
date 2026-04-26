@@ -423,6 +423,8 @@ fn course_routes() -> Router<AppState> {
                get(courses::get_course).delete(courses::delete_course))
         .route("/courses/{id}/textbooks",
                post(courses::add_course_textbook).delete(courses::remove_course_textbook))
+        .route("/courses/{id}/reviews", get(courses::list_course_reviews))
+        .route("/courses/{id}/notes",   get(courses::list_course_notes))
 }
 
 fn question_routes() -> Router<AppState> {

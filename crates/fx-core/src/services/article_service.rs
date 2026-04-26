@@ -22,7 +22,7 @@ pub const ARTICLE_BASE_ANY_LANG: &str = "\
     a.kind, a.category, a.license, a.prereq_threshold, a.restricted, a.answer_count, \
     a.cover_url, a.cover_file, \
     a.question_repo_uri, a.question_source_path, \
-    a.book_id, a.edition_id, a.term_id, a.book_chapter_id, a.term_session_id, \
+    a.book_id, a.edition_id, a.term_id, a.course_id, a.book_chapter_id, a.term_session_id, \
     l.lang, l.at_uri, l.file_path, l.title, l.summary, l.summary_html, \
     l.content_hash, l.content_format, l.translator_did, \
     pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
@@ -88,7 +88,7 @@ pub const ARTICLE_BASE: &str = "\
     a.kind, a.category, a.license, a.prereq_threshold, a.restricted, a.answer_count, \
     a.cover_url, a.cover_file, \
     a.question_repo_uri, a.question_source_path, \
-    a.book_id, a.edition_id, a.term_id, a.book_chapter_id, a.term_session_id, \
+    a.book_id, a.edition_id, a.term_id, a.course_id, a.book_chapter_id, a.term_session_id, \
     l.lang, l.at_uri, l.file_path, l.title, l.summary, l.summary_html, \
     l.content_hash, l.content_format, l.translator_did, \
     pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
@@ -442,7 +442,7 @@ pub async fn get_translations(pool: &PgPool, mode: InstanceMode, uri: &str) -> c
             a.kind, a.category, a.license, a.prereq_threshold, a.restricted, a.answer_count, \
             a.cover_url, a.cover_file, \
             a.question_repo_uri, a.question_source_path, \
-            a.book_id, a.edition_id, a.term_id, a.book_chapter_id, a.term_session_id, \
+            a.book_id, a.edition_id, a.term_id, a.course_id, a.book_chapter_id, a.term_session_id, \
             l.lang, l.at_uri, l.file_path, l.title, l.summary, l.summary_html, \
             l.content_hash, l.content_format, l.translator_did, \
             pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
@@ -693,6 +693,30 @@ pub async fn get_all_article_prereqs(pool: &PgPool, limit: i64) -> crate::Result
 
 // ---- Mutations ----
 
+/// Resolve the umbrella `course_id` for a new article. Caller-provided
+/// `course_id` always wins; if it's `None` and a `term_id` is given, we
+/// look up that term's parent course (`terms.course_id`). This lets
+/// legacy clients that only know the iteration still anchor reviews/notes
+/// at the umbrella level so the course detail page surfaces them
+/// without manual backfill.
+async fn resolve_course_id(
+    executor: impl sqlx::PgExecutor<'_>,
+    explicit: Option<&str>,
+    term_id: Option<&str>,
+) -> crate::Result<Option<String>> {
+    if let Some(c) = explicit {
+        return Ok(Some(c.to_string()));
+    }
+    let Some(t) = term_id else { return Ok(None); };
+    let row: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT course_id FROM terms WHERE id = $1",
+    )
+    .bind(t)
+    .fetch_optional(executor)
+    .await?;
+    Ok(row.and_then(|r| r.0))
+}
+
 /// Create a new article/question/answer with tags and prereqs.
 /// `resolved_summary` is the final description source (may be auto-extracted
 /// from content, see `SummaryInput` in the server layer); `summary_html`
@@ -775,13 +799,22 @@ pub async fn create_article(
 
     let mut tx = pool.begin().await?;
 
+    // Resolve the umbrella course: caller's metadata.course_id wins; otherwise
+    // fall back to the parent course of the (optional) iteration tag so legacy
+    // CLI flows that only know about a term still anchor reviews/notes
+    // correctly at the umbrella level.
+    let course_id_owned = resolve_course_id(
+        &mut *tx, input.target_course_id(), input.target_term_id(),
+    ).await?;
+    let course_id = course_id_owned.as_deref();
+
     sqlx::query(
         "INSERT INTO articles (\
             repo_uri, source_path, author_did, license, prereq_threshold, \
             kind, category, visibility, restricted, \
-            book_id, edition_id, term_id, book_chapter_id, term_session_id, \
+            book_id, edition_id, term_id, course_id, book_chapter_id, term_session_id, \
             question_repo_uri, question_source_path \
-         ) VALUES ($1, $2, $3, $4, 0.8, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+         ) VALUES ($1, $2, $3, $4, 0.8, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
     )
     .bind(&repo_uri)
     .bind(&source_path)
@@ -794,6 +827,7 @@ pub async fn create_article(
     .bind(input.target_book_id())
     .bind(input.target_edition_id())
     .bind(input.target_term_id())
+    .bind(course_id)
     .bind(input.target_book_chapter_id())
     .bind(input.target_term_session_id())
     .bind(q_repo)
@@ -906,13 +940,18 @@ pub async fn create_series_chapter(
 
     let mut tx = pool.begin().await?;
 
+    let course_id_owned = resolve_course_id(
+        &mut *tx, input.target_course_id(), input.target_term_id(),
+    ).await?;
+    let course_id = course_id_owned.as_deref();
+
     // Upsert-style: support re-publish of the same chapter by `(repo_uri, source_path)`.
     sqlx::query(
         "INSERT INTO articles (\
             repo_uri, source_path, author_did, license, prereq_threshold, \
             kind, category, visibility, restricted, \
-            book_id, edition_id, term_id, book_chapter_id, term_session_id \
-         ) VALUES ($1, $2, $3, $4, 0.8, 'article', $5, $6, $7, $8, $9, $10, $11, $12) \
+            book_id, edition_id, term_id, course_id, book_chapter_id, term_session_id \
+         ) VALUES ($1, $2, $3, $4, 0.8, 'article', $5, $6, $7, $8, $9, $10, $11, $12, $13) \
          ON CONFLICT (repo_uri, source_path) DO UPDATE SET \
              license = EXCLUDED.license, \
              category = EXCLUDED.category, \
@@ -921,6 +960,7 @@ pub async fn create_series_chapter(
              book_id = EXCLUDED.book_id, \
              edition_id = EXCLUDED.edition_id, \
              term_id = EXCLUDED.term_id, \
+             course_id = EXCLUDED.course_id, \
              book_chapter_id = EXCLUDED.book_chapter_id, \
              term_session_id = EXCLUDED.term_session_id, \
              updated_at = NOW()",
@@ -935,6 +975,7 @@ pub async fn create_series_chapter(
     .bind(input.target_book_id())
     .bind(input.target_edition_id())
     .bind(input.target_term_id())
+    .bind(course_id)
     .bind(input.target_book_chapter_id())
     .bind(input.target_term_session_id())
     .execute(&mut *tx)
@@ -1098,13 +1139,18 @@ async fn create_qa_server_only(
 
     let mut tx = pool.begin().await?;
 
+    let course_id_owned = resolve_course_id(
+        &mut *tx, input.target_course_id(), input.target_term_id(),
+    ).await?;
+    let course_id = course_id_owned.as_deref();
+
     sqlx::query(
         "INSERT INTO articles (\
             repo_uri, source_path, author_did, license, prereq_threshold, \
             kind, category, visibility, restricted, \
-            book_id, edition_id, term_id, book_chapter_id, term_session_id, \
+            book_id, edition_id, term_id, course_id, book_chapter_id, term_session_id, \
             question_repo_uri, question_source_path \
-         ) VALUES ($1, $2, $3, $4, 0.8, $5, $6, $7, FALSE, $8, $9, $10, $11, $12, $13, $14)",
+         ) VALUES ($1, $2, $3, $4, 0.8, $5, $6, $7, FALSE, $8, $9, $10, $11, $12, $13, $14, $15)",
     )
     .bind(&repo_uri)
     .bind(&source_path)
@@ -1116,6 +1162,7 @@ async fn create_qa_server_only(
     .bind(input.target_book_id())
     .bind(input.target_edition_id())
     .bind(input.target_term_id())
+    .bind(course_id)
     .bind(input.target_book_chapter_id())
     .bind(input.target_term_session_id())
     .bind(q_repo)
@@ -1280,7 +1327,7 @@ async fn add_translation_localization(
          a.kind, a.category, a.license, a.prereq_threshold, a.restricted, a.answer_count, \
          a.cover_url, a.cover_file, \
          a.question_repo_uri, a.question_source_path, \
-         a.book_id, a.edition_id, a.term_id, a.book_chapter_id, a.term_session_id, \
+         a.book_id, a.edition_id, a.term_id, a.course_id, a.book_chapter_id, a.term_session_id, \
          l.lang, l.at_uri, l.file_path, l.title, l.summary, l.summary_html, \
          l.content_hash, l.content_format, l.translator_did, \
          pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \

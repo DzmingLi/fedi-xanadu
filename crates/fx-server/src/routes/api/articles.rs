@@ -2403,30 +2403,55 @@ pub async fn update_article(
             CategoryMetadata::Experience(exp) => {
                 let _ = article_service::upsert_experience_metadata(&state.pool, &input.uri, exp).await;
             }
-            CategoryMetadata::Review { book_id, edition_id, .. } => {
+            CategoryMetadata::Review { book_id, edition_id, term_id, course_id } => {
                 // Reviews: chapter/session always NULL (review is about the
-                // whole book/course).
+                // whole book/course). term_id is now the optional iteration
+                // tag; course_id is the primary anchor — auto-fill from the
+                // term's parent course when the caller omitted it.
+                let resolved_course = match course_id.as_deref() {
+                    Some(c) => Some(c.to_string()),
+                    None => match term_id.as_deref() {
+                        Some(t) => sqlx::query_scalar::<_, Option<String>>(
+                            "SELECT course_id FROM terms WHERE id = $1",
+                        ).bind(t).fetch_optional(&state.pool).await?.flatten(),
+                        None => None,
+                    },
+                };
                 sqlx::query(
                     "UPDATE articles a \
                         SET book_id = $1, edition_id = $2, \
+                            term_id = $3, course_id = $4, \
                             book_chapter_id = NULL, term_session_id = NULL \
-                        FROM article_localizations l \
-                      WHERE l.at_uri = $3 \
-                        AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
-                )
-                .bind(book_id.as_deref()).bind(edition_id.as_deref()).bind(&input.uri)
-                .execute(&state.pool).await?;
-            }
-            CategoryMetadata::Note { book_id, edition_id, book_chapter_id, term_session_id, .. } => {
-                sqlx::query(
-                    "UPDATE articles a \
-                        SET book_id = $1, edition_id = $2, \
-                            book_chapter_id = $3, term_session_id = $4 \
                         FROM article_localizations l \
                       WHERE l.at_uri = $5 \
                         AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
                 )
                 .bind(book_id.as_deref()).bind(edition_id.as_deref())
+                .bind(term_id.as_deref()).bind(resolved_course.as_deref())
+                .bind(&input.uri)
+                .execute(&state.pool).await?;
+            }
+            CategoryMetadata::Note { book_id, edition_id, term_id, course_id, book_chapter_id, term_session_id } => {
+                let resolved_course = match course_id.as_deref() {
+                    Some(c) => Some(c.to_string()),
+                    None => match term_id.as_deref() {
+                        Some(t) => sqlx::query_scalar::<_, Option<String>>(
+                            "SELECT course_id FROM terms WHERE id = $1",
+                        ).bind(t).fetch_optional(&state.pool).await?.flatten(),
+                        None => None,
+                    },
+                };
+                sqlx::query(
+                    "UPDATE articles a \
+                        SET book_id = $1, edition_id = $2, \
+                            term_id = $3, course_id = $4, \
+                            book_chapter_id = $5, term_session_id = $6 \
+                        FROM article_localizations l \
+                      WHERE l.at_uri = $7 \
+                        AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
+                )
+                .bind(book_id.as_deref()).bind(edition_id.as_deref())
+                .bind(term_id.as_deref()).bind(resolved_course.as_deref())
                 .bind(book_chapter_id.as_deref()).bind(term_session_id.as_deref())
                 .bind(&input.uri)
                 .execute(&state.pool).await?;

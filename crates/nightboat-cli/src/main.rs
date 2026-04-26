@@ -485,7 +485,7 @@ async fn main() -> Result<()> {
                 }))
             } else if book_id.is_some() {
                 Some(fx_core::models::CategoryMetadata::Review {
-                    book_id, edition_id: None, term_id: None,
+                    book_id, edition_id: None, term_id: None, course_id: None,
                 })
             } else {
                 None

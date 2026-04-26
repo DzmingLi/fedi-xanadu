@@ -136,7 +136,7 @@
   </div>
   <div class="editor-container">
     {#await lazyNewArticle() then mod}
-      <mod.default editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} />
+      <mod.default editUri={route.params.edit || ''} draftId={route.params.draft || ''} initialCategory={route.params.category || ''} initialBookId={route.params.book_id || ''} initialCourseId={route.params.course_id || ''} initialTermId={route.params.term_id || ''} />
     {/await}
   </div>
 {:else if route.page === 'series-editor'}

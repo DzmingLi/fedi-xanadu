@@ -1,21 +1,18 @@
 <script lang="ts">
-  // Course-level reviews — aggregates reviews from every iteration
-  // (term) of the course. Backend exposes only per-term review lists,
-  // so we fan out one call per term and merge; this is fine for the
-  // typical "<10 iterations" case and keeps the page model simple
-  // without requiring a backend change.
-  import { listTermReviews, getCourseDetail } from '../lib/api';
+  // Course-level reviews — backed by a single endpoint that returns
+  // every review across every iteration. Each row carries the optional
+  // iteration tag (`term_id` + `term_semester`) so we can render an
+  // inline chip when the contributor declared one.
+  import { listCourseReviews, getCourseDetail } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
-  import type { TermReview, Term } from '../lib/types';
+  import type { TermReview } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
-  type Row = TermReview & { term_id: string; term_label: string };
-
-  let items = $state<Row[]>([]);
+  let items = $state<TermReview[]>([]);
+  let total = $state(0);
   let courseTitle = $state('');
-  let terms = $state<Term[]>([]);
   let loading = $state(true);
   let error = $state('');
 
@@ -23,21 +20,14 @@
     loading = true;
     error = '';
     try {
-      const detail = await getCourseDetail(id);
+      const [detail, page] = await Promise.all([
+        getCourseDetail(id),
+        listCourseReviews(id, 50, 0),
+      ]);
       courseTitle = detail.course.title;
-      terms = detail.terms;
       document.title = `${t('course.reviews')} — ${courseTitle}`;
-      // Fan out per term, then merge sorted by created_at desc.
-      const perTerm = await Promise.all(
-        terms.map(t =>
-          listTermReviews(t.id, 50, 0)
-            .then(r => r.items.map(it => ({ ...it, term_id: t.id, term_label: t.semester || t.title })))
-            .catch(() => [] as Row[]),
-        ),
-      );
-      items = perTerm.flat().sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
+      items = page.items;
+      total = page.total;
     } catch (e: any) {
       error = e.message ?? String(e);
     } finally {
@@ -51,12 +41,9 @@
 <div class="page">
   <a class="back" href="/course?id={encodeURIComponent(id)}">← {courseTitle}</a>
   <header>
-    <h1>{t('course.reviews')} <span class="count">({items.length})</span></h1>
-    {#if getAuth() && terms.length > 0}
-      <!-- New reviews still attach to a specific iteration; the writer
-           picks which one inside the editor. We default the deep-link
-           to the latest iteration since that's the typical case. -->
-      <a class="write-btn" href="/new?category=review&term_id={encodeURIComponent(terms[0].id)}">{t('course.writeReview')}</a>
+    <h1>{t('course.reviews')} <span class="count">({total})</span></h1>
+    {#if getAuth()}
+      <a class="write-btn" href="/new?category=review&course_id={encodeURIComponent(id)}">{t('course.writeReview')}</a>
     {/if}
   </header>
 
@@ -68,11 +55,17 @@
     <p class="meta">{t('course.noReviews')}</p>
   {:else}
     {#each items as r}
-      <a href="/article?uri={encodeURIComponent(r.at_uri)}" class="card">
+      <a href={r.at_uri ? `/article?uri=${encodeURIComponent(r.at_uri)}` : '#'} class="card">
         <div class="hdr">
           <span class="author">{r.author_display_name || r.author_handle || r.did.slice(0, 16)}</span>
           <span class="date">{new Date(r.created_at).toLocaleDateString()}</span>
-          <span class="iter-tag">{r.term_label}</span>
+          {#if r.term_id && r.term_semester}
+            <a class="iter-tag"
+               href="/course?id={encodeURIComponent(id)}&term={encodeURIComponent(r.term_id)}"
+               onclick={(e) => e.stopPropagation()}>
+              {t('course.tookIn').replace('{semester}', r.term_semester)}
+            </a>
+          {/if}
         </div>
         <h3>{r.title}</h3>
         {#if r.summary}<p class="desc">{r.summary}</p>{/if}
@@ -100,7 +93,8 @@
   .card:hover { border-color: var(--accent); text-decoration: none; }
   .hdr { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12px; color: var(--text-hint); }
   .author { color: var(--text-primary); font-weight: 500; }
-  .iter-tag { padding: 1px 8px; background: rgba(95,155,101,0.10); color: var(--accent); border-radius: 3px; font-size: 11px; }
+  .iter-tag { padding: 1px 8px; background: rgba(95,155,101,0.10); color: var(--accent); border-radius: 3px; font-size: 11px; text-decoration: none; }
+  .iter-tag:hover { background: rgba(95,155,101,0.18); text-decoration: none; }
   .card h3 { font-family: var(--font-serif); font-size: 17px; margin: 6px 0; color: var(--text-primary); }
   .desc { font-size: 14px; color: var(--text-secondary); margin: 0 0 6px; line-height: 1.5; }
   .stats { display: flex; gap: 14px; font-size: 12px; color: var(--text-hint); }

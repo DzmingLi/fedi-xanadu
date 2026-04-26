@@ -1,13 +1,20 @@
 <script lang="ts">
-  import { listTags, searchTags, lookupTag, createArticle, listArticles, getArticle, getArticleContent, convertContent, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, listArticleCollaborators, inviteArticleCollaborator, removeArticleCollaborator } from '../lib/api';
+  import { listTags, searchTags, lookupTag, createArticle, listArticles, getArticle, getArticleContent, convertContent, uploadImage, updateArticle, saveDraft, updateDraft as apiUpdateDraft, listDrafts, getBook, getCourseDetail, listArticleCollaborators, inviteArticleCollaborator, removeArticleCollaborator } from '../lib/api';
   import { t, getLocale } from '../lib/i18n/index.svelte';
   import { getAuth } from '../lib/auth.svelte';
   import { getLangPrefs } from '../lib/langPrefs.svelte';
   import MarkdownEditor from 'nbt-editor/MarkdownEditor.svelte';
   import TypstEditor from 'nbt-editor/TypstEditor.svelte';
-  import type { Tag, Article, BookEdition, ContentFormat, PrereqType } from '../lib/types';
+  import type { Tag, Article, BookEdition, ContentFormat, PrereqType, Term } from '../lib/types';
 
-  let { editUri = '', draftId: initialDraftId = '', initialCategory = '', initialBookId = '' } = $props();
+  let {
+    editUri = '',
+    draftId: initialDraftId = '',
+    initialCategory = '',
+    initialBookId = '',
+    initialCourseId = '',
+    initialTermId = '',
+  } = $props();
   let isEditing = $state(false);
   // svelte-ignore state_referenced_locally
   let currentDraftId = $state(initialDraftId);
@@ -46,6 +53,17 @@
   let bookId = $state(initialBookId || '');
   let editionId = $state('');
   let bookEditions = $state<BookEdition[]>([]);
+  // Course anchoring (review/note categories). When the editor is opened
+  // from a course detail page (`?course_id=…`), the article's
+  // `metadata.course_id` is populated on submit so the umbrella course
+  // page surfaces the contribution. The optional iteration tag
+  // (`term_id`) is purely a "took it in {semester}" badge.
+  // svelte-ignore state_referenced_locally
+  let courseId = $state(initialCourseId || '');
+  // svelte-ignore state_referenced_locally
+  let termId = $state(initialTermId || '');
+  let courseTitle = $state('');
+  let courseTerms = $state<Term[]>([]);
   let selectedTags = $state<string[]>([]);
   let prereqs = $state<Array<{ tag_id: string; prereq_type: PrereqType }>>([]);
   let relatedTags = $state<string[]>([]);
@@ -181,11 +199,47 @@
     );
   }
 
+  // Build the category-scoped metadata payload for review/note categories.
+  // Returns undefined for categories that don't carry book/course anchoring
+  // (general/lecture/paper/experience handle their own metadata flow).
+  function buildCategoryMetadata(): import('../lib/types').CategoryMetadataInput | undefined {
+    const cat = category.trim();
+    if (cat === 'review') {
+      if (!bookId && !courseId && !editionId && !termId) return undefined;
+      return {
+        type: 'review',
+        book_id: bookId || null,
+        edition_id: editionId || null,
+        term_id: termId || null,
+        course_id: courseId || null,
+      };
+    }
+    if (cat === 'note') {
+      if (!bookId && !courseId && !editionId && !termId) return undefined;
+      return {
+        type: 'note',
+        book_id: bookId || null,
+        edition_id: editionId || null,
+        term_id: termId || null,
+        course_id: courseId || null,
+        book_chapter_id: null,
+        term_session_id: null,
+      };
+    }
+    return undefined;
+  }
+
   $effect(() => {
     listTags().then(data => { tags = data; });
     listArticles().then(data => { allArticles = data; });
     if (bookId) {
       getBook(bookId).then(d => { bookEditions = d.editions; }).catch(() => {});
+    }
+    if (courseId) {
+      getCourseDetail(courseId).then(d => {
+        courseTitle = d.course.title;
+        courseTerms = d.terms;
+      }).catch(() => {});
     }
     if (editUri) {
       isEditing = true;
@@ -263,6 +317,7 @@
           category: category || undefined,
           book_id: bookId || undefined,
           edition_id: editionId || undefined,
+          metadata: buildCategoryMetadata(),
           tags: selectedTags,
           prereqs,
           related: relatedTags,

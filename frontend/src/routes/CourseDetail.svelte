@@ -641,6 +641,11 @@
       <a class="tab-link" href="/course-notes?id={encodeURIComponent(detail.course.id)}">
         {t('course.notes')}
       </a>
+      {#if getAuth()}
+        <span class="tab-spacer"></span>
+        <a class="tab-action" href="/new?category=review&course_id={encodeURIComponent(detail.course.id)}">{t('course.writeReview')}</a>
+        <a class="tab-action" href="/new?category=note&course_id={encodeURIComponent(detail.course.id)}">{t('course.writeNote')}</a>
+      {/if}
     </nav>
 
     <section class="discussion">
@@ -829,7 +834,11 @@
   .resource-kind { font-size: 10px; text-transform: uppercase; color: var(--text-hint); background: var(--bg-hover, #f5f5f5); padding: 1px 6px; border-radius: 3px; flex-shrink: 0; }
   .resource-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .course-tabs { display: flex; gap: 4px; margin: 32px 0 12px; border-bottom: 1px solid var(--border); }
+  .course-tabs { display: flex; gap: 4px; margin: 32px 0 12px; border-bottom: 1px solid var(--border); align-items: center; }
+  .tab-spacer { flex: 1; }
+  .tab-action { padding: 4px 12px; margin-bottom: 6px; background: var(--accent); color: white; border-radius: 4px; font-size: 12px; text-decoration: none; }
+  .tab-action:hover { opacity: 0.9; text-decoration: none; }
+  .tab-action + .tab-action { margin-left: 6px; }
   .tab-link {
     padding: 8px 14px; font-size: 13px; color: var(--text-secondary);
     text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;

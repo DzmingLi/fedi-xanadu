@@ -73,6 +73,11 @@ pub struct Article {
     pub edition_id: Option<String>,
     #[sqlx(default)]
     pub term_id: Option<String>,
+    /// Umbrella course this article anchors to. For reviews / notes this is
+    /// the primary anchor (the course detail page surfaces them all);
+    /// `term_id` is the optional iteration tag (e.g. "took it Spring 2015").
+    #[sqlx(default)]
+    pub course_id: Option<String>,
     #[sqlx(default)]
     pub book_chapter_id: Option<String>,
     #[sqlx(default)]
@@ -211,6 +216,18 @@ impl CreateArticle {
             _ => None,
         }
     }
+    /// Umbrella course this review/note anchors to. Independent of
+    /// `target_term_id` — a review may declare a course but skip the
+    /// iteration tag, or vice versa. The article create handler also
+    /// auto-fills course_id from term_id when the term's parent course
+    /// is known, so this returning None is fine for backfill cases.
+    pub fn target_course_id(&self) -> Option<&str> {
+        match &self.metadata {
+            Some(CategoryMetadata::Review { course_id, .. }) => course_id.as_deref(),
+            Some(CategoryMetadata::Note   { course_id, .. }) => course_id.as_deref(),
+            _ => None,
+        }
+    }
     pub fn target_book_chapter_id(&self) -> Option<&str> {
         if self.category.as_deref() == Some("review") {
             return None;
@@ -245,13 +262,20 @@ pub enum CategoryMetadata {
     Review {
         book_id: Option<String>,
         edition_id: Option<String>,
+        /// Optional iteration the review pertains to. The primary anchor
+        /// for course reviews is `course_id`; `term_id` here is just a
+        /// soft "took it in {semester}" badge.
         term_id: Option<String>,
+        /// Umbrella course this review anchors to. Mandatory for course
+        /// reviews; absent for book-only reviews.
+        course_id: Option<String>,
     },
     #[serde(rename = "note")]
     Note {
         book_id: Option<String>,
         edition_id: Option<String>,
         term_id: Option<String>,
+        course_id: Option<String>,
         book_chapter_id: Option<String>,
         term_session_id: Option<String>,
     },

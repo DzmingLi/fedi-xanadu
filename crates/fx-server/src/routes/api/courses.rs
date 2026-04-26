@@ -1,7 +1,8 @@
-use axum::{extract::{Path, State}, http::StatusCode, Json};
+use axum::{extract::{Path, Query, State}, http::StatusCode, Json};
 use fx_core::services::course_service::{
     self, Course, CourseDetail, CourseListItem, CreateCourse,
 };
+use fx_core::services::term_service::{self, TermReviewRow};
 
 use crate::auth::WriteAuth;
 use crate::state::AppState;
@@ -98,4 +99,51 @@ pub async fn remove_course_textbook(
 ) -> ApiResult<StatusCode> {
     course_service::remove_course_textbook(&state.pool, &course_id, &input.book_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ── Course-level reviews / notes ──────────────────────────────────────
+//
+// Reviews and notes anchor to the umbrella course (mandatory) plus an
+// optional iteration tag (term_id). These endpoints surface every
+// review/note across every iteration of the course in one paged list,
+// with `term_id` + `term_semester` per row so the UI can render an
+// "took in {semester}" chip when the contribution declared one.
+
+#[derive(serde::Deserialize)]
+pub struct ListCourseReviewsQuery {
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+fn default_limit() -> i64 { 50 }
+
+#[derive(serde::Serialize)]
+pub struct CourseReviewsResponse {
+    pub items: Vec<TermReviewRow>,
+    pub total: i64,
+}
+
+pub async fn list_course_reviews(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<ListCourseReviewsQuery>,
+) -> ApiResult<Json<CourseReviewsResponse>> {
+    let items = term_service::list_course_articles_by_category(
+        &state.pool, &id, "review", q.limit, q.offset,
+    ).await?;
+    let total = term_service::count_course_articles_by_category(&state.pool, &id, "review").await?;
+    Ok(Json(CourseReviewsResponse { items, total }))
+}
+
+pub async fn list_course_notes(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<ListCourseReviewsQuery>,
+) -> ApiResult<Json<CourseReviewsResponse>> {
+    let items = term_service::list_course_articles_by_category(
+        &state.pool, &id, "note", q.limit, q.offset,
+    ).await?;
+    let total = term_service::count_course_articles_by_category(&state.pool, &id, "note").await?;
+    Ok(Json(CourseReviewsResponse { items, total }))
 }

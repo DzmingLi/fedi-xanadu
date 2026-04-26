@@ -1,19 +1,16 @@
 <script lang="ts">
-  // Course-level notes — same fan-out approach as CourseReviews. Notes
-  // currently live per-iteration on the backend; this view collects
-  // them all under the umbrella course and sorts by created_at desc.
-  import { listTermNotes, getCourseDetail } from '../lib/api';
+  // Course-level notes — single course-scoped endpoint, with each row
+  // carrying the optional iteration tag for inline chip rendering.
+  import { listCourseNotes, getCourseDetail } from '../lib/api';
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
-  import type { TermReview, Term } from '../lib/types';
+  import type { TermReview } from '../lib/types';
 
   let { id } = $props<{ id: string }>();
 
-  type Row = TermReview & { term_id: string; term_label: string };
-
-  let items = $state<Row[]>([]);
+  let items = $state<TermReview[]>([]);
+  let total = $state(0);
   let courseTitle = $state('');
-  let terms = $state<Term[]>([]);
   let loading = $state(true);
   let error = $state('');
 
@@ -21,20 +18,14 @@
     loading = true;
     error = '';
     try {
-      const detail = await getCourseDetail(id);
+      const [detail, page] = await Promise.all([
+        getCourseDetail(id),
+        listCourseNotes(id, 50, 0),
+      ]);
       courseTitle = detail.course.title;
-      terms = detail.terms;
       document.title = `${t('course.notes')} — ${courseTitle}`;
-      const perTerm = await Promise.all(
-        terms.map(t =>
-          listTermNotes(t.id, 50, 0)
-            .then(r => r.items.map(it => ({ ...it, term_id: t.id, term_label: t.semester || t.title })))
-            .catch(() => [] as Row[]),
-        ),
-      );
-      items = perTerm.flat().sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
+      items = page.items;
+      total = page.total;
     } catch (e: any) {
       error = e.message ?? String(e);
     } finally {
@@ -48,9 +39,9 @@
 <div class="page">
   <a class="back" href="/course?id={encodeURIComponent(id)}">← {courseTitle}</a>
   <header>
-    <h1>{t('course.notes')} <span class="count">({items.length})</span></h1>
-    {#if getAuth() && terms.length > 0}
-      <a class="write-btn" href="/new?category=note&term_id={encodeURIComponent(terms[0].id)}">{t('course.writeNote')}</a>
+    <h1>{t('course.notes')} <span class="count">({total})</span></h1>
+    {#if getAuth()}
+      <a class="write-btn" href="/new?category=note&course_id={encodeURIComponent(id)}">{t('course.writeNote')}</a>
     {/if}
   </header>
 
@@ -62,11 +53,17 @@
     <p class="meta">{t('course.noNotes')}</p>
   {:else}
     {#each items as n}
-      <a href="/article?uri={encodeURIComponent(n.at_uri)}" class="card">
+      <a href={n.at_uri ? `/article?uri=${encodeURIComponent(n.at_uri)}` : '#'} class="card">
         <div class="hdr">
           <span class="author">{n.author_display_name || n.author_handle || n.did.slice(0, 16)}</span>
           <span class="date">{new Date(n.created_at).toLocaleDateString()}</span>
-          <span class="iter-tag">{n.term_label}</span>
+          {#if n.term_id && n.term_semester}
+            <a class="iter-tag"
+               href="/course?id={encodeURIComponent(id)}&term={encodeURIComponent(n.term_id)}"
+               onclick={(e) => e.stopPropagation()}>
+              {t('course.tookIn').replace('{semester}', n.term_semester)}
+            </a>
+          {/if}
         </div>
         <h3>{n.title}</h3>
         {#if n.summary}<p class="desc">{n.summary}</p>{/if}
@@ -94,7 +91,8 @@
   .card:hover { border-color: var(--accent); text-decoration: none; }
   .hdr { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12px; color: var(--text-hint); }
   .author { color: var(--text-primary); font-weight: 500; }
-  .iter-tag { padding: 1px 8px; background: rgba(95,155,101,0.10); color: var(--accent); border-radius: 3px; font-size: 11px; }
+  .iter-tag { padding: 1px 8px; background: rgba(95,155,101,0.10); color: var(--accent); border-radius: 3px; font-size: 11px; text-decoration: none; }
+  .iter-tag:hover { background: rgba(95,155,101,0.18); text-decoration: none; }
   .card h3 { font-family: var(--font-serif); font-size: 17px; margin: 6px 0; color: var(--text-primary); }
   .desc { font-size: 14px; color: var(--text-secondary); margin: 0 0 6px; line-height: 1.5; }
   .stats { display: flex; gap: 14px; font-size: 12px; color: var(--text-hint); }

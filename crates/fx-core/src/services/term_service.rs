@@ -788,6 +788,16 @@ pub struct TermReviewRow {
     pub author_did: String,
     pub author_handle: Option<String>,
     pub author_display_name: Option<String>,
+    /// Optional iteration tag. On per-term listings this echoes the path
+    /// param; on course-level listings it lets the UI render an
+    /// "took in {semester}" chip alongside each row.
+    #[sqlx(default)]
+    pub term_id: Option<String>,
+    /// Joined `terms.semester` (e.g. "Fall 2017") when `term_id` is set —
+    /// purely for chip rendering. Null on rows whose term has been
+    /// detached or had its semester cleared.
+    #[sqlx(default)]
+    pub term_semester: Option<String>,
     #[sqlx(default)]
     pub term_session_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -801,7 +811,7 @@ pub async fn list_term_articles_by_category(
     Ok(sqlx::query_as::<_, TermReviewRow>(
         "SELECT a.repo_uri, a.source_path, l.at_uri, l.title, l.summary, a.author_did, \
          p.handle AS author_handle, p.display_name AS author_display_name, \
-         a.term_session_id, a.created_at, \
+         a.term_id, t.semester AS term_semester, a.term_session_id, a.created_at, \
          COALESCE((SELECT SUM(value) FROM votes \
                    WHERE target_uri = article_uri(a.repo_uri, a.source_path)), 0) AS vote_score, \
          (SELECT COUNT(*) FROM comments \
@@ -811,10 +821,47 @@ pub async fn list_term_articles_by_category(
              ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
             AND l.file_path = a.source_path \
          LEFT JOIN profiles p ON p.did = a.author_did \
+         LEFT JOIN terms t ON t.id = a.term_id \
          WHERE a.term_id = $1 AND a.category = $2 \
          ORDER BY vote_score DESC, a.created_at DESC \
          LIMIT $3 OFFSET $4"
     ).bind(term_id).bind(category).bind(limit).bind(offset).fetch_all(pool).await?)
+}
+
+/// List reviews/notes anchored to an umbrella course (across every
+/// iteration). Mirrors `list_term_articles_by_category` but keys on
+/// `articles.course_id` so the course-detail page can surface every
+/// review/note in one query. The optional iteration tag (`term_id` +
+/// joined `term_semester`) lets the UI render a per-row chip.
+pub async fn list_course_articles_by_category(
+    pool: &PgPool, course_id: &str, category: &str, limit: i64, offset: i64,
+) -> crate::Result<Vec<TermReviewRow>> {
+    Ok(sqlx::query_as::<_, TermReviewRow>(
+        "SELECT a.repo_uri, a.source_path, l.at_uri, l.title, l.summary, a.author_did, \
+         p.handle AS author_handle, p.display_name AS author_display_name, \
+         a.term_id, t.semester AS term_semester, a.term_session_id, a.created_at, \
+         COALESCE((SELECT SUM(value) FROM votes \
+                   WHERE target_uri = article_uri(a.repo_uri, a.source_path)), 0) AS vote_score, \
+         (SELECT COUNT(*) FROM comments \
+          WHERE content_uri = article_uri(a.repo_uri, a.source_path)) AS comment_count \
+         FROM articles a \
+         JOIN article_localizations l \
+             ON l.repo_uri = a.repo_uri AND l.source_path = a.source_path \
+            AND l.file_path = a.source_path \
+         LEFT JOIN profiles p ON p.did = a.author_did \
+         LEFT JOIN terms t ON t.id = a.term_id \
+         WHERE a.course_id = $1 AND a.category = $2 \
+         ORDER BY vote_score DESC, a.created_at DESC \
+         LIMIT $3 OFFSET $4"
+    ).bind(course_id).bind(category).bind(limit).bind(offset).fetch_all(pool).await?)
+}
+
+pub async fn count_course_articles_by_category(
+    pool: &PgPool, course_id: &str, category: &str,
+) -> crate::Result<i64> {
+    Ok(sqlx::query_scalar(
+        "SELECT COUNT(*) FROM articles WHERE course_id = $1 AND category = $2",
+    ).bind(course_id).bind(category).fetch_one(pool).await?)
 }
 
 pub async fn count_term_articles_by_category(

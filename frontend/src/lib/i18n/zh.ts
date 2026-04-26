@@ -1005,6 +1005,7 @@ export default {
   'course.askQuestion': '向修读过该课程的同学提问',
   'course.writeNote': '撰写笔记',
   'course.writeReview': '撰写评论',
+  'course.tookIn': '于 {semester} 修读',
   'terms.sessions': '节课',
 
   // Roadmap

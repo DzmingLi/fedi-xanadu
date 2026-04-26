@@ -52,6 +52,10 @@ export interface Article {
   question_uri: string | null;
   book_id: string | null;
   edition_id: string | null;
+  /// Umbrella course this article anchors to (primary anchor for
+  /// reviews/notes; null for general articles). Survives term-level
+  /// re-organisation, so the course detail page can keep listing it.
+  course_id: string | null;
   book_chapter_id: string | null;
   term_session_id: string | null;
   answer_count: number;
@@ -718,13 +722,27 @@ export interface CreateArticle {
   translation_of?: string;
   restricted?: boolean;
   category?: Category;
+  /// Top-level book_id is legacy — the backend reads book/edition/term/course
+  /// anchoring out of `metadata` for review/note categories. Kept here for
+  /// backward compat on existing call sites.
   book_id?: string;
   edition_id?: string;
   tags: string[];
   prereqs: { tag_id: string; prereq_type: PrereqType }[];
   related?: string[];
   topics?: string[];
+  /// Category-specific anchoring. For `category: 'review' | 'note'` set
+  /// `metadata: { type, book_id, edition_id, term_id, course_id, … }` so
+  /// the backend pins the article to the umbrella course (and the
+  /// optional iteration tag) properly.
+  metadata?: CategoryMetadataInput;
 }
+
+export type CategoryMetadataInput =
+  | { type: 'paper'; venue?: string | null; venue_type?: string | null; year?: number | null; doi?: string | null; arxiv_id?: string | null; accepted?: boolean }
+  | { type: 'review'; book_id: string | null; edition_id: string | null; term_id: string | null; course_id: string | null }
+  | { type: 'note';   book_id: string | null; edition_id: string | null; term_id: string | null; course_id: string | null; book_chapter_id: string | null; term_session_id: string | null }
+  | { type: 'experience'; kind?: string | null; target?: string | null; year?: number | null; result?: string | null };
 
 // --- Version History ---
 
@@ -916,6 +934,11 @@ export interface TermReview {
   did: string;
   author_handle: string | null;
   author_display_name: string | null;
+  /// Optional iteration tag carried on the row. On per-term listings
+  /// this echoes the path param; on course-level listings it lets the
+  /// UI render an "took in {semester}" chip alongside each item.
+  term_id: string | null;
+  term_semester: string | null;
   term_session_id: string | null;
   created_at: string;
   vote_score: number;

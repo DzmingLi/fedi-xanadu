@@ -1009,6 +1009,7 @@ export default {
   'course.askQuestion': 'Ask the course community',
   'course.writeNote': 'Write a note',
   'course.writeReview': 'Write a review',
+  'course.tookIn': 'took in {semester}',
 
   // Roadmap
   'roadmap.title': 'Roadmap',
