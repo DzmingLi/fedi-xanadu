@@ -988,7 +988,7 @@ pub async fn admin_batch_publish(
             authors: vec![],
             invites: vec![],
             book_chapter_id: None,
-            course_session_id: None,
+            term_session_id: None,
         };
 
         // Publish chapter source into the series blob_cache under its path.

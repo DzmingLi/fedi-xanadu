@@ -22,7 +22,7 @@ pub const ARTICLE_BASE_ANY_LANG: &str = "\
     a.kind, a.category, a.license, a.prereq_threshold, a.restricted, a.answer_count, \
     a.cover_url, a.cover_file, \
     a.question_repo_uri, a.question_source_path, \
-    a.book_id, a.edition_id, a.course_id, a.book_chapter_id, a.course_session_id, \
+    a.book_id, a.edition_id, a.term_id, a.book_chapter_id, a.term_session_id, \
     l.lang, l.at_uri, l.file_path, l.title, l.summary, l.summary_html, \
     l.content_hash, l.content_format, l.translator_did, \
     pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
@@ -88,7 +88,7 @@ pub const ARTICLE_BASE: &str = "\
     a.kind, a.category, a.license, a.prereq_threshold, a.restricted, a.answer_count, \
     a.cover_url, a.cover_file, \
     a.question_repo_uri, a.question_source_path, \
-    a.book_id, a.edition_id, a.course_id, a.book_chapter_id, a.course_session_id, \
+    a.book_id, a.edition_id, a.term_id, a.book_chapter_id, a.term_session_id, \
     l.lang, l.at_uri, l.file_path, l.title, l.summary, l.summary_html, \
     l.content_hash, l.content_format, l.translator_did, \
     pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
@@ -442,7 +442,7 @@ pub async fn get_translations(pool: &PgPool, mode: InstanceMode, uri: &str) -> c
             a.kind, a.category, a.license, a.prereq_threshold, a.restricted, a.answer_count, \
             a.cover_url, a.cover_file, \
             a.question_repo_uri, a.question_source_path, \
-            a.book_id, a.edition_id, a.course_id, a.book_chapter_id, a.course_session_id, \
+            a.book_id, a.edition_id, a.term_id, a.book_chapter_id, a.term_session_id, \
             l.lang, l.at_uri, l.file_path, l.title, l.summary, l.summary_html, \
             l.content_hash, l.content_format, l.translator_did, \
             pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
@@ -779,7 +779,7 @@ pub async fn create_article(
         "INSERT INTO articles (\
             repo_uri, source_path, author_did, license, prereq_threshold, \
             kind, category, visibility, restricted, \
-            book_id, edition_id, course_id, book_chapter_id, course_session_id, \
+            book_id, edition_id, term_id, book_chapter_id, term_session_id, \
             question_repo_uri, question_source_path \
          ) VALUES ($1, $2, $3, $4, 0.8, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
     )
@@ -793,9 +793,9 @@ pub async fn create_article(
     .bind(restricted)
     .bind(input.target_book_id())
     .bind(input.target_edition_id())
-    .bind(input.target_course_id())
+    .bind(input.target_term_id())
     .bind(input.target_book_chapter_id())
-    .bind(input.target_course_session_id())
+    .bind(input.target_term_session_id())
     .bind(q_repo)
     .bind(q_src)
     .execute(&mut *tx)
@@ -911,7 +911,7 @@ pub async fn create_series_chapter(
         "INSERT INTO articles (\
             repo_uri, source_path, author_did, license, prereq_threshold, \
             kind, category, visibility, restricted, \
-            book_id, edition_id, course_id, book_chapter_id, course_session_id \
+            book_id, edition_id, term_id, book_chapter_id, term_session_id \
          ) VALUES ($1, $2, $3, $4, 0.8, 'article', $5, $6, $7, $8, $9, $10, $11, $12) \
          ON CONFLICT (repo_uri, source_path) DO UPDATE SET \
              license = EXCLUDED.license, \
@@ -920,9 +920,9 @@ pub async fn create_series_chapter(
              restricted = EXCLUDED.restricted, \
              book_id = EXCLUDED.book_id, \
              edition_id = EXCLUDED.edition_id, \
-             course_id = EXCLUDED.course_id, \
+             term_id = EXCLUDED.term_id, \
              book_chapter_id = EXCLUDED.book_chapter_id, \
-             course_session_id = EXCLUDED.course_session_id, \
+             term_session_id = EXCLUDED.term_session_id, \
              updated_at = NOW()",
     )
     .bind(series_repo_uri)
@@ -934,9 +934,9 @@ pub async fn create_series_chapter(
     .bind(restricted)
     .bind(input.target_book_id())
     .bind(input.target_edition_id())
-    .bind(input.target_course_id())
+    .bind(input.target_term_id())
     .bind(input.target_book_chapter_id())
-    .bind(input.target_course_session_id())
+    .bind(input.target_term_session_id())
     .execute(&mut *tx)
     .await?;
 
@@ -1102,7 +1102,7 @@ async fn create_qa_server_only(
         "INSERT INTO articles (\
             repo_uri, source_path, author_did, license, prereq_threshold, \
             kind, category, visibility, restricted, \
-            book_id, edition_id, course_id, book_chapter_id, course_session_id, \
+            book_id, edition_id, term_id, book_chapter_id, term_session_id, \
             question_repo_uri, question_source_path \
          ) VALUES ($1, $2, $3, $4, 0.8, $5, $6, $7, FALSE, $8, $9, $10, $11, $12, $13, $14)",
     )
@@ -1115,9 +1115,9 @@ async fn create_qa_server_only(
     .bind(visibility)
     .bind(input.target_book_id())
     .bind(input.target_edition_id())
-    .bind(input.target_course_id())
+    .bind(input.target_term_id())
     .bind(input.target_book_chapter_id())
-    .bind(input.target_course_session_id())
+    .bind(input.target_term_session_id())
     .bind(q_repo)
     .bind(q_src)
     .execute(&mut *tx)
@@ -1280,7 +1280,7 @@ async fn add_translation_localization(
          a.kind, a.category, a.license, a.prereq_threshold, a.restricted, a.answer_count, \
          a.cover_url, a.cover_file, \
          a.question_repo_uri, a.question_source_path, \
-         a.book_id, a.edition_id, a.course_id, a.book_chapter_id, a.course_session_id, \
+         a.book_id, a.edition_id, a.term_id, a.book_chapter_id, a.term_session_id, \
          l.lang, l.at_uri, l.file_path, l.title, l.summary, l.summary_html, \
          l.content_hash, l.content_format, l.translator_did, \
          pm.venue AS paper_venue, pm.year AS paper_year, pm.accepted AS paper_accepted, \
@@ -1808,7 +1808,7 @@ pub async fn get_questions_by_session(
     limit: i64,
 ) -> crate::Result<Vec<Article>> {
     let rows = sqlx::query_as::<_, Article>(&format!(
-        "{} AND a.kind = 'question' AND a.course_session_id = $1 \
+        "{} AND a.kind = 'question' AND a.term_session_id = $1 \
          ORDER BY vote_score DESC, a.created_at DESC LIMIT $2",
         visible(mode)
     ))

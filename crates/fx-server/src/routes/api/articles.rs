@@ -1470,7 +1470,7 @@ async fn create_series_chapter_handler(
         sync_typst_nbt_series_from_db(state, &user.token, &user.did, &series_id, &series_repo_uri).await;
     }
 
-    // Chapter-specific metadata (book_id / course_id / note fields) is
+    // Chapter-specific metadata (book_id / term_id / note fields) is
     // already persisted on the `articles` row by create_series_chapter via
     // CreateArticle's target_* accessors. Paper/Experience metadata do not
     // apply to series chapters (they describe whole publications/events, not
@@ -2379,7 +2379,7 @@ pub async fn update_article(
                     authors: vec![],
                     invites: vec![],
                     book_chapter_id: None,
-                    course_session_id: None,
+                    term_session_id: None,
                 };
                 let record = build_article_record(&create, &manifest);
                 crate::auth::pds_put_record(
@@ -2409,7 +2409,7 @@ pub async fn update_article(
                 sqlx::query(
                     "UPDATE articles a \
                         SET book_id = $1, edition_id = $2, \
-                            book_chapter_id = NULL, course_session_id = NULL \
+                            book_chapter_id = NULL, term_session_id = NULL \
                         FROM article_localizations l \
                       WHERE l.at_uri = $3 \
                         AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
@@ -2417,17 +2417,17 @@ pub async fn update_article(
                 .bind(book_id.as_deref()).bind(edition_id.as_deref()).bind(&input.uri)
                 .execute(&state.pool).await?;
             }
-            CategoryMetadata::Note { book_id, edition_id, book_chapter_id, course_session_id, .. } => {
+            CategoryMetadata::Note { book_id, edition_id, book_chapter_id, term_session_id, .. } => {
                 sqlx::query(
                     "UPDATE articles a \
                         SET book_id = $1, edition_id = $2, \
-                            book_chapter_id = $3, course_session_id = $4 \
+                            book_chapter_id = $3, term_session_id = $4 \
                         FROM article_localizations l \
                       WHERE l.at_uri = $5 \
                         AND a.repo_uri = l.repo_uri AND a.source_path = l.source_path",
                 )
                 .bind(book_id.as_deref()).bind(edition_id.as_deref())
-                .bind(book_chapter_id.as_deref()).bind(course_session_id.as_deref())
+                .bind(book_chapter_id.as_deref()).bind(term_session_id.as_deref())
                 .bind(&input.uri)
                 .execute(&state.pool).await?;
             }

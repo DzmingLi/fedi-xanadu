@@ -21,7 +21,7 @@
   let tag = $state<Tag | null>(null);
   let articles = $state<Article[]>([]);
   let relatedArticles = $state<Article[]>([]);
-  let teaching = $state<TeachingContent>({ books: [], chapters: [], courses: [], sessions: [] });
+  let teaching = $state<TeachingContent>({ books: [], chapters: [], terms: [], sessions: [] });
   let skills = $state<UserSkill[]>([]);
   let voteMap = $state(new Map<string, number>());
   let loading = $state(true);
@@ -302,7 +302,7 @@
     </section>
   {/if}
 
-  {#if teaching.books.length > 0 || teaching.chapters.length > 0 || teaching.courses.length > 0 || teaching.sessions.length > 0}
+  {#if teaching.books.length > 0 || teaching.chapters.length > 0 || teaching.terms.length > 0 || teaching.sessions.length > 0}
     <section class="teach-section">
       <h2>{t('tags.teachingLead')}</h2>
       {#if teaching.books.length > 0}
@@ -343,13 +343,13 @@
           </ul>
         </div>
       {/if}
-      {#if teaching.courses.length > 0}
+      {#if teaching.terms.length > 0}
         <div class="teach-group">
-          <h3 class="teach-group-title">{t('tags.teachCourses')}</h3>
+          <h3 class="teach-group-title">{t('tags.teachTerms')}</h3>
           <ul class="teach-list">
-            {#each teaching.courses as c}
+            {#each teaching.terms as c}
               <li>
-                <a href="/course?id={encodeURIComponent(c.id)}">
+                <a href="/term?id={encodeURIComponent(c.id)}">
                   {#if c.code}<span class="teach-list-code">{c.code}</span>{/if}
                   <span class="teach-list-title">{c.title}</span>
                   {#if c.institution}<span class="teach-list-host">— {c.institution}</span>{/if}
@@ -365,9 +365,9 @@
           <ul class="teach-list">
             {#each teaching.sessions as s}
               <li>
-                <a href="/course?id={encodeURIComponent(s.course_id)}">
-                  {#if s.course_code}<span class="teach-list-code">{s.course_code}</span>{/if}
-                  <span class="teach-list-host">{s.course_title}</span>
+                <a href="/term?id={encodeURIComponent(s.term_id)}">
+                  {#if s.term_code}<span class="teach-list-code">{s.term_code}</span>{/if}
+                  <span class="teach-list-host">{s.term_title}</span>
                   <span class="teach-sep">·</span>
                   <span class="teach-list-title">L{s.sort_order}{#if s.topic}: {s.topic}{/if}</span>
                 </a>
@@ -379,7 +379,7 @@
     </section>
   {/if}
 
-  {#if articles.length === 0 && relatedArticles.length === 0 && teaching.books.length === 0 && teaching.chapters.length === 0 && teaching.courses.length === 0 && teaching.sessions.length === 0}
+  {#if articles.length === 0 && relatedArticles.length === 0 && teaching.books.length === 0 && teaching.chapters.length === 0 && teaching.terms.length === 0 && teaching.sessions.length === 0}
     <p class="meta">{t('tags.empty')}</p>
   {:else if articles.length === 0}
     <!-- articles empty: teaching/related sections above handle display -->

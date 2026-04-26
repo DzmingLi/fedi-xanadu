@@ -128,14 +128,14 @@ export const getArticlesByTag = (tagId: string) => get<Article[]>(`/articles/by-
 export const getArticlesRelatedByTag = (tagId: string) =>
   get<Article[]>(`/articles/related-by-tag?tag_id=${encodeURIComponent(tagId)}`);
 
-// Books / chapters / courses / sessions that teach a given tag. Rendered
+// Books / chapters / terms / sessions that teach a given tag. Rendered
 // on the tag page's lead section so readers find canonical material
 // before the article feed.
 export interface TeachingContent {
   books: { id: string; title: Record<string, string>; authors: string[]; abbreviation: string | null; cover_url: string | null }[];
   chapters: { id: string; book_id: string; title: string; order_index: number; book_title: Record<string, string> }[];
-  courses: { id: string; code: string | null; title: string; institution: string | null }[];
-  sessions: { id: string; course_id: string; sort_order: number; topic: string | null; course_title: string; course_code: string | null }[];
+  terms: { id: string; code: string | null; title: string; institution: string | null }[];
+  sessions: { id: string; term_id: string; sort_order: number; topic: string | null; term_title: string; term_code: string | null }[];
 }
 export const getTeachingContent = (tagId: string) =>
   get<TeachingContent>(`/tags/teaching-content?tag_id=${encodeURIComponent(tagId)}`);
@@ -887,48 +887,48 @@ export const adminSetVisibility = (secret: string, uri: string, visibility: stri
 export const adminSetDefaultEdition = (secret: string, book_id: string, edition_id: string) =>
   fetch(`${BASE}/admin/books/default-edition`, { method: 'PUT', headers: adminHeaders(secret), body: JSON.stringify({ book_id, edition_id }) });
 
-// ── Courses ──
-export const listCourses = () => get<import('./types').CourseListItem[]>('/courses');
-export const getMyCourses = () => get<import('./types').CourseListItem[]>('/courses/mine');
-export const getCourseDetail = (id: string) => get<import('./types').CourseDetail>(`/courses/${encodeURIComponent(id)}`);
-export const createCourse = (input: { title: string; code?: string; description?: string; institution?: string; department?: string; semester?: string; lang?: string; source_url?: string; source_attribution?: string }) =>
-  post<import('./types').Course>('/courses', input);
-export const updateCourse = (id: string, input: Record<string, unknown>) =>
-  put<import('./types').Course>(`/courses/${encodeURIComponent(id)}`, input);
-export const deleteCourse = (id: string) =>
-  del<void>(`/courses/${encodeURIComponent(id)}`);
-export const rateCourse = (id: string, rating: number) =>
-  post<import('./types').CourseRatingStats>(`/courses/${encodeURIComponent(id)}/rate`, { rating });
-export const unrateCourse = (id: string) =>
-  del<import('./types').CourseRatingStats>(`/courses/${encodeURIComponent(id)}/rate`);
-export const setCourseLearningStatus = (id: string, status: 'want_to_learn' | 'learning' | 'finished' | 'dropped') =>
-  post<import('./types').CourseLearningStatus>(`/courses/${encodeURIComponent(id)}/learning-status`, { status });
-export const removeCourseLearningStatus = (id: string) =>
-  del<void>(`/courses/${encodeURIComponent(id)}/learning-status`);
+// ── Terms (per-iteration) ──
+export const listTerms = () => get<import('./types').TermListItem[]>('/terms');
+export const getMyTerms = () => get<import('./types').TermListItem[]>('/terms/mine');
+export const getTermDetail = (id: string) => get<import('./types').TermDetail>(`/terms/${encodeURIComponent(id)}`);
+export const createTerm = (input: { title: string; code?: string; description?: string; institution?: string; department?: string; semester?: string; lang?: string; source_url?: string; source_attribution?: string }) =>
+  post<import('./types').Term>('/terms', input);
+export const updateTerm = (id: string, input: Record<string, unknown>) =>
+  put<import('./types').Term>(`/terms/${encodeURIComponent(id)}`, input);
+export const deleteTerm = (id: string) =>
+  del<void>(`/terms/${encodeURIComponent(id)}`);
+export const rateTerm = (id: string, rating: number) =>
+  post<import('./types').TermRatingStats>(`/terms/${encodeURIComponent(id)}/rate`, { rating });
+export const unrateTerm = (id: string) =>
+  del<import('./types').TermRatingStats>(`/terms/${encodeURIComponent(id)}/rate`);
+export const setTermLearningStatus = (id: string, status: 'want_to_learn' | 'learning' | 'finished' | 'dropped') =>
+  post<import('./types').TermLearningStatus>(`/terms/${encodeURIComponent(id)}/learning-status`, { status });
+export const removeTermLearningStatus = (id: string) =>
+  del<void>(`/terms/${encodeURIComponent(id)}/learning-status`);
 export const setSessionProgress = (id: string, session_id: string, completed: boolean) =>
-  post<import('./types').CourseLearningStatus | null>(`/courses/${encodeURIComponent(id)}/session-progress`, { session_id, completed });
-export const createCourseSession = (id: string, input: { topic?: string; date?: string; sort_order?: number }) =>
-  post<import('./types').CourseSession>(`/courses/${encodeURIComponent(id)}/sessions`, input);
-export const updateCourseSession = (id: string, session_id: string, input: { topic?: string; date?: string; sort_order?: number }) =>
-  put<import('./types').CourseSession>(`/courses/${encodeURIComponent(id)}/sessions/${encodeURIComponent(session_id)}`, input);
-export const deleteCourseSession = (id: string, session_id: string) =>
-  del<void>(`/courses/${encodeURIComponent(id)}/sessions/${encodeURIComponent(session_id)}`);
-export const addCourseSeries = (id: string, series_id: string, role?: string, sort_order?: number) =>
-  post<void>(`/courses/${encodeURIComponent(id)}/series`, { series_id, role, sort_order });
-export const removeCourseSeries = (id: string, series_id: string) =>
-  del<void>(`/courses/${encodeURIComponent(id)}/series?series_id=${encodeURIComponent(series_id)}`);
-export const addCourseSkillTree = (id: string, tree_uri: string, role?: string) =>
-  post<void>(`/courses/${encodeURIComponent(id)}/skill-trees`, { tree_uri, role });
-export const addCourseTag = (id: string, tag_id: string) =>
-  post<void>(`/courses/${encodeURIComponent(id)}/tags`, { tag_id });
-export const removeCourseTag = (id: string, tag_id: string) =>
-  del<void>(`/courses/${encodeURIComponent(id)}/tags?tag_id=${encodeURIComponent(tag_id)}`);
-export const listCourseReviews = (id: string, limit = 30, offset = 0) =>
-  get<import('./types').PagedCourseReviews>(`/courses/${encodeURIComponent(id)}/reviews?limit=${limit}&offset=${offset}`);
-export const listCourseNotes = (id: string, limit = 30, offset = 0) =>
-  get<import('./types').PagedCourseReviews>(`/courses/${encodeURIComponent(id)}/notes?limit=${limit}&offset=${offset}`);
-export const listCourseDiscussions = (id: string, limit = 30, offset = 0) =>
-  get<import('./types').PagedCourseDiscussions>(`/courses/${encodeURIComponent(id)}/discussions?limit=${limit}&offset=${offset}`);
+  post<import('./types').TermLearningStatus | null>(`/terms/${encodeURIComponent(id)}/session-progress`, { session_id, completed });
+export const createTermSession = (id: string, input: { topic?: string; date?: string; sort_order?: number }) =>
+  post<import('./types').TermSession>(`/terms/${encodeURIComponent(id)}/sessions`, input);
+export const updateTermSession = (id: string, session_id: string, input: { topic?: string; date?: string; sort_order?: number }) =>
+  put<import('./types').TermSession>(`/terms/${encodeURIComponent(id)}/sessions/${encodeURIComponent(session_id)}`, input);
+export const deleteTermSession = (id: string, session_id: string) =>
+  del<void>(`/terms/${encodeURIComponent(id)}/sessions/${encodeURIComponent(session_id)}`);
+export const addTermSeries = (id: string, series_id: string, role?: string, sort_order?: number) =>
+  post<void>(`/terms/${encodeURIComponent(id)}/series`, { series_id, role, sort_order });
+export const removeTermSeries = (id: string, series_id: string) =>
+  del<void>(`/terms/${encodeURIComponent(id)}/series?series_id=${encodeURIComponent(series_id)}`);
+export const addTermSkillTree = (id: string, tree_uri: string, role?: string) =>
+  post<void>(`/terms/${encodeURIComponent(id)}/skill-trees`, { tree_uri, role });
+export const addTermTag = (id: string, tag_id: string) =>
+  post<void>(`/terms/${encodeURIComponent(id)}/tags`, { tag_id });
+export const removeTermTag = (id: string, tag_id: string) =>
+  del<void>(`/terms/${encodeURIComponent(id)}/tags?tag_id=${encodeURIComponent(tag_id)}`);
+export const listTermReviews = (id: string, limit = 30, offset = 0) =>
+  get<import('./types').PagedTermReviews>(`/terms/${encodeURIComponent(id)}/reviews?limit=${limit}&offset=${offset}`);
+export const listTermNotes = (id: string, limit = 30, offset = 0) =>
+  get<import('./types').PagedTermReviews>(`/terms/${encodeURIComponent(id)}/notes?limit=${limit}&offset=${offset}`);
+export const listTermDiscussions = (id: string, limit = 30, offset = 0) =>
+  get<import('./types').PagedTermDiscussions>(`/terms/${encodeURIComponent(id)}/discussions?limit=${limit}&offset=${offset}`);
 
 // ---- Publications ----
 export const listPublications = (limit = 50, offset = 0) =>

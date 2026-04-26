@@ -17,9 +17,9 @@ mod interests;
 mod keybindings;
 mod learned;
 mod listings;
+mod terms;
 mod courses;
-mod course_groups;
-mod course_homeworks;
+mod term_homeworks;
 mod members;
 mod notifications;
 mod profile;
@@ -116,6 +116,7 @@ pub fn routes() -> Router<AppState> {
         .merge(creator_routes())
         .merge(recommendation_routes())
         .merge(listing_routes())
+        .merge(term_routes())
         .merge(course_routes())
         .merge(thought_routes())
         .merge(ad_routes())
@@ -382,40 +383,44 @@ fn listing_routes() -> Router<AppState> {
         .route("/listings/{id}/reopen", post(listings::reopen_listing))
 }
 
+fn term_routes() -> Router<AppState> {
+    Router::new()
+        .route("/terms", get(terms::list_terms).post(terms::create_term))
+        .route("/terms/mine", get(terms::my_terms))
+        .route("/terms/{id}", get(terms::get_term).put(terms::update_term).delete(terms::delete_term))
+        .route("/terms/{id}/series", post(terms::add_series).delete(terms::remove_series))
+        .route("/terms/{id}/skill-trees", post(terms::add_skill_tree))
+        .route("/terms/{id}/patches", get(terms::list_patches))
+        .route("/terms/{id}/tags", post(terms::add_tag).delete(terms::remove_tag))
+        .route("/terms/{id}/textbooks", post(terms::add_textbook).delete(terms::remove_textbook))
+        .route("/terms/{id}/rate", post(terms::rate_term).delete(terms::unrate_term))
+        .route("/terms/{id}/reviews", get(terms::get_reviews))
+        .route("/terms/{id}/notes", get(terms::get_notes))
+        .route("/terms/{id}/discussions", get(terms::get_discussions))
+        .route("/terms/{id}/resources", get(terms::list_resources).post(terms::add_resource))
+        .route("/terms/{id}/resources/{resource_id}", axum::routing::delete(terms::delete_resource))
+        .route("/terms/{id}/learning-status", post(terms::set_learning_status).delete(terms::remove_learning_status))
+        .route("/terms/{id}/session-progress", post(terms::set_session_progress))
+        .route("/terms/{id}/sessions", post(terms::create_session))
+        .route("/terms/{id}/sessions/{session_id}", put(terms::update_session).delete(terms::delete_session))
+        .route("/terms/{id}/sessions/{session_id}/tags", post(terms::add_session_tag).delete(terms::remove_session_tag))
+        .route("/terms/{id}/sessions/{session_id}/prereqs", post(terms::add_session_prereq).delete(terms::remove_session_prereq))
+        .route("/terms/{id}/course",
+               put(courses::set_term_course).delete(courses::unset_term_course))
+        .route("/homeworks",
+               get(term_homeworks::list_homeworks).post(term_homeworks::create_homework))
+        .route("/homeworks/{id}",
+               get(term_homeworks::get_homework)
+               .put(term_homeworks::update_homework)
+               .delete(term_homeworks::delete_homework))
+}
+
 fn course_routes() -> Router<AppState> {
     Router::new()
-        .route("/courses", get(courses::list_courses).post(courses::create_course))
-        .route("/courses/mine", get(courses::my_courses))
-        .route("/courses/{id}", get(courses::get_course).put(courses::update_course).delete(courses::delete_course))
-        .route("/courses/{id}/series", post(courses::add_series).delete(courses::remove_series))
-        .route("/courses/{id}/skill-trees", post(courses::add_skill_tree))
-        .route("/courses/{id}/patches", get(courses::list_patches))
-        .route("/courses/{id}/tags", post(courses::add_tag).delete(courses::remove_tag))
-        .route("/courses/{id}/textbooks", post(courses::add_textbook).delete(courses::remove_textbook))
-        .route("/courses/{id}/rate", post(courses::rate_course).delete(courses::unrate_course))
-        .route("/courses/{id}/reviews", get(courses::get_reviews))
-        .route("/courses/{id}/notes", get(courses::get_notes))
-        .route("/courses/{id}/discussions", get(courses::get_discussions))
-        .route("/courses/{id}/resources", get(courses::list_resources).post(courses::add_resource))
-        .route("/courses/{id}/resources/{resource_id}", axum::routing::delete(courses::delete_resource))
-        .route("/courses/{id}/learning-status", post(courses::set_learning_status).delete(courses::remove_learning_status))
-        .route("/courses/{id}/session-progress", post(courses::set_session_progress))
-        .route("/courses/{id}/sessions", post(courses::create_session))
-        .route("/courses/{id}/sessions/{session_id}", put(courses::update_session).delete(courses::delete_session))
-        .route("/courses/{id}/sessions/{session_id}/tags", post(courses::add_session_tag).delete(courses::remove_session_tag))
-        .route("/courses/{id}/sessions/{session_id}/prereqs", post(courses::add_session_prereq).delete(courses::remove_session_prereq))
-        .route("/courses/{id}/group",
-               put(course_groups::set_course_group).delete(course_groups::unset_course_group))
-        .route("/course-groups",
-               get(course_groups::list_course_groups).post(course_groups::create_course_group))
-        .route("/course-groups/{id}",
-               get(course_groups::get_course_group).delete(course_groups::delete_course_group))
-        .route("/homeworks",
-               get(course_homeworks::list_homeworks).post(course_homeworks::create_homework))
-        .route("/homeworks/{id}",
-               get(course_homeworks::get_homework)
-               .put(course_homeworks::update_homework)
-               .delete(course_homeworks::delete_homework))
+        .route("/courses",
+               get(courses::list_courses).post(courses::create_course))
+        .route("/courses/{id}",
+               get(courses::get_course).delete(courses::delete_course))
 }
 
 fn question_routes() -> Router<AppState> {

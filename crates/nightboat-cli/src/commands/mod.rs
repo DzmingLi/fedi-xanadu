@@ -6,6 +6,6 @@ pub mod admin;
 pub mod book;
 pub mod book_series;
 pub mod course;
-pub mod course_group;
+pub mod term;
 pub mod tree;
 pub mod util;

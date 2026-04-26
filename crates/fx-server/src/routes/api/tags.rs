@@ -301,7 +301,7 @@ pub struct SetTeachInput {
 // --- Teaching content for a tag page -----------------------------------
 //
 // Tag pages lead with what actually teaches the concept: articles (already
-// wired), plus books, book chapters, courses, and course sessions. Return
+// wired), plus books, book chapters, terms, and term sessions. Return
 // them in one call so the page doesn't need four round-trips.
 
 #[derive(serde::Serialize, sqlx::FromRow)]
@@ -325,7 +325,7 @@ pub struct TeachChapterRow {
 }
 
 #[derive(serde::Serialize, sqlx::FromRow)]
-pub struct TeachCourseRow {
+pub struct TeachTermRow {
     pub id: String,
     pub code: Option<String>,
     pub title: String,
@@ -335,18 +335,18 @@ pub struct TeachCourseRow {
 #[derive(serde::Serialize, sqlx::FromRow)]
 pub struct TeachSessionRow {
     pub id: String,
-    pub course_id: String,
+    pub term_id: String,
     pub sort_order: i32,
     pub topic: Option<String>,
-    pub course_title: String,
-    pub course_code: Option<String>,
+    pub term_title: String,
+    pub term_code: Option<String>,
 }
 
 #[derive(serde::Serialize)]
 pub struct TeachingContentResponse {
     pub books: Vec<TeachBookRow>,
     pub chapters: Vec<TeachChapterRow>,
-    pub courses: Vec<TeachCourseRow>,
+    pub terms: Vec<TeachTermRow>,
     pub sessions: Vec<TeachSessionRow>,
 }
 
@@ -361,7 +361,7 @@ pub async fn get_teaching_content(
 ) -> ApiResult<Json<TeachingContentResponse>> {
     let Some(tag_id) = tag_service::lookup_tag_id(&state.pool, &q.tag_id).await? else {
         return Ok(Json(TeachingContentResponse {
-            books: vec![], chapters: vec![], courses: vec![], sessions: vec![],
+            books: vec![], chapters: vec![], terms: vec![], sessions: vec![],
         }));
     };
 
@@ -399,10 +399,10 @@ pub async fn get_teaching_content(
     .fetch_all(&state.pool)
     .await?;
 
-    let courses = sqlx::query_as::<_, TeachCourseRow>(
+    let terms = sqlx::query_as::<_, TeachTermRow>(
         "SELECT c.id, c.code, c.title, c.institution \
-         FROM courses c \
-         JOIN course_tags ctg ON ctg.course_id = c.id \
+         FROM terms c \
+         JOIN term_tags ctg ON ctg.term_id = c.id \
          WHERE ctg.tag_id = $1 \
          ORDER BY c.updated_at DESC \
          LIMIT 50",
@@ -412,11 +412,11 @@ pub async fn get_teaching_content(
     .await?;
 
     let sessions = sqlx::query_as::<_, TeachSessionRow>(
-        "SELECT cs.id, cs.course_id, cs.sort_order, cs.topic, \
-                c.title AS course_title, c.code AS course_code \
-         FROM course_sessions cs \
-         JOIN courses c ON c.id = cs.course_id \
-         JOIN course_session_tags cst ON cst.session_id = cs.id \
+        "SELECT cs.id, cs.term_id, cs.sort_order, cs.topic, \
+                c.title AS term_title, c.code AS term_code \
+         FROM term_sessions cs \
+         JOIN terms c ON c.id = cs.term_id \
+         JOIN term_session_tags cst ON cst.session_id = cs.id \
          WHERE cst.tag_id = $1 \
          ORDER BY c.code NULLS LAST, cs.sort_order \
          LIMIT 100",
@@ -425,7 +425,7 @@ pub async fn get_teaching_content(
     .fetch_all(&state.pool)
     .await?;
 
-    Ok(Json(TeachingContentResponse { books, chapters, courses, sessions }))
+    Ok(Json(TeachingContentResponse { books, chapters, terms, sessions }))
 }
 
 pub async fn set_teach(

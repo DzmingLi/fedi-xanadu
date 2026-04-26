@@ -76,12 +76,12 @@
   const lazyListings = () => import('./routes/Listings.svelte');
   const lazyListingDetail = () => import('./routes/ListingDetail.svelte');
   const lazyNewListing = () => import('./routes/NewListing.svelte');
-  const lazyCourses = () => import('./routes/Courses.svelte');
-  const lazyCourseDetail = () => import('./routes/CourseDetail.svelte');
-  const lazyCourseReviews = () => import('./routes/CourseReviews.svelte');
-  const lazyCourseNotes = () => import('./routes/CourseNotes.svelte');
-  const lazyCourseDiscussions = () => import('./routes/CourseDiscussions.svelte');
-  const lazyNewCourse = () => import('./routes/NewCourse.svelte');
+  const lazyTerms = () => import('./routes/Terms.svelte');
+  const lazyTermDetail = () => import('./routes/TermDetail.svelte');
+  const lazyTermReviews = () => import('./routes/TermReviews.svelte');
+  const lazyTermNotes = () => import('./routes/TermNotes.svelte');
+  const lazyTermDiscussions = () => import('./routes/TermDiscussions.svelte');
+  const lazyNewTerm = () => import('./routes/NewTerm.svelte');
   const lazyPublications = () => import('./routes/Publications.svelte');
   const lazyPublicationDetail = () => import('./routes/PublicationDetail.svelte');
   const lazySearch = () => import('./routes/Search.svelte');
@@ -152,53 +152,53 @@
       <mod.default did={route.params.did || ''} />
     {/await}
   </div>
-{:else if route.page === 'course-detail'}
+{:else if route.page === 'term-detail'}
   <div class="profile-nav">
     <NavBar />
   </div>
   <div class="profile-container">
-    {#await lazyCourseDetail() then mod}
+    {#await lazyTermDetail() then mod}
       <mod.default id={route.params.id || ''} />
     {/await}
   </div>
-{:else if route.page === 'course-reviews'}
+{:else if route.page === 'term-reviews'}
   <div class="profile-nav">
     <NavBar />
   </div>
   <div class="profile-container">
-    {#await lazyCourseReviews() then mod}
+    {#await lazyTermReviews() then mod}
       <mod.default id={route.params.id || ''} />
     {/await}
   </div>
-{:else if route.page === 'course-notes'}
+{:else if route.page === 'term-notes'}
   <div class="profile-nav">
     <NavBar />
   </div>
   <div class="profile-container">
-    {#await lazyCourseNotes() then mod}
+    {#await lazyTermNotes() then mod}
       <mod.default id={route.params.id || ''} />
     {/await}
   </div>
-{:else if route.page === 'course-discussions'}
+{:else if route.page === 'term-discussions'}
   <div class="profile-nav">
     <NavBar />
   </div>
   <div class="profile-container">
-    {#await lazyCourseDiscussions() then mod}
+    {#await lazyTermDiscussions() then mod}
       <mod.default id={route.params.id || ''} />
     {/await}
   </div>
-{:else if route.page === 'courses' || route.page === 'new-course'}
+{:else if route.page === 'terms' || route.page === 'new-term'}
   <div class="profile-nav">
     <NavBar />
   </div>
   <div class="profile-container">
-    {#if route.page === 'courses'}
-      {#await lazyCourses() then mod}
+    {#if route.page === 'terms'}
+      {#await lazyTerms() then mod}
         <mod.default />
       {/await}
     {:else}
-      {#await lazyNewCourse() then mod}
+      {#await lazyNewTerm() then mod}
         <mod.default />
       {/await}
     {/if}

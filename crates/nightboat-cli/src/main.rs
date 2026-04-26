@@ -11,6 +11,7 @@ use commands::admin::{AdminCommand, handle_admin};
 use commands::book::{BookCommand, handle_book};
 use commands::book_series::{BookSeriesCommand, handle_book_series};
 use commands::course::{CourseCommand, handle_course};
+use commands::term::{TermCommand, handle_term};
 use commands::tree::{TreeCommand, handle_tree};
 
 const CONFIG_DIR: &str = "nightboat";
@@ -169,16 +170,15 @@ enum Command {
         #[command(subcommand)]
         action: BookSeriesCommand,
     },
-    /// Manage courses and sessions
+    /// Manage terms and sessions (one term = one iteration of a course)
+    Term {
+        #[command(subcommand)]
+        action: TermCommand,
+    },
+    /// Manage courses (umbrella linking different iterations / terms together)
     Course {
         #[command(subcommand)]
         action: CourseCommand,
-    },
-    /// Manage course groups (link different iterations of the same course)
-    #[command(name = "course-group")]
-    CourseGroup {
-        #[command(subcommand)]
-        action: commands::course_group::CourseGroupCommand,
     },
     /// Admin operations (manage platform users, publish as any user)
     Admin {
@@ -429,7 +429,7 @@ async fn main() -> Result<()> {
                 authors: vec![],
                 invites: invite,
                 book_chapter_id: None,
-                course_session_id: None,
+                term_session_id: None,
             };
             let article: serde_json::Value = client()
                 .post(format!("{base}/questions"))
@@ -485,7 +485,7 @@ async fn main() -> Result<()> {
                 }))
             } else if book_id.is_some() {
                 Some(fx_core::models::CategoryMetadata::Review {
-                    book_id, edition_id: None, course_id: None,
+                    book_id, edition_id: None, term_id: None,
                 })
             } else {
                 None
@@ -510,7 +510,7 @@ async fn main() -> Result<()> {
                 authors: vec![],
                 invites: vec![],
                 book_chapter_id: None,
-                course_session_id: None,
+                term_session_id: None,
             };
 
             // Collect resource files (expanding directories recursively)
@@ -663,12 +663,12 @@ async fn main() -> Result<()> {
             handle_tree(&base, &config, action).await?;
         }
 
-        Command::Course { action } => {
-            handle_course(&base, &config, action).await?;
+        Command::Term { action } => {
+            handle_term(&base, &config, action).await?;
         }
 
-        Command::CourseGroup { action } => {
-            commands::course_group::handle_course_group(&base, &config, action).await?;
+        Command::Course { action } => {
+            handle_course(&base, &config, action).await?;
         }
 
         Command::Book { action } => {

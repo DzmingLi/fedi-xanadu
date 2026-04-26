@@ -7,7 +7,7 @@ import type { ContentKind } from "./ContentKind";
  * fields merged with one specific localization (source-language by default)
  * plus joined author info and aggregate counts.
  */
-export type Article = { repo_uri: string, source_path: string, author_did: string, author_handle: string | null, author_display_name: string | null, author_avatar: string | null, author_reputation: number, kind: ContentKind, category: string, license: string, prereq_threshold: number, restricted: boolean, answer_count: number, cover_url: string | null, cover_file: string | null, question_repo_uri: string | null, question_source_path: string | null, book_id: string | null, edition_id: string | null, course_id: string | null, book_chapter_id: string | null, course_session_id: string | null, lang: string, 
+export type Article = { repo_uri: string, source_path: string, author_did: string, author_handle: string | null, author_display_name: string | null, author_avatar: string | null, author_reputation: number, kind: ContentKind, category: string, license: string, prereq_threshold: number, restricted: boolean, answer_count: number, cover_url: string | null, cover_file: string | null, question_repo_uri: string | null, question_source_path: string | null, book_id: string | null, edition_id: string | null, term_id: string | null, book_chapter_id: string | null, term_session_id: string | null, lang: string, 
 /**
  * ATProto record URI for this specific localization. NULL for series
  * chapters and for server-only Q&A.

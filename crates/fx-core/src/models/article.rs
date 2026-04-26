@@ -72,11 +72,11 @@ pub struct Article {
     pub book_id: Option<String>,
     pub edition_id: Option<String>,
     #[sqlx(default)]
-    pub course_id: Option<String>,
+    pub term_id: Option<String>,
     #[sqlx(default)]
     pub book_chapter_id: Option<String>,
     #[sqlx(default)]
-    pub course_session_id: Option<String>,
+    pub term_session_id: Option<String>,
 
     // Selected localization (source-language by default in the base query)
     pub lang: String,
@@ -186,7 +186,7 @@ pub struct CreateArticle {
     #[serde(default)]
     pub book_chapter_id: Option<String>,
     #[serde(default)]
-    pub course_session_id: Option<String>,
+    pub term_session_id: Option<String>,
 }
 
 impl CreateArticle {
@@ -204,10 +204,10 @@ impl CreateArticle {
             _ => None,
         }
     }
-    pub fn target_course_id(&self) -> Option<&str> {
+    pub fn target_term_id(&self) -> Option<&str> {
         match &self.metadata {
-            Some(CategoryMetadata::Review { course_id, .. }) => course_id.as_deref(),
-            Some(CategoryMetadata::Note   { course_id, .. }) => course_id.as_deref(),
+            Some(CategoryMetadata::Review { term_id, .. }) => term_id.as_deref(),
+            Some(CategoryMetadata::Note   { term_id, .. }) => term_id.as_deref(),
             _ => None,
         }
     }
@@ -222,16 +222,16 @@ impl CreateArticle {
         }
         self.book_chapter_id.as_deref()
     }
-    pub fn target_course_session_id(&self) -> Option<&str> {
+    pub fn target_term_session_id(&self) -> Option<&str> {
         if self.category.as_deref() == Some("review") {
             return None;
         }
-        if let Some(CategoryMetadata::Note { course_session_id, .. }) = &self.metadata {
-            if course_session_id.is_some() {
-                return course_session_id.as_deref();
+        if let Some(CategoryMetadata::Note { term_session_id, .. }) = &self.metadata {
+            if term_session_id.is_some() {
+                return term_session_id.as_deref();
             }
         }
-        self.course_session_id.as_deref()
+        self.term_session_id.as_deref()
     }
 }
 
@@ -245,15 +245,15 @@ pub enum CategoryMetadata {
     Review {
         book_id: Option<String>,
         edition_id: Option<String>,
-        course_id: Option<String>,
+        term_id: Option<String>,
     },
     #[serde(rename = "note")]
     Note {
         book_id: Option<String>,
         edition_id: Option<String>,
-        course_id: Option<String>,
+        term_id: Option<String>,
         book_chapter_id: Option<String>,
-        course_session_id: Option<String>,
+        term_session_id: Option<String>,
     },
     #[serde(rename = "experience")]
     Experience(CreateExperienceMetadata),

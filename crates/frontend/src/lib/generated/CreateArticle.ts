@@ -7,4 +7,4 @@ export type CreateArticle = { title: string, summary: string | null, content: st
 /**
  * Repo-relative path of the source article this content translates.
  */
-translation_of: string | null, restricted: boolean | null, category: string | null, tags: Array<string>, prereqs: Array<ArticlePrereq>, related: Array<string>, topics: Array<string>, series_id: string | null, authors: Array<string>, invites: Array<string>, metadata: CategoryMetadata | null, book_chapter_id: string | null, course_session_id: string | null, };
+translation_of: string | null, restricted: boolean | null, category: string | null, tags: Array<string>, prereqs: Array<ArticlePrereq>, related: Array<string>, topics: Array<string>, series_id: string | null, authors: Array<string>, invites: Array<string>, metadata: CategoryMetadata | null, book_chapter_id: string | null, term_session_id: string | null, };

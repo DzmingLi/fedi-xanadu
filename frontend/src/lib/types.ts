@@ -53,7 +53,7 @@ export interface Article {
   book_id: string | null;
   edition_id: string | null;
   book_chapter_id: string | null;
-  course_session_id: string | null;
+  term_session_id: string | null;
   answer_count: number;
   vote_score: number;
   bookmark_count: number;
@@ -789,8 +789,8 @@ export interface Listing {
   updated_at: string;
 }
 
-// Courses
-export interface Course {
+// Terms (per-iteration: one Term per offering of an umbrella Course)
+export interface Term {
   id: string;
   did: string;
   title: string;
@@ -807,7 +807,7 @@ export interface Course {
   updated_at: string;
 }
 
-export interface CourseListItem {
+export interface TermListItem {
   id: string;
   did: string;
   author_handle: string | null;
@@ -825,7 +825,7 @@ export interface CourseListItem {
   created_at: string;
 }
 
-export interface CourseSeries {
+export interface TermSeries {
   series_id: string;
   title: string;
   summary: string | null;
@@ -833,14 +833,14 @@ export interface CourseSeries {
   sort_order: number;
 }
 
-export interface CourseSkillTree {
+export interface TermSkillTree {
   tree_uri: string;
   title: string;
   role: string;
 }
 
-export interface CoursePrereq {
-  prereq_course_id: string;
+export interface TermPrereq {
+  prereq_term_id: string;
   title: string;
   code: string | null;
   institution: string | null;
@@ -874,20 +874,20 @@ export interface Attachment {
   required: boolean;
 }
 
-export interface CourseSession {
+export interface TermSession {
   id: string;
-  course_id: string;
+  term_id: string;
   sort_order: number;
   topic?: string | null;
   date?: string | null;
   attachments: Attachment[];
   /** 'lecture' (default), 'section' (full-width thematic divider), or 'exam'. */
   kind?: 'lecture' | 'section' | 'exam';
-  tags: CourseTag[];
-  prereqs: CourseTag[];
+  tags: TermTag[];
+  prereqs: TermTag[];
 }
 
-export interface CourseTextbook {
+export interface TermTextbook {
   book_id: string;
   title: L;
   authors: string[];
@@ -896,71 +896,71 @@ export interface CourseTextbook {
   sort_order: number;
 }
 
-export interface CourseTag {
+export interface TermTag {
   tag_id: string;
   tag_name: string;
 }
 
-export interface CourseRatingStats {
+export interface TermRatingStats {
   avg_rating: number;
   rating_count: number;
 }
 
-export interface CourseReview {
+export interface TermReview {
   at_uri: string;
   title: string;
   summary: string;
   did: string;
   author_handle: string | null;
   author_display_name: string | null;
-  course_session_id: string | null;
+  term_session_id: string | null;
   created_at: string;
   vote_score: number;
   comment_count: number;
 }
 
-export interface CourseDetail {
-  course: Course;
+export interface TermDetail {
+  term: Term;
   syllabus: string;
   authors: LinkedAuthor[];
-  sessions: CourseSession[];
-  textbooks: CourseTextbook[];
-  tags: CourseTag[];
-  series: CourseSeries[];
-  skill_trees: CourseSkillTree[];
-  prerequisites: CoursePrereq[];
-  rating: CourseRatingStats;
-  reviews: CourseReview[];
+  sessions: TermSession[];
+  textbooks: TermTextbook[];
+  tags: TermTag[];
+  series: TermSeries[];
+  skill_trees: TermSkillTree[];
+  prerequisites: TermPrereq[];
+  rating: TermRatingStats;
+  reviews: TermReview[];
   review_count: number;
-  notes: CourseReview[];
+  notes: TermReview[];
   note_count: number;
   discussions: Comment[];
   discussion_count: number;
   my_rating: number | null;
-  my_learning_status: CourseLearningStatus | null;
+  my_learning_status: TermLearningStatus | null;
   my_session_progress: SessionProgress[];
-  resources: CourseResource[];
-  siblings: CourseSibling[];
+  resources: TermResource[];
+  siblings: TermSibling[];
 }
 
-export interface CourseSibling {
+export interface TermSibling {
   id: string;
   title: string;
   semester: string | null;
   institution: string | null;
 }
 
-export interface CourseResource {
+export interface TermResource {
   id: string;
-  course_id: string;
+  term_id: string;
   kind: string;
   label: string;
   url: string;
   position: number;
 }
 
-export interface CourseLearningStatus {
-  course_id: string;
+export interface TermLearningStatus {
+  term_id: string;
   user_did: string;
   status: 'want_to_learn' | 'learning' | 'finished' | 'dropped';
   progress: number;
@@ -968,19 +968,19 @@ export interface CourseLearningStatus {
 }
 
 export interface SessionProgress {
-  course_id: string;
+  term_id: string;
   session_id: string;
   user_did: string;
   completed: boolean;
   completed_at: string | null;
 }
 
-export interface PagedCourseReviews {
-  items: CourseReview[];
+export interface PagedTermReviews {
+  items: TermReview[];
   total: number;
 }
 
-export interface PagedCourseDiscussions {
+export interface PagedTermDiscussions {
   items: Comment[];
   total: number;
 }

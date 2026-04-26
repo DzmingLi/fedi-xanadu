@@ -323,7 +323,7 @@ mod tests {
             topics: vec![],
             series_id: None,
             book_chapter_id: None,
-            course_session_id: None,
+            term_session_id: None,
         };
         assert!(validate_create_article(&input).is_ok());
     }
@@ -350,7 +350,7 @@ mod tests {
             topics: vec![],
             series_id: None,
             book_chapter_id: None,
-            course_session_id: None,
+            term_session_id: None,
         };
         match validate_create_article(&input) {
             Err(crate::Error::Validation(errors)) => {

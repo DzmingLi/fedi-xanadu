@@ -40,10 +40,16 @@ export const routes: Route[] = [
   { pattern: '/listings', page: 'listings' },
   { pattern: '/listing', page: 'listing-detail' },
   { pattern: '/new-listing', page: 'new-listing' },
+  // Per-iteration (Term) routes — one Term = one offering of an umbrella Course.
+  { pattern: '/terms', page: 'terms' },
+  { pattern: '/term-reviews', page: 'term-reviews' },
+  { pattern: '/term-notes', page: 'term-notes' },
+  { pattern: '/term-discussions', page: 'term-discussions' },
+  { pattern: '/term', page: 'term-detail' },
+  { pattern: '/new-term', page: 'new-term' },
+  // Umbrella (Course) routes — aggregate of all Terms for a course.
+  // TODO: Svelte components not yet implemented; routes 404 cleanly until built.
   { pattern: '/courses', page: 'courses' },
-  { pattern: '/course-reviews', page: 'course-reviews' },
-  { pattern: '/course-notes', page: 'course-notes' },
-  { pattern: '/course-discussions', page: 'course-discussions' },
   { pattern: '/course', page: 'course-detail' },
   { pattern: '/new-course', page: 'new-course' },
   { pattern: '/author', page: 'author' },

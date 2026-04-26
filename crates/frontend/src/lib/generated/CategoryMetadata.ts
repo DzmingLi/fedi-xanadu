@@ -2,4 +2,4 @@
 import type { CreateExperienceMetadata } from "./CreateExperienceMetadata";
 import type { CreatePaperMetadata } from "./CreatePaperMetadata";
 
-export type CategoryMetadata = { "type": "paper" } & CreatePaperMetadata | { "type": "review", book_id: string | null, edition_id: string | null, course_id: string | null, } | { "type": "note", book_id: string | null, edition_id: string | null, course_id: string | null, book_chapter_id: string | null, course_session_id: string | null, } | { "type": "experience" } & CreateExperienceMetadata;
+export type CategoryMetadata = { "type": "paper" } & CreatePaperMetadata | { "type": "review", book_id: string | null, edition_id: string | null, term_id: string | null, } | { "type": "note", book_id: string | null, edition_id: string | null, term_id: string | null, book_chapter_id: string | null, term_session_id: string | null, } | { "type": "experience" } & CreateExperienceMetadata;

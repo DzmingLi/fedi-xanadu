@@ -31,7 +31,7 @@ pub struct Author {
 pub struct AuthorDetail {
     pub author: Author,
     pub books: Vec<AuthorBookEntry>,
-    pub courses: Vec<AuthorCourseEntry>,
+    pub terms: Vec<AuthorTermEntry>,
     pub article_count: i64,
 }
 
@@ -43,21 +43,21 @@ pub struct AuthorBookEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct AuthorCourseEntry {
-    pub course_id: String,
+pub struct AuthorTermEntry {
+    pub term_id: String,
     pub title: String,
     pub code: Option<String>,
     pub institution: Option<String>,
     pub semester: Option<String>,
 }
 
-pub async fn list_courses_by_author(
+pub async fn list_terms_by_author(
     pool: &PgPool,
     author_id: &str,
-) -> crate::Result<Vec<AuthorCourseEntry>> {
-    let rows = sqlx::query_as::<_, AuthorCourseEntry>(
-        "SELECT c.id AS course_id, c.title, c.code, c.institution, c.semester \
-         FROM course_authors ca JOIN courses c ON c.id = ca.course_id \
+) -> crate::Result<Vec<AuthorTermEntry>> {
+    let rows = sqlx::query_as::<_, AuthorTermEntry>(
+        "SELECT c.id AS term_id, c.title, c.code, c.institution, c.semester \
+         FROM term_authors ca JOIN terms c ON c.id = ca.term_id \
          WHERE ca.author_id = $1 ORDER BY ca.position, c.created_at DESC",
     )
     .bind(author_id)
