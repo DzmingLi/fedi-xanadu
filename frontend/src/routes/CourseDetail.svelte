@@ -3,7 +3,7 @@
   import { getAuth } from '../lib/auth.svelte';
   import { t } from '../lib/i18n/index.svelte';
   import { navigate } from '../lib/router';
-  import CommentThread from '../components/CommentThread.svelte';
+  import CommentThread from '../lib/components/CommentThread.svelte';
   import type { CourseDetail } from '../lib/types';
 
   let { id }: { id: string } = $props();
