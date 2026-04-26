@@ -72,10 +72,6 @@ pub enum BookCommand {
         /// Subtitle of the first edition
         #[arg(long)]
         edition_subtitle: Option<String>,
-        /// Skip creating a first edition — create only the bare book shell.
-        /// Use this when you want to add editions explicitly via `add-edition`.
-        #[arg(long)]
-        no_edition: bool,
     },
     /// Update a book's info
     Update {
@@ -434,11 +430,18 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
 
         BookCommand::Create { title, subtitle, authors, desc, cover_url, tags, prereqs,
                              exam_tags,
-                             edition, lang, isbn, publisher, year, translators, purchase_links, edition_cover_url, edition_subtitle, no_edition } => {
+                             edition, lang, isbn, publisher, year, translators, purchase_links, edition_cover_url, edition_subtitle } => {
             let title_val = util::parse_i18n(&title);
             let subtitle_val = subtitle.as_deref().map(util::parse_i18n).unwrap_or(serde_json::json!({}));
             let desc_val = desc.as_deref().map(util::parse_i18n).unwrap_or(serde_json::json!({}));
             let exam_tags_val: Option<&Vec<String>> = if exam_tags.is_empty() { None } else { Some(&exam_tags) };
+            let links: Vec<serde_json::Value> = if let Some(ref pl) = purchase_links {
+                serde_json::from_str(pl).context("Invalid JSON for --purchase-links")?
+            } else {
+                vec![]
+            };
+            // Backend requires first_edition; bundling it into the same POST
+            // means a book never lives without at least one edition.
             let body = serde_json::json!({
                 "title": title_val,
                 "subtitle": subtitle_val,
@@ -448,6 +451,18 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
                 "tags": tags,
                 "prereqs": prereqs,
                 "exam_tags": exam_tags_val,
+                "first_edition": {
+                    "title": title,
+                    "subtitle": edition_subtitle,
+                    "edition_name": edition,
+                    "lang": lang,
+                    "isbn": isbn,
+                    "publisher": publisher,
+                    "year": year,
+                    "translators": translators,
+                    "purchase_links": links,
+                    "cover_url": edition_cover_url.or(cover_url.clone()),
+                },
             });
 
             let resp: serde_json::Value = client()
@@ -464,49 +479,7 @@ pub async fn handle_book(base: &str, config: &Config, action: BookCommand) -> Re
             }
             println!("Created book: {title}");
             println!("ID: {book_id}");
-
-            if no_edition {
-                // Silence unused-variable warnings on the edition-only flags
-                let _ = (edition, lang, isbn, publisher, year, translators,
-                         purchase_links, edition_cover_url, edition_subtitle);
-                println!("(skipped first edition — add one with `nbt book add-edition`)");
-                return Ok(());
-            }
-
-            let links: Vec<serde_json::Value> = if let Some(ref pl) = purchase_links {
-                serde_json::from_str(pl).context("Invalid JSON for --purchase-links")?
-            } else {
-                vec![]
-            };
-            let ed_body = serde_json::json!({
-                "book_id": book_id,
-                "title": title,
-                "subtitle": edition_subtitle,
-                "edition_name": edition,
-                "lang": lang,
-                "isbn": isbn,
-                "publisher": publisher,
-                "year": year,
-                "translators": translators,
-                "purchase_links": links,
-                "cover_url": edition_cover_url,
-            });
-
-            let ed_response = client()
-                .post(format!("{base}/books/{book_id}/editions"))
-                .bearer_auth(token)
-                .json(&ed_body)
-                .send().await?;
-            if !ed_response.status().is_success() {
-                let status = ed_response.status();
-                let body = ed_response.text().await.unwrap_or_default();
-                bail!("Create first edition failed ({status}): {body}");
-            }
-            let ed_resp: serde_json::Value = ed_response.json().await?;
-
-            let eid = ed_resp["id"].as_str().unwrap_or("?");
-            println!("Created edition: {edition} ({lang})");
-            println!("Edition ID: {eid}");
+            println!("First edition: {edition} ({lang})");
         }
 
         BookCommand::Update { id, title, desc, cover_url, summary, exam_tags, clear_exam } => {

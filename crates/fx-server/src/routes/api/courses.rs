@@ -331,6 +331,15 @@ pub async fn add_resource(
     Path(id): Path<String>,
     Json(input): Json<AddCourseResourceInput>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    // Homework belongs on the lecture it was released in, not as a
+    // free-floating course-level item — otherwise it ends up duplicated
+    // in both the calendar and the supplementary panel (CS6110, CS229
+    // both had this problem). Block the kind here so it can't recur.
+    if input.kind.eq_ignore_ascii_case("homework") {
+        return Err(AppError(fx_core::Error::BadRequest(
+            "homework cannot be a course-level resource — attach it to the lecture session it belongs to".into(),
+        )));
+    }
     let new_id = course_service::add_course_resource(
         &state.pool, &id, &input.kind, &input.label, &input.url, input.position, &user.did,
     ).await?;

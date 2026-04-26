@@ -453,12 +453,12 @@
                 </tr>
               </thead>
               <tbody>
-                {#each detail.sessions as s}
+                {#each detail.sessions as s, i}
                   {@const atts = s.attachments ?? []}
                   {@const isExam = atts.length === 0}
                   <tr class:session-exam={isExam}>
                     <td class="session-num">
-                      {s.sort_order}
+                      {i + 1}
                       {#if getAuth() && !isExam}
                         <button
                           class="session-check"

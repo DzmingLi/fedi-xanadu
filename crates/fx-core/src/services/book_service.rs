@@ -43,6 +43,10 @@ pub struct CreateBook {
     pub abbreviation: Option<String>,
     #[serde(default)]
     pub exam_tags: Option<Vec<String>>,
+    /// First edition is required — a book without any edition is just a
+    /// shell. Past CS-textbook bulk imports left orphans like that and
+    /// they're useless: no cover, no link, no chapter scope.
+    pub first_edition: CreateEdition,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
@@ -101,6 +105,19 @@ pub async fn create_book(
     input: &CreateBook,
     created_by: &str,
 ) -> crate::Result<Book> {
+    // ISBN uniqueness check up-front so we don't create a book and then
+    // roll back a partially-inserted edition.
+    if let Some(isbn) = &input.first_edition.isbn {
+        let existing: Option<String> = sqlx::query_scalar(
+            "SELECT book_id FROM book_editions WHERE isbn = $1"
+        ).bind(isbn).fetch_optional(pool).await?;
+        if let Some(existing_book_id) = existing {
+            return Err(crate::Error::BadRequest(
+                format!("ISBN {isbn} already exists on book {existing_book_id}")
+            ));
+        }
+    }
+
     let mut tx = pool.begin().await?;
 
     // Insert into content table so content_teaches FK works
@@ -124,6 +141,34 @@ pub async fn create_book(
     .bind(created_by)
     .bind(&input.abbreviation)
     .bind(input.exam_tags.as_deref().filter(|t| !t.is_empty()))
+    .execute(&mut *tx)
+    .await?;
+
+    // First edition is mandatory. Bundling it into the same transaction
+    // means callers can't ever leave a book in the orphan state we used
+    // to see (CS6110 textbook bulk-import left several Pierce/Gunter/
+    // Mitchell book shells that no one could attach editions to).
+    let edition_id = format!("ed-{}", crate::util::tid());
+    let ed = &input.first_edition;
+    let links_json = sqlx::types::Json(&ed.purchase_links);
+    let status = ed.status.as_deref().unwrap_or("published");
+    sqlx::query(
+        "INSERT INTO book_editions (id, book_id, edition_name, title, subtitle, lang, isbn, publisher, year, translators, purchase_links, cover_url, status) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+    )
+    .bind(&edition_id)
+    .bind(id)
+    .bind(&ed.edition_name)
+    .bind(&ed.title)
+    .bind(&ed.subtitle)
+    .bind(&ed.lang)
+    .bind(&ed.isbn)
+    .bind(&ed.publisher)
+    .bind(&ed.year)
+    .bind(&ed.translators)
+    .bind(&links_json)
+    .bind(&ed.cover_url)
+    .bind(status)
     .execute(&mut *tx)
     .await?;
 
