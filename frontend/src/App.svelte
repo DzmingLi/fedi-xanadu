@@ -203,7 +203,15 @@
       {/await}
     {/if}
   </div>
-{:else if route.page !== 'book' && route.page !== 'books' && route.page !== 'author'}
+{:else if route.page !== 'book'
+       && route.page !== 'books'
+       && route.page !== 'author'
+       && route.page !== 'paper'
+       && route.page !== 'papers'
+       && route.page !== 'publications'
+       && route.page !== 'publication-detail'
+       && route.page !== 'book-series-list'
+       && route.page !== 'book-series-detail'}
   <div class="top-nav">
     <NavBar />
   </div>
