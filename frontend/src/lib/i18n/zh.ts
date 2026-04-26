@@ -939,6 +939,7 @@ export default {
   'course.supplementary': '补充阅读',
   'course.notes': '讲义',
   'course.slides': '幻灯',
+  'course.recitation': '习题课',
   'course.reading': '阅读',
   'course.outline': '大纲',
   'course.summary': '摘要',
@@ -992,5 +993,28 @@ export default {
   'roadmap.planned': '计划中',
   'roadmap.inProgress': '进行中',
   'roadmap.done': '已完成',
+
+  // Article + tag-management strings missing from earlier rounds
+  'article.paperBacklinkPrefix': '这是论文的标准文本',
+  'common.submit': '提交',
+  'tags.deleteReasonPlaceholder': '为什么应该删除这个标签？',
+  'tags.deleteSubmitted': '删除请求已提交 —— 等待维护者审核。',
+  'tags.requestDelete': '申请删除',
+
+  // Papers
+  'paper.papers': '论文',
+  'paper.directoryBlurb': '聚合各镜像源的学术论文，附带讨论与笔记。',
+  'paper.importPlaceholder': 'DOI 或 arXiv id —— 例如 10.1145/… 或 2401.12345',
+  'paper.importBtn': '从 OpenAlex 导入',
+  'paper.importing': '导入中…',
+  'paper.empty': '暂无论文。',
+  'paper.abstract': '摘要',
+  'paper.versions': '版本',
+  'paper.discussion': '讨论',
+  'paper.readNative': '在 NightBoat 上阅读',
+  'paper.preprint': '预印本',
+  'paper.accepted': '已接收',
+  'paper.published': '已发表',
+  'paper.native': 'NightBoat 版',
 
 } as const;

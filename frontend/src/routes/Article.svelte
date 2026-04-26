@@ -512,7 +512,7 @@ try {
         <a class="paper-backlink" href="/paper?id={encodeURIComponent(paperEntity.id)}">
           <span class="paper-backlink-icon">📄</span>
           <span class="paper-backlink-label">
-            {t('article.paperBacklinkPrefix') || 'This is the canonical text of paper'}
+            {t('article.paperBacklinkPrefix')}
           </span>
           <span class="paper-backlink-title">
             {paperEntity.title?.en || paperEntity.title?.zh || Object.values(paperEntity.title || {})[0] || ''}

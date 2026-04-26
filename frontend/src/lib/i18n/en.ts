@@ -939,6 +939,7 @@ export default {
   'course.supplementary': 'Supplementary',
   'course.notes': 'Notes',
   'course.slides': 'Slides',
+  'course.recitation': 'Recitation',
   'course.reading': 'Reading',
   'course.outline': 'Outline',
   'course.summary': 'Summary',
@@ -992,5 +993,28 @@ export default {
   'roadmap.planned': 'Planned',
   'roadmap.inProgress': 'In Progress',
   'roadmap.done': 'Done',
+
+  // Article + tag-management strings missing from earlier rounds
+  'article.paperBacklinkPrefix': 'This is the canonical text of paper',
+  'common.submit': 'Submit',
+  'tags.deleteReasonPlaceholder': 'Why should this tag be deleted?',
+  'tags.deleteSubmitted': 'Deletion request submitted — a maintainer will review it.',
+  'tags.requestDelete': 'Request deletion',
+
+  // Papers
+  'paper.papers': 'Papers',
+  'paper.directoryBlurb': 'Discussion and notes for academic papers, aggregated across mirrors.',
+  'paper.importPlaceholder': 'DOI or arXiv id — e.g. 10.1145/… or 2401.12345',
+  'paper.importBtn': 'Import from OpenAlex',
+  'paper.importing': 'Importing…',
+  'paper.empty': 'No papers yet.',
+  'paper.abstract': 'Abstract',
+  'paper.versions': 'Versions',
+  'paper.discussion': 'Discussion',
+  'paper.readNative': 'Read on NightBoat',
+  'paper.preprint': 'Preprint',
+  'paper.accepted': 'Accepted',
+  'paper.published': 'Published',
+  'paper.native': 'NightBoat',
 
 } as const;

@@ -25,10 +25,10 @@
   // Per-version label for the pill next to the link.
   function versionBadge(kind: string): string {
     switch (kind) {
-      case 'preprint':  return t('paper.preprint')  || 'Preprint';
-      case 'accepted':  return t('paper.accepted')  || 'Accepted';
-      case 'published': return t('paper.published') || 'Published';
-      case 'native':    return t('paper.native')    || 'NightBoat';
+      case 'preprint':  return t('paper.preprint');
+      case 'accepted':  return t('paper.accepted');
+      case 'published': return t('paper.published');
+      case 'native':    return t('paper.native');
       default:          return kind;
     }
   }
@@ -108,21 +108,21 @@
 
     {#if loc(detail.paper.abstract_)}
       <section class="paper-abstract">
-        <h2>{t('paper.abstract') || 'Abstract'}</h2>
+        <h2>{t('paper.abstract')}</h2>
         <p>{loc(detail.paper.abstract_)}</p>
       </section>
     {/if}
 
     {#if detail.versions.length > 0}
       <section class="paper-versions">
-        <h2>{t('paper.versions') || 'Versions'}</h2>
+        <h2>{t('paper.versions')}</h2>
         <ul class="version-list">
           {#each detail.versions as v}
             <li class="version-item">
               <span class="version-kind kind-{v.kind}">{versionBadge(v.kind)}</span>
               {#if v.kind === 'native' && v.article_uri}
                 <a href="/article?uri={encodeURIComponent(v.article_uri)}" class="version-link">
-                  {v.label || (t('paper.readNative') || 'Read on NightBoat')}
+                  {v.label || t('paper.readNative')}
                 </a>
               {:else if v.url}
                 <a href={v.url} target="_blank" rel="noopener" class="version-link">
@@ -137,7 +137,7 @@
     {/if}
 
     <section class="paper-discussion">
-      <h2>{t('paper.discussion') || 'Discussion'}</h2>
+      <h2>{t('paper.discussion')}</h2>
       <CommentThread contentUri={contentUri} />
     </section>
   </article>

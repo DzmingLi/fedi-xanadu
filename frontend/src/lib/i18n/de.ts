@@ -939,6 +939,7 @@ export default {
   'course.supplementary': 'Ergänzende Lektüre',
   'course.notes': 'Notizen',
   'course.slides': 'Folien',
+  'course.recitation': 'Übung',
   'course.reading': 'Lektüre',
   'course.outline': 'Übersicht',
   'course.summary': 'Zusammenfassung',
@@ -992,5 +993,28 @@ export default {
   'roadmap.planned': 'Geplant',
   'roadmap.inProgress': 'In Arbeit',
   'roadmap.done': 'Erledigt',
+
+  // Article + tag-management strings missing from earlier rounds
+  'article.paperBacklinkPrefix': 'Dies ist der kanonische Text des Papers',
+  'common.submit': 'Absenden',
+  'tags.deleteReasonPlaceholder': 'Warum sollte dieser Tag gelöscht werden?',
+  'tags.deleteSubmitted': 'Löschanfrage gesendet — ein Maintainer wird sie prüfen.',
+  'tags.requestDelete': 'Löschung beantragen',
+
+  // Papers
+  'paper.papers': 'Papers',
+  'paper.directoryBlurb': 'Diskussion und Notizen zu wissenschaftlichen Papers, aggregiert über Spiegel hinweg.',
+  'paper.importPlaceholder': 'DOI oder arXiv-ID — z. B. 10.1145/… oder 2401.12345',
+  'paper.importBtn': 'Aus OpenAlex importieren',
+  'paper.importing': 'Importiere…',
+  'paper.empty': 'Noch keine Papers.',
+  'paper.abstract': 'Abstract',
+  'paper.versions': 'Versionen',
+  'paper.discussion': 'Diskussion',
+  'paper.readNative': 'Auf NightBoat lesen',
+  'paper.preprint': 'Preprint',
+  'paper.accepted': 'Angenommen',
+  'paper.published': 'Veröffentlicht',
+  'paper.native': 'NightBoat',
 
 } as const;

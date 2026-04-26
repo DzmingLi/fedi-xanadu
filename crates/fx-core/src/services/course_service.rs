@@ -139,6 +139,7 @@ pub enum AttachmentKind {
     Video,
     Slides,
     Notes,
+    Recitation,
     Reading,
     Code,
     Homework,
@@ -472,41 +473,51 @@ pub async fn update_course(pool: &PgPool, id: &str, did: &str, input: &UpdateCou
         "source_attribution": input.source_attribution.as_ref().or(cur.source_attribution.as_ref()),
     });
 
-    // Compute diff
+    // Authors live outside the patchable diff (managed via course_authors,
+    // not the courses row), so an authors-only update would be silently
+    // dropped if we only checked `ops`. Treat an explicit `authors` payload
+    // as a real change.
     let ops = super::patch_service::diff(&old_json, &new_json);
-    if ops.is_empty() {
+    let authors_update = input.authors.is_some();
+    if ops.is_empty() && !authors_update {
         return Ok(cur); // no changes
     }
 
-    // Record patch
     let is_owner = did == owner_did;
-    let _patch = super::patch_service::create_patch(
-        pool, "course", id, did, &owner_did, &ops, summary,
-    ).await?;
+
+    // Record patch only when there are diffable field changes — author edits
+    // skip the patch table since they don't fit the field-diff model.
+    if !ops.is_empty() {
+        let _patch = super::patch_service::create_patch(
+            pool, "course", id, did, &owner_did, &ops, summary,
+        ).await?;
+    }
 
     // If auto-applied (owner edit), materialize the update
     if is_owner {
-        sqlx::query(
-            "UPDATE courses SET \
-             title = $1, code = $2, description = $3, syllabus = $4, \
-             institution = $5, department = $6, semester = $7, lang = $8, license = $9, \
-             source_url = $10, source_attribution = $11, \
-             updated_at = NOW() \
-             WHERE id = $12",
-        )
-        .bind(new_json["title"].as_str())
-        .bind(new_json["code"].as_str())
-        .bind(new_json["description"].as_str())
-        .bind(new_json["syllabus"].as_str())
-        .bind(new_json["institution"].as_str())
-        .bind(new_json["department"].as_str())
-        .bind(new_json["semester"].as_str())
-        .bind(new_json["lang"].as_str())
-        .bind(new_json["license"].as_str())
-        .bind(new_json["source_url"].as_str())
-        .bind(new_json["source_attribution"].as_str())
-        .bind(id)
-        .execute(pool).await?;
+        if !ops.is_empty() {
+            sqlx::query(
+                "UPDATE courses SET \
+                 title = $1, code = $2, description = $3, syllabus = $4, \
+                 institution = $5, department = $6, semester = $7, lang = $8, license = $9, \
+                 source_url = $10, source_attribution = $11, \
+                 updated_at = NOW() \
+                 WHERE id = $12",
+            )
+            .bind(new_json["title"].as_str())
+            .bind(new_json["code"].as_str())
+            .bind(new_json["description"].as_str())
+            .bind(new_json["syllabus"].as_str())
+            .bind(new_json["institution"].as_str())
+            .bind(new_json["department"].as_str())
+            .bind(new_json["semester"].as_str())
+            .bind(new_json["lang"].as_str())
+            .bind(new_json["license"].as_str())
+            .bind(new_json["source_url"].as_str())
+            .bind(new_json["source_attribution"].as_str())
+            .bind(id)
+            .execute(pool).await?;
+        }
 
         if let Some(ref authors) = input.authors {
             set_course_authors(pool, id, authors).await?;

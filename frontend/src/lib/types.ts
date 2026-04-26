@@ -856,6 +856,7 @@ export type AttachmentKind =
   | 'video'
   | 'slides'
   | 'notes'
+  | 'recitation'
   | 'reading'
   | 'code'
   | 'homework'

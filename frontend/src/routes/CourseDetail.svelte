@@ -162,6 +162,7 @@
     { id: 'video',      kinds: ['video'],      labelKey: 'course.video' },
     { id: 'notes',      kinds: ['notes'],      labelKey: 'course.notes' },
     { id: 'slides',     kinds: ['slides'],     labelKey: 'course.slides' },
+    { id: 'recitation', kinds: ['recitation'], labelKey: 'course.recitation' },
     { id: 'reading',    kinds: ['reading'],    labelKey: 'course.reading' },
     { id: 'outline',    kinds: ['outline'],    labelKey: 'course.outline' },
     { id: 'summary',    kinds: ['summary'],    labelKey: 'course.summary' },
@@ -188,6 +189,7 @@
       case 'video': return '▶';
       case 'reading': return '📘';
       case 'slides': return '🖼️';
+      case 'recitation': return '🎓';
       case 'summary': return '📝';
       case 'notes': return '📓';
       case 'code': return '⚙';

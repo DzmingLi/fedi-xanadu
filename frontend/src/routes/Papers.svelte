@@ -27,7 +27,7 @@
     loading = true;
     try {
       papers = await listPapers(100, 0);
-      document.title = `${t('paper.papers') || 'Papers'} — NightBoat`;
+      document.title = `${t('paper.papers')} — NightBoat`;
     } catch (e: any) {
       error = e?.message || 'Error';
     } finally {
@@ -58,20 +58,20 @@
 
 <div class="papers-page">
   <header class="papers-header">
-    <h1>{t('paper.papers') || 'Papers'}</h1>
+    <h1>{t('paper.papers')}</h1>
     <p class="papers-blurb">
-      {t('paper.directoryBlurb') || 'Discussion and notes for academic papers, aggregated across mirrors.'}
+      {t('paper.directoryBlurb')}
     </p>
     {#if getAuth()}
       <form class="paper-import" onsubmit={(e) => { e.preventDefault(); doImport(); }}>
         <input
           type="text"
           bind:value={importInput}
-          placeholder={t('paper.importPlaceholder') || 'DOI or arXiv id — e.g. 10.1145/… or 2401.12345'}
+          placeholder={t('paper.importPlaceholder')}
           disabled={importing}
         />
         <button type="submit" disabled={importing || !importInput.trim()}>
-          {importing ? (t('paper.importing') || 'Importing…') : (t('paper.importBtn') || 'Import from OpenAlex')}
+          {importing ? t('paper.importing') : t('paper.importBtn')}
         </button>
         {#if importError}<span class="error">{importError}</span>{/if}
       </form>
@@ -83,7 +83,7 @@
   {:else if error}
     <p class="error">{error}</p>
   {:else if papers.length === 0}
-    <p class="meta">{t('paper.empty') || 'No papers yet.'}</p>
+    <p class="meta">{t('paper.empty')}</p>
   {:else}
     <ul class="paper-grid">
       {#each papers as p}

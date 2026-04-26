@@ -1323,7 +1323,7 @@
                   bookQuestions = await getQuestionsByBook(id);
                 } catch { /* */ }
                 askSubmitting = false;
-              }}>{askSubmitting ? '...' : t('common.submit') || 'Submit'}</button>
+              }}>{askSubmitting ? '...' : t('common.submit')}</button>
             </div>
           </div>
         {/if}
